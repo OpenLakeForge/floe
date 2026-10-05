@@ -103,6 +103,76 @@ pub enum PiiStrategy {
     Tokenize,
 }
 
+impl RootConfig {
+    /// Config >= 0.3 qualifies entity identity with its domain (#464). Older configs keep
+    /// bare names even when `entity.domain` is set, so their reports/manifests are unchanged.
+    pub fn qualifies_entity_ids(&self) -> bool {
+        super::qualifies_entity_ids(&self.version)
+    }
+
+    /// Entity identity: `<domain>.<name>` when qualified, else `<name>`.
+    pub fn entity_id(&self, entity: &EntityConfig) -> String {
+        match &entity.domain {
+            Some(domain) if self.qualifies_entity_ids() => format!("{domain}.{}", entity.name),
+            _ => entity.name.clone(),
+        }
+    }
+
+    /// Report sub-directory for an entity id: `<domain>/<name>` when qualified.
+    /// Exact because 0.3+ forbids `.` in entity and domain names.
+    pub fn entity_report_dir(&self, entity_id: &str) -> String {
+        if self.qualifies_entity_ids() {
+            entity_id.replace('.', "/")
+        } else {
+            entity_id.to_string()
+        }
+    }
+
+    /// Resolve `--entities` selectors (qualified ids, or bare names when unambiguous)
+    /// into entities in config order. No selectors selects every entity.
+    pub fn select_entities(&self, selectors: &[String]) -> FloeResult<Vec<&EntityConfig>> {
+        if selectors.is_empty() {
+            return Ok(self.entities.iter().collect());
+        }
+        let ids: Vec<String> = self.entities.iter().map(|e| self.entity_id(e)).collect();
+        let indices = 0..self.entities.len();
+        let mut selected = vec![false; self.entities.len()];
+        let mut missing = Vec::new();
+        for selector in selectors {
+            let mut hits: Vec<usize> = indices.clone().filter(|&i| ids[i] == *selector).collect();
+            if hits.is_empty() {
+                hits = indices
+                    .clone()
+                    .filter(|&i| self.entities[i].name == *selector)
+                    .collect();
+            }
+            match hits.as_slice() {
+                [] => missing.push(selector.as_str()),
+                [index] => selected[*index] = true,
+                _ => {
+                    let candidates: Vec<&str> = hits.iter().map(|&i| ids[i].as_str()).collect();
+                    return Err(FloeError::config(format!(
+                        "entity {selector} is ambiguous; use one of: {}",
+                        candidates.join(", ")
+                    ))
+                    .into());
+                }
+            }
+        }
+        if !missing.is_empty() {
+            return Err(
+                FloeError::config(format!("entities not found: {}", missing.join(", "))).into(),
+            );
+        }
+        Ok(self
+            .entities
+            .iter()
+            .zip(selected)
+            .filter_map(|(entity, keep)| keep.then_some(entity))
+            .collect())
+    }
+}
+
 impl EntityConfig {
     pub fn resolved_incremental_mode(&self) -> IncrementalMode {
         if self.incremental_mode == IncrementalMode::None && self.sink.archive.is_some() {

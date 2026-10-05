@@ -364,7 +364,7 @@ pub(super) fn run_entity(
         crate::report::output::write_entity_report(
             report_target,
             &context.run_id,
-            entity,
+            &context.config.entity_report_dir(&run_report.entity.name),
             &run_report,
             runtime.storage(),
             &context.storage_resolver,

@@ -21,4 +21,4 @@ pub(crate) use parse::{
     parse_storages,
 };
 pub(crate) use template::apply_templates_with_vars;
-pub(crate) use validate::{extract_first_n, extract_last_n, validate_config};
+pub(crate) use validate::{extract_first_n, extract_last_n, qualifies_entity_ids, validate_config};

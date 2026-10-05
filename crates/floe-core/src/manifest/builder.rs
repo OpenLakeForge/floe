@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
-use crate::config::{ConfigLocation, RootConfig, SourceOptions, StorageResolver};
+use crate::config::{ConfigLocation, EntityConfig, RootConfig, SourceOptions, StorageResolver};
 use crate::manifest::model::{
     CommonManifest, ManifestArchiveTarget, ManifestColumnDef, ManifestDomain, ManifestEntity,
     ManifestEntitySchema, ManifestExecution, ManifestExecutionDefaults, ManifestOrchestration,
@@ -72,6 +72,7 @@ pub fn build_common_manifest_json(
     options: &ManifestOptions,
 ) -> FloeResult<String> {
     let resolver = StorageResolver::new(config, config_location.base.clone())?;
+    let selected_entities = config.select_entities(selected_entities)?;
     let mut manifest = build_common_manifest(
         config_location,
         config,
@@ -108,21 +109,12 @@ fn sha256_hex(bytes: &[u8]) -> String {
 fn build_common_manifest(
     config_location: &ConfigLocation,
     config: &RootConfig,
-    selected_entities: &[String],
+    mut entities: Vec<&EntityConfig>,
     resolver: &StorageResolver,
     profile: Option<&ProfileConfig>,
     options: &ManifestOptions,
 ) -> CommonManifest {
-    let mut entities: Vec<_> = if selected_entities.is_empty() {
-        config.entities.iter().collect()
-    } else {
-        config
-            .entities
-            .iter()
-            .filter(|entity| selected_entities.iter().any(|name| name == &entity.name))
-            .collect()
-    };
-    entities.sort_by(|left, right| left.name.cmp(&right.name));
+    entities.sort_by_key(|entity| config.entity_id(entity));
 
     let report_path = config
         .report
@@ -269,7 +261,7 @@ fn build_common_manifest(
         };
 
         manifest_entities.push(ManifestEntity {
-            name: entity.name.clone(),
+            name: config.entity_id(entity),
             domain: entity_domain,
             group_name,
             asset_key,

@@ -68,6 +68,7 @@ entities:
   - Must be a numeric `major.minor` string such as `"0.1"`, `"0.2"`, or `"0.3"`.
   - Minimum supported version is `"0.1"`.
   - `schema.schema_evolution` requires `version >= "0.2"`.
+  - `version >= "0.3"` qualifies entity identity with its domain (see Entity identity).
 - `metadata` (optional)
   - Free-form project metadata. Keys supported in schema: `project`,
     `description`, `owner`, `tags`.
@@ -146,6 +147,18 @@ Free-form entity metadata. Supported keys: `data_product`, `domain`, `owner`,
 ### `domain` (optional)
 Reference to a domain defined in `domains`. When set, `{{domain.incoming_dir}}`
 is available for templating within that entity.
+
+### Entity identity
+With `version >= "0.3"`, an entity with a `domain` is identified as `<domain>.<name>`;
+otherwise (and in all `0.1`/`0.2` configs) its identity is the bare `name`.
+
+- Ids must be unique, so the same `name` may exist in different domains.
+  In `0.3`, `name` and `domain` must not contain `.`.
+- The id is used for report paths (`run_<id>/<domain>/<name>/run.json`), run summary
+  and report entity names, manifest `entities[].name`, and OpenLineage job names.
+  Manifest `asset_key` stays `[domain, name]`.
+- `--entities` accepts ids, or bare names when they match a single entity; an ambiguous
+  bare name fails and lists the qualified candidates.
 
 ### `incremental_mode` (optional)
 

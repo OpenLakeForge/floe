@@ -90,9 +90,7 @@ pub fn validate_with_base(
     apply_profile_lineage(&mut config, options.profile_lineage.as_ref());
     config::validate_config(&config)?;
 
-    if !options.entities.is_empty() {
-        run::validate_entities(&config, &options.entities)?;
-    }
+    config.select_entities(&options.entities)?;
 
     Ok(())
 }

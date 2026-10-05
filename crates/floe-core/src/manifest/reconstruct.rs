@@ -155,10 +155,11 @@ pub fn config_from_manifest_json(json: &str) -> FloeResult<(crate::config::RootC
     let lineage =
         deserialize_manifest_section::<LineageConfig>(manifest.lineage.as_ref(), "lineage")?;
 
+    let qualified = crate::config::qualifies_entity_ids(&manifest.spec_version);
     let entities = manifest
         .entities
         .iter()
-        .map(entity_from_manifest)
+        .map(|m| entity_from_manifest(m, qualified))
         .collect::<FloeResult<Vec<_>>>()?;
 
     let config = crate::config::RootConfig {
@@ -205,10 +206,11 @@ pub fn lineage_inputs_from_manifest_json(
         None => return Ok(None),
     };
 
+    let qualified = crate::config::qualifies_entity_ids(&manifest.spec_version);
     let mut entities = manifest
         .entities
         .iter()
-        .map(entity_from_manifest)
+        .map(|m| entity_from_manifest(m, qualified))
         .collect::<FloeResult<Vec<_>>>()?;
 
     // Reconstructed entities are in manifest order, so zip pairs each with its
@@ -241,7 +243,21 @@ fn overlay_cloud_uri(path: &mut String, uri: Option<&str>) {
     }
 }
 
-fn entity_from_manifest(m: &ManifestEntityForRun) -> FloeResult<EntityConfig> {
+fn entity_from_manifest(m: &ManifestEntityForRun, qualified: bool) -> FloeResult<EntityConfig> {
+    // Qualified manifests (0.3+) record `name` as the entity id `<domain>.<name>`; split it
+    // back. A domain that does not prefix the id came from `--default-domain`, not the config,
+    // so drop it to keep the replayed id equal to the manifest name.
+    let (name, domain) = match m.domain.as_deref() {
+        Some(domain) if qualified => match m
+            .name
+            .strip_prefix(domain)
+            .and_then(|rest| rest.strip_prefix('.'))
+        {
+            Some(name) => (name.to_string(), Some(domain.to_string())),
+            None => (m.name.clone(), None),
+        },
+        _ => (m.name.clone(), m.domain.clone()),
+    };
     let policy_severity = parse_policy_severity(m.policy_severity.as_deref().unwrap_or("warn"));
     let write_mode = parse_write_mode(m.write_mode.as_deref().unwrap_or("overwrite"));
     let incremental_mode = parse_incremental_mode(m.incremental_mode.as_deref().unwrap_or("none"));
@@ -290,9 +306,9 @@ fn entity_from_manifest(m: &ManifestEntityForRun) -> FloeResult<EntityConfig> {
     });
 
     Ok(EntityConfig {
-        name: m.name.clone(),
+        name,
         metadata: None,
-        domain: m.domain.clone(),
+        domain,
         incremental_mode,
         state,
         source,

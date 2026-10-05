@@ -1,5 +1,5 @@
 use crate::errors::FloeError;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::config::storage::is_remote_uri;
 use crate::config::{
@@ -21,6 +21,7 @@ const ALLOWED_STORAGE_TYPES: &[&str] = &["local", "s3", "adls", "gcs"];
 const ALLOWED_ICEBERG_PARTITION_TRANSFORMS: &[&str] = &["identity", "year", "month", "day", "hour"];
 const MIN_SUPPORTED_CONFIG_VERSION: ConfigVersion = ConfigVersion::new(0, 1);
 const MIN_SCHEMA_EVOLUTION_CONFIG_VERSION: ConfigVersion = ConfigVersion::new(0, 2);
+const QUALIFIED_ENTITY_ID_CONFIG_VERSION: ConfigVersion = ConfigVersion::new(0, 3);
 const MAX_JSON_COLUMNS: usize = 1024;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -63,6 +64,11 @@ impl ConfigVersion {
     }
 }
 
+/// Config >= 0.3 qualifies entity identity with its domain (#464).
+pub(crate) fn qualifies_entity_ids(version: &str) -> bool {
+    ConfigVersion::parse(version).is_ok_and(|version| version >= QUALIFIED_ENTITY_ID_CONFIG_VERSION)
+}
+
 pub(crate) fn validate_config(config: &RootConfig) -> FloeResult<()> {
     let config_version = validate_version(config)?;
 
@@ -82,13 +88,29 @@ pub(crate) fn validate_config(config: &RootConfig) -> FloeResult<()> {
         validate_lineage(lineage)?;
     }
 
-    let mut names = HashSet::new();
-    for entity in &config.entities {
+    let qualified = config_version >= QUALIFIED_ENTITY_ID_CONFIG_VERSION;
+    let mut ids = HashMap::new();
+    for (index, entity) in config.entities.iter().enumerate() {
         validate_entity(entity, config_version, &storage_registry, &catalog_registry)?;
-        if !names.insert(entity.name.as_str()) {
+        if qualified {
+            // `.` separates `<domain>.<name>` in entity ids and report paths.
+            for (field, value) in [
+                ("name", Some(&entity.name)),
+                ("domain", entity.domain.as_ref()),
+            ] {
+                if value.is_some_and(|value| value.contains('.')) {
+                    return Err(FloeError::config(format!(
+                        "entity.name={} entity.{field} must not contain '.' when root.version >= \"0.3\"",
+                        entity.name
+                    ))
+                    .into());
+                }
+            }
+        }
+        let id = config.entity_id(entity);
+        if let Some(first) = ids.insert(id.clone(), index) {
             return Err(FloeError::config(format!(
-                "entity.name={} is duplicated in config",
-                entity.name
+                "entity.name={id} is duplicated in config (entities[{first}] and entities[{index}])"
             ))
             .into());
         }

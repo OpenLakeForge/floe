@@ -853,6 +853,16 @@ fn duplicate_entity_names_error() {
 }
 
 #[test]
+fn v03_dot_in_entity_name_errors_but_v02_allows_it() {
+    let entity = base_entity("sales.orders");
+    assert_validation_error(
+        &base_config_with_version("0.3", &entity),
+        &["entity.name=sales.orders", "must not contain '.'"],
+    );
+    assert_validation_ok(&base_config_with_version("0.2", &entity));
+}
+
+#[test]
 fn missing_sink_accepted_path_errors() {
     let entity = r#"  - name: "customer"
     source:

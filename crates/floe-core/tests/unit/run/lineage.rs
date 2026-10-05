@@ -1383,3 +1383,28 @@ fn manifest_replay_without_lineage_block_yields_no_observer() {
         "manifest without lineage block => no observer"
     );
 }
+
+// A qualified entity id (`<domain>.<name>`, config 0.3) is the OpenLineage job name and still
+// resolves the entity's datasets.
+#[test]
+fn qualified_entity_id_is_job_name_and_resolves_datasets() {
+    let mut server = mockito::Server::new();
+    let complete = server
+        .mock("POST", "/api/v1/lineage")
+        .match_body(mockito::Matcher::PartialJson(json!({
+            "eventType": "COMPLETE",
+            "job": { "name": "sales.orders" },
+            "inputs": [{ "namespace": "file", "name": "/data/in/" }]
+        })))
+        .with_status(200)
+        .expect(1)
+        .create();
+
+    let mut entity = make_entity("orders", "/data/in/", "/data/out/", None);
+    entity.domain = Some("sales".to_string());
+    let obs = OpenLineageObserver::new(&make_config(&server.url(), None), &[entity], "config.yml")
+        .unwrap();
+    obs.on_event(entity_finished_event("sales.orders", "success"));
+
+    complete.assert();
+}

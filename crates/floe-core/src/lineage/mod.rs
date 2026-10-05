@@ -24,11 +24,13 @@ struct ColumnMapping {
     source_field: Option<String>,
 }
 
+#[derive(Clone)]
 struct OlDataset {
     namespace: String,
     name: String,
 }
 
+#[derive(Clone)]
 struct EntityUris {
     source: OlDataset,
     accepted: OlDataset,
@@ -118,7 +120,7 @@ impl OpenLineageObserver {
 
         let entity_schemas = entities
             .iter()
-            .map(|e| {
+            .flat_map(|e| {
                 let fields: Vec<ColumnMapping> = e
                     .schema
                     .columns
@@ -129,7 +131,7 @@ impl OpenLineageObserver {
                         source_field: c.source.clone(),
                     })
                     .collect();
-                (e.name.clone(), fields)
+                entity_keys(e).map(move |key| (key, fields.clone()))
             })
             .collect();
 
@@ -141,7 +143,7 @@ impl OpenLineageObserver {
 
         let entity_uris = entities
             .iter()
-            .map(|e| {
+            .flat_map(|e| {
                 let (src_ns, src_name) = split_storage_uri(&e.source.path);
                 let source = OlDataset {
                     namespace: src_ns,
@@ -174,14 +176,12 @@ impl OpenLineageObserver {
                     }
                 });
 
-                (
-                    e.name.clone(),
-                    EntityUris {
-                        source,
-                        accepted,
-                        rejected,
-                    },
-                )
+                let uris = EntityUris {
+                    source,
+                    accepted,
+                    rejected,
+                };
+                entity_keys(e).map(move |key| (key, uris.clone()))
             })
             .collect();
 
@@ -460,6 +460,17 @@ struct EntityStats {
     warnings: u64,
     errors: u64,
     schema_fields: Vec<ColumnMapping>,
+}
+
+/// Run events name an entity by its id: bare `name` (config < 0.3) or `<domain>.<name>`.
+// ponytail: keyed under both forms instead of threading root.version into the observer;
+// a 0.2 entity literally named `<other domain>.<name>` would alias, thread the version if that matters.
+fn entity_keys(e: &EntityConfig) -> impl Iterator<Item = String> {
+    let qualified = e
+        .domain
+        .as_ref()
+        .map(|domain| format!("{domain}.{}", e.name));
+    std::iter::once(e.name.clone()).chain(qualified)
 }
 
 fn ms_to_iso8601(ms: u128) -> String {
