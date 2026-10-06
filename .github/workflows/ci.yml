@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+  merge_group:
 
 jobs:
   # Single source of truth for path-based change detection. Runs `paths-filter`

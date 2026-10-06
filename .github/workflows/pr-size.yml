@@ -3,13 +3,16 @@ name: PR size
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]  # edited: base retarget
+  merge_group:
 
 jobs:
   # Enforces the AGENTS.md size budget on non-test code. A maintainer can
   # override with the `large-pr` label; agents must never apply it.
   size:
+    # Skipped (reported as passing) in the merge queue: the PR was already sized.
     if: >-
-      !contains(github.event.pull_request.labels.*.name, 'large-pr')
+      github.event_name == 'pull_request'
+      && !contains(github.event.pull_request.labels.*.name, 'large-pr')
       && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
