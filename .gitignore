@@ -13,6 +13,7 @@ __pycache__/
 *.pyc
 .airflow/
 .claude/*
+!.claude/settings.json
 
 # Editors
 .idea/
