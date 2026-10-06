@@ -3,7 +3,7 @@
 ## Error handling
 
 - All fallible public and internal functions return `FloeResult<T>`.
-- Box errors at the call site: `Box::new(ConfigError("...".to_string()))`.
+- Construct errors with the `FloeError` helper matching the failure: `config`, `validation`, `storage` / `storage_at`, `sink`, `state`, `run`, `io` / `io_at`. Prefer the `_at` form when a path is known. The full list is in `crates/floe-core/src/errors.rs`; the rationale is in `context/decisions/structured-floe-error.md`.
 - No `unwrap()` or `expect()` in production paths. Use `?` or explicit `map_err`.
 - Do not add error handling for scenarios that cannot happen — trust internal invariants.
 
@@ -48,18 +48,7 @@ When adding a new storage backend:
 
 ## CI requirements — required before every push and PR
 
-All three checks must pass locally before pushing. CI enforces the same gates and will block the PR if any fail.
-
-```bash
-# 1. Format
-cargo fmt --all
-
-# 2. Lint — zero warnings allowed
-cargo clippy -p floe-core -p floe-cli -p floe-python -- -D warnings
-
-# 3. Tests — all must pass
-cargo test -p floe-core
-```
+The canonical commands live in `AGENTS.md` §5 and mirror `.github/workflows/ci.yml`. Run them before every push.
 
 No `#[allow(clippy::...)]` suppressions except where the lint is demonstrably wrong for the specific case — document why inline when you do suppress.
 
