@@ -3,7 +3,7 @@
 ## Error handling
 
 - All fallible public and internal functions return `FloeResult<T>`.
-- Construct errors with the `FloeError` helpers: `FloeError::config(...)`, `FloeError::run(...)`, `FloeError::storage(...)` / `storage_at(path, ...)`, `FloeError::io(...)`. See `context/decisions/structured-floe-error.md`.
+- Construct errors with the `FloeError` helper matching the failure: `config`, `validation`, `storage` / `storage_at`, `sink`, `state`, `run`, `io` / `io_at`. Prefer the `_at` form when a path is known. The full list is in `crates/floe-core/src/errors.rs`; the rationale is in `context/decisions/structured-floe-error.md`.
 - No `unwrap()` or `expect()` in production paths. Use `?` or explicit `map_err`.
 - Do not add error handling for scenarios that cannot happen — trust internal invariants.
 
