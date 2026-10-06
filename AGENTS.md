@@ -85,8 +85,17 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --no-default-features --features delta,iceberg -- -D warnings
 cargo test -p floe-core --test unit <module>::          # the modules you touched
 cargo test -p floe-core --test integration -- --test-threads=1   # if floe-core/src changed
+cargo test -p floe-core --doc                           # if floe-core changed
 cargo test -p floe-cli --tests                          # if floe-cli changed
 python scripts/check_orchestrator_drift.py              # if orchestrators/ changed
+```
+
+If `crates/floe-python` changed (inside a venv with `maturin`, `pytest`, `mypy`):
+
+```bash
+RUSTFLAGS="-C debuginfo=0" maturin develop --manifest-path crates/floe-python/Cargo.toml
+pytest crates/floe-python/tests/
+mypy crates/floe-python/tests/test_floe.py --ignore-missing-imports
 ```
 
 ## 6. PR body
