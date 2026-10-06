@@ -17,9 +17,9 @@ The goal: **the smallest correct change, one concern per PR, nothing speculative
 
 ## 2. Ponytail is mandatory
 
-- **Claude Code:** the `ponytail` plugin is enabled by `.claude/settings.json`. Accept the install
-  prompt and work in `full` mode. Before opening a PR, run `/ponytail-review` on your diff and
-  resolve every finding, or justify it in the PR body.
+- **Claude Code:** install the plugin once (`/plugin marketplace add DietrichGebert/ponytail`,
+  then `/plugin install ponytail@ponytail`) and work in `full` mode. Before opening a PR, run
+  `/ponytail-review` on your diff and resolve every finding, or justify it in the PR body.
 - **Other agents** apply the same ladder. Stop at the first rung that holds:
   1. Does this need to exist at all? If not, skip it and say so.
   2. Does it already exist in this codebase? Reuse it. Grep before you write.
