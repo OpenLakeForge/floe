@@ -2,7 +2,7 @@ name: PR size
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]  # edited: base retarget
 
 jobs:
   # Enforces the AGENTS.md size budget on non-test code. A maintainer can
@@ -21,7 +21,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         # ponytail: inline #[cfg(test)] modules under src/ still count; exclude them if that proves noisy.
         run: |
-          git diff --numstat "origin/$BASE_REF...HEAD" | awk -v max_lines=300 -v max_files=8 '
+          git diff --numstat --no-renames "origin/$BASE_REF...HEAD" | awk -v max_lines=300 -v max_files=8 '
             $3 ~ /^(crates|orchestrators)\// && $3 !~ /\/tests?\/|\/fixtures\/|\.(md|json|lock)$/ {
               if ($1 != "-") lines += $1 + $2; files++; print "  " $3
             }
