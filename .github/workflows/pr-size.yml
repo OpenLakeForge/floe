@@ -1,0 +1,34 @@
+name: PR size
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  # Enforces the AGENTS.md size budget on non-test code. A maintainer can
+  # override with the `large-pr` label; agents must never apply it.
+  size:
+    if: >-
+      !contains(github.event.pull_request.labels.*.name, 'large-pr')
+      && github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check non-test src diff against budget
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        # ponytail: inline #[cfg(test)] modules under src/ still count; exclude them if that proves noisy.
+        run: |
+          git diff --numstat "origin/$BASE_REF...HEAD" | awk -v max_lines=300 -v max_files=8 '
+            $3 ~ /^(crates|orchestrators)\// && $3 !~ /\/tests?\/|\/fixtures\/|\.(md|json|lock)$/ {
+              if ($1 != "-") lines += $1 + $2; files++; print "  " $3
+            }
+            END {
+              printf "Non-test src: %d lines, %d files (budget: %d lines, %d files)\n", lines, files, max_lines, max_files
+              if (lines > max_lines || files > max_files) {
+                print "::error::Over the AGENTS.md size budget. Split into stacked PRs, or ask a maintainer for the large-pr label."
+                exit 1
+              }
+            }'
