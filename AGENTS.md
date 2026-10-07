@@ -108,3 +108,53 @@ Use `.github/PULL_REQUEST_TEMPLATE.md`. It must state:
 - the commands you ran.
 
 Update `CHANGELOG.md` and `docs/` only when the change is user-visible.
+
+## 7. Non-goals
+
+Settled scope, not gaps. A change or review finding that asks for one of these is closed with a
+pointer here, not implemented.
+
+| Not a goal | Why |
+|---|---|
+| Streaming or continuous processing | Floe ingests files and batch extracts. Kafka-style sources belong to a streaming engine. |
+| Transformations (SQL, joins, models) | Floe validates and routes rows. Shaping them is dbt's job downstream. |
+| Distributed execution or worker coordination | One process, one machine. Concurrent runs coordinate only through the CAS incremental state (`context/decisions/incremental-state-cas.md`). No locks, leases or queues beyond it. |
+
+## 8. Agent workflow
+
+Work flows milestone → parent issue → sub-issues. **A sub-issue is one PR**: it fits the §3
+budget, names the files it touches, and says which test must fail first. One that can't is split
+before anyone writes code.
+
+1. **Plan.** The planner (a maintainer or the CTO agent) writes sub-issues from the Task template,
+   with `file:line` references it has verified, and links them to the parent.
+2. **Build.** One developer agent per sub-issue, in its own git worktree, on a branch named
+   `<type>/<issue>-<slug>`. Read the issue in full (`gh issue view <n>`): its references beat any
+   summary. Then §1–§5.
+3. **Open.** PR body per §6 with `Closes #<sub-issue>`, then comment `@codex review`.
+4. **Review loop.** Fix every P0/P1 finding. Fix a P2 only if it is in scope and small; otherwise
+   reply with why. Push, resolve the threads you addressed, and ask for review again. Out-of-scope
+   findings get a new issue, a reply linking it, and a resolved thread.
+5. **Done** when Codex has reviewed the latest commit with no P0/P1 findings and every thread is
+   resolved.
+6. **Three rounds, then stop.** If round three still raises a P0/P1, do not push a fourth fix.
+   Comment on the sub-issue what keeps coming back; the planner re-scopes or splits it. Repeated
+   P1s mean the issue was mis-scoped, not that the code needs another patch.
+7. **Merge.** The planner runs `gh pr merge --auto --squash`. The merge queue re-tests against
+   `main`, so never update a branch from `main` by hand. Merge stacked PRs bottom-up; squashing
+   the top first folds the whole stack into one commit.
+
+## 9. Review guidelines
+
+For Codex and any other reviewer. Review the diff against its linked issue: the issue's scope and
+out-of-scope lists are the contract.
+
+- **P0:** data loss or corrupted output; rows accepted that the contract rejects, or the reverse;
+  a security hole or leaked secret.
+- **P1:** wrong behaviour in the changed code; a break in the config YAML, manifest or run report
+  contract; a bug fix without a test that fails without it; a §3 hard-rule violation.
+- **P2 at most:** naming, style, comments, docs wording, possible refactors, and edge cases with
+  no concrete input that triggers them.
+- **Do not flag:** pre-existing problems in code the diff does not change (suggest an issue);
+  anything in §7; missing abstractions; defensive checks for states the code already rules out.
+- A P0/P1 names the concrete input or state that triggers it. If you can't name one, it is a P2.
