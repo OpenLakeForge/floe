@@ -256,7 +256,7 @@ jobs:
           if [ "${{ needs.changes.outputs.floe_cli }}" = "true" ]; then
             cargo test -p floe-cli --tests
           fi
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         if: needs.changes.outputs.floe_python == 'true'
         with:
           python-version: "3.12"
