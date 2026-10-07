@@ -2,24 +2,36 @@ name: PR size
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited, labeled, unlabeled]  # edited: base retarget
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]  # edited: base retarget or body change
   merge_group:
 
 jobs:
-  # Enforces the AGENTS.md size budget on non-test code. A maintainer can
-  # override with the `large-pr` label; agents must never apply it.
+  # Enforces the AGENTS.md size budget on non-test code and the one-issue-per-PR
+  # rule. A maintainer can override the budget with the `large-pr` label; agents
+  # must never apply it.
   size:
-    # Skipped (reported as passing) in the merge queue: the PR was already sized.
-    if: >-
-      github.event_name == 'pull_request'
-      && !contains(github.event.pull_request.labels.*.name, 'large-pr')
-      && github.event.pull_request.user.login != 'dependabot[bot]'
+    name: pr-size
+    # Skipped (reported as passing) in the merge queue: the PR was already checked.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
+      - name: Check the PR closes exactly one issue
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          n=$(grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]+' <<< "$BODY" | wc -l)
+          if [ "$n" -ne 1 ]; then
+            echo "::error::The PR body must contain exactly one 'Closes #N' (found $n). One issue per PR: AGENTS.md §3."
+            exit 1
+          fi
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Check non-test src diff against budget
+        if: >-
+          !contains(github.event.pull_request.labels.*.name, 'large-pr')
+          && github.event.pull_request.user.login != 'dependabot[bot]'
         env:
           BASE_REF: ${{ github.base_ref }}
         # ponytail: inline #[cfg(test)] modules under src/ still count; exclude them if that proves noisy.
