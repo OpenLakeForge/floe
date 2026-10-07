@@ -505,7 +505,7 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Install cross
         if: ${{ matrix.use_cross }}
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.85.3
         with:
           tool: cross
       - name: Build floe
