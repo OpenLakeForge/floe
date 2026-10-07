@@ -13,14 +13,7 @@ What do we want to build and why?
 
 ## Success criteria
 Minimum acceptance conditions for the feature to be considered done.
-
-Required checks:
-- `cargo fmt --all`
-- `cargo clippy --all-targets --all-features -- -D warnings`
-- Tests:
-  - Unit tests for changed modules
-  - A simple local integration test (when applicable)
-- Docs updated (config/CLI/support matrix/etc.)
+Too big for one PR? Split it into Task sub-issues (AGENTS.md §8).
 
 ## Design notes
 Constraints, decisions, API shape, data model, etc.

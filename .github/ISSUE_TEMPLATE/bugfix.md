@@ -29,8 +29,6 @@ paste relevant logs here
 ## Suggested fix (optional)
 
 ## Success criteria
-- Repro test added (unit or local integration)
-- `cargo fmt --all`
-- `cargo clippy --all-targets --all-features -- -D warnings`
-- Tests run for affected modules
+- Repro test added (unit or local integration) that fails without the fix
+- Checks from AGENTS.md §5 pass
 - Docs updated if behavior/config changed
