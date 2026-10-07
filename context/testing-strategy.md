@@ -42,10 +42,6 @@ cargo test -p floe-core -- integration::
 cargo test -p floe-core -- unit::
 ```
 
-## Test count
-
-The test suite currently has ~491 tests. All must pass before merging to main.
-
 ## Fixture files
 
 Input fixture files live in `crates/floe-core/tests/fixtures/` (or inline in the test as temp files). A fixture set for a format typically includes:

@@ -28,9 +28,11 @@ pub struct RootConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LineageConfig {
     pub url: String,
+    pub endpoint: Option<String>,
     pub api_key: Option<String>,
     pub timeout_secs: Option<u64>,
     pub namespace: String,
+    pub dataset_namespace: Option<String>,
     pub producer: Option<String>,
     pub max_failures: Option<u32>,
     pub job_name: Option<String>,

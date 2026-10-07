@@ -77,8 +77,8 @@ _DUCKDB_INSTALL_HINT = (
     "lean build without DuckDB support and the `floe-duckdb` companion wheel is "
     "not installed. Install it from the off-PyPI index, e.g. "
     "`pip install floe-duckdb --index-url "
-    "https://malon64.github.io/floe/simple/`, or use the "
-    "`ghcr.io/malon64/floe-duckdb` image."
+    "https://openlakeforge.github.io/floe/simple/`, or use the "
+    "`ghcr.io/openlakeforge/floe-duckdb` image."
 )
 
 

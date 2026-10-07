@@ -56,6 +56,10 @@ pub struct ManifestSinksForRun {
 pub struct ManifestSinkTargetForRun {
     pub format: String,
     pub storage: String,
+    /// Resolved cloud URI (e.g. `s3://bucket/key`). Optional so hand-authored
+    /// manifests that omit it still parse; the generator always writes it.
+    #[serde(default)]
+    pub uri: Option<String>,
     pub path: String,
     pub options: Option<serde_json::Value>,
     pub partition_by: Option<Vec<String>>,
@@ -170,6 +174,71 @@ pub fn config_from_manifest_json(json: &str) -> FloeResult<(crate::config::RootC
     };
 
     Ok((config, manifest.report_base_uri))
+}
+
+/// Reconstruct the lineage config and entities for a `--manifest` replay's
+/// OpenLineage observer, with each source/sink dataset path resolved to the
+/// manifest's cloud `uri`.
+///
+/// The run reconstruction (`config_from_manifest_json`) intentionally keeps the
+/// raw `path` fields — in the default manifest path mode those hold the original
+/// config paths (e.g. `sales/orders`) while the resolved cloud identity lives in
+/// `uri` (e.g. `s3://bucket/sales/orders`). The observer derives a dataset's
+/// namespace/name from the path, so for lineage it must see the resolved cloud
+/// URI; otherwise a named S3/GCS/ABFS source is reported under the `file`
+/// namespace. Local and relative paths are left as reconstructed.
+///
+/// Returns `Ok(None)` when the manifest has no `lineage` block.
+pub fn lineage_inputs_from_manifest_json(
+    json: &str,
+) -> FloeResult<Option<(LineageConfig, Vec<EntityConfig>)>> {
+    let manifest: ManifestForRun =
+        serde_json::from_str(json).map_err(|err| -> Box<dyn std::error::Error + Send + Sync> {
+            FloeError::config(format!("manifest parse error: {err}")).into()
+        })?;
+
+    let lineage = match deserialize_manifest_section::<LineageConfig>(
+        manifest.lineage.as_ref(),
+        "lineage",
+    )? {
+        Some(lineage) => lineage,
+        None => return Ok(None),
+    };
+
+    let mut entities = manifest
+        .entities
+        .iter()
+        .map(entity_from_manifest)
+        .collect::<FloeResult<Vec<_>>>()?;
+
+    // Reconstructed entities are in manifest order, so zip pairs each with its
+    // source manifest entry to overlay the resolved cloud URIs.
+    for (entity, m) in entities.iter_mut().zip(manifest.entities.iter()) {
+        overlay_cloud_uri(&mut entity.source.path, Some(m.source.uri.as_str()));
+        overlay_cloud_uri(
+            &mut entity.sink.accepted.path,
+            m.sinks.accepted.uri.as_deref(),
+        );
+        if let (Some(rejected), Some(m_rejected)) =
+            (entity.sink.rejected.as_mut(), m.sinks.rejected.as_ref())
+        {
+            overlay_cloud_uri(&mut rejected.path, m_rejected.uri.as_deref());
+        }
+    }
+
+    Ok(Some((lineage, entities)))
+}
+
+/// Replace `path` with `uri` when `uri` names a cloud object store; other
+/// schemes (local / relative) keep the reconstructed path. The prefix list
+/// mirrors `lineage::split_storage_uri` and must stay in sync with it.
+fn overlay_cloud_uri(path: &mut String, uri: Option<&str>) {
+    const CLOUD_SCHEMES: [&str; 6] = ["s3://", "gs://", "gcs://", "az://", "abfss://", "abfs://"];
+    if let Some(uri) = uri {
+        if CLOUD_SCHEMES.iter().any(|scheme| uri.starts_with(scheme)) {
+            *path = uri.to_string();
+        }
+    }
 }
 
 fn entity_from_manifest(m: &ManifestEntityForRun) -> FloeResult<EntityConfig> {

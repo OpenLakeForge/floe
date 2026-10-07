@@ -12,14 +12,15 @@ __pycache__/
 .pytest_cache/
 *.pyc
 .airflow/
-.claude/*
+.claude/
+.codex/
 
 # Editors
 .idea/
 .vscode/
 *.swp
 *.swo
-.omc
+.omc/
 
 # Example run artefacts (generated on every floe run)
 example/out/

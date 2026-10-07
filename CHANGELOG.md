@@ -2,6 +2,45 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.6.11
+
+- **Manifest replay now emits dataset lineage (#455).** `floe run --manifest`
+  built the OpenLineage observer with an empty entity set, so entity `COMPLETE`
+  events were posted with empty `inputs`/`outputs` and no upstream lineage edge
+  was created (OpenMetadata accepted the events with HTTP 200 but produced no
+  Bronze-to-Silver edge). Replay now passes the manifest's reconstructed
+  entities to the observer, so source and sink datasets are emitted exactly as
+  in a direct config run. A resolved `s3://` source is reported with an
+  `s3://<bucket>` namespace and its bucket-relative key as the dataset name.
+  Direct config execution is unchanged. See `docs/lineage.md`.
+
+## v0.6.10
+
+- **Runtime `OPENLINEAGE_API_KEY` resolution for lineage auth (#452).**
+  - When `lineage.api_key` is unset, Floe now resolves the Bearer token from the
+    `OPENLINEAGE_API_KEY` environment variable when the lineage observer is
+    constructed, matching the OpenLineage Python client and `dbt-ol`. This lets
+    orchestrated runners and manifest replays authenticate from a mounted
+    Kubernetes Secret without persisting the credential in the generated
+    manifest, Git, or object storage.
+  - Precedence: an explicit `lineage.api_key` still wins (backward compatible);
+    otherwise the environment variable is used; if neither is present, events are
+    sent unauthenticated as before.
+  - An unresolved `{{VAR}}` placeholder that survives into a manifest (e.g. a
+    profile-only `api_key` merged after config templating) is treated as absent,
+    so replay falls back to `OPENLINEAGE_API_KEY` instead of sending the literal
+    placeholder as the token. See `docs/lineage.md`.
+
+## v0.6.9
+
+- **Configurable OpenLineage endpoint and Iceberg dataset namespace (#450).**
+  - `lineage.endpoint` configures the request path, defaulting to
+    `api/v1/lineage`; this supports OpenMetadata's native
+    `api/v1/openlineage/lineage` route without a proxy.
+  - `lineage.dataset_namespace` separates accepted Iceberg output dataset
+    identity from the stable OpenLineage job namespace, defaulting to
+    `lineage.namespace` for backward compatibility. See `docs/lineage.md`.
+
 ## v0.6.8
 
 - **Fix image runner using custom S3 URL**

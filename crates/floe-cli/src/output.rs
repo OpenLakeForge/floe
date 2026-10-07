@@ -17,7 +17,7 @@ pub fn format_run_output(outcome: &RunOutcome, mode: OutputMode, dry_run: bool) 
         lines.push("DRY RUN MODE - No actual execution performed".to_string());
     }
     if mode != OutputMode::Quiet {
-        lines.push(format!("run id: {}", &outcome.run_id));
+        lines.push(format!("run id: {}", outcome.run_id));
         lines.push(format!(
             "report base: {}",
             outcome.report_base_path.as_deref().unwrap_or("(disabled)")
@@ -113,24 +113,24 @@ fn format_entity_output(entity: &EntityOutcome, mode: OutputMode) -> Vec<String>
     let report = &entity.report;
     lines.push(format!(
         "==> entity {} (severity={}, format={})",
-        &report.entity.name,
+        report.entity.name,
         format_severity(report.policy.severity),
-        &report.source.format
+        report.source.format
     ));
 
     if mode == OutputMode::Verbose {
         lines.push(format!(
             "  source: {} ({})",
-            &report.source.format, &report.source.path
+            report.source.format, report.source.path
         ));
         lines.push(format!(
             "  sink accepted: {} ({})",
-            &report.sink.accepted.format, &report.sink.accepted.path
+            report.sink.accepted.format, report.sink.accepted.path
         ));
         if let Some(rejected) = &report.sink.rejected {
             lines.push(format!(
                 "  sink rejected: {} ({})",
-                &rejected.format, &rejected.path
+                rejected.format, rejected.path
             ));
         }
         if let Some(cast_mode) = &report.source.cast_mode {
@@ -184,7 +184,7 @@ fn format_file_line(file: &report::FileReport, elapsed_ms: Option<u64>) -> Strin
 fn format_run_summary(outcome: &RunOutcome, include_run_info: bool) -> Vec<String> {
     let mut lines = Vec::new();
     if include_run_info {
-        lines.push(format!("run id: {}", &outcome.run_id));
+        lines.push(format!("run id: {}", outcome.run_id));
         lines.push(format!(
             "report base: {}",
             outcome.report_base_path.as_deref().unwrap_or("(disabled)")

@@ -115,7 +115,9 @@ entities:
 - `lineage` (optional)
   - Enables OpenLineage event emission for this run.
   - `url` (required): base URL of the OpenLineage-compatible endpoint (e.g. `http://marquez:5000`)
-  - `namespace` (required): OpenLineage namespace for all jobs and datasets
+  - `endpoint` (optional, default `api/v1/lineage`): path joined to `url` for POST requests
+  - `namespace` (required): OpenLineage namespace for job identity
+  - `dataset_namespace` (optional, defaults to `namespace`): namespace for accepted Iceberg output datasets
   - `api_key` (optional): Bearer token; supports `{{VAR}}` placeholder expansion
   - `timeout_secs` (optional, default `5`): HTTP request timeout in seconds
   - `producer` (optional): URI identifying this producer

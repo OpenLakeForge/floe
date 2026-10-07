@@ -8,7 +8,7 @@ builds a self-hosted simple index (à la ``download.pytorch.org``) that ``pip``
 can consume::
 
     pip install floe-python  # lean wheel from PyPI (provides the companion's dependency)
-    pip install floe-duckdb --index-url https://malon64.github.io/floe/simple/
+    pip install floe-duckdb --index-url https://openlakeforge.github.io/floe/simple/
 
 It enumerates every ``floe_duckdb-*.whl`` asset across ALL GitHub Releases via the
 GitHub REST API so the regenerated index always lists the full version history,
@@ -112,7 +112,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--repo",
-        default=os.environ.get("GITHUB_REPOSITORY", "malon64/floe"),
+        default=os.environ.get("GITHUB_REPOSITORY", "OpenLakeForge/floe"),
         help="owner/name of the GitHub repository holding the release assets",
     )
     parser.add_argument(

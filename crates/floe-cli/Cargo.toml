@@ -1,12 +1,12 @@
 [package]
 name = "floe-cli"
-version = "0.6.8"
+version = "0.6.11"
 edition = "2021"
 description = "CLI for Floe, a YAML-driven technical ingestion tool."
 license = "MIT"
 readme = "../../README.md"
-repository = "https://github.com/malon64/floe"
-homepage = "https://github.com/malon64/floe"
+repository = "https://github.com/OpenLakeForge/floe"
+homepage = "https://github.com/OpenLakeForge/floe"
 keywords = ["ingestion", "data-quality", "csv", "polars", "yaml"]
 categories = ["command-line-utilities"]
 build = "build.rs"
@@ -17,7 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-floe-core = { path = "../floe-core", version = "0.6.8", default-features = false }
+floe-core = { path = "../floe-core", version = "0.6.11", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

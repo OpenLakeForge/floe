@@ -22,10 +22,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/malon64/floe"
-Repository = "https://github.com/malon64/floe"
-Issues = "https://github.com/malon64/floe/issues"
-Documentation = "https://github.com/malon64/floe/tree/main/orchestrators/airflow-floe"
+Homepage = "https://github.com/OpenLakeForge/floe"
+Repository = "https://github.com/OpenLakeForge/floe"
+Issues = "https://github.com/OpenLakeForge/floe/issues"
+Documentation = "https://github.com/OpenLakeForge/floe/tree/main/orchestrators/airflow-floe"
 
 [project.optional-dependencies]
 dev = [

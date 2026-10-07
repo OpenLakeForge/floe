@@ -1,0 +1,56 @@
+name: Coverage
+
+# Informational only — never make this a required check. Runs on main after
+# floe-core changes, on demand, and on PRs that edit this file.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/floe-core/**"
+      - "Cargo.lock"
+      - ".github/workflows/coverage.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/coverage.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v0-rust
+          shared-key: v0-rust-coverage
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Measure floe-core coverage
+        env:
+          CARGO_BUILD_JOBS: "4"
+          # Same link-memory discipline as ci.yml's test job.
+          RUSTFLAGS: "-C debuginfo=0"
+        # Integration tests need a single thread (see ci.yml). Explicit bash
+        # turns on pipefail so a test failure isn't masked by tee.
+        shell: bash
+        run: cargo llvm-cov -p floe-core --summary-only -- --test-threads=1 | tee coverage.txt
+      - name: Publish summary
+        run: |
+          {
+            echo '## floe-core coverage'
+            echo '```'
+            tail -n 1 coverage.txt
+            echo '```'
+            echo '<details><summary>Per file</summary>'
+            echo
+            echo '```'
+            cat coverage.txt
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"

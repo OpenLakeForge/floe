@@ -1,0 +1,50 @@
+name: PR size
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]  # edited: base retarget or body change
+  merge_group:
+
+jobs:
+  # Enforces the AGENTS.md size budget on non-test code and the one-issue-per-PR
+  # rule. A maintainer can override the budget with the `large-pr` label; agents
+  # must never apply it.
+  size:
+    name: pr-size
+    # Skipped (reported as passing) in the merge queue: the PR was already checked.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the PR closes exactly one issue
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Whole-line match, so issue refs quoted in prose don't count.
+          n=$(tr -d '\r' <<< "$BODY" | grep -ciE '^ *(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]+ *$' || true)
+          if [ "$n" -ne 1 ]; then
+            echo "::error::The PR body must have exactly one line 'Closes #N' (found $n). One issue per PR: AGENTS.md §3."
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check non-test src diff against budget
+        if: >-
+          !contains(github.event.pull_request.labels.*.name, 'large-pr')
+          && github.event.pull_request.user.login != 'dependabot[bot]'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        # ponytail: inline #[cfg(test)] modules under src/ still count; exclude them if that proves noisy.
+        run: |
+          git diff --numstat --no-renames "origin/$BASE_REF...HEAD" | awk -v max_lines=300 -v max_files=8 '
+            $3 ~ /^(crates|orchestrators)\// && $3 !~ /\/tests?\/|\/fixtures\/|\.(md|json|lock)$/ {
+              if ($1 != "-") lines += $1 + $2; files++; print "  " $3
+            }
+            END {
+              printf "Non-test src: %d lines, %d files (budget: %d lines, %d files)\n", lines, files, max_lines, max_files
+              if (lines > max_lines || files > max_files) {
+                print "::error::Over the AGENTS.md size budget. Split into stacked PRs, or ask a maintainer for the large-pr label."
+                exit 1
+              }
+            }'

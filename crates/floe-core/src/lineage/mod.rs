@@ -8,11 +8,14 @@ use uuid::Uuid;
 
 use crate::config::{EntityConfig, LineageConfig};
 use crate::run::events::{RunEvent, RunObserver};
+use crate::secret::Secret;
 
 const DEFAULT_PRODUCER: &str = concat!(
-    "https://github.com/malon64/floe/releases/tag/v",
+    "https://github.com/OpenLakeForge/floe/releases/tag/v",
     env!("CARGO_PKG_VERSION")
 );
+
+const OPENLINEAGE_API_KEY_ENV: &str = "OPENLINEAGE_API_KEY";
 
 #[derive(Clone)]
 struct ColumnMapping {
@@ -32,9 +35,48 @@ struct EntityUris {
     rejected: Option<OlDataset>,
 }
 
+fn resolve_lineage_url(base: &str, endpoint: Option<&str>) -> String {
+    let path = endpoint
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("api/v1/lineage");
+    format!(
+        "{}/{}",
+        base.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    )
+}
+
+fn is_unresolved_placeholder(value: &str) -> bool {
+    let value = value.trim();
+    value.starts_with("{{") && value.ends_with("}}")
+}
+
+/// Effective Bearer token for lineage POSTs.
+///
+/// An explicit `lineage.api_key` wins for backward compatibility. Otherwise Floe falls back
+/// to the ambient `OPENLINEAGE_API_KEY`, mirroring the OpenLineage Python client so a replayed
+/// manifest authenticates from a runner-mounted Secret without the credential ever being
+/// persisted in the manifest. An unexpanded `{{...}}` placeholder is treated as absent:
+/// profile-supplied lineage is merged after config templating (see `apply_profile_lineage`),
+/// so the raw placeholder would otherwise be sent verbatim as the token.
+fn resolve_api_key(configured: Option<&str>, ambient: Option<String>) -> Option<Secret> {
+    let explicit = configured
+        .map(str::trim)
+        .filter(|key| !key.is_empty() && !is_unresolved_placeholder(key));
+    match explicit {
+        Some(key) => Some(Secret::from(key)),
+        None => ambient
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(Secret::from),
+    }
+}
+
 pub struct OpenLineageObserver {
     client: reqwest::blocking::Client,
     config: LineageConfig,
+    api_key: Option<Secret>,
     entity_start_ms: Mutex<HashMap<String, u128>>,
     entity_run_ids: Mutex<HashMap<String, String>>,
     run_start_ms: Mutex<Option<u128>>,
@@ -91,6 +133,12 @@ impl OpenLineageObserver {
             })
             .collect();
 
+        let dataset_namespace = config
+            .dataset_namespace
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| config.namespace.clone());
+
         let entity_uris = entities
             .iter()
             .map(|e| {
@@ -105,7 +153,7 @@ impl OpenLineageObserver {
                         let ns = iceberg.namespace.as_deref().unwrap_or(e.name.as_str());
                         let tbl = iceberg.table.as_deref().unwrap_or(e.name.as_str());
                         OlDataset {
-                            namespace: config.namespace.clone(),
+                            namespace: dataset_namespace.clone(),
                             name: format!("{ns}.{tbl}"),
                         }
                     }
@@ -137,9 +185,15 @@ impl OpenLineageObserver {
             })
             .collect();
 
+        let api_key = resolve_api_key(
+            config.api_key.as_deref(),
+            std::env::var(OPENLINEAGE_API_KEY_ENV).ok(),
+        );
+
         Ok(Self {
             client,
             config: config.clone(),
+            api_key,
             entity_start_ms: Mutex::new(HashMap::new()),
             entity_run_ids: Mutex::new(HashMap::new()),
             run_start_ms: Mutex::new(None),
@@ -154,8 +208,8 @@ impl OpenLineageObserver {
 
     fn attempt_post(&self, url: &str, body: &Value) -> Result<(), bool> {
         let mut req = self.client.post(url).json(body);
-        if let Some(api_key) = self.config.api_key.as_deref() {
-            req = req.bearer_auth(api_key);
+        if let Some(api_key) = self.api_key.as_ref() {
+            req = req.bearer_auth(api_key.expose());
         }
         match req.send() {
             Err(_) => Err(true),
@@ -177,7 +231,7 @@ impl OpenLineageObserver {
             return;
         }
 
-        let url = format!("{}/api/v1/lineage", self.config.url.trim_end_matches('/'));
+        let url = resolve_lineage_url(&self.config.url, self.config.endpoint.as_deref());
         let max_failures = self.config.max_failures.unwrap_or(3) as usize;
         let retry_delays_ms: &[u64] = &[0, 100, 500];
 
@@ -317,7 +371,7 @@ impl OpenLineageObserver {
                     "warnings": s.warnings,
                     "errors": s.errors,
                     "_producer": self.producer(),
-                    "_schemaURL": "https://github.com/malon64/floe/schemas/FloeQualityRunFacet.json"
+                    "_schemaURL": "https://github.com/OpenLakeForge/floe/schemas/FloeQualityRunFacet.json"
                 });
 
                 let mut accepted_facets = json!({
@@ -581,6 +635,23 @@ pub fn build_observer(
     Ok(Arc::new(obs))
 }
 
+/// Build a lineage observer for a `--manifest` replay from the manifest's
+/// embedded lineage block and its entities' resolved cloud datasets, so replay
+/// emits the same input/output lineage as a direct config run. `Ok(None)` when
+/// the manifest has no `lineage` block. See
+/// [`crate::manifest::reconstruct::lineage_inputs_from_manifest_json`].
+pub fn build_observer_from_manifest_json(
+    manifest_json: &str,
+    config_path: &str,
+) -> crate::FloeResult<Option<Arc<dyn RunObserver>>> {
+    match crate::manifest::reconstruct::lineage_inputs_from_manifest_json(manifest_json)? {
+        Some((lineage_cfg, entities)) => {
+            build_observer(&lineage_cfg, &entities, config_path).map(Some)
+        }
+        None => Ok(None),
+    }
+}
+
 impl OpenLineageObserver {
     pub fn is_circuit_open(&self) -> bool {
         self.circuit_open.load(Ordering::Relaxed)
@@ -588,5 +659,50 @@ impl OpenLineageObserver {
 
     pub fn consecutive_failures(&self) -> usize {
         self.consecutive_failures.load(Ordering::Relaxed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn expose(key: Option<Secret>) -> Option<String> {
+        key.map(|s| s.expose().to_string())
+    }
+
+    #[test]
+    fn explicit_config_key_wins_over_env() {
+        let key = resolve_api_key(Some("cfg-token"), Some("env-token".to_string()));
+        assert_eq!(expose(key), Some("cfg-token".to_string()));
+    }
+
+    #[test]
+    fn falls_back_to_env_when_config_absent() {
+        let key = resolve_api_key(None, Some("env-token".to_string()));
+        assert_eq!(expose(key), Some("env-token".to_string()));
+    }
+
+    #[test]
+    fn unresolved_placeholder_falls_back_to_env() {
+        let key = resolve_api_key(
+            Some("{{OPENLINEAGE_API_KEY}}"),
+            Some("env-token".to_string()),
+        );
+        assert_eq!(expose(key), Some("env-token".to_string()));
+    }
+
+    #[test]
+    fn unresolved_placeholder_without_env_is_none() {
+        assert!(resolve_api_key(Some("{{OPENLINEAGE_API_KEY}}"), None).is_none());
+    }
+
+    #[test]
+    fn none_when_neither_source_present() {
+        assert!(resolve_api_key(None, None).is_none());
+    }
+
+    #[test]
+    fn blank_values_are_ignored() {
+        assert!(resolve_api_key(Some("   "), Some("   ".to_string())).is_none());
     }
 }

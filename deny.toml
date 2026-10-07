@@ -25,6 +25,11 @@ ignore = [
   { id = "RUSTSEC-2026-0098", reason = "remaining affected copy pinned by aws-smithy-http-client's rustls 0.21 legacy path" },
   { id = "RUSTSEC-2026-0099", reason = "remaining affected copy pinned by aws-smithy-http-client's rustls 0.21 legacy path" },
   { id = "RUSTSEC-2026-0104", reason = "remaining affected copy pinned by aws-smithy-http-client's rustls 0.21 legacy path" },
+  # h2 empty DATA frames DoS. The 0.4.x copy is patched in the lock; the remaining
+  # 0.3.27 has no fixed 0.3 release and comes from the same legacy hyper 0.14
+  # connector (aws-sdk-* `rustls` feature, also enabled by deltalake-aws).
+  # Remove with the rustls 0.21 entries above.
+  { id = "RUSTSEC-2026-0258", reason = "remaining h2 0.3 copy pinned by aws-smithy-http-client's hyper 0.14 legacy path; 0.4 copy patched" },
   # core2 0.4.0 was yanked with no in-range replacement; it is pinned by
   # libflate <- apache-avro 0.16. Remove when apache-avro is bumped past 0.16.
   { crate = "core2@0.4.0", reason = "yanked with no ^0.4 replacement; pinned by apache-avro 0.16's libflate" },

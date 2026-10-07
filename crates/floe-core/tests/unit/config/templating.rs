@@ -89,6 +89,85 @@ entities:
 }
 
 #[test]
+fn env_vars_apply_to_lineage_endpoint_and_dataset_namespace() {
+    let root = temp_dir("floe-lineage-vars");
+    let config_yaml = format!(
+        r#"version: "0.1"
+env:
+  vars:
+    LINEAGE_ENDPOINT: "api/v1/openlineage/lineage"
+    DATASET_NAMESPACE: "iceberg.prod"
+lineage:
+  url: "http://openmetadata:8585"
+  endpoint: "{{{{LINEAGE_ENDPOINT}}}}"
+  namespace: "dagster"
+  dataset_namespace: "{{{{DATASET_NAMESPACE}}}}"
+entities:
+  - name: "orders"
+    source:
+      format: "csv"
+      path: "{root}/in/orders.csv"
+    sink:
+      accepted:
+        format: "parquet"
+        path: "{root}/out/orders"
+    policy:
+      severity: "warn"
+    schema:
+      columns:
+        - name: "id"
+          type: "string"
+"#,
+        root = root.display(),
+    );
+    let config_path = write_config(&root, &config_yaml);
+    let parsed = load_config(&config_path).expect("parse config");
+    let lineage = parsed.lineage.expect("lineage");
+
+    assert_eq!(
+        lineage.endpoint.as_deref(),
+        Some("api/v1/openlineage/lineage")
+    );
+    assert_eq!(lineage.dataset_namespace.as_deref(), Some("iceberg.prod"));
+}
+
+#[test]
+fn unresolved_lineage_placeholder_errors() {
+    let root = temp_dir("floe-lineage-unresolved");
+    let config_yaml = format!(
+        r#"version: "0.1"
+lineage:
+  url: "http://openmetadata:8585"
+  endpoint: "{{{{OPENLINEAGE_ENDPOINT}}}}"
+  namespace: "dagster"
+entities:
+  - name: "orders"
+    source:
+      format: "csv"
+      path: "{root}/in/orders.csv"
+    sink:
+      accepted:
+        format: "parquet"
+        path: "{root}/out/orders"
+    policy:
+      severity: "warn"
+    schema:
+      columns:
+        - name: "id"
+          type: "string"
+"#,
+        root = root.display(),
+    );
+    let config_path = write_config(&root, &config_yaml);
+
+    let err = load_config(&config_path).expect_err("placeholder error");
+    assert_eq!(
+        err.to_string(),
+        "lineage.endpoint references unknown variable OPENLINEAGE_ENDPOINT"
+    );
+}
+
+#[test]
 fn env_file_vars_apply_to_source_path() {
     let root = temp_dir("floe-env-file");
     let env_path = write_env(&root, "incoming_path: \"/data/incoming\"");

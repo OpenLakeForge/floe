@@ -1190,9 +1190,11 @@ pub(crate) fn parse_lineage_config(value: &Yaml) -> FloeResult<LineageConfig> {
         "lineage",
         &[
             "url",
+            "endpoint",
             "api_key",
             "timeout_secs",
             "namespace",
+            "dataset_namespace",
             "producer",
             "max_failures",
             "job_name",
@@ -1200,9 +1202,11 @@ pub(crate) fn parse_lineage_config(value: &Yaml) -> FloeResult<LineageConfig> {
     )?;
     Ok(LineageConfig {
         url: get_string(hash, "url", "lineage")?,
+        endpoint: opt_string(hash, "endpoint", "lineage")?,
         api_key: opt_string(hash, "api_key", "lineage")?,
         timeout_secs: opt_u64(hash, "timeout_secs", "lineage")?,
         namespace: get_string(hash, "namespace", "lineage")?,
+        dataset_namespace: opt_string(hash, "dataset_namespace", "lineage")?,
         producer: opt_string(hash, "producer", "lineage")?,
         max_failures: opt_u32(hash, "max_failures", "lineage")?,
         job_name: opt_string(hash, "job_name", "lineage")?,

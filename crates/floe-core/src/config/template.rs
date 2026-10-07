@@ -34,9 +34,11 @@ pub fn apply_templates_with_vars(
 
     if let Some(lineage) = config.lineage.as_mut() {
         lineage.url = replace_placeholders(&lineage.url, &vars, "lineage.url", None)?;
+        replace_lineage_field(&mut lineage.endpoint, &vars, "endpoint")?;
         if let Some(api_key) = lineage.api_key.as_mut() {
             *api_key = replace_placeholders(api_key, &vars, "lineage.api_key", None)?;
         }
+        replace_lineage_field(&mut lineage.dataset_namespace, &vars, "dataset_namespace")?;
     }
 
     if let Some(storages) = config.storages.as_mut() {
@@ -93,6 +95,18 @@ pub fn apply_templates_with_vars(
         }
     }
 
+    Ok(())
+}
+
+fn replace_lineage_field(
+    value: &mut Option<String>,
+    vars: &HashMap<String, String>,
+    field_name: &str,
+) -> FloeResult<()> {
+    if let Some(current) = value.as_mut() {
+        let field = format!("lineage.{field_name}");
+        *current = replace_placeholders(current, vars, &field, None)?;
+    }
     Ok(())
 }
 

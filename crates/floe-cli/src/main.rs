@@ -547,20 +547,21 @@ fn main() -> FloeResult<()> {
                 // Wire up lineage from manifest's embedded lineage block.
                 // Use read_manifest_text so remote URIs (s3://, gs://, abfs://) are
                 // downloaded before parsing; std::fs::read_to_string would fail silently.
-                let lineage_observer = {
-                    let json = floe_core::read_manifest_text(&manifest_path_str).ok();
-                    json.and_then(|j| floe_core::config_from_manifest_json(&j).ok())
-                        .and_then(|(cfg, _)| cfg.lineage)
-                        .and_then(|lineage_cfg| {
-                            match floe_core::lineage::build_observer(&lineage_cfg, &[], "") {
-                                Ok(obs) => Some(obs),
-                                Err(err) => {
-                                    eprintln!("Warning: lineage observer disabled: {err}");
-                                    None
-                                }
+                // Pass the manifest's reconstructed entities to the observer so
+                // replay emits the same source/sink dataset lineage as a direct
+                // config run; an empty entity slice yields empty inputs/outputs
+                // and no lineage edge (issue #455).
+                let lineage_observer = floe_core::read_manifest_text(&manifest_path_str)
+                    .ok()
+                    .and_then(|json| {
+                        match floe_core::lineage::build_observer_from_manifest_json(&json, "") {
+                            Ok(obs) => obs,
+                            Err(err) => {
+                                eprintln!("Warning: lineage observer disabled: {err}");
+                                None
                             }
-                        })
-                };
+                        }
+                    });
                 let mut obs_vec = Vec::new();
                 let has_log_obs = log_obs.is_some();
                 if let Some(log) = log_obs {

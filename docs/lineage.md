@@ -11,7 +11,9 @@ Add a `lineage` block at the root of your config file:
 ```yaml
 lineage:
   url: "http://marquez:5000"
+  endpoint: "api/v1/lineage"         # optional, default shown
   namespace: "my-floe-namespace"
+  dataset_namespace: "my-floe-namespace"  # optional, defaults to namespace
   api_key: "{{OPENLINEAGE_API_KEY}}"   # optional — Bearer token
   timeout_secs: 5                       # optional, default 5
   producer: "https://github.com/myorg/floe"  # optional
@@ -21,20 +23,59 @@ lineage:
 | Field          | Required | Description |
 |----------------|----------|-------------|
 | `url`          | yes      | Base URL of the OpenLineage-compatible endpoint |
-| `namespace`    | yes      | OpenLineage namespace used for all jobs and datasets in this run |
-| `api_key`      | no       | Bearer token sent in the `Authorization` header |
+| `endpoint`     | no       | Path joined to `url` for POST requests (default: `api/v1/lineage`) |
+| `namespace`    | yes      | OpenLineage namespace used for job identity |
+| `dataset_namespace` | no   | Namespace for accepted Iceberg output datasets; defaults to `namespace` |
+| `api_key`      | no       | Bearer token for the `Authorization` header. When unset, Floe falls back to the `OPENLINEAGE_API_KEY` environment variable at run time. |
 | `timeout_secs` | no       | HTTP request timeout in seconds (default: `5`) |
-| `producer`     | no       | URI identifying this producer. Defaults to the versioned release URL for the current build (e.g. `https://github.com/malon64/floe/releases/tag/v0.4.2`). |
+| `producer`     | no       | URI identifying this producer. Defaults to the versioned release URL for the current build (e.g. `https://github.com/OpenLakeForge/floe/releases/tag/v0.4.2`). |
 | `max_failures` | no       | Consecutive failures before the circuit opens (default: `3`) |
 | `job_name`     | no       | Stable OpenLineage job name for top-level `RunStarted`/`RunFinished` events. Defaults to the config file stem (e.g. `orders.yml` → `orders`), fallback `floe-run`. Use this to group multiple runs under the same Marquez job node. |
 
 `api_key` supports `{{VAR}}` placeholder expansion via the same profile and
 env-vars mechanism used for the rest of the config.
 
+### Runtime credential resolution (`OPENLINEAGE_API_KEY`)
+
+When `lineage.api_key` is not set, Floe resolves the Bearer token from the
+`OPENLINEAGE_API_KEY` environment variable when the lineage observer is
+constructed — the same variable the OpenLineage Python client and `dbt-ol` read.
+Resolution order:
+
+1. An explicit `lineage.api_key` (including a `{{VAR}}` placeholder resolved
+   during config templating) is used as-is.
+2. Otherwise, `OPENLINEAGE_API_KEY` from the process environment is used.
+3. If neither is present, events are sent unauthenticated.
+
+**Recommended for orchestrated runners and manifest replay.** Omit
+`lineage.api_key` from configs and profiles and inject `OPENLINEAGE_API_KEY` into
+the runner environment (for example, from a Kubernetes Secret). The credential
+then stays in the pod environment and is never serialized into a generated
+manifest, Git, or object storage. This mirrors how OpenLineage-based tools such
+as `dbt-ol` supply the OpenMetadata ingestion token.
+
+> An unresolved `{{VAR}}` placeholder that survives into a generated manifest —
+> for example a profile-only `api_key` that was never templated — is treated as
+> absent, so replay falls back to `OPENLINEAGE_API_KEY` instead of sending the
+> literal placeholder as the token.
+
 ## Events emitted
 
 For each Floe run, Floe posts OpenLineage `RunEvent` objects to
-`POST <url>/api/v1/lineage`:
+`POST <url>/<endpoint>`, where `endpoint` defaults to `api/v1/lineage`:
+
+For OpenMetadata's native OpenLineage endpoint:
+
+```yaml
+lineage:
+  url: http://openmetadata:8585
+  endpoint: api/v1/openlineage/lineage
+  namespace: dagster            # stable job identity
+  dataset_namespace: iceberg    # catalog-service dataset namespace
+```
+
+`dataset_namespace` governs the accepted Iceberg output dataset; source and
+non-Iceberg sink datasets retain their physical storage namespaces.
 
 | Floe lifecycle        | OpenLineage event type | Notes                                                                  |
 |-----------------------|------------------------|------------------------------------------------------------------------|
@@ -59,6 +100,10 @@ This produces a lineage graph in Marquez (and compatible tools) of the form:
 source path  →  <namespace>.<entity> job  →  accepted sink path
                                           →  rejected sink path (when present)
 ```
+
+Manifest replay (`floe run --manifest`) emits the same `inputs`/`outputs`
+datasets as a direct config run — the entities embedded in the manifest carry
+the resolved source and sink identities used to build them.
 
 ### Facets on entity COMPLETE/FAIL events
 

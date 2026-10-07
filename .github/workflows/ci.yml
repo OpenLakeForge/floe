@@ -2,6 +2,14 @@ name: CI
 
 on:
   pull_request:
+  merge_group:
+  # Runs on main only to save the rust caches that PRs restore from.
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Single source of truth for path-based change detection. Runs `paths-filter`
@@ -11,6 +19,7 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
+      rust: ${{ steps.filter.outputs.rust }}
       floe_core: ${{ steps.filter.outputs.floe_core }}
       core_code: ${{ steps.filter.outputs.core_code }}
       core_code_global: ${{ steps.filter.outputs.core_code_global }}
@@ -38,6 +47,14 @@ jobs:
         id: filter
         with:
           filters: |
+            # Anything that can change rustfmt/clippy results. Docs-only PRs skip both.
+            rust:
+              - "**/*.rs"
+              - "**/Cargo.toml"
+              - "Cargo.lock"
+              - "rust-toolchain.toml"
+              - "clippy.toml"
+              - ".github/workflows/ci.yml"
             floe_core:
               - "crates/floe-core/**"
             core_code:
@@ -118,22 +135,20 @@ jobs:
               - "crates/floe-cli/Cargo.toml"
 
   rustfmt:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: v0-rust
-          add-job-id-key: false
-          shared-key: v0-rust-feature
-          cache-on-failure: true
       - name: Check formatting
         run: cargo fmt --all -- --check
 
   clippy:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -144,8 +159,9 @@ jobs:
         with:
           prefix-key: v0-rust
           add-job-id-key: false
-          shared-key: v0-rust-feature
+          shared-key: v0-rust-clippy
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # Lint the lean default capability set (parquet + delta + iceberg). The
       # duckdb sink pulls a bundled native build; linting it on every PR would
       # reintroduce the slow compile this gating removed, so duckdb clippy lives
@@ -169,8 +185,9 @@ jobs:
         with:
           prefix-key: v0-rust
           add-job-id-key: false
-          shared-key: v0-rust-feature
+          shared-key: v0-rust-test
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Run tests
         env:
           CARGO_BUILD_JOBS: "4"
@@ -243,7 +260,7 @@ jobs:
           if [ "${{ needs.changes.outputs.floe_cli }}" = "true" ]; then
             cargo test -p floe-cli --tests
           fi
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         if: needs.changes.outputs.floe_python == 'true'
         with:
           python-version: "3.12"

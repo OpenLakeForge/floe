@@ -12,11 +12,11 @@ wheel — its bundled native build is too large for the standard release artifac
 ships as a separate companion that the lean `floe` transparently delegates to. Use any
 of:
 
-- the `ghcr.io/malon64/floe-duckdb` Docker image, or
+- the `ghcr.io/openlakeforge/floe-duckdb` Docker image, or
 - a `floe-duckdb` companion binary on your `PATH` (lean `floe run` auto-re-execs it when
   a config targets a DuckDB sink), or
 - the off-PyPI `floe-duckdb` Python wheel
-  (`pip install floe-duckdb --index-url https://malon64.github.io/floe/simple/`).
+  (`pip install floe-duckdb --index-url https://openlakeforge.github.io/floe/simple/`).
 
 See [installation → DuckDB support](../installation.md#duckdb-support-companion-distribution)
 for details. A lean build still *validates* and round-trips a DuckDB-sink config; only the

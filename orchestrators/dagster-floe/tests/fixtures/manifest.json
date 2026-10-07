@@ -39,7 +39,7 @@
       },
       "k8s": {
         "type": "kubernetes_job",
-        "image": "ghcr.io/malon64/floe:latest",
+        "image": "ghcr.io/openlakeforge/floe:latest",
         "namespace": "default",
         "service_account": "floe",
         "resources": {"cpu": "500m", "memory_mb": 512},

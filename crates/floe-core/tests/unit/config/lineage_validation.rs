@@ -74,7 +74,9 @@ report:
   path: "/tmp/reports"
 lineage:
   url: "http://marquez:5000"
+  endpoint: "/api/v1/openlineage/lineage"
   namespace: "my-namespace"
+  dataset_namespace: "iceberg.prod"
   timeout_secs: 10
   producer: "https://github.com/myorg/floe"
 entities:
@@ -95,6 +97,20 @@ entities:
 "#;
     let path = write_temp_config(config);
     validate(&path, ValidateOptions::default()).expect("valid lineage config");
+    let parsed = load_config_with_profile_overrides(
+        &path,
+        &std::collections::HashMap::new(),
+        None,
+        None,
+        None,
+    )
+    .expect("lineage config should parse");
+    let lineage = parsed.lineage.expect("lineage should be present");
+    assert_eq!(
+        lineage.endpoint.as_deref(),
+        Some("/api/v1/openlineage/lineage")
+    );
+    assert_eq!(lineage.dataset_namespace.as_deref(), Some("iceberg.prod"));
 }
 
 #[test]
@@ -180,7 +196,9 @@ entities:
     let path = write_temp_config(base);
     let profile_lineage = LineageConfig {
         url: "http://localhost:5000".to_string(),
+        endpoint: None,
         namespace: "floe-demo-local".to_string(),
+        dataset_namespace: None,
         api_key: None,
         timeout_secs: Some(2),
         producer: None,
