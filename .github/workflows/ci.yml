@@ -3,6 +3,9 @@ name: CI
 on:
   pull_request:
   merge_group:
+  # Runs on main only to save the rust caches that PRs restore from.
+  push:
+    branches: [main]
 
 jobs:
   # Single source of truth for path-based change detection. Runs `paths-filter`
@@ -136,12 +139,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: v0-rust
-          add-job-id-key: false
-          shared-key: v0-rust-feature
-          cache-on-failure: true
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -158,8 +155,9 @@ jobs:
         with:
           prefix-key: v0-rust
           add-job-id-key: false
-          shared-key: v0-rust-feature
+          shared-key: v0-rust-clippy
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # Lint the lean default capability set (parquet + delta + iceberg). The
       # duckdb sink pulls a bundled native build; linting it on every PR would
       # reintroduce the slow compile this gating removed, so duckdb clippy lives
@@ -183,8 +181,9 @@ jobs:
         with:
           prefix-key: v0-rust
           add-job-id-key: false
-          shared-key: v0-rust-feature
+          shared-key: v0-rust-test
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Run tests
         env:
           CARGO_BUILD_JOBS: "4"
