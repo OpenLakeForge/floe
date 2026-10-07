@@ -12,6 +12,7 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
+      rust: ${{ steps.filter.outputs.rust }}
       floe_core: ${{ steps.filter.outputs.floe_core }}
       core_code: ${{ steps.filter.outputs.core_code }}
       core_code_global: ${{ steps.filter.outputs.core_code_global }}
@@ -39,6 +40,14 @@ jobs:
         id: filter
         with:
           filters: |
+            # Anything that can change rustfmt/clippy results. Docs-only PRs skip both.
+            rust:
+              - "**/*.rs"
+              - "**/Cargo.toml"
+              - "Cargo.lock"
+              - "rust-toolchain.toml"
+              - "clippy.toml"
+              - ".github/workflows/ci.yml"
             floe_core:
               - "crates/floe-core/**"
             core_code:
@@ -119,6 +128,8 @@ jobs:
               - "crates/floe-cli/Cargo.toml"
 
   rustfmt:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -135,6 +146,8 @@ jobs:
         run: cargo fmt --all -- --check
 
   clippy:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
