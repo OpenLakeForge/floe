@@ -49,9 +49,9 @@ classifiers = [
 dependencies = ["floe-python==0.6.11"]
 
 [project.urls]
-Homepage = "https://github.com/malon64/floe"
-Repository = "https://github.com/malon64/floe"
-"Bug Tracker" = "https://github.com/malon64/floe/issues"
+Homepage = "https://github.com/OpenLakeForge/floe"
+Repository = "https://github.com/OpenLakeForge/floe"
+"Bug Tracker" = "https://github.com/OpenLakeForge/floe/issues"
 
 [tool.maturin]
 # Compiled extension is installed as floe._floe_duckdb (matches the

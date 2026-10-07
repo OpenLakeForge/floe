@@ -78,7 +78,7 @@ Source: `bench/results/results.csv`.
 ## Prerequisites
 
 - Floe installed (Homebrew recommended):
-  - `brew tap malon64/floe`
+  - `brew tap openlakeforge/floe`
   - `brew install floe`
 - Python 3.x + pandas:
   - `pip install -r bench/requirements.txt`

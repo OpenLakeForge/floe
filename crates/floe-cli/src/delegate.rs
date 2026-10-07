@@ -60,7 +60,7 @@ pub fn maybe_delegate_duckdb(config: &RootConfig) -> FloeResult<()> {
             "this config writes to a DuckDB sink, but this is the lean `floe` build \
              without DuckDB support and no `{COMPANION_STEM}` companion was found on \
              PATH or alongside this executable. Install the DuckDB build via the \
-             `ghcr.io/malon64/floe-duckdb` image, the `floe-duckdb` release binary, \
+             `ghcr.io/openlakeforge/floe-duckdb` image, the `floe-duckdb` release binary, \
              or `cargo install floe-cli --features duckdb`."
         ))
     })?;

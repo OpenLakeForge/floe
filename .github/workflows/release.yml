@@ -705,7 +705,7 @@ jobs:
       - name: Checkout Homebrew tap
         uses: actions/checkout@v7
         with:
-          repository: malon64/homebrew-floe
+          repository: OpenLakeForge/homebrew-floe
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew
       - name: Render Homebrew formula
@@ -741,7 +741,7 @@ jobs:
       - name: Checkout Scoop bucket
         uses: actions/checkout@v7
         with:
-          repository: malon64/scoop-floe
+          repository: OpenLakeForge/scoop-floe
           token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
           path: scoop
       - name: Render Scoop manifest

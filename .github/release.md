@@ -22,7 +22,7 @@ to publish Floe.
   - Publishes crates (`floe-core` then `floe-cli`).
   - Builds binaries for macOS (Intel + Apple Silicon) and Linux x86_64.
   - Uploads release assets to GitHub Releases.
-  - Updates the Homebrew tap formula in `malon64/homebrew-floe`.
+  - Updates the Homebrew tap formula in `OpenLakeForge/homebrew-floe`.
 
 ## Required secrets
 
@@ -32,7 +32,7 @@ Set these secrets in the GitHub repository settings:
   - A crates.io API token with publish rights for `floe-core` and `floe-cli`.
 - `HOMEBREW_TAP_TOKEN`
   - A GitHub personal access token with write access to
-    `https://github.com/malon64/homebrew-floe`.
+    `https://github.com/OpenLakeForge/homebrew-floe`.
   - The built-in `GITHUB_TOKEN` cannot push to another repo unless you grant it
     explicit access. Use a PAT for reliability.
 

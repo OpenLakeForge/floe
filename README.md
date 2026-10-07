@@ -72,29 +72,29 @@ extra serialization hop.
 **macOS / Linux — [Homebrew](https://brew.sh)**
 
 ```bash
-brew tap malon64/floe
+brew tap openlakeforge/floe
 brew install floe
 ```
 
 **Windows — [Scoop](https://scoop.sh)**
 
 ```bash
-scoop bucket add floe https://github.com/malon64/scoop-floe
+scoop bucket add floe https://github.com/OpenLakeForge/scoop-floe
 scoop install floe
 ```
 
 **Docker**
 
 ```bash
-docker pull ghcr.io/malon64/floe:latest
-docker run --rm -v "$PWD:/work" ghcr.io/malon64/floe:latest run -c /work/config.yml
+docker pull ghcr.io/openlakeforge/floe:latest
+docker run --rm -v "$PWD:/work" ghcr.io/openlakeforge/floe:latest run -c /work/config.yml
 ```
 
-Or download a prebuilt binary from [GitHub Releases](https://github.com/malon64/floe/releases), or `cargo install floe-cli`.  
+Or download a prebuilt binary from [GitHub Releases](https://github.com/OpenLakeForge/floe/releases), or `cargo install floe-cli`.  
 → [Full installation guide](docs/installation.md)
 
 **DuckDB sink** is shipped as a companion (the default artifacts are lean): use the
-`ghcr.io/malon64/floe-duckdb` image, a `floe-duckdb` binary on your `PATH`, or the
+`ghcr.io/openlakeforge/floe-duckdb` image, a `floe-duckdb` binary on your `PATH`, or the
 off-PyPI `floe-duckdb` wheel. The lean `floe` auto-delegates DuckDB-sink runs to it.
 → [DuckDB support](docs/installation.md#duckdb-support-companion-distribution)
 

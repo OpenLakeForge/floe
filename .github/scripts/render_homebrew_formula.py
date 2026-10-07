@@ -12,12 +12,12 @@ def build_formula(
     mac_arm_sha: str,
 ) -> str:
     base = (
-        "https://github.com/malon64/floe/releases/download/"
+        "https://github.com/OpenLakeForge/floe/releases/download/"
         f"v{version}/floe-v{version}-"
     )
     return f"""class Floe < Formula
   desc "YAML-driven technical ingestion tool"
-  homepage "https://github.com/malon64/floe"
+  homepage "https://github.com/OpenLakeForge/floe"
   version "{version}"
   license "MIT"
 

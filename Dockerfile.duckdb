@@ -1,6 +1,6 @@
 # Full Floe image with the DuckDB sink compiled in (bundled native DuckDB).
-# Published as ghcr.io/malon64/floe-duckdb. This is the heavy companion to the
-# lean ghcr.io/malon64/floe image: the bundled C++ DuckDB build is large and slow
+# Published as ghcr.io/openlakeforge/floe-duckdb. This is the heavy companion to the
+# lean ghcr.io/openlakeforge/floe image: the bundled C++ DuckDB build is large and slow
 # to compile, so it ships as a separate opt-in image rather than in the default.
 FROM rust:1-bookworm AS builder
 

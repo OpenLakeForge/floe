@@ -1,6 +1,6 @@
 # floe-python
 
-Python bindings for [floe](https://github.com/malon64/floe) — a high-performance data ingestion and quality engine written in Rust.
+Python bindings for [floe](https://github.com/OpenLakeForge/floe) — a high-performance data ingestion and quality engine written in Rust.
 
 Run floe pipelines at full Rust speed directly from Python notebooks, scripts, or orchestrators.
 
@@ -111,7 +111,7 @@ floe.run("orders.yml", profile_path="prod.yml")
 
 ```bash
 pip install maturin
-git clone https://github.com/malon64/floe
+git clone https://github.com/OpenLakeForge/floe
 cd floe/crates/floe-python
 maturin develop
 ```
