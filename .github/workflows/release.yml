@@ -158,9 +158,10 @@ jobs:
           file: ./Dockerfile.release
           platforms: linux/amd64,linux/arm64
           push: true
+          # GHCR names must be lowercase; github.repository_owner is OpenLakeForge.
           tags: |
-            ghcr.io/${{ github.repository_owner }}/floe:${{ env.VERSION }}
-            ghcr.io/${{ github.repository_owner }}/floe:latest
+            ghcr.io/openlakeforge/floe:${{ env.VERSION }}
+            ghcr.io/openlakeforge/floe:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -184,7 +185,7 @@ jobs:
             runner: ubuntu-24.04-arm
             arch: arm64
     env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/floe-duckdb
+      IMAGE: ghcr.io/openlakeforge/floe-duckdb
     steps:
       - uses: actions/checkout@v7
       - name: Set up Docker Buildx
@@ -226,7 +227,7 @@ jobs:
     if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
     env:
       VERSION: ${{ needs.meta.outputs.version }}
-      IMAGE: ghcr.io/${{ github.repository_owner }}/floe-duckdb
+      IMAGE: ghcr.io/openlakeforge/floe-duckdb
     steps:
       - name: Download digests
         uses: actions/download-artifact@v8
