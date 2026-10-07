@@ -20,9 +20,10 @@ jobs:
         env:
           BODY: ${{ github.event.pull_request.body }}
         run: |
-          n=$(grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]+' <<< "$BODY" | wc -l)
+          # Whole-line match, so issue refs quoted in prose don't count.
+          n=$(tr -d '\r' <<< "$BODY" | grep -ciE '^ *(close[sd]?|fix(e[sd])?|resolve[sd]?) +#[0-9]+ *$' || true)
           if [ "$n" -ne 1 ]; then
-            echo "::error::The PR body must contain exactly one 'Closes #N' (found $n). One issue per PR: AGENTS.md §3."
+            echo "::error::The PR body must have exactly one line 'Closes #N' (found $n). One issue per PR: AGENTS.md §3."
             exit 1
           fi
       - uses: actions/checkout@v7
