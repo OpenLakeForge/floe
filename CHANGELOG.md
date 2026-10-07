@@ -2,6 +2,14 @@
 
 All notable changes to Floe are documented in this file.
 
+## dagster-floe (unreleased)
+
+- **Fix: remote `s3://` reads honor S3-compatible endpoint env (#512).** Manifest and run
+  report reads via fsspec now pass `AWS_ENDPOINT_URL_S3` (falling back to
+  `AWS_ENDPOINT_URL`) as the endpoint and, when `AWS_S3_FORCE_PATH_STYLE` is `true`/`1`,
+  path-style addressing, matching Floe core (#448). Without these variables behaviour is
+  unchanged. Requires the existing `remote` extra.
+
 ## v0.6.11
 
 - **Manifest replay now emits dataset lineage (#455).** `floe run --manifest`
