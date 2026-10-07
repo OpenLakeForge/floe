@@ -232,7 +232,7 @@ If you want to build the native extension yourself (e.g., to test a local floe-c
 pip install maturin
 
 # Clone the repo and build in development mode
-git clone https://github.com/malon64/floe
+git clone https://github.com/OpenLakeForge/floe
 cd floe/crates/floe-python
 maturin develop          # builds and installs into your current virtualenv
 ```

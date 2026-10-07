@@ -14,12 +14,12 @@ def build_formula(
     mac_arm_sha: str,
 ) -> str:
     base = (
-        "https://github.com/malon64/floe/releases/download/"
+        "https://github.com/OpenLakeForge/floe/releases/download/"
         f"v{version}/floe-duckdb-v{version}-"
     )
     return f"""class FloeDuckdb < Formula
   desc "YAML-driven ingestion tool — full build with DuckDB sink support"
-  homepage "https://github.com/malon64/floe"
+  homepage "https://github.com/OpenLakeForge/floe"
   version "{version}"
   license "MIT"
 

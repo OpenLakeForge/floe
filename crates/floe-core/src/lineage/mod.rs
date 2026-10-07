@@ -11,7 +11,7 @@ use crate::run::events::{RunEvent, RunObserver};
 use crate::secret::Secret;
 
 const DEFAULT_PRODUCER: &str = concat!(
-    "https://github.com/malon64/floe/releases/tag/v",
+    "https://github.com/OpenLakeForge/floe/releases/tag/v",
     env!("CARGO_PKG_VERSION")
 );
 
@@ -371,7 +371,7 @@ impl OpenLineageObserver {
                     "warnings": s.warnings,
                     "errors": s.errors,
                     "_producer": self.producer(),
-                    "_schemaURL": "https://github.com/malon64/floe/schemas/FloeQualityRunFacet.json"
+                    "_schemaURL": "https://github.com/OpenLakeForge/floe/schemas/FloeQualityRunFacet.json"
                 });
 
                 let mut accepted_facets = json!({

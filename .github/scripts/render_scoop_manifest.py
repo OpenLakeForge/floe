@@ -8,13 +8,13 @@ from pathlib import Path
 
 def build_manifest(version: str, windows_sha: str) -> dict:
     base = (
-        "https://github.com/malon64/floe/releases/download/"
+        "https://github.com/OpenLakeForge/floe/releases/download/"
         f"v{version}/floe-v{version}-x86_64-pc-windows-msvc.zip"
     )
     return {
         "version": version,
         "description": "YAML-driven technical ingestion tool",
-        "homepage": "https://github.com/malon64/floe",
+        "homepage": "https://github.com/OpenLakeForge/floe",
         "license": "MIT",
         "architecture": {
             "64bit": {
@@ -24,12 +24,12 @@ def build_manifest(version: str, windows_sha: str) -> dict:
                 "extract_dir": ".",
             }
         },
-        "checkver": {"github": "https://github.com/malon64/floe"},
+        "checkver": {"github": "https://github.com/OpenLakeForge/floe"},
         "autoupdate": {
             "architecture": {
                 "64bit": {
                     "url": (
-                        "https://github.com/malon64/floe/releases/download/"
+                        "https://github.com/OpenLakeForge/floe/releases/download/"
                         "v$version/floe-v$version-x86_64-pc-windows-msvc.zip"
                     )
                 }

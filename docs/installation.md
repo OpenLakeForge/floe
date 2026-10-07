@@ -24,7 +24,7 @@ floe --version
 
 ## Prebuilt binary (all platforms)
 
-Download the archive for your platform from [GitHub Releases](https://github.com/malon64/floe/releases),
+Download the archive for your platform from [GitHub Releases](https://github.com/OpenLakeForge/floe/releases),
 extract it, and place the `floe` (or `floe.exe`) binary somewhere on your `PATH`.
 
 | Platform | Archive |
@@ -58,13 +58,13 @@ cargo build --release
 Floe is published as a multi-arch Docker image (linux/amd64 and linux/arm64).
 
 ```bash
-docker pull ghcr.io/malon64/floe:latest
+docker pull ghcr.io/openlakeforge/floe:latest
 ```
 
 Run (mount the current directory to `/work`):
 
 ```bash
-docker run --rm -v "$PWD:/work" ghcr.io/malon64/floe:latest run -c /work/example/config.yml
+docker run --rm -v "$PWD:/work" ghcr.io/openlakeforge/floe:latest run -c /work/example/config.yml
 ```
 
 Cloud credentials should be provided via environment variables or runtime identity — not baked into the image.
@@ -80,8 +80,8 @@ PyPI's per-file size limit, so it ships as a separate **companion** that the lea
 ### 1. Docker image (recommended)
 
 ```bash
-docker pull ghcr.io/malon64/floe-duckdb:latest
-docker run --rm -v "$PWD:/work" ghcr.io/malon64/floe-duckdb:latest run -c /work/config.yml
+docker pull ghcr.io/openlakeforge/floe-duckdb:latest
+docker run --rm -v "$PWD:/work" ghcr.io/openlakeforge/floe-duckdb:latest run -c /work/config.yml
 ```
 
 This image is multi-arch (linux/amd64 + linux/arm64) and runs DuckDB sinks directly.
@@ -101,12 +101,12 @@ brew install malon64/floe/floe-duckdb
 
 > **Windows:** The prebuilt `floe-duckdb` binary is not yet available on Windows
 > (the bundled C++ DuckDB build fails with MSVC). Windows users can use the Docker
-> image (`docker run ghcr.io/malon64/floe-duckdb`) or build from source:
+> image (`docker run ghcr.io/openlakeforge/floe-duckdb`) or build from source:
 > `cargo build -p floe-cli --release --features duckdb`.
 
 **Prebuilt binary (macOS + Linux):**
 
-Download from [GitHub Releases](https://github.com/malon64/floe/releases):
+Download from [GitHub Releases](https://github.com/OpenLakeForge/floe/releases):
 
 | Platform | Archive |
 |---|---|
@@ -137,7 +137,7 @@ off-PyPI index (the companion is too large for PyPI):
 
 ```bash
 pip install floe-python
-pip install floe-duckdb --index-url https://malon64.github.io/floe/simple/
+pip install floe-duckdb --index-url https://openlakeforge.github.io/floe/simple/
 ```
 
 > Use `--index-url` (not `--extra-index-url`) for the companion: `floe-duckdb` is

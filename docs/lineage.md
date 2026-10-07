@@ -28,7 +28,7 @@ lineage:
 | `dataset_namespace` | no   | Namespace for accepted Iceberg output datasets; defaults to `namespace` |
 | `api_key`      | no       | Bearer token for the `Authorization` header. When unset, Floe falls back to the `OPENLINEAGE_API_KEY` environment variable at run time. |
 | `timeout_secs` | no       | HTTP request timeout in seconds (default: `5`) |
-| `producer`     | no       | URI identifying this producer. Defaults to the versioned release URL for the current build (e.g. `https://github.com/malon64/floe/releases/tag/v0.4.2`). |
+| `producer`     | no       | URI identifying this producer. Defaults to the versioned release URL for the current build (e.g. `https://github.com/OpenLakeForge/floe/releases/tag/v0.4.2`). |
 | `max_failures` | no       | Consecutive failures before the circuit opens (default: `3`) |
 | `job_name`     | no       | Stable OpenLineage job name for top-level `RunStarted`/`RunFinished` events. Defaults to the config file stem (e.g. `orders.yml` → `orders`), fallback `floe-run`. Use this to group multiple runs under the same Marquez job node. |
 

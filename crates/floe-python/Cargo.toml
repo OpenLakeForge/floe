@@ -4,8 +4,8 @@ version = "0.6.11"
 edition = "2021"
 description = "Python bindings for floe-core (PyO3-based)"
 license = "Apache-2.0"
-repository = "https://github.com/malon64/floe"
-homepage = "https://github.com/malon64/floe"
+repository = "https://github.com/OpenLakeForge/floe"
+homepage = "https://github.com/OpenLakeForge/floe"
 keywords = ["ingestion", "data-quality", "yaml", "polars", "pyo3"]
 
 [lib]
