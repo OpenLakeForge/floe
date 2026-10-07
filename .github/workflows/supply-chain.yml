@@ -2,12 +2,7 @@ name: Supply chain
 
 on:
   pull_request:
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "crates/**/Cargo.toml"
-      - "deny.toml"
-      - ".github/workflows/supply-chain.yml"
+  merge_group:
   schedule:
     # Weekly sweep so newly published RUSTSEC advisories surface even when no
     # PR touches the dependency tree.
@@ -16,12 +11,32 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Runs on every PR and queue entry so the required `supply-chain` check always
+  # reports; cargo-deny itself runs only when the dependency tree can change.
   cargo-deny:
+    name: supply-chain
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        with:
+          filters: |
+            deps:
+              - "Cargo.toml"
+              - "Cargo.lock"
+              - "crates/**/Cargo.toml"
+              - "deny.toml"
+              - ".github/workflows/supply-chain.yml"
       - uses: EmbarkStudios/cargo-deny-action@v2
+        if: steps.filter.outcome == 'skipped' || steps.filter.outputs.deps == 'true'
         with:
           command: check advisories bans licenses sources
