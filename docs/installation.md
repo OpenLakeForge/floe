@@ -7,7 +7,7 @@ Floe ships as a single CLI binary (`floe`). Choose the method that matches your 
 If you don't have Homebrew yet, install it from [brew.sh](https://brew.sh).
 
 ```bash
-brew tap malon64/floe
+brew tap openlakeforge/floe
 brew install floe
 floe --version
 ```
@@ -17,7 +17,7 @@ floe --version
 If you don't have Scoop yet, install it from [scoop.sh](https://scoop.sh).
 
 ```powershell
-scoop bucket add floe https://github.com/malon64/scoop-floe
+scoop bucket add floe https://github.com/OpenLakeForge/scoop-floe
 scoop install floe
 floe --version
 ```
@@ -95,8 +95,8 @@ GitHub Releases and Homebrew. `floe-duckdb` is a **complete, standalone CLI**
 **Homebrew (macOS + Linux):**
 
 ```bash
-brew tap malon64/floe   # skip if already tapped for the lean `floe`
-brew install malon64/floe/floe-duckdb
+brew tap openlakeforge/floe   # skip if already tapped for the lean `floe`
+brew install openlakeforge/floe/floe-duckdb
 ```
 
 > **Windows:** The prebuilt `floe-duckdb` binary is not yet available on Windows

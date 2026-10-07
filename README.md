@@ -72,14 +72,14 @@ extra serialization hop.
 **macOS / Linux — [Homebrew](https://brew.sh)**
 
 ```bash
-brew tap malon64/floe
+brew tap openlakeforge/floe
 brew install floe
 ```
 
 **Windows — [Scoop](https://scoop.sh)**
 
 ```bash
-scoop bucket add floe https://github.com/malon64/scoop-floe
+scoop bucket add floe https://github.com/OpenLakeForge/scoop-floe
 scoop install floe
 ```
 
