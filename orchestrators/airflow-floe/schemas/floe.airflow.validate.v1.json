@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/malon64/floe/orchestrators/airflow-floe/schemas/floe.airflow.validate.v1.json",
+  "$id": "https://github.com/OpenLakeForge/floe/orchestrators/airflow-floe/schemas/floe.airflow.validate.v1.json",
   "title": "Floe Airflow Validate Payload v1",
   "type": "object",
   "additionalProperties": false,
