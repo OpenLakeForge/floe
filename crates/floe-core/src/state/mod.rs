@@ -100,7 +100,7 @@ pub fn resolve_entity_state_path(
         &entity.source.format,
         resolved_source.local_path.as_deref(),
     );
-    let default_path = join_state_path(&source_root, &entity.name);
+    let default_path = join_state_path(&source_root, &entity.id_path());
     let resolved = resolver.resolve_path(
         &entity.name,
         "entity.state.path",
@@ -537,11 +537,7 @@ fn resolve_entity_state_target<'a>(
     config_base: ConfigBase,
     entity_name: &str,
 ) -> FloeResult<(&'a EntityConfig, ResolvedPath)> {
-    let entity = config
-        .entities
-        .iter()
-        .find(|entity| entity.name == entity_name)
-        .ok_or_else(|| FloeError::config(format!("entity not found: {entity_name}")))?;
+    let entity = config.select_entities(&[entity_name.to_string()])?[0];
     let resolver = StorageResolver::new(config, config_base)?;
     let path = resolve_entity_state_path(&resolver, entity)?;
     Ok((entity, path))

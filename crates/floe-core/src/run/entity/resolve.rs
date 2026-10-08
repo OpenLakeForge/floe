@@ -92,6 +92,7 @@ mod tests {
     fn motherduck_entity() -> config::EntityConfig {
         config::EntityConfig {
             name: "customers".to_string(),
+            id: "customers".to_string(),
             metadata: None,
             domain: None,
             incremental_mode: config::IncrementalMode::None,

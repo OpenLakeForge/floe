@@ -42,6 +42,7 @@ fn delta_store_config_builds_s3_url_and_options() -> FloeResult<()> {
     let target = Target::from_resolved(&resolved)?;
     let entity = config::EntityConfig {
         name: "orders".to_string(),
+        id: "orders".to_string(),
         metadata: None,
         domain: None,
         incremental_mode: config::IncrementalMode::None,
@@ -107,6 +108,7 @@ fn iceberg_store_config_builds_s3_warehouse_and_region_props() -> FloeResult<()>
     let target = Target::from_resolved(&resolved)?;
     let entity = config::EntityConfig {
         name: "orders".to_string(),
+        id: "orders".to_string(),
         metadata: None,
         domain: None,
         incremental_mode: config::IncrementalMode::None,
@@ -185,6 +187,7 @@ fn delta_store_config_builds_local_url() -> FloeResult<()> {
     let target = Target::from_resolved(&resolved)?;
     let entity = config::EntityConfig {
         name: "orders".to_string(),
+        id: "orders".to_string(),
         metadata: None,
         domain: None,
         incremental_mode: config::IncrementalMode::None,
@@ -252,6 +255,7 @@ fn iceberg_store_config_builds_local_warehouse_without_props() -> FloeResult<()>
     let target = Target::from_resolved(&resolved)?;
     let entity = config::EntityConfig {
         name: "orders".to_string(),
+        id: "orders".to_string(),
         metadata: None,
         domain: None,
         incremental_mode: config::IncrementalMode::None,
@@ -333,6 +337,7 @@ fn delta_store_config_builds_adls_url_and_options() -> FloeResult<()> {
     let target = Target::from_resolved(&resolved)?;
     let entity = config::EntityConfig {
         name: "orders".to_string(),
+        id: "orders".to_string(),
         metadata: None,
         domain: None,
         incremental_mode: config::IncrementalMode::None,
@@ -430,6 +435,7 @@ fn iceberg_store_config_builds_gcs_warehouse_without_props() -> FloeResult<()> {
     let target = Target::from_resolved(&resolved)?;
     let entity = config::EntityConfig {
         name: "orders".to_string(),
+        id: "orders".to_string(),
         metadata: None,
         domain: None,
         incremental_mode: config::IncrementalMode::None,
@@ -514,6 +520,7 @@ fn iceberg_store_config_builds_adls_target() -> FloeResult<()> {
     let target = Target::from_resolved(&resolved)?;
     let entity = config::EntityConfig {
         name: "orders".to_string(),
+        id: "orders".to_string(),
         metadata: None,
         domain: None,
         incremental_mode: config::IncrementalMode::None,
@@ -614,6 +621,7 @@ fn delta_store_config_builds_gcs_url() -> FloeResult<()> {
     let target = Target::from_resolved(&resolved)?;
     let entity = config::EntityConfig {
         name: "orders".to_string(),
+        id: "orders".to_string(),
         metadata: None,
         domain: None,
         incremental_mode: config::IncrementalMode::None,

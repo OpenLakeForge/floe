@@ -29,10 +29,10 @@ impl<'a> ReportOutput<'a> {
     pub fn write_entity_report(
         &mut self,
         run_id: &str,
-        entity: &config::EntityConfig,
+        report_dir: &str,
         report: &report::RunReport,
     ) -> FloeResult<String> {
-        let relative = report::ReportWriter::report_relative_path(run_id, &entity.name);
+        let relative = report::ReportWriter::report_relative_path(run_id, report_dir);
         write_report(
             self.target,
             &relative,
@@ -40,7 +40,7 @@ impl<'a> ReportOutput<'a> {
             ReportPayload::Entity(report),
             self.cloud,
             self.resolver,
-            &format!("entity.name={}", entity.name),
+            &format!("entity.name={}", report.entity.name),
         )
     }
 
@@ -65,14 +65,14 @@ impl<'a> ReportOutput<'a> {
 pub fn write_entity_report(
     target: &Target,
     run_id: &str,
-    entity: &config::EntityConfig,
+    report_dir: &str,
     report: &report::RunReport,
     cloud: &mut CloudClient,
     resolver: &config::StorageResolver,
 ) -> FloeResult<String> {
     let formatter = JsonReportFormatter;
     let mut output = ReportOutput::new(target, &formatter, cloud, resolver);
-    output.write_entity_report(run_id, entity, report)
+    output.write_entity_report(run_id, report_dir, report)
 }
 
 pub fn write_summary_report(

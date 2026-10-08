@@ -9,6 +9,7 @@ use polars::prelude::{DataFrame, NamedFrom, Series};
 fn sample_entity() -> config::EntityConfig {
     config::EntityConfig {
         name: "orders".to_string(),
+        id: "orders".to_string(),
         metadata: None,
         domain: None,
         incremental_mode: config::IncrementalMode::None,

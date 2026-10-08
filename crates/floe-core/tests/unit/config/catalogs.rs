@@ -56,6 +56,7 @@ fn base_root() -> config::RootConfig {
 fn entity() -> config::EntityConfig {
     config::EntityConfig {
         name: "Customer Orders".to_string(),
+        id: "Customer Orders".to_string(),
         metadata: None,
         domain: Some("Sales Ops".to_string()),
         incremental_mode: config::IncrementalMode::None,
@@ -295,6 +296,7 @@ fn unity_root() -> config::RootConfig {
 fn delta_entity() -> config::EntityConfig {
     config::EntityConfig {
         name: "orders".to_string(),
+        id: "orders".to_string(),
         metadata: None,
         domain: Some("sales".to_string()),
         incremental_mode: config::IncrementalMode::None,

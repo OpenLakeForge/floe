@@ -3,6 +3,7 @@ use floe_core::config;
 fn base_entity() -> config::EntityConfig {
     config::EntityConfig {
         name: "customer".to_string(),
+        id: "customer".to_string(),
         metadata: None,
         domain: None,
         incremental_mode: config::IncrementalMode::None,

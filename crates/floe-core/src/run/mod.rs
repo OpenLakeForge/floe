@@ -1,5 +1,4 @@
 use crate::errors::FloeError;
-use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Once;
 use std::time::Instant;
@@ -60,24 +59,6 @@ pub struct EntityOutcome {
     pub file_timings_ms: Vec<Option<u64>>,
 }
 
-pub(crate) fn validate_entities(
-    config: &config::RootConfig,
-    selected: &[String],
-) -> FloeResult<()> {
-    let missing: Vec<String> = selected
-        .iter()
-        .filter(|name| !config.entities.iter().any(|entity| &entity.name == *name))
-        .cloned()
-        .collect();
-
-    if !missing.is_empty() {
-        return Err(
-            FloeError::config(format!("entities not found: {}", missing.join(", "))).into(),
-        );
-    }
-    Ok(())
-}
-
 pub fn run(config_path: &Path, options: RunOptions) -> FloeResult<RunOutcome> {
     let config_base = config::ConfigBase::local_from_path(config_path);
     run_with_base(config_path, config_base, options)
@@ -108,9 +89,7 @@ pub(crate) fn run_with_manifest_runtime(
     let json = std::fs::read_to_string(&location.path)?;
     let (config, report_base_uri) = crate::manifest::config_from_manifest_json(&json)?;
     let config_base = manifest_replay_config_base(&location.base, &json);
-    if !options.entities.is_empty() {
-        validate_entities(&config, &options.entities)?;
-    }
+    config.select_entities(&options.entities)?;
     let context = RunContext::from_config(
         config,
         config_base,
@@ -193,9 +172,7 @@ pub fn run_with_runtime(
     };
     crate::validate_with_base(config_path, config_base.clone(), validate_options)?;
     let context = RunContext::new(config_path, config_base, &options, profile_vars)?;
-    if !options.entities.is_empty() {
-        validate_entities(&context.config, &options.entities)?;
-    }
+    context.config.select_entities(&options.entities)?;
 
     run_from_context(context, options, runtime)
 }
@@ -207,7 +184,7 @@ fn run_from_context(
 ) -> FloeResult<RunOutcome> {
     let observer = default_observer();
     let perf_enabled = perf::phase_timing_enabled();
-    let selected_entities = select_entities(&context, &options);
+    let selected_entities = context.config.select_entities(&options.entities)?;
     if options.full_refresh {
         for entity in &selected_entities {
             if matches!(
@@ -264,7 +241,7 @@ fn run_from_context(
     let mut abort_run = false;
 
     for plan in plans {
-        let entity_name = plan.entity.name.clone();
+        let entity_name = plan.entity.id.clone();
         observer.on_event(RunEvent::EntityStarted {
             run_id: context.run_id.clone(),
             name: entity_name.clone(),
@@ -352,7 +329,9 @@ fn run_from_context(
             let uri = context.report_target.as_ref().map(|t| {
                 t.join_relative(&report::ReportWriter::report_relative_path(
                     &context.run_id,
-                    &outcome.report.entity.name,
+                    &context
+                        .config
+                        .entity_report_dir(&outcome.report.entity.name),
                 ))
             })?;
             Some((outcome.report.entity.name.clone(), uri))
@@ -402,23 +381,6 @@ fn init_thread_pool() {
             .num_threads(threads)
             .build_global();
     });
-}
-
-fn select_entities<'a>(
-    context: &'a RunContext,
-    options: &RunOptions,
-) -> Vec<&'a config::EntityConfig> {
-    if options.entities.is_empty() {
-        context.config.entities.iter().collect()
-    } else {
-        let selected: HashSet<&str> = options.entities.iter().map(String::as_str).collect();
-        context
-            .config
-            .entities
-            .iter()
-            .filter(|entity| selected.contains(entity.name.as_str()))
-            .collect()
-    }
 }
 
 fn resolve_entity_plans<'a>(
@@ -513,7 +475,7 @@ fn build_run_summary(
             .map(|target| {
                 target.join_relative(&report::ReportWriter::report_relative_path(
                     &context.run_id,
-                    &report.entity.name,
+                    &context.config.entity_report_dir(&report.entity.name),
                 ))
             })
             .unwrap_or_else(|| "disabled".to_string());
@@ -582,12 +544,12 @@ fn create_dry_run_outcome(
         let report_file = context.report_target.as_ref().map(|target| {
             target.join_relative(&report::ReportWriter::report_relative_path(
                 &context.run_id,
-                &entity.name,
+                &entity.id_path(),
             ))
         });
 
         previews.push(DryRunEntityPreview {
-            name: entity.name.clone(),
+            name: entity.id.clone(),
             input_path: entity.source.path.clone(),
             input_format: entity.source.format.clone(),
             accepted_path: entity.sink.accepted.path.clone(),

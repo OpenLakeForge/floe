@@ -200,6 +200,7 @@ fn make_entity(
 ) -> EntityConfig {
     EntityConfig {
         name: name.to_string(),
+        id: name.to_string(),
         metadata: None,
         domain: None,
         incremental_mode: IncrementalMode::None,
@@ -1382,4 +1383,41 @@ fn manifest_replay_without_lineage_block_yields_no_observer() {
         obs.is_none(),
         "manifest without lineage block => no observer"
     );
+}
+
+// In a 0.3 config an unqualified `orders` and `sales.orders` are distinct entities: each
+// lineage event resolves its own datasets, regardless of entity order.
+#[test]
+fn qualified_and_bare_entity_ids_resolve_their_own_datasets() {
+    let mut server = mockito::Server::new();
+    let mut expect = |job: &str, input: &str| {
+        server
+            .mock("POST", "/api/v1/lineage")
+            .match_body(mockito::Matcher::PartialJson(json!({
+                "eventType": "COMPLETE",
+                "job": { "name": job },
+                "inputs": [{ "namespace": "file", "name": input }]
+            })))
+            .with_status(200)
+            .expect(1)
+            .create()
+    };
+    let bare = expect("orders", "/data/in/");
+    let qualified = expect("sales.orders", "/data/sales/in/");
+
+    let orders = make_entity("orders", "/data/in/", "/data/out/", None);
+    let mut sales_orders = make_entity("orders", "/data/sales/in/", "/data/sales/out/", None);
+    sales_orders.domain = Some("sales".to_string());
+    sales_orders.id = "sales.orders".to_string();
+    let obs = OpenLineageObserver::new(
+        &make_config(&server.url(), None),
+        &[orders, sales_orders],
+        "config.yml",
+    )
+    .unwrap();
+    obs.on_event(entity_finished_event("orders", "success"));
+    obs.on_event(entity_finished_event("sales.orders", "success"));
+
+    bare.assert();
+    qualified.assert();
 }

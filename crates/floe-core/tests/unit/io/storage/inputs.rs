@@ -203,6 +203,7 @@ impl io::format::InputAdapter for MockParquetAdapter {
 fn mock_entity(name: &str) -> config::EntityConfig {
     config::EntityConfig {
         name: name.to_string(),
+        id: name.to_string(),
         metadata: None,
         domain: None,
         incremental_mode: config::IncrementalMode::None,

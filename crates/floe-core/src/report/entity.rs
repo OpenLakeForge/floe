@@ -43,7 +43,7 @@ pub(crate) fn build_run_report(ctx: RunReportContext<'_>) -> report::RunReport {
     report::RunReport {
         spec_version: ctx.context.config.version.clone(),
         entity: report::EntityEcho {
-            name: ctx.entity.name.clone(),
+            name: ctx.entity.id.clone(),
             metadata: ctx.entity.metadata.as_ref().map(entity_metadata_json),
         },
         source: report::SourceEcho {

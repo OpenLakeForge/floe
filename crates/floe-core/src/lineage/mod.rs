@@ -129,7 +129,7 @@ impl OpenLineageObserver {
                         source_field: c.source.clone(),
                     })
                     .collect();
-                (e.name.clone(), fields)
+                (e.id.clone(), fields)
             })
             .collect();
 
@@ -175,7 +175,7 @@ impl OpenLineageObserver {
                 });
 
                 (
-                    e.name.clone(),
+                    e.id.clone(),
                     EntityUris {
                         source,
                         accepted,

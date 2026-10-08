@@ -25,6 +25,7 @@ pub struct ManifestForRun {
 pub struct ManifestEntityForRun {
     pub name: String,
     pub domain: Option<String>,
+    pub asset_key: Option<Vec<String>>,
     pub source: ManifestSourceForRun,
     pub sinks: ManifestSinksForRun,
     pub policy_severity: Option<String>,
@@ -242,6 +243,13 @@ fn overlay_cloud_uri(path: &mut String, uri: Option<&str>) {
 }
 
 fn entity_from_manifest(m: &ManifestEntityForRun) -> FloeResult<EntityConfig> {
+    // Manifest `name` is the entity id; the bare name is the last `asset_key` element.
+    let name = m
+        .asset_key
+        .as_ref()
+        .and_then(|key| key.last())
+        .unwrap_or(&m.name)
+        .clone();
     let policy_severity = parse_policy_severity(m.policy_severity.as_deref().unwrap_or("warn"));
     let write_mode = parse_write_mode(m.write_mode.as_deref().unwrap_or("overwrite"));
     let incremental_mode = parse_incremental_mode(m.incremental_mode.as_deref().unwrap_or("none"));
@@ -290,7 +298,8 @@ fn entity_from_manifest(m: &ManifestEntityForRun) -> FloeResult<EntityConfig> {
     });
 
     Ok(EntityConfig {
-        name: m.name.clone(),
+        id: m.name.clone(),
+        name,
         metadata: None,
         domain: m.domain.clone(),
         incremental_mode,

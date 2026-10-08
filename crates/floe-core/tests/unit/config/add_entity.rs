@@ -400,3 +400,43 @@ fn add_entity_rejects_multi_document_config() {
     let after = fs::read_to_string(&config_path).expect("read config after failure");
     assert_eq!(after, original, "config file must not be modified");
 }
+
+#[test]
+fn add_entity_v03_allows_same_name_in_another_domain() {
+    let dir = tempdir().expect("tempdir");
+    let config_path = dir.path().join("config.yml");
+    let input_path = dir.path().join("accounts.csv");
+    write_file(
+        &config_path,
+        r#"
+version: "0.3"
+domains:
+  - name: "sales"
+    incoming_dir: "./in/sales"
+  - name: "finance"
+    incoming_dir: "./in/finance"
+entities: []
+"#,
+    );
+    write_file(&input_path, "id\n1\n");
+    let add = |domain: &str| {
+        add_entity_to_config(AddEntityOptions {
+            config_path: config_path.clone(),
+            output_path: None,
+            input: input_path.display().to_string(),
+            format: Some("csv".to_string()),
+            name: Some("accounts".to_string()),
+            domain: Some(domain.to_string()),
+            dry_run: false,
+        })
+    };
+
+    add("sales").expect("add sales.accounts");
+    add("finance").expect("add finance.accounts");
+    let err = add("sales").expect_err("sales.accounts exists").to_string();
+    assert!(err.contains("entity already exists: accounts"), "{err}");
+
+    let config = load_config(&config_path).expect("load updated config");
+    let ids: Vec<&str> = config.entities.iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(ids, vec!["sales.accounts", "finance.accounts"]);
+}

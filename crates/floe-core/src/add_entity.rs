@@ -636,6 +636,11 @@ fn append_entity_yaml(config_text: &str, inferred: &InferredEntity) -> FloeResul
         return Err(FloeError::config("config root must be a YAML mapping".to_string()).into());
     };
 
+    // 0.3+ entity identity is (domain, name) (#464); older configs compare names only.
+    let qualified = root_map
+        .get(&yaml_str("version"))
+        .and_then(Yaml::as_str)
+        .is_some_and(crate::config::qualifies_entity_ids);
     let entities_key = yaml_str("entities");
     let new_entity_value = build_generated_entity_yaml(inferred);
 
@@ -648,7 +653,7 @@ fn append_entity_yaml(config_text: &str, inferred: &InferredEntity) -> FloeResul
             };
             if entities
                 .iter()
-                .any(|entity| entity_name_matches(entity, &inferred.name))
+                .any(|entity| entity_matches(entity, inferred, qualified))
             {
                 return Err(
                     FloeError::config(format!("entity already exists: {}", inferred.name)).into(),
@@ -667,12 +672,15 @@ fn append_entity_yaml(config_text: &str, inferred: &InferredEntity) -> FloeResul
     Ok(format!("{body}\n"))
 }
 
-fn entity_name_matches(value: &Yaml, name: &str) -> bool {
-    value
-        .as_hash()
-        .and_then(|map| map.get(&yaml_str("name")))
-        .and_then(Yaml::as_str)
-        == Some(name)
+fn entity_matches(value: &Yaml, inferred: &InferredEntity, qualified: bool) -> bool {
+    let field = |key: &str| {
+        value
+            .as_hash()
+            .and_then(|map| map.get(&yaml_str(key)))
+            .and_then(Yaml::as_str)
+    };
+    field("name") == Some(inferred.name.as_str())
+        && (!qualified || field("domain") == inferred.domain.as_deref())
 }
 
 fn yaml_str(value: impl Into<String>) -> Yaml {

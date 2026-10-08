@@ -62,6 +62,9 @@ pub struct DomainConfig {
 #[derive(Debug)]
 pub struct EntityConfig {
     pub name: String,
+    /// Entity identity (#464): `<domain>.<name>` when root.version >= 0.3 and `domain` is set,
+    /// else `name`. Set at parse time and on manifest replay.
+    pub id: String,
     pub metadata: Option<EntityMetadata>,
     pub domain: Option<String>,
     pub incremental_mode: IncrementalMode,
@@ -103,7 +106,73 @@ pub enum PiiStrategy {
     Tokenize,
 }
 
+impl RootConfig {
+    /// Report sub-directory for an entity id (see [`EntityConfig::id_path`]).
+    pub fn entity_report_dir(&self, entity_id: &str) -> String {
+        self.entities
+            .iter()
+            .find(|entity| entity.id == entity_id)
+            .map_or_else(|| entity_id.to_string(), EntityConfig::id_path)
+    }
+
+    /// Resolve `--entities` selectors (qualified ids, or bare names when unambiguous)
+    /// into entities in config order. No selectors selects every entity.
+    pub fn select_entities(&self, selectors: &[String]) -> FloeResult<Vec<&EntityConfig>> {
+        if selectors.is_empty() {
+            return Ok(self.entities.iter().collect());
+        }
+        let indices = 0..self.entities.len();
+        let mut selected = vec![false; self.entities.len()];
+        let mut missing = Vec::new();
+        for selector in selectors {
+            let mut hits: Vec<usize> = indices
+                .clone()
+                .filter(|&i| self.entities[i].id == *selector)
+                .collect();
+            if hits.is_empty() {
+                hits = indices
+                    .clone()
+                    .filter(|&i| self.entities[i].name == *selector)
+                    .collect();
+            }
+            match hits.as_slice() {
+                [] => missing.push(selector.as_str()),
+                [index] => selected[*index] = true,
+                _ => {
+                    let candidates: Vec<&str> =
+                        hits.iter().map(|&i| self.entities[i].id.as_str()).collect();
+                    return Err(FloeError::config(format!(
+                        "entity {selector} is ambiguous; use one of: {}",
+                        candidates.join(", ")
+                    ))
+                    .into());
+                }
+            }
+        }
+        if !missing.is_empty() {
+            return Err(
+                FloeError::config(format!("entities not found: {}", missing.join(", "))).into(),
+            );
+        }
+        Ok(self
+            .entities
+            .iter()
+            .zip(selected)
+            .filter_map(|(entity, keep)| keep.then_some(entity))
+            .collect())
+    }
+}
+
 impl EntityConfig {
+    /// The id as a relative path (report dir, default state dir): `<domain>/<name>` when
+    /// qualified, else `<name>`.
+    pub fn id_path(&self) -> String {
+        match &self.domain {
+            Some(domain) if self.id != self.name => format!("{domain}/{}", self.name),
+            _ => self.name.clone(),
+        }
+    }
+
     pub fn resolved_incremental_mode(&self) -> IncrementalMode {
         if self.incremental_mode == IncrementalMode::None && self.sink.archive.is_some() {
             IncrementalMode::Archive

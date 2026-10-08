@@ -177,6 +177,13 @@ fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
         })?;
         entities.push(entity);
     }
+    if super::qualifies_entity_ids(&version) {
+        for entity in &mut entities {
+            if let Some(domain) = &entity.domain {
+                entity.id = format!("{domain}.{}", entity.name);
+            }
+        }
+    }
 
     Ok(RootConfig {
         version,
@@ -245,6 +252,7 @@ fn parse_entity(value: &Yaml) -> FloeResult<EntityConfig> {
     };
 
     Ok(EntityConfig {
+        id: name.clone(),
         name,
         metadata,
         domain,
