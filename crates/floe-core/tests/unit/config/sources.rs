@@ -142,3 +142,36 @@ schema:
     assert_eq!(config.entities[0].source.path, "/tmp/bronze/crm/orders");
     assert_eq!(config.entities[0].source.format, "csv");
 }
+
+#[test]
+fn resource_resolves_in_path_inherited_from_domain_defaults() {
+    let config = r#"version: "0.3"
+sources:
+  - name: "crm"
+    format: "csv"
+domains:
+  - name: "sales"
+    incoming_dir: "/tmp/incoming/sales"
+    defaults:
+      source:
+        path: "/tmp/{{resource}}"
+entities:
+  - name: "orders"
+    domain: "sales"
+    source: { ref: crm, resource: crm_orders }
+    sink:
+      accepted:
+        format: "parquet"
+        path: "/tmp/out/orders"
+    policy:
+      severity: "warn"
+    schema:
+      columns:
+        - name: "order_id"
+          type: "string"
+"#;
+    let path = write_temp_config(config);
+    let config = load_config(&path).expect("parse config");
+
+    assert_eq!(config.entities[0].source.path, "/tmp/crm_orders");
+}

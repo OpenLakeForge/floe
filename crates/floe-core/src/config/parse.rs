@@ -295,11 +295,18 @@ fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
         let name_hint = entity_name_hint(entity_yaml);
         let entity = resolve_source_ref(entity_yaml, &sources)
             .and_then(|resolved| {
+                let (resolved, resource) = resolved.unzip();
                 let entity_yaml = resolved.as_ref().unwrap_or(entity_yaml);
-                let merged = entity_domain_hint(entity_yaml)
+                let mut merged = entity_domain_hint(entity_yaml)
                     .and_then(|domain| domain_defaults.get(&domain))
-                    .map(|defaults| merge_yaml(defaults, entity_yaml));
-                parse_entity(merged.as_ref().unwrap_or(entity_yaml))
+                    .map_or_else(
+                        || entity_yaml.clone(),
+                        |defaults| merge_yaml(defaults, entity_yaml),
+                    );
+                if let Some(resource) = resource {
+                    replace_resource_in_source_path(&mut merged, &resource);
+                }
+                parse_entity(&merged)
             })
             .map_err(|err| {
                 FloeError::config(format_entity_error(index, name_hint, err.as_ref()))
@@ -503,8 +510,8 @@ fn parse_sources(value: &Yaml, version: &str) -> FloeResult<Hash> {
 }
 
 /// Replaces an entity's `source: { ref, resource, ... }` with the referenced
-/// source overlaid by the entity's own `source` fields.
-fn resolve_source_ref(entity: &Yaml, sources: &Hash) -> FloeResult<Option<Yaml>> {
+/// source overlaid by the entity's own `source` fields, and returns the resource.
+fn resolve_source_ref(entity: &Yaml, sources: &Hash) -> FloeResult<Option<(Yaml, String)>> {
     let Some(Yaml::Hash(source)) = entity.as_hash().and_then(|hash| hash_get(hash, "source"))
     else {
         return Ok(None);
@@ -525,17 +532,25 @@ fn resolve_source_ref(entity: &Yaml, sources: &Hash) -> FloeResult<Option<Yaml>>
         Some(value) => yaml_string(&value, "source.resource")?,
         None => entity_name_hint(entity).unwrap_or_default(),
     };
-    let mut merged = merge_yaml(base, &Yaml::Hash(overlay));
-    if let Yaml::Hash(hash) = &mut merged {
-        if let Some(Yaml::String(path)) = hash.get_mut(&Yaml::String("path".to_string())) {
-            *path = replace_resource_placeholder(path, &resource);
-        }
-    }
     let mut entity = entity.clone();
     if let Yaml::Hash(hash) = &mut entity {
-        hash.insert(Yaml::String("source".to_string()), merged);
+        hash.insert(
+            Yaml::String("source".to_string()),
+            merge_yaml(base, &Yaml::Hash(overlay)),
+        );
     }
-    Ok(Some(entity))
+    Ok(Some((entity, resource)))
+}
+
+fn replace_resource_in_source_path(entity: &mut Yaml, resource: &str) {
+    let Yaml::Hash(entity) = entity else {
+        return;
+    };
+    if let Some(Yaml::Hash(source)) = entity.get_mut(&Yaml::String("source".to_string())) {
+        if let Some(Yaml::String(path)) = source.get_mut(&Yaml::String("path".to_string())) {
+            *path = replace_resource_placeholder(path, resource);
+        }
+    }
 }
 
 /// `{{resource}}` is entity-specific, so it is substituted here; every other
