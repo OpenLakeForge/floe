@@ -37,6 +37,8 @@ def build_dag_manifest_context(
 ) -> DagManifestContext:
     manifest = load_manifest(manifest_path)
     if domains is not None:
+        if not domains:
+            raise ValueError("domains must not be empty; pass None to load every domain")
         unknown = sorted(set(domains) - {e.domain for e in manifest.entities})
         if unknown:
             raise ValueError(f"unknown domain(s) {unknown} in {manifest_path}")

@@ -232,6 +232,11 @@ class RuntimeHelpersTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "hr"):
                 build_dag_manifest_context(str(manifest_path), domains=["hr"])
 
+            # An empty selection would leave the operator without --entities,
+            # running every domain instead of none.
+            with self.assertRaisesRegex(ValueError, "empty"):
+                build_dag_manifest_context(str(manifest_path), domains=[])
+
     def test_build_dag_manifest_context_or_empty_when_missing_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
