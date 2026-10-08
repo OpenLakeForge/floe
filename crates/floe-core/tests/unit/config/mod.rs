@@ -18,5 +18,6 @@ pub mod location;
 pub mod parse;
 pub mod pii_validation;
 pub mod remote_base;
+pub mod sources;
 pub mod storage_resolver_uri;
 pub mod templating;

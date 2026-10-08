@@ -135,6 +135,16 @@ entities:
     every entity whose `domain` matches, before parsing. The entity wins; maps
     merge key by key; lists are replaced, not appended. `schema.columns` and
     `schema.primary_key` are never inherited.
+- `sources` (optional, requires `version: "0.3"`)
+  - Named, reusable entity `source` blocks: each entry is `name` plus any
+    `source` fields (`format`, `path`, `storage`, `options`, `cast_mode`).
+  - An entity uses one with `source: { ref: <name>, resource: <resource> }`.
+    Other fields set on the entity's `source` override the referenced source
+    (maps merge key by key, as for domain `defaults`). Domain `defaults` apply
+    beneath the resolved source: entity, then source, then domain defaults.
+  - `{{resource}}` in the source `path` resolves to `source.resource`, which
+    defaults to the entity `name`.
+  - An unknown `ref` is an error listing the declared sources.
 - `include` (optional, requires `version: "0.3"`)
   - `include.domains`: glob patterns, relative to the main config file, each
     matching a domain file (e.g. `["silver/*/_domain.yml"]`). A domain file holds
