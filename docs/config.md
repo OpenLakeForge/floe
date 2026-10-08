@@ -135,6 +135,15 @@ entities:
     every entity whose `domain` matches, before parsing. The entity wins; maps
     merge key by key; lists are replaced, not appended. `schema.columns` and
     `schema.primary_key` are never inherited.
+- `include` (optional, requires `version: "0.3"`)
+  - `include.domains`: glob patterns, relative to the main config file, each
+    matching a domain file (e.g. `["silver/*/_domain.yml"]`). A domain file holds
+    one `domains` entry; every sibling `*.yml` file holds one entity of that
+    domain. An entity file may omit `domain`; if set, it must match the domain
+    file's `name`. Included domains and entities are appended after the inline
+    `domains` and `entities`, so `entities` may be omitted.
+  - A pattern that matches no file is an error. Includes resolve against local
+    files only, so a remote (`s3://`, ...) config cannot use them.
 - `entities` (required)
   - Array of entity definitions (datasets). A single CLI run may process
     multiple entities.

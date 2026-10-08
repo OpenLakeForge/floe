@@ -162,6 +162,7 @@ mod tests {
             report: None,
             lineage: None,
             entities: vec![motherduck_entity()],
+            config_files: Vec::new(),
         };
         let base = config::ConfigBase::remote_from_uri(
             PathBuf::from("/tmp"),

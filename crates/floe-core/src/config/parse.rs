@@ -1,7 +1,7 @@
 use crate::errors::FloeError;
 use crate::secret::Secret;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use yaml_rust2::yaml::Hash;
 use yaml_rust2::Yaml;
@@ -26,6 +26,7 @@ use crate::config::{
 use crate::FloeResult;
 
 const MIN_DOMAIN_DEFAULTS_CONFIG_VERSION: ConfigVersion = ConfigVersion::new(0, 3);
+const MIN_INCLUDE_CONFIG_VERSION: ConfigVersion = ConfigVersion::new(0, 3);
 
 pub(crate) fn parse_config(path: &Path) -> FloeResult<RootConfig> {
     parse_config_with_vars(path, &std::collections::HashMap::new())
@@ -92,7 +93,18 @@ pub(crate) fn parse_config_with_vars(
     path: &Path,
     profile_vars: &std::collections::HashMap<String, String>,
 ) -> FloeResult<RootConfig> {
-    let docs = load_yaml(path)?;
+    let mut doc = load_single_doc(path)?;
+    let config_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut config_files = vec![path.to_path_buf()];
+    assemble_includes(&mut doc, config_dir, &mut config_files)?;
+    let mut config = parse_root(&doc)?;
+    config.config_files = config_files;
+    apply_templates_with_vars(&mut config, config_dir, profile_vars)?;
+    Ok(config)
+}
+
+fn load_single_doc(path: &Path) -> FloeResult<Yaml> {
+    let mut docs = load_yaml(path)?;
     if docs.is_empty() {
         return Err(FloeError::config("YAML is empty".to_string()).into());
     }
@@ -102,10 +114,101 @@ pub(crate) fn parse_config_with_vars(
         )
         .into());
     }
-    let mut config = parse_root(&docs[0])?;
-    let config_dir = path.parent().unwrap_or_else(|| Path::new("."));
-    apply_templates_with_vars(&mut config, config_dir, profile_vars)?;
-    Ok(config)
+    Ok(docs.remove(0))
+}
+
+/// Splices `include.domains` files into `domains` and `entities`, so the rest of
+/// parsing sees the same document as a single-file config.
+fn assemble_includes(
+    doc: &mut Yaml,
+    config_dir: &Path,
+    config_files: &mut Vec<PathBuf>,
+) -> FloeResult<()> {
+    let Yaml::Hash(root) = doc else {
+        return Ok(());
+    };
+    let Some(include) = root.remove(&Yaml::String("include".to_string())) else {
+        return Ok(());
+    };
+    let version = hash_get(root, "version").and_then(Yaml::as_str);
+    if version.and_then(|v| ConfigVersion::parse(v).ok()) < Some(MIN_INCLUDE_CONFIG_VERSION) {
+        return Err(
+            FloeError::config("root.include requires root.version >= \"0.3\"".to_string()).into(),
+        );
+    }
+    let include = yaml_hash(&include, "include")?;
+    validate_known_keys(include, "include", &["domains"])?;
+    let base = glob_base(config_dir);
+    let mut domains = Vec::new();
+    let mut entities = Vec::new();
+    for pattern in get_array(include, "domains", "include")? {
+        let pattern = yaml_string(pattern, "include.domains")?;
+        let full = Path::new(&base).join(&pattern);
+        let matches = glob::glob(&full.to_string_lossy())?.collect::<Result<Vec<_>, _>>()?;
+        if matches.is_empty() {
+            return Err(FloeError::config(format!(
+                "include.domains pattern {pattern:?} matched no file \
+                 (includes resolve against local files only; a remote project cannot include)"
+            ))
+            .into());
+        }
+        for domain_file in matches {
+            let domain = load_single_doc(&domain_file)?;
+            let name = get_string(yaml_hash(&domain, "domains")?, "name", "domains")?;
+            config_files.push(domain_file.clone());
+            domains.push(domain);
+            let dir = domain_file.parent().unwrap_or_else(|| Path::new("."));
+            let mut siblings = Vec::new();
+            for entry in std::fs::read_dir(dir)? {
+                let path = entry?.path();
+                if path != domain_file && path.extension().is_some_and(|ext| ext == "yml") {
+                    siblings.push(path);
+                }
+            }
+            siblings.sort();
+            for entity_file in siblings {
+                let mut entity = load_single_doc(&entity_file)?;
+                let Yaml::Hash(hash) = &mut entity else {
+                    return Err(FloeError::config("expected map at entity".to_string()).into());
+                };
+                match opt_string(hash, "domain", "entity")? {
+                    None => {
+                        hash.insert(
+                            Yaml::String("domain".to_string()),
+                            Yaml::String(name.clone()),
+                        );
+                    }
+                    Some(domain) if domain == name => {}
+                    Some(domain) => {
+                        return Err(FloeError::config(format!(
+                            "{} has domain {domain:?} but its _domain.yml names {name:?}",
+                            entity_file.display()
+                        ))
+                        .into())
+                    }
+                }
+                config_files.push(entity_file);
+                entities.push(entity);
+            }
+        }
+    }
+    for (key, items) in [("domains", domains), ("entities", entities)] {
+        match root
+            .entry(Yaml::String(key.to_string()))
+            .or_insert(Yaml::Array(Vec::new()))
+        {
+            Yaml::Array(array) => array.extend(items),
+            _ => return Err(FloeError::config(format!("expected array at {key}")).into()),
+        }
+    }
+    Ok(())
+}
+
+fn glob_base(dir: &Path) -> String {
+    let dir = dir.to_string_lossy();
+    // Escaping would turn the `?` of a Windows verbatim prefix into `[?]`.
+    let dir = dir.strip_prefix(r"\\?\").unwrap_or(&dir);
+    glob::Pattern::escape(dir)
 }
 
 fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
@@ -201,6 +304,7 @@ fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
         report,
         lineage,
         entities,
+        config_files: Vec::new(),
     })
 }
 
@@ -1257,4 +1361,15 @@ pub(crate) fn parse_lineage_config(value: &Yaml) -> FloeResult<LineageConfig> {
         max_failures: opt_u32(hash, "max_failures", "lineage")?,
         job_name: opt_string(hash, "job_name", "lineage")?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glob_base_strips_windows_verbatim_prefix_and_escapes() {
+        assert_eq!(glob_base(Path::new(r"\\?\C:\project")), r"C:\project");
+        assert_eq!(glob_base(Path::new("/tmp/a[1]")), "/tmp/a[[]1[]]");
+    }
 }

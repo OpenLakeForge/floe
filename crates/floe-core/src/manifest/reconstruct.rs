@@ -172,6 +172,7 @@ pub fn config_from_manifest_json(json: &str) -> FloeResult<(crate::config::RootC
         report: None,
         lineage,
         entities,
+        config_files: Vec::new(),
     };
 
     Ok((config, manifest.report_base_uri))

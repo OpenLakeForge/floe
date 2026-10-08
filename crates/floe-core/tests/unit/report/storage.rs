@@ -20,6 +20,7 @@ fn build_config(definition: StorageDefinition, report: ReportConfig) -> RootConf
         report: Some(report),
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     }
 }
 
@@ -144,6 +145,7 @@ fn local_report_paths_and_uris_are_normalized() {
         }),
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     };
     let resolver = resolver_for(&config);
     let resolved = resolver

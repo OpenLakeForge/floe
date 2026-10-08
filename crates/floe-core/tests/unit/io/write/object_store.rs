@@ -30,6 +30,7 @@ fn sample_config() -> config::RootConfig {
         report: None,
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     }
 }
 
@@ -180,6 +181,7 @@ fn delta_store_config_builds_local_url() -> FloeResult<()> {
         report: None,
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     };
     let temp_dir = tempfile::TempDir::new()?;
     let resolver = config::StorageResolver::from_path(&config, temp_dir.path())?;
@@ -248,6 +250,7 @@ fn iceberg_store_config_builds_local_warehouse_without_props() -> FloeResult<()>
         report: None,
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     };
     let temp_dir = tempfile::TempDir::new()?;
     let resolver = config::StorageResolver::from_path(&config, temp_dir.path())?;
@@ -330,6 +333,7 @@ fn delta_store_config_builds_adls_url_and_options() -> FloeResult<()> {
         report: None,
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     };
     let resolver =
         config::StorageResolver::from_path(&config, std::path::Path::new("./config.yml"))?;
@@ -428,6 +432,7 @@ fn iceberg_store_config_builds_gcs_warehouse_without_props() -> FloeResult<()> {
         report: None,
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     };
     let resolver =
         config::StorageResolver::from_path(&config, std::path::Path::new("./config.yml"))?;
@@ -513,6 +518,7 @@ fn iceberg_store_config_builds_adls_target() -> FloeResult<()> {
         report: None,
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     };
     let resolver =
         config::StorageResolver::from_path(&config, std::path::Path::new("./config.yml"))?;
@@ -614,6 +620,7 @@ fn delta_store_config_builds_gcs_url() -> FloeResult<()> {
         report: None,
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     };
     let resolver =
         config::StorageResolver::from_path(&config, std::path::Path::new("./config.yml"))?;

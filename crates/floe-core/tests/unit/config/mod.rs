@@ -11,6 +11,7 @@ pub mod domain_defaults;
 pub mod duckdb_validation;
 pub mod gcs_storage;
 pub mod gcs_validation;
+pub mod include_domains;
 pub mod lineage_validation;
 pub mod local_storage;
 pub mod location;

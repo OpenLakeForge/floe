@@ -73,6 +73,7 @@ fn adls_missing_required_fields_errors() {
         report: None,
         lineage: None,
         entities: vec![base_entity()],
+        config_files: Vec::new(),
     };
 
     let err = floe_core::validate_config_for_tests(&config).expect_err("expected error");
@@ -108,6 +109,7 @@ fn adls_referenced_errors_until_implemented() {
         report: None,
         lineage: None,
         entities: vec![base_entity()],
+        config_files: Vec::new(),
     };
 
     config.entities[0].source.storage = Some("adls".to_string());
