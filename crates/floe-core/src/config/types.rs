@@ -1,7 +1,7 @@
 use crate::errors::FloeError;
 use crate::secret::Secret;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +23,8 @@ pub struct RootConfig {
     pub report: Option<ReportConfig>,
     pub lineage: Option<LineageConfig>,
     pub entities: Vec<EntityConfig>,
+    /// Every config file read to assemble this config, root file first.
+    pub config_files: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

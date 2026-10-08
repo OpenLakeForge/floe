@@ -1928,6 +1928,7 @@ mod duckdb_tests {
             report: None,
             lineage: None,
             entities: vec![entity],
+            config_files: Vec::new(),
         }
     }
 

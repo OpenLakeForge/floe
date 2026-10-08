@@ -18,6 +18,7 @@ fn resolver_with_definitions(defs: Vec<StorageDefinition>) -> StorageResolver {
         report: None,
         lineage: None,
         entities: vec![],
+        config_files: Vec::new(),
     };
     let base = ConfigBase::local_from_path(&PathBuf::from("/tmp/config.yml"));
     StorageResolver::new(&config, base).expect("resolver")

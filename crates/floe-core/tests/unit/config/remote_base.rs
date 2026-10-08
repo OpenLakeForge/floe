@@ -19,6 +19,7 @@ fn base_root(definition: StorageDefinition) -> RootConfig {
         report: None,
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     }
 }
 
@@ -34,6 +35,7 @@ fn local_base_resolves_relative_paths() -> FloeResult<()> {
         report: None,
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     };
     let resolver = StorageResolver::from_path(&config, Path::new("/tmp/config.yml"))?;
     let resolved = resolver.resolve_path("entity", "source.path", None, "data/file.csv")?;

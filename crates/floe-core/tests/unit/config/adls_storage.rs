@@ -13,6 +13,7 @@ fn base_root() -> config::RootConfig {
         report: None,
         lineage: None,
         entities: Vec::new(),
+        config_files: Vec::new(),
     }
 }
 
