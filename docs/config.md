@@ -131,6 +131,10 @@ entities:
 - `domains` (optional)
   - Named domain roots that can be referenced by entities via `entity.domain`.
   - Example entry: `{ name: "sales", incoming_dir: "{{incoming_path}}/sales" }`.
+  - `defaults` (optional, requires `version: "0.3"`): entity fields merged into
+    every entity whose `domain` matches, before parsing. The entity wins; maps
+    merge key by key; lists are replaced, not appended. `schema.columns` and
+    `schema.primary_key` are never inherited.
 - `entities` (required)
   - Array of entity definitions (datasets). A single CLI run may process
     multiple entities.

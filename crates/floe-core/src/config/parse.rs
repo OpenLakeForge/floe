@@ -9,8 +9,9 @@ use yaml_rust2::Yaml;
 use crate::config::apply_templates_with_vars;
 use crate::config::storage::resolve_local_path;
 use crate::config::types::{DeltaSinkTargetConfig, DuckDbSinkTargetConfig};
+use crate::config::validate::ConfigVersion;
 use crate::config::yaml_decode::{
-    hash_get, load_yaml, validate_known_keys, yaml_array, yaml_hash, yaml_string,
+    hash_get, load_yaml, merge_yaml, validate_known_keys, yaml_array, yaml_hash, yaml_string,
 };
 use crate::config::{
     ArchiveTarget, CatalogDefinition, CatalogTypeConfig, CatalogsConfig, ColumnConfig,
@@ -23,6 +24,8 @@ use crate::config::{
     StorageDefinition, StoragesConfig, WriteMode,
 };
 use crate::FloeResult;
+
+const MIN_DOMAIN_DEFAULTS_CONFIG_VERSION: ConfigVersion = ConfigVersion::new(0, 3);
 
 pub(crate) fn parse_config(path: &Path) -> FloeResult<RootConfig> {
     parse_config_with_vars(path, &std::collections::HashMap::new())
@@ -151,9 +154,9 @@ fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
         None => None,
     };
 
-    let domains = match hash_get(root, "domains") {
-        Some(value) => parse_domains(value)?,
-        None => Vec::new(),
+    let (domains, domain_defaults) = match hash_get(root, "domains") {
+        Some(value) => parse_domains(value, &version)?,
+        None => (Vec::new(), HashMap::new()),
     };
 
     let report = match hash_get(root, "report") {
@@ -172,7 +175,10 @@ fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
     let mut entities = Vec::with_capacity(entities_yaml.len());
     for (index, entity_yaml) in entities_yaml.iter().enumerate() {
         let name_hint = entity_name_hint(entity_yaml);
-        let entity = parse_entity(entity_yaml).map_err(|err| {
+        let merged = entity_domain_hint(entity_yaml)
+            .and_then(|domain| domain_defaults.get(&domain))
+            .map(|defaults| merge_yaml(defaults, entity_yaml));
+        let entity = parse_entity(merged.as_ref().unwrap_or(entity_yaml)).map_err(|err| {
             FloeError::config(format_entity_error(index, name_hint, err.as_ref()))
         })?;
         entities.push(entity);
@@ -275,6 +281,13 @@ fn entity_name_hint(value: &Yaml) -> Option<String> {
     }
 }
 
+fn entity_domain_hint(value: &Yaml) -> Option<String> {
+    match hash_get(value.as_hash()?, "domain")? {
+        Yaml::String(value) => Some(value.clone()),
+        _ => None,
+    }
+}
+
 fn format_entity_error(index: usize, name: Option<String>, err: &dyn std::error::Error) -> String {
     match name {
         Some(name) => format!("entities[{index}] (entity.name={name}): {err}"),
@@ -312,13 +325,27 @@ fn parse_env(value: &Yaml) -> FloeResult<EnvConfig> {
     Ok(EnvConfig { file, vars })
 }
 
-fn parse_domains(value: &Yaml) -> FloeResult<Vec<DomainConfig>> {
+fn parse_domains(
+    value: &Yaml,
+    version: &str,
+) -> FloeResult<(Vec<DomainConfig>, HashMap<String, Yaml>)> {
     let array = yaml_array(value, "domains")?;
     let mut domains = Vec::with_capacity(array.len());
+    let mut defaults = HashMap::new();
     for item in array.iter() {
         let hash = yaml_hash(item, "domains")?;
-        validate_known_keys(hash, "domains", &["name", "incoming_dir"])?;
+        validate_known_keys(hash, "domains", &["name", "incoming_dir", "defaults"])?;
         let name = get_string(hash, "name", "domains")?;
+        if let Some(value) = hash_get(hash, "defaults") {
+            if ConfigVersion::parse(version)? < MIN_DOMAIN_DEFAULTS_CONFIG_VERSION {
+                return Err(FloeError::config(
+                    "domains.defaults requires root.version >= \"0.3\"".to_string(),
+                )
+                .into());
+            }
+            yaml_hash(value, "domains.defaults")?;
+            defaults.insert(name.clone(), without_entity_only_fields(value));
+        }
         let incoming_dir = get_string(hash, "incoming_dir", "domains")?;
         domains.push(DomainConfig {
             name,
@@ -326,7 +353,18 @@ fn parse_domains(value: &Yaml) -> FloeResult<Vec<DomainConfig>> {
             resolved_incoming_dir: None,
         });
     }
-    Ok(domains)
+    Ok((domains, defaults))
+}
+
+fn without_entity_only_fields(defaults: &Yaml) -> Yaml {
+    let mut defaults = defaults.clone();
+    if let Yaml::Hash(root) = &mut defaults {
+        if let Some(Yaml::Hash(schema)) = root.get_mut(&Yaml::String("schema".to_string())) {
+            schema.remove(&Yaml::String("columns".to_string()));
+            schema.remove(&Yaml::String("primary_key".to_string()));
+        }
+    }
+    defaults
 }
 
 fn parse_string_map(value: &Yaml, context: &str) -> FloeResult<HashMap<String, String>> {

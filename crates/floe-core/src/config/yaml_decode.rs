@@ -42,6 +42,23 @@ pub(crate) fn yaml_number(value: &Yaml) -> Result<f64, ()> {
     }
 }
 
+pub(crate) fn merge_yaml(base: &Yaml, overlay: &Yaml) -> Yaml {
+    match (base, overlay) {
+        (Yaml::Hash(base), Yaml::Hash(overlay)) => {
+            let mut merged = base.clone();
+            for (key, value) in overlay {
+                let value = match base.get(key) {
+                    Some(base_value) => merge_yaml(base_value, value),
+                    None => value.clone(),
+                };
+                merged.insert(key.clone(), value);
+            }
+            Yaml::Hash(merged)
+        }
+        _ => overlay.clone(),
+    }
+}
+
 pub(crate) fn hash_get<'a>(hash: &'a Hash, key: &str) -> Option<&'a Yaml> {
     hash.get(&Yaml::String(key.to_string()))
 }

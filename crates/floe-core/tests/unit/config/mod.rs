@@ -3,6 +3,7 @@ pub mod adls_storage;
 pub mod adls_validation;
 pub mod catalogs;
 pub mod config_validation;
+pub mod domain_defaults;
 // DuckDB config validation is pure-string (the always-compiled `validate_duckdb_sink`
 // plus format-agnostic checks) and does not need the bundled `duckdb` crate: a lean
 // build still validates and round-trips duckdb configs, only refusing to *write* them.
