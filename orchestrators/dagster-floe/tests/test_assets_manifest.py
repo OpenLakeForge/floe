@@ -437,3 +437,16 @@ def test_op_name_unchanged_without_domain(tmp_path) -> None:
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
     asset_def, _entity = _get_asset_def(manifest_path, "employees")
     assert asset_def.node_def.name == "employees"
+
+
+def test_qualified_op_name_colliding_with_domainless_name_raises(tmp_path) -> None:
+    import json
+
+    payload = json.loads(_two_domain_manifest(tmp_path).read_text(encoding="utf-8"))
+    payload["entities"][1].update(
+        name="sales__accounts", domain=None, group_name="default", asset_key=["default", "sales__accounts"]
+    )
+    manifest_path = tmp_path / "manifest.opcollision.json"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="'sales.accounts' and 'sales__accounts'"):
+        build_floe_asset_defs(manifest_path=str(manifest_path), runner=_NoopRunner())

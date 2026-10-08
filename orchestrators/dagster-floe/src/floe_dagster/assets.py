@@ -81,6 +81,18 @@ def build_floe_asset_defs(
             raise ValueError(f"unknown domain(s) {unknown} in {manifest_path}")
         entity_items = [e for e in entity_items if e.domain in domains]
 
+    # Qualified op names (sales__accounts) can equal a legal domain-less name; fail
+    # with both entities named instead of Dagster's later duplicate-node error.
+    op_owners: dict[str, str] = {}
+    for entity in entity_items:
+        op_name = _op_name(entity)
+        other = op_owners.setdefault(op_name, entity.name)
+        if other != entity.name:
+            raise ValueError(
+                f"entities {other!r} and {entity.name!r} map to the same Dagster op name "
+                f"{op_name!r} in {manifest_path}; rename one of them"
+            )
+
     assets_defs = []
     for entity in entity_items:
         runner_definition = resolve_entity_runner(manifest, entity)
@@ -116,6 +128,14 @@ def selected_manifest_entities(
         return list(manifest.entities)
     selected = set(entities)
     return [item for item in manifest.entities if item.name in selected]
+
+
+def _op_name(entity: ManifestEntity) -> str:
+    # Domain-less entities keep their historical op name; qualified ones need the
+    # domain so `sales.accounts` and `finance.accounts` don't collide.
+    if entity.domain in (None, "default"):
+        return entity.asset_key[-1]
+    return re.sub(r"[^A-Za-z0-9_]", "_", "__".join(entity.asset_key))
 
 
 def _has_rejected_asset(entity: ManifestEntity) -> bool:
@@ -183,12 +203,7 @@ def _make_entity_multi_asset(
     has_rejected = _has_rejected_asset(entity)
     rejected_key = list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_rejected"]
 
-    # Domain-less entities keep their historical op name; qualified ones need the
-    # domain so `sales.accounts` and `finance.accounts` don't collide.
-    if entity.domain in (None, "default"):
-        asset_name = entity.asset_key[-1]
-    else:
-        asset_name = re.sub(r"[^A-Za-z0-9_]", "_", "__".join(entity.asset_key))
+    asset_name = _op_name(entity)
     group_name = entity.group_name
     entity_name = entity.name
 
