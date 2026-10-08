@@ -138,7 +138,7 @@ fn assemble_includes(
     }
     let include = yaml_hash(&include, "include")?;
     validate_known_keys(include, "include", &["domains"])?;
-    let base = glob::Pattern::escape(&config_dir.to_string_lossy());
+    let base = glob_base(config_dir);
     let mut domains = Vec::new();
     let mut entities = Vec::new();
     for pattern in get_array(include, "domains", "include")? {
@@ -202,6 +202,13 @@ fn assemble_includes(
         }
     }
     Ok(())
+}
+
+fn glob_base(dir: &Path) -> String {
+    let dir = dir.to_string_lossy();
+    // Escaping would turn the `?` of a Windows verbatim prefix into `[?]`.
+    let dir = dir.strip_prefix(r"\\?\").unwrap_or(&dir);
+    glob::Pattern::escape(dir)
 }
 
 fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
@@ -1354,4 +1361,15 @@ pub(crate) fn parse_lineage_config(value: &Yaml) -> FloeResult<LineageConfig> {
         max_failures: opt_u32(hash, "max_failures", "lineage")?,
         job_name: opt_string(hash, "job_name", "lineage")?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glob_base_strips_windows_verbatim_prefix_and_escapes() {
+        assert_eq!(glob_base(Path::new(r"\\?\C:\project")), r"C:\project");
+        assert_eq!(glob_base(Path::new("/tmp/a[1]")), "/tmp/a[[]1[]]");
+    }
 }
