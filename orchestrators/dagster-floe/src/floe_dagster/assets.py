@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -39,6 +40,7 @@ def load_floe_assets(
     entities: list[str] | None = None,
     register_source_assets: bool = True,
     manifest_uri: str | None = None,
+    domains: list[str] | None = None,
 ) -> Definitions:
     """Build a Dagster Definitions for the given manifest.
 
@@ -57,6 +59,7 @@ def load_floe_assets(
         entities=entities,
         register_source_assets=register_source_assets,
         manifest_uri=manifest_uri,
+        domains=domains,
     )
     return Definitions(assets=[*assets_defs, *source_assets])
 
@@ -67,10 +70,28 @@ def build_floe_asset_defs(
     entities: list[str] | None = None,
     register_source_assets: bool = True,
     manifest_uri: str | None = None,
+    domains: list[str] | None = None,
 ) -> tuple[list[Any], list[SourceAsset], list[ManifestEntity]]:
     manifest = load_manifest(manifest_path)
     config_uri = resolve_config_uri(manifest_path, manifest.config_uri)
     entity_items = selected_manifest_entities(manifest, entities)
+    if domains is not None:
+        unknown = sorted(set(domains) - {e.domain for e in manifest.entities})
+        if unknown:
+            raise ValueError(f"unknown domain(s) {unknown} in {manifest_path}")
+        entity_items = [e for e in entity_items if e.domain in domains]
+
+    # Qualified op names (sales__accounts) can equal a legal domain-less name; fail
+    # with both entities named instead of Dagster's later duplicate-node error.
+    op_owners: dict[str, str] = {}
+    for entity in entity_items:
+        op_name = _op_name(entity)
+        other = op_owners.setdefault(op_name, entity.name)
+        if other != entity.name:
+            raise ValueError(
+                f"entities {other!r} and {entity.name!r} map to the same Dagster op name "
+                f"{op_name!r} in {manifest_path}; rename one of them"
+            )
 
     assets_defs = []
     for entity in entity_items:
@@ -107,6 +128,14 @@ def selected_manifest_entities(
         return list(manifest.entities)
     selected = set(entities)
     return [item for item in manifest.entities if item.name in selected]
+
+
+def _op_name(entity: ManifestEntity) -> str:
+    # Domain-less entities keep their historical op name; qualified ones need the
+    # domain so `sales.accounts` and `finance.accounts` don't collide.
+    if entity.domain in (None, "default"):
+        return entity.asset_key[-1]
+    return re.sub(r"[^A-Za-z0-9_]", "_", "__".join(entity.asset_key))
 
 
 def _has_rejected_asset(entity: ManifestEntity) -> bool:
@@ -174,7 +203,7 @@ def _make_entity_multi_asset(
     has_rejected = _has_rejected_asset(entity)
     rejected_key = list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_rejected"]
 
-    asset_name = entity.asset_key[-1]
+    asset_name = _op_name(entity)
     group_name = entity.group_name
     entity_name = entity.name
 

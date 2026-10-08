@@ -11,6 +11,11 @@ All notable changes to Floe are documented in this file.
 
 ## dagster-floe (unreleased)
 
+- **`load_floe_assets(domains=[...])` loads one domain slice of a project manifest (#510).**
+  Only entities whose `domain` is listed are loaded; an unknown domain raises `ValueError`.
+  Op names of entities with a domain are now derived from the full asset key
+  (`sales__accounts`), so two domains sharing an entity name load in one manifest.
+  Entities without a domain keep their existing op name.
 - **Fix: remote `s3://` reads honor S3-compatible endpoint env (#512).** Manifest and run
   report reads via fsspec now pass `AWS_ENDPOINT_URL_S3` (falling back to
   `AWS_ENDPOINT_URL`) as the endpoint and, when `AWS_S3_FORCE_PATH_STYLE` is `true`/`1`,

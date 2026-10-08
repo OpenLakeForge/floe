@@ -383,3 +383,70 @@ def test_build_floe_asset_defs_raises_on_intra_manifest_source_key_collision(tmp
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate asset key"):
         build_floe_asset_defs(manifest_path=str(manifest_path), runner=_NoopRunner())
+
+
+# ── domains filter and op names ────────────────────────────────────────────────
+
+def _two_domain_manifest(tmp_path) -> Path:
+    """sales.accounts and finance.accounts share an entity name across domains."""
+    import json
+
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    employees = payload["entities"][0]
+    payload["entities"] = [
+        {**employees, "name": f"{domain}.accounts", "domain": domain,
+         "group_name": domain, "asset_key": [domain, "accounts"]}
+        for domain in ("sales", "finance")
+    ]
+    manifest_path = tmp_path / "manifest.domains.json"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    return manifest_path
+
+
+def test_same_entity_name_in_two_domains_loads(tmp_path) -> None:
+    manifest_path = str(_two_domain_manifest(tmp_path))
+    # Building the job is where Dagster rejects duplicate op names.
+    load_floe_assets(manifest_path=manifest_path, runner=_NoopRunner()).resolve_implicit_global_asset_job_def()
+    asset_defs, _source_assets, _entities = build_floe_asset_defs(
+        manifest_path=manifest_path, runner=_NoopRunner()
+    )
+    assert sorted(a.node_def.name for a in asset_defs) == ["finance__accounts", "sales__accounts"]
+
+
+def test_domains_filter_keeps_only_requested_domain(tmp_path) -> None:
+    asset_defs, _source_assets, entities = build_floe_asset_defs(
+        manifest_path=str(_two_domain_manifest(tmp_path)), runner=_NoopRunner(), domains=["sales"]
+    )
+    assert [e.name for e in entities] == ["sales.accounts"]
+    assert AssetKey(["sales", "accounts"]) in asset_defs[0].keys
+
+
+def test_domains_filter_unknown_domain_raises(tmp_path) -> None:
+    with pytest.raises(ValueError, match="unknown domain"):
+        load_floe_assets(
+            manifest_path=str(_two_domain_manifest(tmp_path)), runner=_NoopRunner(), domains=["hr"]
+        )
+
+
+def test_op_name_unchanged_without_domain(tmp_path) -> None:
+    import json
+
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    payload["entities"][0].update(domain=None, group_name="default", asset_key=["default", "employees"])
+    manifest_path = tmp_path / "manifest.nodomain.json"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    asset_def, _entity = _get_asset_def(manifest_path, "employees")
+    assert asset_def.node_def.name == "employees"
+
+
+def test_qualified_op_name_colliding_with_domainless_name_raises(tmp_path) -> None:
+    import json
+
+    payload = json.loads(_two_domain_manifest(tmp_path).read_text(encoding="utf-8"))
+    payload["entities"][1].update(
+        name="sales__accounts", domain=None, group_name="default", asset_key=["default", "sales__accounts"]
+    )
+    manifest_path = tmp_path / "manifest.opcollision.json"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="'sales.accounts' and 'sales__accounts'"):
+        build_floe_asset_defs(manifest_path=str(manifest_path), runner=_NoopRunner())
