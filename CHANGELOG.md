@@ -2,6 +2,13 @@
 
 All notable changes to Floe are documented in this file.
 
+## airflow-floe (unreleased)
+
+- **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest
+  (#511).** Only entities whose `domain` is listed land in the context; an unknown domain
+  raises `ValueError`. Pass `entities=context.entity_names` to `FloeRunOperator` so the run
+  covers only that slice.
+
 ## dagster-floe (unreleased)
 
 - **Fix: remote `s3://` reads honor S3-compatible endpoint env (#512).** Manifest and run

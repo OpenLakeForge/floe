@@ -195,6 +195,43 @@ class RuntimeHelpersTests(unittest.TestCase):
             context = build_dag_manifest_context(str(manifest_path))
             self.assertEqual(context.config_path, str(config_path))
 
+    def test_build_dag_manifest_context_filters_by_domain(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            manifest_path = base / "manifest.airflow.json"
+            config_path = base / "config.yml"
+            config_path.write_text("version: v1\n", encoding="utf-8")
+
+            manifest_payload = {
+                "schema": "floe.manifest.v1",
+                "generated_at_ts_ms": 1739500000000,
+                "floe_version": "0.2.4",
+                "config_uri": str(config_path),
+                "config_checksum": None,
+                "entities": [
+                    {
+                        "name": f"{domain}.accounts",
+                        "domain": domain,
+                        "group_name": domain,
+                        "source_format": "csv",
+                        "accepted_sink_uri": f"local://{base}/out/{domain}/accounts",
+                        "rejected_sink_uri": None,
+                        "asset_key": [domain, "accounts"],
+                    }
+                    for domain in ("sales", "finance")
+                ],
+            }
+            manifest_payload.update(_execution_and_runners(str(config_path)))
+            manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
+
+            context = build_dag_manifest_context(str(manifest_path), domains=["sales"])
+            self.assertEqual(context.entity_names, ["sales.accounts"])
+            self.assertEqual(list(context.entities_by_name), ["sales.accounts"])
+            self.assertEqual(list(context.assets_by_entity), ["sales.accounts"])
+
+            with self.assertRaisesRegex(ValueError, "hr"):
+                build_dag_manifest_context(str(manifest_path), domains=["hr"])
+
     def test_build_dag_manifest_context_or_empty_when_missing_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

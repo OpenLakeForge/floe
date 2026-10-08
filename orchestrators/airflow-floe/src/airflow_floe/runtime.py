@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 from typing import Any
@@ -33,8 +33,16 @@ class DagManifestContext:
 def build_dag_manifest_context(
     manifest_path: str,
     config_override: str | None = None,
+    domains: list[str] | None = None,
 ) -> DagManifestContext:
     manifest = load_manifest(manifest_path)
+    if domains is not None:
+        unknown = sorted(set(domains) - {e.domain for e in manifest.entities})
+        if unknown:
+            raise ValueError(f"unknown domain(s) {unknown} in {manifest_path}")
+        manifest = replace(
+            manifest, entities=[e for e in manifest.entities if e.domain in domains]
+        )
     config_path = config_override or resolve_config_path(manifest_path, manifest.config_uri)
     assets_by_entity = build_entity_assets(manifest, manifest_path)
     entities_by_name = {entity.name: entity for entity in manifest.entities}
