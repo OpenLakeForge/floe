@@ -24,17 +24,17 @@ const MIN_SCHEMA_EVOLUTION_CONFIG_VERSION: ConfigVersion = ConfigVersion::new(0,
 const MAX_JSON_COLUMNS: usize = 1024;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct ConfigVersion {
+pub(crate) struct ConfigVersion {
     major: u64,
     minor: u64,
 }
 
 impl ConfigVersion {
-    const fn new(major: u64, minor: u64) -> Self {
+    pub(crate) const fn new(major: u64, minor: u64) -> Self {
         Self { major, minor }
     }
 
-    fn parse(raw: &str) -> FloeResult<Self> {
+    pub(crate) fn parse(raw: &str) -> FloeResult<Self> {
         let (major, minor) = raw.split_once('.').ok_or_else(|| {
             FloeError::config(format!(
                 "root.version={raw} is invalid; expected numeric major.minor format like \"0.1\""
