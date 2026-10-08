@@ -25,6 +25,7 @@ from .manifest import (
     ManifestExecution,
     ManifestEntity,
     ManifestRunnerDefinition,
+    _fsspec_storage_options,
     load_manifest,
     resolve_config_uri,
     resolve_entity_runner,
@@ -389,7 +390,7 @@ def _fsspec_read_text(uri: str) -> str:
             "reading remote report URIs requires fsspec; "
             "install it with: pip install fsspec"
         ) from exc
-    with fsspec.open(uri, "r", encoding="utf-8") as f:
+    with fsspec.open(uri, "r", encoding="utf-8", **_fsspec_storage_options(uri)) as f:
         return f.read()
 
 

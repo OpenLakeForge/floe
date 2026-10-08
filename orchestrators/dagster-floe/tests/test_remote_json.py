@@ -63,7 +63,9 @@ def _make_fsspec_mock(payload_text: str) -> MagicMock:
     return mock_fsspec
 
 
-def test_load_json_document_s3_uri_calls_fsspec() -> None:
+def test_load_json_document_s3_uri_calls_fsspec(monkeypatch) -> None:
+    for name in ("AWS_ENDPOINT_URL_S3", "AWS_ENDPOINT_URL", "AWS_S3_FORCE_PATH_STYLE"):
+        monkeypatch.delenv(name, raising=False)
     payload = {"entities": []}
     mock_fsspec = _make_fsspec_mock(json.dumps(payload))
     with patch.dict(sys.modules, {"fsspec": mock_fsspec}):
@@ -76,6 +78,37 @@ def test_load_json_document_s3_uri_calls_fsspec() -> None:
         "s3://my-bucket/floe/reports/run.json", "r", encoding="utf-8"
     )
     assert result == payload
+
+
+def test_load_json_document_s3_uri_honors_endpoint_env(monkeypatch) -> None:
+    monkeypatch.setenv("AWS_ENDPOINT_URL", "http://fallback:9000")
+    monkeypatch.setenv("AWS_ENDPOINT_URL_S3", "http://seaweedfs:8333")
+    monkeypatch.setenv("AWS_S3_FORCE_PATH_STYLE", "true")
+    mock_fsspec = _make_fsspec_mock("{}")
+    with patch.dict(sys.modules, {"fsspec": mock_fsspec}):
+        _read_json_text("s3://bucket/report.json", "s3://bucket/config.yml")
+    mock_fsspec.open.assert_called_once_with(
+        "s3://bucket/report.json",
+        "r",
+        encoding="utf-8",
+        client_kwargs={"endpoint_url": "http://seaweedfs:8333"},
+        config_kwargs={"s3": {"addressing_style": "path"}},
+    )
+
+
+def test_load_json_document_s3_uri_endpoint_fallback_without_path_style(monkeypatch) -> None:
+    monkeypatch.delenv("AWS_ENDPOINT_URL_S3", raising=False)
+    monkeypatch.delenv("AWS_S3_FORCE_PATH_STYLE", raising=False)
+    monkeypatch.setenv("AWS_ENDPOINT_URL", "http://minio:9000")
+    mock_fsspec = _make_fsspec_mock("{}")
+    with patch.dict(sys.modules, {"fsspec": mock_fsspec}):
+        _read_json_text("s3://bucket/report.json", "s3://bucket/config.yml")
+    mock_fsspec.open.assert_called_once_with(
+        "s3://bucket/report.json",
+        "r",
+        encoding="utf-8",
+        client_kwargs={"endpoint_url": "http://minio:9000"},
+    )
 
 
 def test_load_json_document_gs_uri_calls_fsspec() -> None:

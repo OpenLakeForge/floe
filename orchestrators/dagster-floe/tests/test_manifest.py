@@ -236,6 +236,33 @@ def test_load_manifest_remote_uri_uses_fsspec(monkeypatch) -> None:
     assert result.manifest_id
 
 
+def test_load_manifest_remote_uri_honors_endpoint_env(monkeypatch) -> None:
+    import io
+    import types
+
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    calls = []
+
+    def fake_open(uri, *args, **kwargs):
+        calls.append(kwargs)
+        return io.StringIO(fixture.read_text(encoding="utf-8"))
+
+    fake_fsspec = types.ModuleType("fsspec")
+    fake_fsspec.open = fake_open
+    monkeypatch.setitem(__import__("sys").modules, "fsspec", fake_fsspec)
+    monkeypatch.setenv("AWS_ENDPOINT_URL_S3", "http://seaweedfs:8333")
+    monkeypatch.setenv("AWS_S3_FORCE_PATH_STYLE", "1")
+
+    load_manifest("s3://bucket/test/manifest.json")
+    assert calls == [
+        {
+            "encoding": "utf-8",
+            "client_kwargs": {"endpoint_url": "http://seaweedfs:8333"},
+            "config_kwargs": {"s3": {"addressing_style": "path"}},
+        }
+    ]
+
+
 # ---------------------------------------------------------------------------
 # ManifestOrchestration parsing
 # ---------------------------------------------------------------------------

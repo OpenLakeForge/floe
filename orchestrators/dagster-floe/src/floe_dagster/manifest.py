@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from importlib import resources
 import json
+import os
 from pathlib import Path
 from typing import Any
 import posixpath
@@ -264,6 +265,19 @@ def _is_remote_uri(path: str) -> bool:
     return path.startswith(("s3://", "gs://", "abfs://"))
 
 
+def _fsspec_storage_options(uri: str) -> dict[str, Any]:
+    """S3-compatible endpoint/path-style options, matching floe-core's env handling."""
+    if not uri.startswith("s3://"):
+        return {}
+    options: dict[str, Any] = {}
+    endpoint = os.environ.get("AWS_ENDPOINT_URL_S3") or os.environ.get("AWS_ENDPOINT_URL")
+    if endpoint:
+        options["client_kwargs"] = {"endpoint_url": endpoint}
+    if os.environ.get("AWS_S3_FORCE_PATH_STYLE", "").strip().lower() in ("1", "true"):
+        options["config_kwargs"] = {"s3": {"addressing_style": "path"}}
+    return options
+
+
 def _read_remote_text(uri: str) -> str:
     try:
         import fsspec
@@ -272,7 +286,7 @@ def _read_remote_text(uri: str) -> str:
             "reading remote manifest URIs requires fsspec; "
             "install it with: pip install fsspec"
         ) from exc
-    with fsspec.open(uri, "r", encoding="utf-8") as f:
+    with fsspec.open(uri, "r", encoding="utf-8", **_fsspec_storage_options(uri)) as f:
         return f.read()
 
 
