@@ -477,7 +477,12 @@ fn parse_domains(
             yaml_hash(value, "domains.defaults")?;
             defaults.insert(name.clone(), without_entity_only_fields(value));
         }
-        let incoming_dir = get_string(hash, "incoming_dir", "domains")?;
+        let incoming_dir = opt_string(hash, "incoming_dir", "domains")?;
+        if incoming_dir.is_none()
+            && ConfigVersion::parse(version)? < MIN_DOMAIN_DEFAULTS_CONFIG_VERSION
+        {
+            return Err(FloeError::config("missing required field domains.incoming_dir").into());
+        }
         domains.push(DomainConfig {
             name,
             incoming_dir,

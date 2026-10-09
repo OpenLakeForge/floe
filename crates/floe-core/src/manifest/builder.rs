@@ -440,7 +440,7 @@ fn build_common_manifest(
                 incoming_dir: domain
                     .resolved_incoming_dir
                     .clone()
-                    .unwrap_or_else(|| domain.incoming_dir.clone()),
+                    .or_else(|| domain.incoming_dir.clone()),
             })
             .collect(),
         execution: default_execution_contract(options, profile),

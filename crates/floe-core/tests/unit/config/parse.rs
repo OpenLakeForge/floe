@@ -133,6 +133,65 @@ entities:
 }
 
 #[test]
+fn parse_config_allows_v03_domain_without_incoming_dir() {
+    let yaml = r#"
+version: "0.3"
+domains:
+  - name: sales
+entities:
+  - name: orders
+    domain: sales
+    source:
+      format: csv
+      path: /tmp/input.csv
+    sink:
+      accepted:
+        format: parquet
+        path: /tmp/output
+    policy:
+      severity: warn
+    schema:
+      columns:
+        - name: id
+          type: string
+"#;
+    let config = load_config(&write_temp_config(yaml)).expect("parse config");
+
+    assert_eq!(config.domains.len(), 1);
+    assert_eq!(config.domains[0].name, "sales");
+}
+
+#[test]
+fn parse_config_requires_domain_incoming_dir_in_v02() {
+    let yaml = r#"
+version: "0.2"
+domains:
+  - name: sales
+entities:
+  - name: orders
+    source:
+      format: csv
+      path: /tmp/input.csv
+    sink:
+      accepted:
+        format: parquet
+        path: /tmp/output
+    policy:
+      severity: warn
+    schema:
+      columns:
+        - name: id
+          type: string
+"#;
+
+    let err = load_config(&write_temp_config(yaml)).expect_err("incoming_dir required in v0.2");
+    assert_eq!(
+        err.to_string(),
+        "missing required field domains.incoming_dir"
+    );
+}
+
+#[test]
 fn parse_config_supports_sink_level_append_write_mode() {
     let yaml = r#"
 version: "0.1"
