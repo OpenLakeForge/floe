@@ -12,6 +12,10 @@ All notable changes to Floe are documented in this file.
   files are listed in the new manifest field `config_files: [{path, sha256}]` (paths relative
   to the root config's directory). Single-file configs keep their checksum and emit no
   `config_files`.
+- **Config path templates expose `{{entity.name}}` and `{{domain.name}}` (#502).** Domain
+  defaults can build a separate sink path for each entity.
+- **Fix `include.domains` for Windows UNC project paths (#526).** Verbatim UNC paths such as
+  `\\?\UNC\server\share\project` now resolve relative include patterns from the network share.
 
 ## airflow-floe (unreleased)
 

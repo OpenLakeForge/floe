@@ -60,6 +60,7 @@ pub fn apply_templates_with_vars(
 
     for entity in config.entities.iter_mut() {
         let mut context_vars = vars.clone();
+        context_vars.insert("entity.name".to_string(), entity.name.clone());
         if let Some(domain_name) = entity.domain.as_ref() {
             let incoming_dir = domain_lookup.get(domain_name).ok_or_else(|| {
                 FloeError::config(format!(
@@ -72,6 +73,7 @@ pub fn apply_templates_with_vars(
             } else {
                 context_vars.remove("domain.incoming_dir");
             }
+            context_vars.insert("domain.name".to_string(), domain_name.clone());
         }
 
         entity.source.path = replace_placeholders(
