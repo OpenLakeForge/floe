@@ -27,6 +27,15 @@ use crate::FloeResult;
 
 const MIN_DOMAIN_DEFAULTS_CONFIG_VERSION: ConfigVersion = ConfigVersion::new(0, 3);
 const MIN_INCLUDE_CONFIG_VERSION: ConfigVersion = ConfigVersion::new(0, 3);
+const MIN_SOURCES_CONFIG_VERSION: ConfigVersion = ConfigVersion::new(0, 3);
+const SOURCE_KEYS: &[&str] = &[
+    "format",
+    "path",
+    "storage",
+    "filesystem",
+    "options",
+    "cast_mode",
+];
 
 pub(crate) fn parse_config(path: &Path) -> FloeResult<RootConfig> {
     parse_config_with_vars(path, &std::collections::HashMap::new())
@@ -224,6 +233,7 @@ fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
             "catalogs",
             "env",
             "domains",
+            "sources",
             "report",
             "lineage",
             "entities",
@@ -262,6 +272,11 @@ fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
         None => (Vec::new(), HashMap::new()),
     };
 
+    let sources = match hash_get(root, "sources") {
+        Some(value) => parse_sources(value, &version)?,
+        None => Hash::new(),
+    };
+
     let report = match hash_get(root, "report") {
         Some(value) => Some(parse_report_config(value)?),
         None => Some(ReportConfig {
@@ -278,12 +293,24 @@ fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
     let mut entities = Vec::with_capacity(entities_yaml.len());
     for (index, entity_yaml) in entities_yaml.iter().enumerate() {
         let name_hint = entity_name_hint(entity_yaml);
-        let merged = entity_domain_hint(entity_yaml)
-            .and_then(|domain| domain_defaults.get(&domain))
-            .map(|defaults| merge_yaml(defaults, entity_yaml));
-        let entity = parse_entity(merged.as_ref().unwrap_or(entity_yaml)).map_err(|err| {
-            FloeError::config(format_entity_error(index, name_hint, err.as_ref()))
-        })?;
+        let entity = resolve_source_ref(entity_yaml, &sources)
+            .and_then(|resolved| {
+                let (resolved, resource) = resolved.unzip();
+                let entity_yaml = resolved.as_ref().unwrap_or(entity_yaml);
+                let mut merged = entity_domain_hint(entity_yaml)
+                    .and_then(|domain| domain_defaults.get(&domain))
+                    .map_or_else(
+                        || entity_yaml.clone(),
+                        |defaults| merge_yaml(defaults, entity_yaml),
+                    );
+                if let Some(resource) = resource {
+                    replace_resource_in_source_path(&mut merged, &resource);
+                }
+                parse_entity(&merged)
+            })
+            .map_err(|err| {
+                FloeError::config(format_entity_error(index, name_hint, err.as_ref()))
+            })?;
         entities.push(entity);
     }
     if super::qualifies_entity_ids(&version) {
@@ -460,6 +487,94 @@ fn parse_domains(
     Ok((domains, defaults))
 }
 
+fn parse_sources(value: &Yaml, version: &str) -> FloeResult<Hash> {
+    if ConfigVersion::parse(version)? < MIN_SOURCES_CONFIG_VERSION {
+        return Err(
+            FloeError::config("root.sources requires root.version >= \"0.3\"".to_string()).into(),
+        );
+    }
+    let mut sources = Hash::new();
+    for item in yaml_array(value, "sources")? {
+        let mut hash = yaml_hash(item, "sources")?.clone();
+        validate_known_keys(&hash, "sources", &[&["name"], SOURCE_KEYS].concat())?;
+        let name = get_string(&hash, "name", "sources")?;
+        hash.remove(&Yaml::String("name".to_string()));
+        if sources
+            .insert(Yaml::String(name.clone()), Yaml::Hash(hash))
+            .is_some()
+        {
+            return Err(FloeError::config(format!("duplicate source name {name}")).into());
+        }
+    }
+    Ok(sources)
+}
+
+/// Replaces an entity's `source: { ref, resource, ... }` with the referenced
+/// source overlaid by the entity's own `source` fields, and returns the resource.
+fn resolve_source_ref(entity: &Yaml, sources: &Hash) -> FloeResult<Option<(Yaml, String)>> {
+    let Some(Yaml::Hash(source)) = entity.as_hash().and_then(|hash| hash_get(hash, "source"))
+    else {
+        return Ok(None);
+    };
+    let mut overlay = source.clone();
+    let Some(name) = overlay.remove(&Yaml::String("ref".to_string())) else {
+        return Ok(None);
+    };
+    let name = yaml_string(&name, "source.ref")?;
+    let base = sources.get(&Yaml::String(name.clone())).ok_or_else(|| {
+        let available: Vec<&str> = sources.keys().filter_map(Yaml::as_str).collect();
+        FloeError::config(format!(
+            "source.ref={name} is not a declared source (available: {})",
+            available.join(", ")
+        ))
+    })?;
+    let resource = match overlay.remove(&Yaml::String("resource".to_string())) {
+        Some(value) => yaml_string(&value, "source.resource")?,
+        None => entity_name_hint(entity).unwrap_or_default(),
+    };
+    let mut entity = entity.clone();
+    if let Yaml::Hash(hash) = &mut entity {
+        hash.insert(
+            Yaml::String("source".to_string()),
+            merge_yaml(base, &Yaml::Hash(overlay)),
+        );
+    }
+    Ok(Some((entity, resource)))
+}
+
+fn replace_resource_in_source_path(entity: &mut Yaml, resource: &str) {
+    let Yaml::Hash(entity) = entity else {
+        return;
+    };
+    if let Some(Yaml::Hash(source)) = entity.get_mut(&Yaml::String("source".to_string())) {
+        if let Some(Yaml::String(path)) = source.get_mut(&Yaml::String("path".to_string())) {
+            *path = replace_resource_placeholder(path, resource);
+        }
+    }
+}
+
+/// `{{resource}}` is entity-specific, so it is substituted here; every other
+/// placeholder is left for the template pass.
+fn replace_resource_placeholder(path: &str, resource: &str) -> String {
+    let mut result = String::new();
+    let mut rest = path;
+    while let Some(start) = rest.find("{{") {
+        let Some(len) = rest[start..].find("}}") else {
+            break;
+        };
+        let end = start + len + 2;
+        if rest[start + 2..end - 2].trim() == "resource" {
+            result.push_str(&rest[..start]);
+            result.push_str(resource);
+        } else {
+            result.push_str(&rest[..end]);
+        }
+        rest = &rest[end..];
+    }
+    result.push_str(rest);
+    result
+}
+
 fn without_entity_only_fields(defaults: &Yaml) -> Yaml {
     let mut defaults = defaults.clone();
     if let Yaml::Hash(root) = &mut defaults {
@@ -497,18 +612,7 @@ fn parse_incremental_mode(value: &str, ctx: &str) -> FloeResult<IncrementalMode>
 
 fn parse_source(value: &Yaml) -> FloeResult<SourceConfig> {
     let hash = yaml_hash(value, "source")?;
-    validate_known_keys(
-        hash,
-        "source",
-        &[
-            "format",
-            "path",
-            "storage",
-            "filesystem",
-            "options",
-            "cast_mode",
-        ],
-    )?;
+    validate_known_keys(hash, "source", SOURCE_KEYS)?;
     let format = get_string(hash, "format", "source")?;
     let defaults = SourceOptions::defaults_for_format(format.as_str());
     let options = match hash_get(hash, "options") {
