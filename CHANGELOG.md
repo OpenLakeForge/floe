@@ -6,6 +6,8 @@ All notable changes to Floe are documented in this file.
 
 - **Config 0.3 domains may omit `incoming_dir` (#500).** Config 0.2 still requires it;
   manifests omit the field for domains without an incoming directory.
+- **Fix `include.domains` for Windows UNC project paths (#526).** Verbatim UNC paths such as
+  `\\?\UNC\server\share\project` now resolve relative include patterns from the network share.
 
 ## airflow-floe (unreleased)
 
