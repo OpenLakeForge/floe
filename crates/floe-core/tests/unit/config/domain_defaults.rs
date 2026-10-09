@@ -134,3 +134,16 @@ fn domain_defaults_require_config_version_0_3() {
         "domains.defaults requires root.version >= \"0.3\""
     );
 }
+
+#[test]
+fn domain_default_path_resolves_entity_and_domain_name() {
+    let entity = format!(
+        "{ORDERS_SOURCE}    schema:\n      columns:\n        - name: \"order_id\"\n          type: \"string\"\n"
+    );
+    let config =
+        config_with("0.3", &entity).replace("/tmp/out/default", "{{domain.name}}/{{entity.name}}");
+    let path = write_temp_config(&config);
+    let config = load_config(&path).expect("parse config");
+
+    assert_eq!(config.entities[0].sink.accepted.path, "sales/orders");
+}

@@ -575,8 +575,13 @@ syntax. Variables are resolved in this order (lowest to highest precedence):
 1) `env.file` variables (YAML map)
 2) `env.vars` inline variables (override file values)
 
+In entity path fields (`source.path`, `sink.accepted.path`, `sink.rejected.path`,
+`sink.archive.path`), `{{entity.name}}` resolves to the entity's own name, so
+domain `defaults` can set per-entity paths such as `"sales/{{entity.name}}"`.
+
 If an entity sets `domain: "<name>"`, the following is also available:
 
 - `{{domain.incoming_dir}}` resolved from the matching domain entry.
+- `{{domain.name}}` the domain name.
 
 Unresolved placeholders (or unknown domains) are configuration errors.
