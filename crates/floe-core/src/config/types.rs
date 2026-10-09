@@ -57,7 +57,7 @@ pub struct EnvConfig {
 #[derive(Debug, Clone)]
 pub struct DomainConfig {
     pub name: String,
-    pub incoming_dir: String,
+    pub incoming_dir: Option<String>,
     pub resolved_incoming_dir: Option<String>,
 }
 

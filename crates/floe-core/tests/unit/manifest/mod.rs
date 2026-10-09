@@ -46,6 +46,32 @@ fn manifest_uses_local_uri_for_local_config() {
 }
 
 #[test]
+fn manifest_omits_domain_incoming_dir_when_unset() {
+    let temp_dir = tempfile::TempDir::new().expect("temp dir");
+    let config_path = temp_dir.path().join("config.yml");
+    std::fs::write(
+        &config_path,
+        "version: \"0.3\"\ndomains:\n  - name: sales\nentities:\n  - name: orders\n    domain: sales\n    source:\n      format: csv\n      path: ./in/orders.csv\n    sink:\n      accepted:\n        format: parquet\n        path: ./out/orders\n    policy:\n      severity: warn\n    schema:\n      columns:\n        - name: id\n          type: string\n",
+    )
+    .expect("write config");
+
+    let config_location = resolve_config_location(config_path.to_str().expect("utf8"))
+        .expect("resolve config location");
+    let config = load_config(&config_location.path).expect("load config");
+    let payload = build_common_manifest_json(
+        &config_location,
+        &config,
+        &[],
+        None,
+        &ManifestOptions::default(),
+    )
+    .expect("build manifest");
+    let value: Value = serde_json::from_str(&payload).expect("manifest is valid json");
+
+    assert_eq!(value["domains"], serde_json::json!([{"name": "sales"}]));
+}
+
+#[test]
 fn manifest_cli_config_uri_is_host_absolute_canonical() {
     // Under `cli` runtime every local path is recorded host-absolute and canonicalized: a
     // lexical `..` bounce in the typed path is collapsed, so config_uri is a clean absolute

@@ -2,6 +2,11 @@
 
 All notable changes to Floe are documented in this file.
 
+## Floe core (unreleased)
+
+- **Config 0.3 domains may omit `incoming_dir` (#500).** Config 0.2 still requires it;
+  manifests omit the field for domains without an incoming directory.
+
 ## airflow-floe (unreleased)
 
 - **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest

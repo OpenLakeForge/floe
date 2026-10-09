@@ -287,6 +287,43 @@ entities:
 }
 
 #[test]
+fn absent_domain_incoming_dir_cannot_be_supplied_by_env_var() {
+    let root = temp_dir("floe-domain-without-incoming-dir");
+    let config_yaml = format!(
+        r#"version: "0.3"
+env:
+  vars:
+    domain.incoming_dir: /env/fallback
+domains:
+  - name: sales
+entities:
+  - name: orders
+    domain: sales
+    source:
+      format: csv
+      path: "{{{{domain.incoming_dir}}}}/orders.csv"
+    sink:
+      accepted:
+        format: parquet
+        path: "{root}/out"
+    policy:
+      severity: warn
+    schema:
+      columns:
+        - name: id
+          type: string
+"#,
+        root = root.display(),
+    );
+
+    let err = load_config(&write_config(&root, &config_yaml)).expect_err("missing domain dir");
+    assert_eq!(
+        err.to_string(),
+        "entity.name=orders entities.source.path references unknown variable domain.incoming_dir"
+    );
+}
+
+#[test]
 fn unresolved_placeholder_errors_with_entity_context() {
     let root = temp_dir("floe-unresolved");
     let config_yaml = format!(
