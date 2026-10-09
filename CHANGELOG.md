@@ -2,6 +2,15 @@
 
 All notable changes to Floe are documented in this file.
 
+## floe (unreleased)
+
+- **Manifest `config_checksum` covers every file of an `include.domains` project (#509).**
+  For a multi-file config the checksum is SHA-256 over the sorted `path\0sha256\n` lines of
+  every file read, so editing any `_domain.yml` or entity file changes `manifest_id`. The
+  files are listed in the new manifest field `config_files: [{path, sha256}]` (paths relative
+  to the root config's directory). Single-file configs keep their checksum and emit no
+  `config_files`.
+
 ## airflow-floe (unreleased)
 
 - **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest

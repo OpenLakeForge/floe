@@ -1316,3 +1316,80 @@ entities:
         "path should equal the filesystem path (local:// prefix stripped) when path_mode=resolved-uri"
     );
 }
+
+fn write_project_file(dir: &std::path::Path, rel: &str, contents: &str) {
+    let path = dir.join(rel);
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+    std::fs::write(path, contents).expect("write");
+}
+
+fn project_manifest(config_path: &std::path::Path) -> String {
+    let loc = resolve_config_location(config_path.to_str().expect("utf8")).expect("resolve");
+    let config = load_config(&loc.path).expect("load config");
+    let opts = ManifestOptions {
+        deterministic: true,
+        ..ManifestOptions::default()
+    };
+    build_common_manifest_json(&loc, &config, &[], None, &opts).expect("manifest")
+}
+
+const PROJECT_ENTITY: &str = "name: orders\nsource:\n  format: csv\n  path: /tmp/in/orders\nsink:\n  accepted:\n    format: parquet\n    path: /tmp/out/orders\npolicy:\n  severity: warn\nschema:\n  columns:\n    - name: id\n      type: string\n";
+
+#[test]
+fn manifest_id_covers_every_included_config_file() {
+    let temp_dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = temp_dir.path();
+    let config_path = dir.join("floe.yml");
+    write_project_file(
+        dir,
+        "floe.yml",
+        "version: \"0.3\"\ninclude:\n  domains: [\"silver/*/_domain.yml\"]\n",
+    );
+    write_project_file(
+        dir,
+        "silver/sales/_domain.yml",
+        "name: sales\nincoming_dir: /tmp/incoming/sales\n",
+    );
+    write_project_file(dir, "silver/sales/orders.yml", PROJECT_ENTITY);
+
+    let before = project_manifest(&config_path);
+    assert_eq!(before, project_manifest(&config_path));
+    let value: Value = serde_json::from_str(&before).expect("valid json");
+    let paths: Vec<&str> = value["config_files"]
+        .as_array()
+        .expect("config_files")
+        .iter()
+        .map(|file| file["path"].as_str().expect("path"))
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "floe.yml",
+            "silver/sales/_domain.yml",
+            "silver/sales/orders.yml"
+        ]
+    );
+
+    write_project_file(
+        dir,
+        "silver/sales/orders.yml",
+        &PROJECT_ENTITY.replace("type: string", "type: int64"),
+    );
+    let after: Value = serde_json::from_str(&project_manifest(&config_path)).expect("valid json");
+    assert_ne!(after["manifest_id"], value["manifest_id"]);
+    assert_ne!(after["config_checksum"], value["config_checksum"]);
+}
+
+#[test]
+fn single_file_manifest_keeps_file_checksum_and_omits_config_files() {
+    let config_path = std::fs::canonicalize(repo_root().join("example/config.yml"))
+        .expect("canonicalize config path");
+    let value: Value = serde_json::from_str(&project_manifest(&config_path)).expect("valid json");
+    let bytes = std::fs::read(&config_path).expect("read config");
+    use sha2::Digest;
+    assert_eq!(
+        value["config_checksum"],
+        format!("sha256:{:x}", sha2::Sha256::digest(&bytes))
+    );
+    assert!(value.get("config_files").is_none());
+}

@@ -5,10 +5,11 @@ use sha2::{Digest, Sha256};
 
 use crate::config::{ConfigLocation, EntityConfig, RootConfig, SourceOptions, StorageResolver};
 use crate::manifest::model::{
-    CommonManifest, ManifestArchiveTarget, ManifestColumnDef, ManifestDomain, ManifestEntity,
-    ManifestEntitySchema, ManifestExecution, ManifestExecutionDefaults, ManifestOrchestration,
-    ManifestResultContract, ManifestRunnerAuth, ManifestRunnerDefinition, ManifestRunnerResources,
-    ManifestRunnerSecret, ManifestRunners, ManifestSinkTarget, ManifestSinks, ManifestSource,
+    CommonManifest, ManifestArchiveTarget, ManifestColumnDef, ManifestConfigFile, ManifestDomain,
+    ManifestEntity, ManifestEntitySchema, ManifestExecution, ManifestExecutionDefaults,
+    ManifestOrchestration, ManifestResultContract, ManifestRunnerAuth, ManifestRunnerDefinition,
+    ManifestRunnerResources, ManifestRunnerSecret, ManifestRunners, ManifestSinkTarget,
+    ManifestSinks, ManifestSource,
 };
 use crate::profile::ProfileConfig;
 use crate::FloeResult;
@@ -384,9 +385,19 @@ fn build_common_manifest(
         &config_location.path,
         options.runtime_env,
     );
-    let config_checksum = std::fs::read(&config_location.path)
-        .ok()
-        .map(|b| sha256_hex(&b));
+    let config_files = manifest_config_files(&config.config_files);
+    let config_checksum = match &config_files {
+        Some(files) => Some(sha256_hex(
+            files
+                .iter()
+                .map(|file| format!("{}\0{}\n", file.path, file.sha256))
+                .collect::<String>()
+                .as_bytes(),
+        )),
+        None => std::fs::read(&config_location.path)
+            .ok()
+            .map(|b| sha256_hex(&b)),
+    };
 
     let profile_checksum = options
         .profile_path
@@ -429,6 +440,7 @@ fn build_common_manifest(
         work_root: options.runtime_env.manifest_work_root(),
         config_uri,
         config_checksum,
+        config_files,
         profile_uri: options.profile_uri.clone(),
         profile_checksum,
         report_base_uri: report_base.uri,
@@ -541,6 +553,31 @@ fn resolved_uri_to_path(uri: &str) -> String {
     } else {
         uri.to_string()
     }
+}
+
+/// `None` for a single-file config (its checksum stays the plain file digest) or when a
+/// file can no longer be read.
+fn manifest_config_files(files: &[std::path::PathBuf]) -> Option<Vec<ManifestConfigFile>> {
+    let (root, _) = files.split_first().filter(|(_, rest)| !rest.is_empty())?;
+    let root_dir = root.parent().unwrap_or_else(|| std::path::Path::new(""));
+    let mut entries = files
+        .iter()
+        .map(|file| {
+            let relative = file.strip_prefix(root_dir).unwrap_or(file);
+            let path = relative
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
+            let digest = Sha256::digest(std::fs::read(file).ok()?);
+            Some(ManifestConfigFile {
+                path,
+                sha256: format!("{digest:x}"),
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    entries.sort_by(|left, right| left.path.cmp(&right.path));
+    Some(entries)
 }
 
 fn build_manifest_id(config_uri: &str, config_checksum: Option<&str>) -> String {
