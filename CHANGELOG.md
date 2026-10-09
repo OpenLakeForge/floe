@@ -8,6 +8,8 @@ All notable changes to Floe are documented in this file.
   manifests omit the field for domains without an incoming directory.
 - **Config path templates expose `{{entity.name}}` and `{{domain.name}}` (#502).** Domain
   defaults can build a separate sink path for each entity.
+- **Fix `include.domains` for Windows UNC project paths (#526).** Verbatim UNC paths such as
+  `\\?\UNC\server\share\project` now resolve relative include patterns from the network share.
 
 ## airflow-floe (unreleased)
 
