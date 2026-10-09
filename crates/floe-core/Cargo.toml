@@ -59,7 +59,7 @@ reqwest = { version = "0.13", default-features = true, features = ["native-tls-v
 sha2 = "0.10"
 hmac = "0.12"
 hex = "0.4"
-thiserror = "1"
+thiserror = "2"
 
 [dev-dependencies]
 rust_xlsxwriter = "0.95"
