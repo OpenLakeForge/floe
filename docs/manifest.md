@@ -63,7 +63,9 @@ floe manifest generate \
 In deterministic mode:
 
 - `generated_at_ts_ms` is set to `0` — the same inputs always produce byte-identical output.
-- `config_checksum` and `profile_checksum` (SHA-256) trace the exact source files used.
+- `config_checksum` and `profile_checksum` (SHA-256) trace the exact source files used. For a
+  multi-file project (`include.domains`), `config_checksum` is SHA-256 over the sorted
+  `path\0sha256\n` lines of every file read, and those files are listed in `config_files`.
 - `manifest_revision` (SHA-256 of canonical content) provides a stable content fingerprint.
 - Map fields (`exit_codes`, `env`, `definitions`, `tags`) use stable alphabetical key ordering.
 
@@ -137,7 +139,8 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
   "runtime_env": "image",                // runtime target: "image" (/work-absolute) or "cli" (host-absolute)
   "work_root": "/work",                  // present only when runtime_env == "image"
   "config_uri": "local:///work/orders.yml", // absolute config path (/work for image; host path for cli)
-  "config_checksum": "sha256:...",       // SHA-256 of the config file
+  "config_checksum": "sha256:...",       // SHA-256 of the config file (or of the config_files list)
+  "config_files": [{"path": "silver/sales/orders.yml", "sha256": "..."}], // multi-file projects only
   "profile_uri": "local:///work/prod.yml", // profile used at generation time (if any)
   "profile_checksum": "sha256:...",      // SHA-256 of the profile file (if any)
   "report_base_uri": "./report",         // where run reports are written

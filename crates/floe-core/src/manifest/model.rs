@@ -23,6 +23,9 @@ pub struct CommonManifest {
     pub config_uri: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_checksum: Option<String>,
+    /// Every file of a multi-file config, sorted by path; absent for a single file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_files: Option<Vec<ManifestConfigFile>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_uri: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -41,6 +44,13 @@ pub struct CommonManifest {
     /// Lineage configuration from the profile (if a profile was supplied).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lineage: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ManifestConfigFile {
+    /// Relative to the root config's directory, `/`-separated.
+    pub path: String,
+    pub sha256: String,
 }
 
 #[derive(Debug, Serialize)]
