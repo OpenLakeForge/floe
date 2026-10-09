@@ -563,12 +563,7 @@ fn manifest_config_files(files: &[std::path::PathBuf]) -> Option<Vec<ManifestCon
     let mut entries = files
         .iter()
         .map(|file| {
-            let relative = file.strip_prefix(root_dir).unwrap_or(file);
-            let path = relative
-                .components()
-                .map(|part| part.as_os_str().to_string_lossy())
-                .collect::<Vec<_>>()
-                .join("/");
+            let path = relative_config_path(file, root_dir);
             let digest = Sha256::digest(std::fs::read(file).ok()?);
             Some(ManifestConfigFile {
                 path,
@@ -578,6 +573,22 @@ fn manifest_config_files(files: &[std::path::PathBuf]) -> Option<Vec<ManifestCon
         .collect::<Option<Vec<_>>>()?;
     entries.sort_by(|left, right| left.path.cmp(&right.path));
     Some(entries)
+}
+
+fn relative_config_path(file: &std::path::Path, root_dir: &std::path::Path) -> String {
+    // The canonicalized root carries the Windows verbatim prefix; globbed includes do not.
+    let plain = |path: &std::path::Path| {
+        path.to_str()
+            .and_then(|text| text.strip_prefix(r"\\?\"))
+            .map_or_else(|| path.to_path_buf(), std::path::PathBuf::from)
+    };
+    let (file, root_dir) = (plain(file), plain(root_dir));
+    let relative = file.strip_prefix(&root_dir).unwrap_or(&file);
+    relative
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn build_manifest_id(config_uri: &str, config_checksum: Option<&str>) -> String {
@@ -843,4 +854,21 @@ fn now_ts_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::relative_config_path;
+    use std::path::Path;
+
+    #[test]
+    fn relative_config_path_ignores_windows_verbatim_prefix_on_root() {
+        assert_eq!(
+            relative_config_path(
+                Path::new("/proj/silver/sales/orders.yml"),
+                Path::new(r"\\?\/proj")
+            ),
+            "silver/sales/orders.yml"
+        );
+    }
 }
