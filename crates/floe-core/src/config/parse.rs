@@ -216,8 +216,11 @@ fn assemble_includes(
 fn glob_base(dir: &Path) -> String {
     let dir = dir.to_string_lossy();
     // Escaping would turn the `?` of a Windows verbatim prefix into `[?]`.
-    let dir = dir.strip_prefix(r"\\?\").unwrap_or(&dir);
-    glob::Pattern::escape(dir)
+    let dir = dir
+        .strip_prefix(r"\\?\UNC\")
+        .map(|share| format!(r"\\{share}"))
+        .unwrap_or_else(|| dir.strip_prefix(r"\\?\").unwrap_or(&dir).to_owned());
+    glob::Pattern::escape(&dir)
 }
 
 fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
@@ -1474,6 +1477,10 @@ mod tests {
     #[test]
     fn glob_base_strips_windows_verbatim_prefix_and_escapes() {
         assert_eq!(glob_base(Path::new(r"\\?\C:\project")), r"C:\project");
+        assert_eq!(
+            glob_base(Path::new(r"\\?\UNC\server\share\project")),
+            r"\\server\share\project"
+        );
         assert_eq!(glob_base(Path::new("/tmp/a[1]")), "/tmp/a[[]1[]]");
     }
 }
