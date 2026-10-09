@@ -56,7 +56,8 @@ pub struct ManifestConfigFile {
 #[derive(Debug, Serialize)]
 pub struct ManifestDomain {
     pub name: String,
-    pub incoming_dir: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub incoming_dir: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

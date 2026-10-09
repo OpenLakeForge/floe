@@ -394,6 +394,7 @@ fn build_common_manifest(
                 .collect::<String>()
                 .as_bytes(),
         )),
+        None if config.config_files.len() > 1 => None,
         None => std::fs::read(&config_location.path)
             .ok()
             .map(|b| sha256_hex(&b)),
@@ -452,7 +453,7 @@ fn build_common_manifest(
                 incoming_dir: domain
                     .resolved_incoming_dir
                     .clone()
-                    .unwrap_or_else(|| domain.incoming_dir.clone()),
+                    .or_else(|| domain.incoming_dir.clone()),
             })
             .collect(),
         execution: default_execution_contract(options, profile),
@@ -555,15 +556,14 @@ fn resolved_uri_to_path(uri: &str) -> String {
     }
 }
 
-/// `None` for a single-file config (its checksum stays the plain file digest) or when a
-/// file can no longer be read.
+/// `None` for a single-file config, an unreadable file, or a path with an incompatible root.
 fn manifest_config_files(files: &[std::path::PathBuf]) -> Option<Vec<ManifestConfigFile>> {
     let (root, _) = files.split_first().filter(|(_, rest)| !rest.is_empty())?;
     let root_dir = root.parent().unwrap_or_else(|| std::path::Path::new(""));
     let mut entries = files
         .iter()
         .map(|file| {
-            let path = relative_config_path(file, root_dir);
+            let path = relative_config_path(file, root_dir)?;
             let digest = Sha256::digest(std::fs::read(file).ok()?);
             Some(ManifestConfigFile {
                 path,
@@ -575,20 +575,43 @@ fn manifest_config_files(files: &[std::path::PathBuf]) -> Option<Vec<ManifestCon
     Some(entries)
 }
 
-fn relative_config_path(file: &std::path::Path, root_dir: &std::path::Path) -> String {
+fn relative_config_path(file: &std::path::Path, root_dir: &std::path::Path) -> Option<String> {
     // The canonicalized root carries the Windows verbatim prefix; globbed includes do not.
     let plain = |path: &std::path::Path| {
         path.to_str()
-            .and_then(|text| text.strip_prefix(r"\\?\"))
+            .and_then(|text| {
+                text.strip_prefix(r"\\?\UNC\")
+                    .map(|share| format!(r"\\{share}"))
+                    .or_else(|| text.strip_prefix(r"\\?\").map(str::to_owned))
+            })
             .map_or_else(|| path.to_path_buf(), std::path::PathBuf::from)
     };
     let (file, root_dir) = (plain(file), plain(root_dir));
-    let relative = file.strip_prefix(&root_dir).unwrap_or(&file);
-    relative
-        .components()
-        .map(|part| part.as_os_str().to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
+    // shortcut: different drives or shares have no relative path; upgrade when manifests support absolute file URIs.
+    if file.has_root() != root_dir.has_root() {
+        return None;
+    }
+    let file = file.components().collect::<Vec<_>>();
+    let root_dir = root_dir.components().collect::<Vec<_>>();
+    let common = file
+        .iter()
+        .zip(&root_dir)
+        .take_while(|(file, root)| file == root)
+        .count();
+    if common == 0 {
+        return None;
+    }
+    Some(
+        (common..root_dir.len())
+            .map(|_| "..".to_owned())
+            .chain(
+                file[common..]
+                    .iter()
+                    .map(|part| part.as_os_str().to_string_lossy().into_owned()),
+            )
+            .collect::<Vec<_>>()
+            .join("/"),
+    )
 }
 
 fn build_manifest_id(config_uri: &str, config_checksum: Option<&str>) -> String {
@@ -867,8 +890,48 @@ mod tests {
             relative_config_path(
                 Path::new("/proj/silver/sales/orders.yml"),
                 Path::new(r"\\?\/proj")
+            )
+            .as_deref(),
+            Some("silver/sales/orders.yml")
+        );
+    }
+
+    #[test]
+    fn relative_config_path_uses_normal_unc_root_for_included_files() {
+        assert_eq!(
+            relative_config_path(
+                Path::new(r"\\server\share\project/silver/sales/orders.yml"),
+                Path::new(r"\\?\UNC\server\share\project")
+            )
+            .as_deref(),
+            Some("silver/sales/orders.yml")
+        );
+    }
+
+    #[test]
+    fn relative_config_path_handles_files_outside_the_project_directory() {
+        assert_eq!(
+            relative_config_path(
+                Path::new("/tmp/shared/sales/_domain.yml"),
+                Path::new("/tmp/project")
+            )
+            .as_deref(),
+            Some("../shared/sales/_domain.yml")
+        );
+    }
+
+    #[test]
+    fn relative_config_path_rejects_incompatible_roots() {
+        assert_eq!(
+            relative_config_path(Path::new("shared/file.yml"), Path::new("/tmp/project")),
+            None
+        );
+        assert_eq!(
+            relative_config_path(
+                Path::new(r"\\other\share\project/shared/file.yml"),
+                Path::new(r"\\?\UNC\server\share\project")
             ),
-            "silver/sales/orders.yml"
+            None
         );
     }
 }

@@ -2,8 +2,10 @@
 
 All notable changes to Floe are documented in this file.
 
-## floe (unreleased)
+## Floe core (unreleased)
 
+- **Config 0.3 domains may omit `incoming_dir` (#500).** Config 0.2 still requires it;
+  manifests omit the field for domains without an incoming directory.
 - **Manifest `config_checksum` covers every file of an `include.domains` project (#509).**
   For a multi-file config the checksum is SHA-256 over the sorted `path\0sha256\n` lines of
   every file read, so editing any `_domain.yml` or entity file changes `manifest_id`. The
