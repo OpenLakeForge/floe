@@ -114,8 +114,7 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "name",
-          "incoming_dir"
+          "name"
         ],
         "properties": {
           "name": {

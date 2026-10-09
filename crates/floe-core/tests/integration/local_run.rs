@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use floe_core::{run, RunOptions};
+use floe_core::{load_config, run, validate_config_for_tests, RunOptions};
 use polars::prelude::{ParquetReader, SerReader};
 
 fn write_csv(dir: &Path, name: &str, contents: &str) -> PathBuf {
@@ -109,6 +109,65 @@ entities:
     assert!(report.accepted_output.total_bytes_written.is_some());
     assert!(report.accepted_output.avg_file_size_mb.is_some());
     assert!(report.accepted_output.small_files_count.is_some());
+}
+
+#[test]
+fn local_run_accepts_v03_domain_without_incoming_dir() {
+    let temp_dir = tempfile::TempDir::new().expect("temp dir");
+    let root = temp_dir.path();
+    let input_path = write_csv(root, "orders.csv", "id\n1\n");
+    let accepted_dir = root.join("out/accepted");
+    let report_dir = root.join("report");
+    let yaml = format!(
+        r#"version: "0.3"
+domains:
+  - name: sales
+entities:
+  - name: orders
+    domain: sales
+    source:
+      format: csv
+      path: "{input_path}"
+    sink:
+      accepted:
+        format: parquet
+        path: "{accepted_dir}"
+    policy:
+      severity: warn
+    schema:
+      columns:
+        - name: id
+          type: string
+report:
+  path: "{report_dir}"
+"#,
+        input_path = input_path.display(),
+        accepted_dir = accepted_dir.display(),
+        report_dir = report_dir.display(),
+    );
+    let config_path = write_config(root, &yaml);
+    let config = load_config(&config_path).expect("load config");
+    validate_config_for_tests(&config).expect("validate config");
+
+    let outcome = run(
+        &config_path,
+        RunOptions {
+            profile: None,
+            run_id: Some("v03-domain".to_string()),
+            entities: Vec::new(),
+            dry_run: false,
+            full_refresh: false,
+        },
+    )
+    .expect("run config");
+
+    assert_eq!(
+        outcome.summary.run.status,
+        floe_core::report::RunStatus::Success
+    );
+    assert_eq!(outcome.summary.results.accepted_total, 1);
+    assert_eq!(outcome.summary.results.rejected_total, 0);
+    assert!(accepted_dir.exists());
 }
 
 #[test]

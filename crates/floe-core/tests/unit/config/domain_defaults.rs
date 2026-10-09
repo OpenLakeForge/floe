@@ -140,8 +140,9 @@ fn domain_default_path_resolves_entity_and_domain_name() {
     let entity = format!(
         "{ORDERS_SOURCE}    schema:\n      columns:\n        - name: \"order_id\"\n          type: \"string\"\n"
     );
-    let config =
-        config_with("0.3", &entity).replace("/tmp/out/default", "{{domain.name}}/{{entity.name}}");
+    let config = config_with("0.3", &entity)
+        .replace("    incoming_dir: \"/tmp/incoming/sales\"\n", "")
+        .replace("/tmp/out/default", "{{domain.name}}/{{entity.name}}");
     let path = write_temp_config(&config);
     let config = load_config(&path).expect("parse config");
 

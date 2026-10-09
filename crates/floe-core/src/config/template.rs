@@ -17,9 +17,14 @@ pub fn apply_templates_with_vars(
     let vars = build_env_vars(config_dir, config.env.as_ref(), profile_vars)?;
     let mut domain_lookup = HashMap::new();
     for domain in config.domains.iter_mut() {
-        let resolved =
-            replace_placeholders(&domain.incoming_dir, &vars, "domains.incoming_dir", None)?;
-        domain.resolved_incoming_dir = Some(resolved.clone());
+        let resolved = domain
+            .incoming_dir
+            .as_ref()
+            .map(|incoming_dir| {
+                replace_placeholders(incoming_dir, &vars, "domains.incoming_dir", None)
+            })
+            .transpose()?;
+        domain.resolved_incoming_dir = resolved.clone();
         if domain_lookup
             .insert(domain.name.clone(), resolved)
             .is_some()
@@ -63,7 +68,11 @@ pub fn apply_templates_with_vars(
                     entity.name, domain_name
                 ))
             })?;
-            context_vars.insert("domain.incoming_dir".to_string(), incoming_dir.clone());
+            if let Some(incoming_dir) = incoming_dir {
+                context_vars.insert("domain.incoming_dir".to_string(), incoming_dir.clone());
+            } else {
+                context_vars.remove("domain.incoming_dir");
+            }
             context_vars.insert("domain.name".to_string(), domain_name.clone());
         }
 
