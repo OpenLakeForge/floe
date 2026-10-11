@@ -204,6 +204,10 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
 
 The full JSON Schema for the manifest format is at [`orchestrators/schemas/floe.manifest.v1.json`](../orchestrators/schemas/floe.manifest.v1.json).
 
+When an entity uses a named config source, its manifest `source` includes the source name in
+`ref` and the effective `resource` value (the entity name when `resource` is omitted). Inline
+sources omit both fields.
+
 ---
 
 ## The orchestrator flow

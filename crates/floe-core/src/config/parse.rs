@@ -298,18 +298,25 @@ fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
         let name_hint = entity_name_hint(entity_yaml);
         let entity = resolve_source_ref(entity_yaml, &sources)
             .and_then(|resolved| {
-                let (resolved, resource) = resolved.unzip();
-                let entity_yaml = resolved.as_ref().unwrap_or(entity_yaml);
-                let mut merged = entity_domain_hint(entity_yaml)
+                let (entity_yaml, metadata) = match resolved {
+                    Some((yaml, source_ref, resource)) => (yaml, Some((source_ref, resource))),
+                    None => (entity_yaml.clone(), None),
+                };
+                let mut merged = entity_domain_hint(&entity_yaml)
                     .and_then(|domain| domain_defaults.get(&domain))
                     .map_or_else(
                         || entity_yaml.clone(),
-                        |defaults| merge_yaml(defaults, entity_yaml),
+                        |defaults| merge_yaml(defaults, &entity_yaml),
                     );
-                if let Some(resource) = resource {
-                    replace_resource_in_source_path(&mut merged, &resource);
+                if let Some((_, resource)) = &metadata {
+                    replace_resource_in_source_path(&mut merged, resource);
                 }
-                parse_entity(&merged)
+                let mut entity = parse_entity(&merged)?;
+                if let Some((source_ref, resource)) = metadata {
+                    entity.source.source_ref = Some(source_ref);
+                    entity.source.resource = Some(resource);
+                }
+                Ok(entity)
             })
             .map_err(|err| {
                 FloeError::config(format_entity_error(index, name_hint, err.as_ref()))
@@ -519,7 +526,7 @@ fn parse_sources(value: &Yaml, version: &str) -> FloeResult<Hash> {
 
 /// Replaces an entity's `source: { ref, resource, ... }` with the referenced
 /// source overlaid by the entity's own `source` fields, and returns the resource.
-fn resolve_source_ref(entity: &Yaml, sources: &Hash) -> FloeResult<Option<(Yaml, String)>> {
+fn resolve_source_ref(entity: &Yaml, sources: &Hash) -> FloeResult<Option<(Yaml, String, String)>> {
     let Some(Yaml::Hash(source)) = entity.as_hash().and_then(|hash| hash_get(hash, "source"))
     else {
         return Ok(None);
@@ -547,7 +554,7 @@ fn resolve_source_ref(entity: &Yaml, sources: &Hash) -> FloeResult<Option<(Yaml,
             merge_yaml(base, &Yaml::Hash(overlay)),
         );
     }
-    Ok(Some((entity, resource)))
+    Ok(Some((entity, name, resource)))
 }
 
 fn replace_resource_in_source_path(entity: &mut Yaml, resource: &str) {
@@ -643,6 +650,8 @@ fn parse_source(value: &Yaml) -> FloeResult<SourceConfig> {
         storage: storage.or(filesystem),
         options,
         cast_mode: opt_string(hash, "cast_mode", "source")?.or(Some("strict".to_string())),
+        source_ref: None,
+        resource: None,
     })
 }
 
