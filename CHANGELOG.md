@@ -4,6 +4,9 @@ All notable changes to Floe are documented in this file.
 
 ## Floe core (unreleased)
 
+- **Runnable standalone and multi-file project examples (#507).** `example/standalone/`
+  demonstrates inline source and domain config; `example/project/` demonstrates named sources,
+  source references, domain defaults, and sibling domain/entity files.
 - **Generated manifests retain source references (#504).** Referenced entities include
   `source.ref` and the effective `source.resource`; inline sources omit both fields.
 - **Config 0.3 domains may omit `incoming_dir` (#500).** Config 0.2 still requires it;

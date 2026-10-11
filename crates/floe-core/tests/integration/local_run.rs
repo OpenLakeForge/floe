@@ -16,6 +16,49 @@ fn write_config(dir: &Path, contents: &str) -> PathBuf {
     path
 }
 
+fn copy_tree(source: &Path, destination: &Path) {
+    fs::create_dir_all(destination).expect("create copied fixture dir");
+    for entry in fs::read_dir(source).expect("read fixture dir") {
+        let entry = entry.expect("read fixture entry");
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        if source_path.is_dir() {
+            copy_tree(&source_path, &destination_path);
+        } else {
+            fs::copy(source_path, destination_path).expect("copy fixture file");
+        }
+    }
+}
+
+fn run_example(config_path: &Path, run_id: &str) -> floe_core::RunOutcome {
+    let config = load_config(config_path).expect("load example config");
+    validate_config_for_tests(&config).expect("validate example config");
+    run(
+        config_path,
+        RunOptions {
+            profile: None,
+            run_id: Some(run_id.to_string()),
+            entities: Vec::new(),
+            dry_run: false,
+            full_refresh: false,
+        },
+    )
+    .expect("run example config")
+}
+
+fn has_output_file(directory: &Path, extension: &str) -> bool {
+    fs::read_dir(directory)
+        .expect("read output dir")
+        .any(|entry| {
+            entry
+                .expect("read output entry")
+                .path()
+                .extension()
+                .and_then(|extension| extension.to_str())
+                == Some(extension)
+        })
+}
+
 #[test]
 fn local_run_writes_outputs_and_report() {
     let temp_dir = tempfile::TempDir::new().expect("temp dir");
@@ -168,6 +211,126 @@ report:
     assert_eq!(outcome.summary.results.accepted_total, 1);
     assert_eq!(outcome.summary.results.rejected_total, 0);
     assert!(accepted_dir.exists());
+}
+
+#[test]
+fn standalone_project_example_runs_with_inline_domain_and_source() {
+    let temp_dir = tempfile::TempDir::new().expect("temp dir");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../example/standalone");
+    let root = temp_dir.path().join("standalone");
+    copy_tree(&fixture, &root);
+    let config_path = root.join("config.yml");
+
+    let outcome = run_example(&config_path, "issue507-standalone");
+
+    assert_eq!(
+        outcome.summary.run.status,
+        floe_core::report::RunStatus::Rejected
+    );
+    assert_eq!(outcome.summary.entities.len(), 1);
+    assert_eq!(outcome.summary.entities[0].name, "sales.orders");
+    assert_eq!(
+        outcome.summary.entities[0].status,
+        floe_core::report::RunStatus::Rejected
+    );
+    assert_eq!(outcome.summary.results.accepted_total, 1);
+    assert_eq!(outcome.summary.results.rejected_total, 1);
+
+    let report_path = root.join("report/run_issue507-standalone/sales/orders/run.json");
+    let report: floe_core::report::RunReport =
+        serde_json::from_slice(&fs::read(&report_path).expect("read run report"))
+            .expect("parse run report");
+    assert_eq!(report.entity.name, "sales.orders");
+    assert_eq!(report.results.accepted_total, 1);
+    assert_eq!(report.results.rejected_total, 1);
+    assert_eq!(
+        report.files[0].status,
+        floe_core::report::FileStatus::Rejected
+    );
+    assert_eq!(
+        report.source.path,
+        format!("local://{}", root.join("in/orders.csv").display())
+    );
+    assert!(has_output_file(
+        &root.join("out/accepted/orders"),
+        "parquet"
+    ));
+    assert!(has_output_file(&root.join("out/rejected/orders"), "csv"));
+}
+
+#[test]
+fn multi_file_project_example_runs_two_domains_with_defaults_and_source_refs() {
+    let temp_dir = tempfile::TempDir::new().expect("temp dir");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../example/project");
+    let root = temp_dir.path().join("project");
+    copy_tree(&fixture, &root);
+    let config_path = root.join("config.yml");
+
+    let outcome = run_example(&config_path, "issue507-project");
+
+    assert_eq!(
+        outcome.summary.run.status,
+        floe_core::report::RunStatus::Rejected
+    );
+    assert_eq!(outcome.summary.entities.len(), 2);
+    assert_eq!(outcome.summary.entities[0].name, "finance.accounts");
+    assert_eq!(outcome.summary.entities[1].name, "sales.accounts");
+    assert_eq!(outcome.summary.results.accepted_total, 2);
+    assert_eq!(outcome.summary.results.rejected_total, 2);
+
+    for (domain, resource) in [
+        ("sales", "customer_accounts"),
+        ("finance", "ledger_accounts"),
+    ] {
+        let entity_root = root.join("out");
+        let report_path = root.join(format!(
+            "report/run_issue507-project/{domain}/accounts/run.json"
+        ));
+        let report: floe_core::report::RunReport =
+            serde_json::from_slice(&fs::read(&report_path).expect("read run report"))
+                .expect("parse run report");
+        assert_eq!(report.entity.name, format!("{domain}.accounts"));
+        assert_eq!(report.results.accepted_total, 1);
+        assert_eq!(report.results.rejected_total, 1);
+        assert_eq!(
+            report.files[0].status,
+            floe_core::report::FileStatus::Rejected
+        );
+        assert_eq!(
+            report.source.path,
+            format!(
+                "local://{}",
+                root.join(format!("bronze/csv_drop/{resource}.csv"))
+                    .display()
+            )
+        );
+        assert_eq!(
+            report.sink.accepted.path,
+            format!(
+                "local://{}",
+                entity_root
+                    .join(format!("accepted/{domain}/accounts"))
+                    .display()
+            )
+        );
+        assert_eq!(
+            report.sink.rejected.expect("rejected sink").path,
+            format!(
+                "local://{}",
+                entity_root
+                    .join(format!("rejected/{domain}/accounts"))
+                    .display()
+            )
+        );
+        assert!(has_output_file(
+            &entity_root.join(format!("accepted/{domain}/accounts")),
+            "parquet"
+        ));
+        assert!(has_output_file(
+            &entity_root.join(format!("rejected/{domain}/accounts")),
+            "csv"
+        ));
+    }
 }
 
 #[test]

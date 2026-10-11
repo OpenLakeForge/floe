@@ -38,6 +38,20 @@ floe run -c config.yml
 cat report/*/run.summary.json | head -40
 ```
 
+## Config shapes
+
+[`standalone/`](standalone/config.yml) shows one entity with an inline source and a declared
+domain that does not need an `incoming_dir`. [`project/`](project/config.yml) shows a
+multi-file project with two domains, inline named sources, source references, and domain
+defaults. The project source reads named resources from `bronze/csv_drop/`, while domain
+defaults route outputs under separate sales and finance paths. Both examples use local CSV
+inputs and write Parquet accepted rows, rejected CSVs, and reports beside their config when
+run. Each input includes one deliberately invalid row, so `floe run` reports a rejected run
+and exits nonzero as expected.
+
+For example, run either from its directory with `floe validate -c config.yml` and
+`floe run -c config.yml`.
+
 ---
 
 ## What just happened
