@@ -4,6 +4,9 @@ All notable changes to Floe are documented in this file.
 
 ## Floe core (unreleased)
 
+- **Runnable standalone and multi-file project examples (#507).** `example/standalone/`
+  demonstrates inline source and domain config; `example/project/` demonstrates named sources,
+  source references, domain defaults, and sibling domain/entity files.
 - **Config 0.3 domains may omit `incoming_dir` (#500).** Config 0.2 still requires it;
   manifests omit the field for domains without an incoming directory.
 - **Manifest `config_checksum` covers every file of an `include.domains` project (#509).**

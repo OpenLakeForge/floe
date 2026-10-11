@@ -1,0 +1,20 @@
+version: "0.3"
+
+metadata:
+  project: "floe-project-example"
+  description: "A runnable multi-domain project"
+
+report:
+  path: "./report"
+
+sources:
+  - name: csv_drop
+    format: csv
+    path: "./bronze/csv_drop/{{resource}}.csv"
+    options:
+      header: true
+      separator: ","
+
+include:
+  domains:
+    - "domains/*/_domain.yml"
