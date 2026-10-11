@@ -4,6 +4,8 @@ All notable changes to Floe are documented in this file.
 
 ## Floe core (unreleased)
 
+- **Generated manifests retain source references (#504).** Referenced entities include
+  `source.ref` and the effective `source.resource`; inline sources omit both fields.
 - **Config 0.3 domains may omit `incoming_dir` (#500).** Config 0.2 still requires it;
   manifests omit the field for domains without an incoming directory.
 - **Manifest `config_checksum` covers every file of an `include.domains` project (#509).**

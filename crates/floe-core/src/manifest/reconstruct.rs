@@ -42,6 +42,9 @@ pub struct ManifestSourceForRun {
     pub storage: String,
     pub uri: String,
     pub path: String,
+    #[serde(rename = "ref")]
+    pub source_ref: Option<String>,
+    pub resource: Option<String>,
     pub cast_mode: Option<String>,
     pub options: Option<serde_json::Value>,
 }
@@ -271,6 +274,8 @@ fn entity_from_manifest(m: &ManifestEntityForRun) -> FloeResult<EntityConfig> {
         },
         options: source_options,
         cast_mode: m.source.cast_mode.clone(),
+        source_ref: m.source.source_ref.clone(),
+        resource: m.source.resource.clone(),
     };
 
     let accepted = sink_target_from_manifest(&m.sinks.accepted, write_mode);

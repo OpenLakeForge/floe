@@ -20,6 +20,8 @@ fn sample_entity() -> config::EntityConfig {
             storage: None,
             options: None,
             cast_mode: None,
+            source_ref: None,
+            resource: None,
         },
         sink: config::SinkConfig {
             write_mode: config::WriteMode::Overwrite,
