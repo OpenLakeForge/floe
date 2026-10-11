@@ -42,6 +42,8 @@ fn source_ref_resolves_resource_into_path() {
     let source = &config.entities[0].source;
     assert_eq!(source.path, "/tmp/bronze/crm/crm_orders");
     assert_eq!(source.format, "csv");
+    assert_eq!(source.source_ref.as_deref(), Some("crm"));
+    assert_eq!(source.resource.as_deref(), Some("crm_orders"));
     assert_eq!(source.cast_mode.as_deref(), Some("coerce"));
     let options = source.options.as_ref().expect("options");
     assert_eq!(options.separator.as_deref(), Some(";"));
@@ -52,7 +54,10 @@ fn source_resource_defaults_to_entity_name() {
     let path = write_temp_config(&config_with("{ ref: erp }"));
     let config = load_config(&path).expect("parse config");
 
-    assert_eq!(config.entities[0].source.path, "/tmp/bronze/erp/orders");
+    let source = &config.entities[0].source;
+    assert_eq!(source.path, "/tmp/bronze/erp/orders");
+    assert_eq!(source.source_ref.as_deref(), Some("erp"));
+    assert_eq!(source.resource.as_deref(), Some("orders"));
 }
 
 #[test]
@@ -79,6 +84,26 @@ fn unknown_source_ref_lists_available_sources() {
         err.to_string(),
         "entities[0] (entity.name=orders): source.ref=billing is not a declared source (available: crm, erp)"
     );
+}
+
+#[test]
+fn source_resource_must_be_a_string() {
+    let path = write_temp_config(&config_with("{ ref: crm, resource: 12 }"));
+    let err = load_config(&path).expect_err("numeric resource");
+
+    assert_eq!(
+        err.to_string(),
+        "entities[0] (entity.name=orders): expected string at source.resource"
+    );
+}
+
+#[test]
+fn inline_source_has_no_ref_metadata() {
+    let path = write_temp_config(&config_with("{ format: csv, path: /tmp/orders.csv }"));
+    let config = load_config(&path).expect("parse config");
+
+    assert_eq!(config.entities[0].source.source_ref, None);
+    assert_eq!(config.entities[0].source.resource, None);
 }
 
 #[test]

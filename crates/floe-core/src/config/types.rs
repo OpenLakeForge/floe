@@ -230,6 +230,8 @@ pub struct SourceConfig {
     pub storage: Option<String>,
     pub options: Option<SourceOptions>,
     pub cast_mode: Option<String>,
+    pub source_ref: Option<String>,
+    pub resource: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

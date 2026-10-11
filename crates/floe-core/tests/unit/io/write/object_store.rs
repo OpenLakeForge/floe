@@ -54,6 +54,8 @@ fn delta_store_config_builds_s3_url_and_options() -> FloeResult<()> {
             storage: None,
             options: None,
             cast_mode: None,
+            source_ref: None,
+            resource: None,
         },
         sink: config::SinkConfig {
             write_mode: config::WriteMode::Overwrite,
@@ -120,6 +122,8 @@ fn iceberg_store_config_builds_s3_warehouse_and_region_props() -> FloeResult<()>
             storage: None,
             options: None,
             cast_mode: None,
+            source_ref: None,
+            resource: None,
         },
         sink: config::SinkConfig {
             write_mode: config::WriteMode::Overwrite,
@@ -200,6 +204,8 @@ fn delta_store_config_builds_local_url() -> FloeResult<()> {
             storage: None,
             options: None,
             cast_mode: None,
+            source_ref: None,
+            resource: None,
         },
         sink: config::SinkConfig {
             write_mode: config::WriteMode::Overwrite,
@@ -269,6 +275,8 @@ fn iceberg_store_config_builds_local_warehouse_without_props() -> FloeResult<()>
             storage: None,
             options: None,
             cast_mode: None,
+            source_ref: None,
+            resource: None,
         },
         sink: config::SinkConfig {
             write_mode: config::WriteMode::Overwrite,
@@ -352,6 +360,8 @@ fn delta_store_config_builds_adls_url_and_options() -> FloeResult<()> {
             storage: None,
             options: None,
             cast_mode: None,
+            source_ref: None,
+            resource: None,
         },
         sink: config::SinkConfig {
             write_mode: config::WriteMode::Overwrite,
@@ -451,6 +461,8 @@ fn iceberg_store_config_builds_gcs_warehouse_without_props() -> FloeResult<()> {
             storage: None,
             options: None,
             cast_mode: None,
+            source_ref: None,
+            resource: None,
         },
         sink: config::SinkConfig {
             write_mode: config::WriteMode::Overwrite,
@@ -537,6 +549,8 @@ fn iceberg_store_config_builds_adls_target() -> FloeResult<()> {
             storage: None,
             options: None,
             cast_mode: None,
+            source_ref: None,
+            resource: None,
         },
         sink: config::SinkConfig {
             write_mode: config::WriteMode::Overwrite,
@@ -639,6 +653,8 @@ fn delta_store_config_builds_gcs_url() -> FloeResult<()> {
             storage: None,
             options: None,
             cast_mode: None,
+            source_ref: None,
+            resource: None,
         },
         sink: config::SinkConfig {
             write_mode: config::WriteMode::Overwrite,

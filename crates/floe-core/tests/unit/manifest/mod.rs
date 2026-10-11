@@ -43,6 +43,53 @@ fn manifest_uses_local_uri_for_local_config() {
 
     assert_eq!(value["schema"], "floe.manifest.v1");
     assert_eq!(value["config_uri"], expected_config_uri);
+    assert!(value["entities"][0]["source"].get("ref").is_none());
+    assert!(value["entities"][0]["source"].get("resource").is_none());
+}
+
+#[test]
+fn manifest_records_source_ref_and_effective_resource() {
+    let temp_dir = tempfile::TempDir::new().expect("temp dir");
+    let config_path = temp_dir.path().join("config.yml");
+    std::fs::write(
+        &config_path,
+        r#"version: "0.3"
+sources:
+  - name: crm
+    format: csv
+    path: ./bronze/{{resource}}.csv
+entities:
+  - name: orders
+    source: { ref: crm, resource: crm_orders }
+    sink:
+      accepted:
+        format: parquet
+        path: ./out/orders
+    policy:
+      severity: warn
+    schema:
+      columns:
+        - name: id
+          type: string
+"#,
+    )
+    .expect("write config");
+
+    let location = resolve_config_location(config_path.to_str().expect("utf8"))
+        .expect("resolve config location");
+    let config = load_config(&location.path).expect("load config");
+    let payload =
+        build_common_manifest_json(&location, &config, &[], None, &ManifestOptions::default())
+            .expect("build manifest");
+    let value: Value = serde_json::from_str(&payload).expect("manifest is valid json");
+
+    assert_eq!(value["entities"][0]["source"]["ref"], "crm");
+    assert_eq!(value["entities"][0]["source"]["resource"], "crm_orders");
+
+    let (reconstructed, _) = config_from_manifest_json(&payload).expect("reconstruct manifest");
+    let source = &reconstructed.entities[0].source;
+    assert_eq!(source.source_ref.as_deref(), Some("crm"));
+    assert_eq!(source.resource.as_deref(), Some("crm_orders"));
 }
 
 #[test]

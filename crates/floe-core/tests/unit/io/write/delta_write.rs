@@ -649,6 +649,8 @@ fn build_entity(
             storage: None,
             options: None,
             cast_mode: None,
+            source_ref: None,
+            resource: None,
         },
         sink: config::SinkConfig {
             write_mode,

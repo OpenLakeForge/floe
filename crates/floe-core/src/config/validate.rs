@@ -1873,6 +1873,8 @@ mod duckdb_tests {
                 storage: None,
                 options: None,
                 cast_mode: None,
+                source_ref: None,
+                resource: None,
             },
             sink: SinkConfig {
                 write_mode: WriteMode::Overwrite,
