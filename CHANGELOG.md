@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Floe core (unreleased)
 
+- **`add-entity` writes included-domain entities as sibling files (#514).** With `--domain` and no `--output`, the new entity is written beside `_domain.yml`; fields covered by domain defaults are omitted, and existing files are never overwritten.
 - **Runnable standalone and multi-file project examples (#507).** `example/standalone/`
   demonstrates inline source and domain config; `example/project/` demonstrates named sources,
   source references, domain defaults, and sibling domain/entity files.
