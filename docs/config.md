@@ -140,6 +140,9 @@ entities:
 - `sources` (optional, requires `version: "0.3"`)
   - Named, reusable entity `source` blocks: each entry is `name` plus any
     `source` fields (`format`, `path`, `storage`, `options`, `cast_mode`).
+  - A project may load these entries from one `sources.yml` file with
+    `include.sources`, relative to the main config file. The file has a top-level
+    `sources: [...]` array; inline `sources` and `include.sources` cannot be combined.
   - An entity uses one with `source: { ref: <name>, resource: <resource> }`.
     Other fields set on the entity's `source` override the referenced source
     (maps merge key by key, as for domain `defaults`). Domain `defaults` apply
@@ -148,6 +151,8 @@ entities:
     defaults to the entity `name`.
   - An unknown `ref` is an error listing the declared sources.
 - `include` (optional, requires `version: "0.3"`)
+  - `include.sources`: path to one file containing a top-level `sources: [...]`
+    array. It resolves relative to the main config file.
   - `include.domains`: glob patterns, relative to the main config file, each
     matching a domain file (e.g. `["silver/*/_domain.yml"]`). A domain file holds
     one `domains` entry; every sibling `*.yml` file holds one entity of that
