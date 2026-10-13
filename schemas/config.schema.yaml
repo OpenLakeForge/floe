@@ -1,32 +1,124 @@
-$schema: https://yaml-schema.net/yaml-config.schema.yaml
-$id: https://floe.local/schema/config-v0.1
-
-title: Floe Config v0.1
-
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://floe.local/schema/config.schema.yaml
+title: Floe Config v0.3
 type: object
 additionalProperties: false
 required:
-  - version
-  - entities
-
+- version
+allOf:
+- if:
+    properties:
+      version:
+        pattern: ^\+?0+\.\+?0*[12]$
+  then:
+    required:
+    - entities
+    properties:
+      entities:
+        type: array
+        items:
+          allOf:
+          - $ref: '#/$defs/entity'
+          - properties:
+              source:
+                not:
+                  anyOf:
+                  - required:
+                    - ref
+                  - required:
+                    - resource
+      domains:
+        type: array
+        items:
+          $ref: '#/$defs/domain_legacy'
+    not:
+      anyOf:
+      - required:
+        - sources
+      - required:
+        - include
+- if:
+    properties:
+      version:
+        type: string
+    not:
+      properties:
+        version:
+          pattern: ^\+?0+\.\+?0*[12]$
+  then:
+    properties:
+      entities:
+        type: array
+        items:
+          $ref: '#/$defs/inline_entity'
+    anyOf:
+    - required:
+      - entities
+    - required:
+      - include
+      properties:
+        include:
+          required:
+          - domains
+          properties:
+            domains:
+              minItems: 1
+    not:
+      required:
+      - sources
+      - include
+      properties:
+        include:
+          required:
+          - sources
+- if:
+    properties:
+      version:
+        pattern: ^\+?0+\.\+?0*1$
+  then:
+    properties:
+      entities:
+        items:
+          properties:
+            schema:
+              not:
+                required:
+                - schema_evolution
+- not:
+    required:
+    - storages
+    - filesystems
 properties:
   version:
     type: string
+    pattern: ^\+?[0-9]+\.\+?[0-9]+$
+    not:
+      pattern: ^\+?0+\.\+?0+$
   metadata:
-    $ref: "#/$defs/project_metadata"
+    $ref: '#/$defs/project_metadata'
   storages:
-    $ref: "#/$defs/storages"
+    $ref: '#/$defs/storages'
   env:
-    $ref: "#/$defs/env"
+    $ref: '#/$defs/env'
   domains:
-    $ref: "#/$defs/domains"
+    $ref: '#/$defs/domains'
+  sources:
+    $ref: '#/$defs/source_definitions'
+  include:
+    $ref: '#/$defs/include'
   report:
-    $ref: "#/$defs/report"
+    $ref: '#/$defs/report'
   entities:
     type: array
     items:
-      $ref: "#/$defs/entity"
-
+      $ref: '#/$defs/inline_entity'
+    minItems: 1
+  filesystems:
+    $ref: '#/$defs/storages'
+  catalogs:
+    $ref: '#/$defs/catalogs'
+  lineage:
+    $ref: '#/$defs/lineage'
 $defs:
   project_metadata:
     type: object
@@ -42,44 +134,64 @@ $defs:
         type: array
         items:
           type: string
-
-  entity:
-    allOf:
-      - $ref: "#/$defs/entity_base"
-      - oneOf:
-          - $ref: "#/$defs/entity_reject"
-          - $ref: "#/$defs/entity_non_reject"
-
   entity_base:
     type: object
     additionalProperties: false
-    required:
+    properties:
+      name:
+        type: string
+      metadata:
+        $ref: '#/$defs/entity_metadata'
+      domain:
+        type: string
+      incremental_mode:
+        type: string
+        enum:
+        - none
+        - archive
+        - file
+        - row
+      state:
+        $ref: '#/$defs/entity_state'
+      source:
+        $ref: '#/$defs/source_fragment'
+      sink:
+        $ref: '#/$defs/sink_fragment'
+      policy:
+        $ref: '#/$defs/policy_fragment'
+      schema:
+        $ref: '#/$defs/schema'
+      pii:
+        $ref: '#/$defs/pii_fragment'
+  entity_fragment:
+    allOf:
+    - $ref: '#/$defs/entity_base'
+    - required:
+      - name
+      - schema
+    - $ref: '#/$defs/local_evolution_sink'
+  entity:
+    allOf:
+    - $ref: '#/$defs/entity_base'
+    - required:
       - name
       - source
       - sink
       - policy
       - schema
-    properties:
-      name:
-        type: string
-      metadata:
-        $ref: "#/$defs/entity_metadata"
-      domain:
-        type: string
-      incremental_mode:
-        type: string
-        enum: [none, archive, file, row]
-      state:
-        $ref: "#/$defs/entity_state"
-      source:
-        $ref: "#/$defs/source"
-      sink:
-        $ref: "#/$defs/sink"
-      policy:
-        $ref: "#/$defs/policy"
-      schema:
-        $ref: "#/$defs/schema"
-
+    - properties:
+        source:
+          $ref: '#/$defs/source'
+        sink:
+          $ref: '#/$defs/sink'
+        policy:
+          $ref: '#/$defs/policy'
+        pii:
+          $ref: '#/$defs/pii'
+    - oneOf:
+      - $ref: '#/$defs/entity_reject'
+      - $ref: '#/$defs/entity_non_reject'
+    - $ref: '#/$defs/local_evolution_sink'
   entity_reject:
     type: object
     properties:
@@ -91,8 +203,7 @@ $defs:
       sink:
         type: object
         required:
-          - rejected
-
+        - rejected
   entity_non_reject:
     type: object
     properties:
@@ -100,8 +211,9 @@ $defs:
         type: object
         properties:
           severity:
-            enum: [warn, abort]
-
+            enum:
+            - warn
+            - abort
   entity_metadata:
     type: object
     additionalProperties: false
@@ -118,14 +230,12 @@ $defs:
         type: array
         items:
           type: string
-
   entity_state:
     type: object
     additionalProperties: false
     properties:
       path:
         type: string
-
   env:
     type: object
     additionalProperties: false
@@ -136,41 +246,251 @@ $defs:
         type: object
         additionalProperties:
           type: string
-
   domains:
     type: array
     items:
-      type: object
-      additionalProperties: false
-      required:
-        - name
-        - incoming_dir
-      properties:
-        name:
-          type: string
-        incoming_dir:
-          type: string
-
-  source:
+      $ref: '#/$defs/domain'
+  domain:
     type: object
     additionalProperties: false
     required:
-      - format
-      - path
+    - name
     properties:
+      name:
+        type: string
+      incoming_dir:
+        type: string
+      defaults:
+        $ref: '#/$defs/entity_defaults'
+  domain_legacy:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    - incoming_dir
+    properties:
+      name:
+        type: string
+      incoming_dir:
+        type: string
+  source_definitions:
+    type: array
+    items:
+      $ref: '#/$defs/source_definition'
+  source_definition:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    properties:
+      name:
+        type: string
       format:
         type: string
-        enum: [csv, tsv, fixed, parquet, json, xlsx, orc, avro, xml]
+        enum:
+        - csv
+        - tsv
+        - fixed
+        - parquet
+        - json
+        - xlsx
+        - orc
+        - avro
+        - xml
       path:
         type: string
       storage:
         type: string
       options:
-        $ref: "#/$defs/source_options"
+        $ref: '#/$defs/source_options'
       cast_mode:
         type: string
-        enum: [strict, coerce]
-
+        enum:
+        - strict
+        - coerce
+      filesystem:
+        type: string
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+  include:
+    type: object
+    additionalProperties: false
+    anyOf:
+    - required:
+      - domains
+    - required:
+      - sources
+    properties:
+      domains:
+        type: array
+        minItems: 1
+        items:
+          type: string
+      sources:
+        type: string
+  sources_file:
+    type: object
+    additionalProperties: false
+    required:
+    - sources
+    properties:
+      sources:
+        $ref: '#/$defs/source_definitions'
+  domain_file:
+    $ref: '#/$defs/domain'
+  entity_file:
+    $ref: '#/$defs/entity_fragment'
+  entity_defaults:
+    type: object
+    additionalProperties: false
+    properties:
+      metadata:
+        $ref: '#/$defs/entity_metadata'
+      domain:
+        type: string
+      incremental_mode:
+        type: string
+        enum:
+        - none
+        - archive
+        - file
+        - row
+      state:
+        $ref: '#/$defs/entity_state'
+      source:
+        allOf:
+        - $ref: '#/$defs/source_fragment'
+        - not:
+            anyOf:
+            - required:
+              - ref
+            - required:
+              - resource
+      sink:
+        $ref: '#/$defs/sink_fragment'
+      policy:
+        $ref: '#/$defs/policy_fragment'
+      schema:
+        $ref: '#/$defs/schema_defaults'
+      pii:
+        $ref: '#/$defs/pii_fragment'
+  schema_defaults:
+    type: object
+    additionalProperties: false
+    properties:
+      normalize_columns:
+        $ref: '#/$defs/normalize_columns'
+      mismatch:
+        $ref: '#/$defs/schema_mismatch'
+      schema_evolution:
+        $ref: '#/$defs/schema_evolution'
+      unique_keys:
+        type: array
+        minItems: 1
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: string
+  source_fragment:
+    type: object
+    additionalProperties: false
+    dependentRequired:
+      resource:
+      - ref
+    properties:
+      ref:
+        type: string
+      resource:
+        type: string
+      format:
+        type: string
+        enum:
+        - csv
+        - tsv
+        - fixed
+        - parquet
+        - json
+        - xlsx
+        - orc
+        - avro
+        - xml
+      path:
+        type: string
+      storage:
+        type: string
+      options:
+        $ref: '#/$defs/source_options'
+      cast_mode:
+        type: string
+        enum:
+        - strict
+        - coerce
+      filesystem:
+        type: string
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+  source:
+    type: object
+    additionalProperties: false
+    allOf:
+    - if:
+        required:
+        - ref
+      then:
+        properties:
+          ref:
+            type: string
+      else:
+        not:
+          required:
+          - resource
+    - not:
+        required:
+        - storage
+        - filesystem
+    anyOf:
+    - required:
+      - format
+      - path
+    - required:
+      - ref
+    properties:
+      ref:
+        type: string
+      resource:
+        type: string
+      format:
+        type: string
+        enum:
+        - csv
+        - tsv
+        - fixed
+        - parquet
+        - json
+        - xlsx
+        - orc
+        - avro
+        - xml
+      path:
+        type: string
+      storage:
+        type: string
+      options:
+        $ref: '#/$defs/source_options'
+      cast_mode:
+        type: string
+        enum:
+        - strict
+        - coerce
+      filesystem:
+        type: string
   source_options:
     type: object
     additionalProperties: false
@@ -191,7 +511,9 @@ $defs:
         type: string
       json_mode:
         type: string
-        enum: ["array", "ndjson"]
+        enum:
+        - array
+        - ndjson
       sheet:
         type: string
       header_row:
@@ -206,33 +528,83 @@ $defs:
         type: string
       value_tag:
         type: string
-
   sink:
     type: object
     additionalProperties: false
     required:
-      - accepted
+    - accepted
     properties:
       write_mode:
         type: string
-        enum: [overwrite, append, merge_scd1, merge_scd2]
+        enum:
+        - overwrite
+        - append
+        - merge_scd1
+        - merge_scd2
       accepted:
-        $ref: "#/$defs/sink_accepted"
+        $ref: '#/$defs/sink_accepted'
       rejected:
-        $ref: "#/$defs/sink_rejected"
+        $ref: '#/$defs/sink_rejected'
       archive:
-        $ref: "#/$defs/archive_target"
-
-  sink_accepted:
+        $ref: '#/$defs/archive_target'
+  sink_fragment:
     type: object
     additionalProperties: false
-    required:
+    properties:
+      write_mode:
+        type: string
+        enum:
+        - overwrite
+        - append
+        - merge_scd1
+        - merge_scd2
+      accepted:
+        $ref: '#/$defs/sink_accepted_fragment'
+      rejected:
+        $ref: '#/$defs/sink_rejected_fragment'
+      archive:
+        $ref: '#/$defs/archive_target'
+  sink_accepted:
+    allOf:
+    - $ref: '#/$defs/sink_accepted_fragment'
+    - required:
       - format
-      - path
+    - anyOf:
+      - required:
+        - path
+      - required:
+        - duckdb
+        properties:
+          format:
+            const: duckdb
+          duckdb:
+            required:
+            - connection
+            - table
+            properties:
+              connection:
+                pattern: \S
+    - if:
+        required:
+        - duckdb
+      then:
+        properties:
+          format:
+            const: duckdb
+          duckdb:
+            required:
+            - table
+  sink_accepted_fragment:
+    type: object
+    additionalProperties: false
     properties:
       format:
         type: string
-        enum: [parquet, delta]
+        enum:
+        - parquet
+        - delta
+        - iceberg
+        - duckdb
       path:
         type: string
       storage:
@@ -243,29 +615,66 @@ $defs:
         properties:
           compression:
             type: string
-            enum: [snappy, gzip, zstd, uncompressed]
+            enum:
+            - snappy
+            - gzip
+            - zstd
+            - uncompressed
           row_group_size:
             type: integer
             minimum: 1
           max_size_per_file:
             type: integer
             minimum: 1
-
+      filesystem:
+        type: string
+      merge:
+        $ref: '#/$defs/merge'
+      iceberg:
+        $ref: '#/$defs/iceberg'
+      delta:
+        $ref: '#/$defs/delta'
+      duckdb:
+        $ref: '#/$defs/duckdb'
+      partition_by:
+        type: array
+        items:
+          type: string
+      partition_spec:
+        type: array
+        items:
+          $ref: '#/$defs/partition_field'
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
   sink_rejected:
-    type: object
-    additionalProperties: false
-    required:
+    allOf:
+    - $ref: '#/$defs/sink_rejected_fragment'
+    - required:
       - format
       - path
+  sink_rejected_fragment:
+    type: object
+    additionalProperties: false
     properties:
       format:
         type: string
-        enum: [csv]
+        enum:
+        - csv
+        - parquet
       path:
         type: string
       storage:
         type: string
-
+      filesystem:
+        type: string
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
   report:
     type: object
     additionalProperties: false
@@ -274,36 +683,40 @@ $defs:
         type: string
       formatter:
         type: string
-        enum: [json, csv, text]
+        enum:
+        - json
+        - csv
+        - text
       storage:
         type: string
-
   storages:
     type: object
     additionalProperties: false
     required:
-      - default
-      - definitions
+    - definitions
     properties:
       default:
         type: string
       definitions:
         type: array
         items:
-          $ref: "#/$defs/storage_definition"
-
+          $ref: '#/$defs/storage_definition'
   storage_definition:
     type: object
     additionalProperties: false
     required:
-      - name
-      - type
+    - name
+    - type
     properties:
       name:
         type: string
       type:
         type: string
-        enum: [local, s3, adls, gcs]
+        enum:
+        - local
+        - s3
+        - adls
+        - gcs
       bucket:
         type: string
       region:
@@ -314,7 +727,10 @@ $defs:
         type: string
       prefix:
         type: string
-
+      endpoint:
+        type: string
+      path_style_access:
+        type: boolean
   archive_target:
     type: object
     additionalProperties: false
@@ -323,27 +739,40 @@ $defs:
         type: string
       storage:
         type: string
-
+      filesystem:
+        type: string
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
   policy:
+    allOf:
+    - $ref: '#/$defs/policy_fragment'
+    - required:
+      - severity
+  policy_fragment:
     type: object
     additionalProperties: false
-    required:
-      - severity
     properties:
       severity:
         type: string
-        enum: [warn, reject, abort]
-
+        enum:
+        - warn
+        - reject
+        - abort
   schema:
     type: object
     additionalProperties: false
     required:
-      - columns
+    - columns
     properties:
       normalize_columns:
-        $ref: "#/$defs/normalize_columns"
+        $ref: '#/$defs/normalize_columns'
       mismatch:
-        $ref: "#/$defs/schema_mismatch"
+        $ref: '#/$defs/schema_mismatch'
+      schema_evolution:
+        $ref: '#/$defs/schema_evolution'
       primary_key:
         type: array
         minItems: 1
@@ -360,8 +789,20 @@ $defs:
       columns:
         type: array
         items:
-          $ref: "#/$defs/column"
-
+          $ref: '#/$defs/column'
+  schema_evolution:
+    type: object
+    additionalProperties: false
+    properties:
+      mode:
+        type: string
+        enum:
+        - strict
+        - add_columns
+      on_incompatible:
+        type: string
+        enum:
+        - fail
   normalize_columns:
     type: object
     additionalProperties: false
@@ -370,25 +811,31 @@ $defs:
         type: boolean
       strategy:
         type: string
-        enum: [snake_case, lower, camel_case, none]
-
+        enum:
+        - snake_case
+        - lower
+        - camel_case
+        - none
   schema_mismatch:
     type: object
     additionalProperties: false
     properties:
       missing_columns:
         type: string
-        enum: [reject_file, fill_nulls]
+        enum:
+        - reject_file
+        - fill_nulls
       extra_columns:
         type: string
-        enum: [reject_file, ignore]
-
+        enum:
+        - reject_file
+        - ignore
   column:
     type: object
     additionalProperties: false
     required:
-      - name
-      - type
+    - name
+    - type
     properties:
       name:
         type: string
@@ -396,7 +843,33 @@ $defs:
         type: string
       type:
         type: string
-        enum: [string, integer, number, float, decimal, boolean, date, datetime]
+        enum:
+        - string
+        - str
+        - text
+        - boolean
+        - bool
+        - int8
+        - int16
+        - int32
+        - int64
+        - int
+        - integer
+        - long
+        - uint8
+        - uint16
+        - uint32
+        - uint64
+        - float32
+        - float64
+        - float
+        - double
+        - number
+        - decimal
+        - date
+        - datetime
+        - timestamp
+        - time
       nullable:
         type: boolean
       unique:
@@ -406,3 +879,289 @@ $defs:
         minimum: 1
       trim:
         type: boolean
+  inline_entity:
+    allOf:
+    - $ref: '#/$defs/entity_fragment'
+    - anyOf:
+      - required:
+        - domain
+      - $ref: '#/$defs/entity'
+    - $ref: '#/$defs/local_evolution_sink'
+  local_evolution_sink:
+    if:
+      required:
+      - schema
+      - sink
+      properties:
+        schema:
+          required:
+          - schema_evolution
+          properties:
+            schema_evolution:
+              required:
+              - mode
+              properties:
+                mode:
+                  const: add_columns
+        sink:
+          required:
+          - accepted
+          properties:
+            accepted:
+              required:
+              - format
+    then:
+      properties:
+        sink:
+          properties:
+            accepted:
+              properties:
+                format:
+                  const: delta
+  pii:
+    type: object
+    additionalProperties: false
+    properties:
+      columns:
+        type: array
+        items:
+          $ref: '#/$defs/pii_column'
+    required:
+    - columns
+  pii_column:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+      mask_pattern:
+        type: string
+      redact_value:
+        type: string
+      key:
+        type: string
+      strategy:
+        type: string
+        enum:
+        - hash
+        - drop
+        - nullify
+        - redact
+        - mask
+    required:
+    - name
+    - strategy
+    allOf:
+    - if:
+        properties:
+          strategy:
+            const: mask
+      then:
+        required:
+        - mask_pattern
+        properties:
+          mask_pattern:
+            pattern: \{\{(?:first|last)[1-9][0-9]*\}\}
+  catalogs:
+    type: object
+    additionalProperties: false
+    required:
+    - definitions
+    properties:
+      default:
+        type: string
+        description: Default catalog name used when entity sinks omit a catalog.
+      definitions:
+        type: array
+        items:
+          $ref: '#/$defs/catalog_definition'
+  catalog_definition:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    - type
+    properties:
+      name:
+        type: string
+        minLength: 1
+      type:
+        type: string
+        enum:
+        - glue
+        - rest
+        - unity
+      warehouse_storage:
+        type: string
+        description: Optional storage definition name used as the catalog warehouse root.
+      warehouse_prefix:
+        type: string
+        description: Optional path prefix under the warehouse storage.
+      region:
+        type: string
+        description: Glue catalog region; required when type is glue.
+      database:
+        type: string
+        description: Glue database; required when type is glue.
+      create_database_if_missing:
+        type: boolean
+      allow_takeover:
+        type: boolean
+      uri:
+        type: string
+        description: REST catalog URI; required when type is rest.
+      credential:
+        type: string
+      warehouse:
+        type: string
+      oauth2_server_uri:
+        type: string
+      scope:
+        type: string
+      host:
+        type: string
+        description: Unity Catalog host; required when type is unity.
+      catalog:
+        type: string
+        description: Unity Catalog name; required when type is unity.
+      schema:
+        type: string
+        description: Unity schema name; required when type is unity.
+      token:
+        type: string
+        description: Unity authentication token or substituted secret.
+      create_schema_if_missing:
+        type: boolean
+    allOf:
+    - if:
+        properties:
+          type:
+            const: glue
+      then:
+        required:
+        - region
+        - database
+    - if:
+        properties:
+          type:
+            const: rest
+      then:
+        required:
+        - uri
+    - if:
+        properties:
+          type:
+            const: unity
+      then:
+        required:
+        - host
+        - catalog
+        - schema
+        - token
+  lineage:
+    type: object
+    additionalProperties: false
+    properties:
+      url:
+        type: string
+      endpoint:
+        type: string
+      api_key:
+        type: string
+      namespace:
+        type: string
+      dataset_namespace:
+        type: string
+      producer:
+        type: string
+      job_name:
+        type: string
+      timeout_secs:
+        type: integer
+        minimum: 0
+      max_failures:
+        type: integer
+        minimum: 0
+        maximum: 4294967295
+    required:
+    - url
+    - namespace
+  merge:
+    type: object
+    additionalProperties: false
+    properties:
+      ignore_columns:
+        type: array
+        items:
+          type: string
+      compare_columns:
+        type: array
+        items:
+          type: string
+      scd2:
+        $ref: '#/$defs/merge_scd2'
+  merge_scd2:
+    type: object
+    additionalProperties: false
+    properties:
+      current_flag_column:
+        type: string
+      valid_from_column:
+        type: string
+      valid_to_column:
+        type: string
+  iceberg:
+    type: object
+    additionalProperties: false
+    properties:
+      catalog:
+        type: string
+      namespace:
+        type: string
+      table:
+        type: string
+      location:
+        type: string
+  delta:
+    type: object
+    additionalProperties: false
+    properties:
+      catalog:
+        type: string
+      schema:
+        type: string
+      table:
+        type: string
+  duckdb:
+    type: object
+    additionalProperties: false
+    properties:
+      table:
+        type: string
+      schema:
+        type: string
+      connection:
+        type: string
+      token:
+        type: string
+  partition_field:
+    type: object
+    additionalProperties: false
+    properties:
+      column:
+        type: string
+      transform:
+        type: string
+    required:
+    - column
+  pii_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      columns:
+        type: array
+        items:
+          $ref: '#/$defs/pii_column'
+description: Floe YAML authoring schema. Shared definitions describe complete values and pre-merge fragments
+  separately. Validate assembled projects with floe validate; cross-file reference resolution and inherited
+  completeness are runtime checks.
