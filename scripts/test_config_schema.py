@@ -65,6 +65,8 @@ class ConfigSchemaTest(unittest.TestCase):
         pii = {"columns": [{"name": "id", "strategy": "hash"}]}
         self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": {"pii": pii}})
         self.assert_valid(validator_for("entity_file"), {**complete_entity(), "pii": pii})
+        pii["columns"][0].update(strategy="mask", mask_pattern="****{last4}")
+        self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": {"pii": pii}})
 
     def test_existing_rust_model_sections(self):
         entity = complete_entity()
