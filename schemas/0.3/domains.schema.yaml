@@ -1,0 +1,5 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: domains.schema.yaml
+title: Floe included domain (config 0.3)
+description: One domain document, with optional defaults for sibling entity files.
+$ref: ../config.schema.yaml#/$defs/domain_file

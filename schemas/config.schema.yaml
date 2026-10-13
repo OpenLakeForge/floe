@@ -1,5 +1,5 @@
 $schema: https://json-schema.org/draft/2020-12/schema
-$id: https://floe.local/schema/config.schema.yaml
+$id: config.schema.yaml
 title: Floe Config v0.3
 type: object
 additionalProperties: false
