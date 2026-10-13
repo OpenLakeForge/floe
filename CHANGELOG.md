@@ -4,6 +4,8 @@ All notable changes to Floe are documented in this file.
 
 ## Floe core (unreleased)
 
+- **`add-entity` can reference a declared source (#515).** Pass `--source <ref>` and
+  `--resource <name>`; `--input` still supplies the file used for schema inference.
 - **`add-entity` writes included-domain entities as sibling files (#514).** With `--domain` 
   and no `--output`, the new entity is written beside `_domain.yml`; fields covered by domain 
   defaults are omitted, and existing files are never overwritten.

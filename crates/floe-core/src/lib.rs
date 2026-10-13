@@ -31,7 +31,9 @@ pub use crate::state::{
     inspect_entity_state, inspect_entity_state_with_base, reset_entity_state,
     reset_entity_state_with_base,
 };
-pub use add_entity::{add_entity_to_config, AddEntityOptions, AddEntityOutcome};
+pub use add_entity::{
+    add_entity_to_config, add_entity_to_config_with_source, AddEntityOptions, AddEntityOutcome,
+};
 pub use checks as check;
 pub use config::{
     resolve_config_location, upload_to_remote_uri, write_bytes_to_remote_uri, ConfigLocation,
