@@ -1454,6 +1454,42 @@ fn manifest_id_covers_every_included_config_file() {
 }
 
 #[test]
+fn manifest_id_covers_included_sources_file() {
+    let temp_dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = temp_dir.path();
+    let config_path = dir.join("floe.yml");
+    write_project_file(
+        dir,
+        "floe.yml",
+        "version: \"0.3\"\ninclude:\n  sources: sources.yml\nentities:\n  - name: orders\n    source: { ref: crm }\n    sink:\n      accepted:\n        format: parquet\n        path: /tmp/out/orders\n    policy:\n      severity: warn\n    schema:\n      columns:\n        - name: id\n          type: string\n",
+    );
+    write_project_file(
+        dir,
+        "sources.yml",
+        "sources:\n  - name: crm\n    format: csv\n    path: /tmp/in/crm\n",
+    );
+
+    let before = project_manifest(&config_path);
+    let value: Value = serde_json::from_str(&before).expect("valid json");
+    let paths: Vec<&str> = value["config_files"]
+        .as_array()
+        .expect("config_files")
+        .iter()
+        .map(|file| file["path"].as_str().expect("path"))
+        .collect();
+    assert_eq!(paths, ["floe.yml", "sources.yml"]);
+
+    write_project_file(
+        dir,
+        "sources.yml",
+        "sources:\n  - name: crm\n    format: csv\n    path: /tmp/in/updated-crm\n",
+    );
+    let after: Value = serde_json::from_str(&project_manifest(&config_path)).expect("valid json");
+    assert_ne!(after["manifest_id"], value["manifest_id"]);
+    assert_ne!(after["config_checksum"], value["config_checksum"]);
+}
+
+#[test]
 fn multi_file_manifest_omits_checksums_if_a_config_file_cannot_be_read() {
     let temp_dir = tempfile::TempDir::new().expect("temp dir");
     let dir = temp_dir.path();

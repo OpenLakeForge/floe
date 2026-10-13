@@ -1,4 +1,5 @@
 use floe_core::load_config;
+use floe_core::FloeError;
 
 use super::super::common::write_temp_config;
 
@@ -199,4 +200,124 @@ entities:
     let config = load_config(&path).expect("parse config");
 
     assert_eq!(config.entities[0].source.path, "/tmp/crm_orders");
+}
+
+#[test]
+fn include_sources_matches_inline_sources_and_records_the_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let sources = SOURCES
+        .strip_prefix("version: \"0.3\"\n")
+        .expect("version")
+        .split_once("entities:\n")
+        .expect("entities")
+        .0;
+    std::fs::write(dir.path().join("sources.yml"), sources).expect("write sources");
+
+    let inline_config = config_with("{ ref: crm, resource: crm_orders }");
+    let inline_path = write_temp_config(&inline_config);
+    let entities = inline_config.split_once("entities:\n").expect("entities").1;
+    let include =
+        format!("version: \"0.3\"\ninclude:\n  sources: sources.yml\nentities:\n{entities}");
+    let include_path = dir.path().join("floe.yml");
+    std::fs::write(&include_path, include).expect("write project");
+
+    let mut inline = load_config(&inline_path).expect("inline sources");
+    let mut included = load_config(&include_path).expect("included sources");
+    assert!(included
+        .config_files
+        .contains(&dir.path().join("sources.yml")));
+    included.config_files.clear();
+    inline.config_files.clear();
+    assert_eq!(format!("{included:?}"), format!("{inline:?}"));
+}
+
+#[test]
+fn inline_sources_and_include_sources_are_mutually_exclusive_when_empty() {
+    let path = write_temp_config(
+        "version: \"0.3\"\ninclude:\n  sources: sources.yml\nsources: []\nentities: []\n",
+    );
+    let err = load_config(&path).expect_err("conflicting source declarations");
+
+    assert_eq!(
+        err.to_string(),
+        "root.sources and include.sources are mutually exclusive"
+    );
+}
+
+#[test]
+fn included_sources_require_config_version_0_3() {
+    let path =
+        write_temp_config("version: \"0.2\"\ninclude:\n  sources: sources.yml\nentities: []\n");
+    let err = load_config(&path).expect_err("included sources on 0.2");
+
+    assert_eq!(
+        err.to_string(),
+        "root.include requires root.version >= \"0.3\""
+    );
+}
+
+#[test]
+fn duplicate_included_source_names_report_the_source_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let source_path = dir.path().join("sources.yml");
+    std::fs::write(
+        &source_path,
+        "sources:\n  - name: crm\n    format: csv\n  - name: crm\n    format: parquet\n",
+    )
+    .expect("write sources");
+    let config_path = dir.path().join("floe.yml");
+    std::fs::write(
+        &config_path,
+        "version: \"0.3\"\ninclude:\n  sources: sources.yml\nentities: []\n",
+    )
+    .expect("write project");
+
+    let err = load_config(&config_path).expect_err("duplicate source name");
+
+    assert_eq!(
+        err.to_string(),
+        format!("{}: duplicate source name crm", source_path.display())
+    );
+}
+
+#[test]
+fn invalid_included_sources_report_the_source_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let source_path = dir.path().join("sources.yml");
+    std::fs::write(&source_path, "sources: {}\n").expect("write sources");
+    let config_path = dir.path().join("floe.yml");
+    std::fs::write(
+        &config_path,
+        "version: \"0.3\"\ninclude:\n  sources: sources.yml\nentities: []\n",
+    )
+    .expect("write project");
+
+    let err = load_config(&config_path).expect_err("invalid sources shape");
+
+    assert_eq!(
+        err.to_string(),
+        format!("{}: expected array at sources", source_path.display())
+    );
+}
+
+#[test]
+fn missing_included_sources_preserve_the_io_error_and_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config_path = dir.path().join("floe.yml");
+    std::fs::write(
+        &config_path,
+        "version: \"0.3\"\ninclude:\n  sources: sources.yml\nentities: []\n",
+    )
+    .expect("write project");
+    let source_path = dir.path().join("sources.yml");
+
+    let err = load_config(&config_path).expect_err("missing sources file");
+
+    assert!(err.to_string().contains(&source_path.display().to_string()));
+    assert!(matches!(
+        err.downcast_ref::<FloeError>(),
+        Some(FloeError::Io {
+            path: Some(path), ..
+        }) if path == &source_path.display().to_string()
+    ));
 }

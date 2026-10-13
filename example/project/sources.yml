@@ -1,0 +1,7 @@
+sources:
+  - name: csv_drop
+    format: csv
+    path: "./bronze/csv_drop/{{resource}}.csv"
+    options:
+      header: true
+      separator: ","
