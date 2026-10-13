@@ -2,7 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use floe_core::config::PolicySeverity;
-use floe_core::{add_entity_to_config, load_config, validate, AddEntityOptions, ValidateOptions};
+use floe_core::{
+    add_entity_to_config, add_entity_to_config_with_source, load_config, validate,
+    AddEntityOptions, ValidateOptions,
+};
 use polars::prelude::{DataFrame, NamedFrom, ParquetWriter, Series};
 use tempfile::tempdir;
 use url::Url;
@@ -353,6 +356,30 @@ fn add_entity_infers_csv_and_appends_defaults() {
         .expect("active column");
     assert_eq!(active_col.source.as_deref(), Some("active"));
     assert_eq!(active_col.column_type, "boolean");
+}
+
+#[test]
+fn add_entity_requires_source_and_resource_together() {
+    let dir = tempdir().expect("tempdir");
+    let err = add_entity_to_config_with_source(
+        AddEntityOptions {
+            config_path: dir.path().join("config.yml"),
+            output_path: None,
+            input: dir.path().join("orders.csv").display().to_string(),
+            format: None,
+            name: None,
+            domain: None,
+            dry_run: true,
+        },
+        Some("crm".to_string()),
+        None,
+    )
+    .expect_err("source reference requires a resource");
+
+    assert_eq!(
+        err.to_string(),
+        "--source and --resource must be provided together"
+    );
 }
 
 #[test]

@@ -47,6 +47,8 @@ struct InferredEntity {
     format: String,
     input: String,
     domain: Option<String>,
+    source_ref: Option<String>,
+    resource: Option<String>,
     source_options: Option<GeneratedSourceOptions>,
     columns: Vec<GeneratedColumn>,
     notes: Vec<String>,
@@ -100,12 +102,26 @@ struct JsonColumnStats {
 }
 
 pub fn add_entity_to_config(options: AddEntityOptions) -> FloeResult<AddEntityOutcome> {
-    let inferred = infer_entity_from_input(
+    add_entity_to_config_with_source(options, None, None)
+}
+
+pub fn add_entity_to_config_with_source(
+    options: AddEntityOptions,
+    source_ref: Option<String>,
+    resource: Option<String>,
+) -> FloeResult<AddEntityOutcome> {
+    if source_ref.is_some() != resource.is_some() {
+        return Err(FloeError::config("--source and --resource must be provided together").into());
+    }
+
+    let mut inferred = infer_entity_from_input(
         &options.input,
         options.format.as_deref(),
         options.name.as_deref(),
         options.domain.as_deref(),
     )?;
+    inferred.source_ref = source_ref;
+    inferred.resource = resource;
 
     let config_text = load_or_initialize_config_text(&options.config_path)?;
     let included_domain = if options.output_path.is_none() {
@@ -342,6 +358,8 @@ fn infer_entity_from_input(
         format,
         input: persisted_input_path,
         domain: domain.map(ToString::to_string),
+        source_ref: None,
+        resource: None,
         source_options,
         columns,
         notes,
@@ -844,21 +862,26 @@ fn build_generated_entity_yaml(inferred: &InferredEntity) -> Yaml {
     }
 
     let mut source = YamlHash::new();
-    source.insert(yaml_str("format"), yaml_str(&inferred.format));
-    source.insert(yaml_str("path"), yaml_str(&inferred.input));
-    let source_options = match inferred.format.as_str() {
-        "json" | "csv" => inferred.source_options.as_ref(),
-        _ => None,
-    };
-    if let Some(options) = source_options {
-        let mut options_map = YamlHash::new();
-        if let Some(separator) = &options.separator {
-            options_map.insert(yaml_str("separator"), yaml_str(separator));
+    if let (Some(source_ref), Some(resource)) = (&inferred.source_ref, &inferred.resource) {
+        source.insert(yaml_str("ref"), yaml_str(source_ref));
+        source.insert(yaml_str("resource"), yaml_str(resource));
+    } else {
+        source.insert(yaml_str("format"), yaml_str(&inferred.format));
+        source.insert(yaml_str("path"), yaml_str(&inferred.input));
+        let source_options = match inferred.format.as_str() {
+            "json" | "csv" => inferred.source_options.as_ref(),
+            _ => None,
+        };
+        if let Some(options) = source_options {
+            let mut options_map = YamlHash::new();
+            if let Some(separator) = &options.separator {
+                options_map.insert(yaml_str("separator"), yaml_str(separator));
+            }
+            if let Some(json_mode) = &options.json_mode {
+                options_map.insert(yaml_str("json_mode"), yaml_str(json_mode));
+            }
+            source.insert(yaml_str("options"), Yaml::Hash(options_map));
         }
-        if let Some(json_mode) = &options.json_mode {
-            options_map.insert(yaml_str("json_mode"), yaml_str(json_mode));
-        }
-        source.insert(yaml_str("options"), Yaml::Hash(options_map));
     }
     entity.insert(yaml_str("source"), Yaml::Hash(source));
 
