@@ -105,8 +105,8 @@ pub(crate) fn parse_config_with_vars(
     let mut doc = load_single_doc(path)?;
     let config_dir = path.parent().unwrap_or_else(|| Path::new("."));
     let mut config_files = vec![path.to_path_buf()];
-    assemble_includes(&mut doc, config_dir, &mut config_files)?;
-    let mut config = parse_root(&doc)?;
+    let included_sources = assemble_includes(&mut doc, config_dir, &mut config_files)?;
+    let mut config = parse_root(&doc, included_sources.as_deref())?;
     config.config_files = config_files;
     apply_templates_with_vars(&mut config, config_dir, profile_vars)?;
     Ok(config)
@@ -126,18 +126,17 @@ fn load_single_doc(path: &Path) -> FloeResult<Yaml> {
     Ok(docs.remove(0))
 }
 
-/// Splices `include.domains` files into `domains` and `entities`, so the rest of
-/// parsing sees the same document as a single-file config.
+/// Splices included sources, domains, and entities so parsing sees one document.
 fn assemble_includes(
     doc: &mut Yaml,
     config_dir: &Path,
     config_files: &mut Vec<PathBuf>,
-) -> FloeResult<()> {
+) -> FloeResult<Option<PathBuf>> {
     let Yaml::Hash(root) = doc else {
-        return Ok(());
+        return Ok(None);
     };
     let Some(include) = root.remove(&Yaml::String("include".to_string())) else {
-        return Ok(());
+        return Ok(None);
     };
     let version = hash_get(root, "version").and_then(Yaml::as_str);
     if version.and_then(|v| ConfigVersion::parse(v).ok()) < Some(MIN_INCLUDE_CONFIG_VERSION) {
@@ -146,11 +145,40 @@ fn assemble_includes(
         );
     }
     let include = yaml_hash(&include, "include")?;
-    validate_known_keys(include, "include", &["domains"])?;
+    validate_known_keys(include, "include", &["domains", "sources"])?;
+    let sources_path = match hash_get(include, "sources") {
+        Some(value) => {
+            if hash_get(root, "sources").is_some() {
+                return Err(FloeError::config(
+                    "root.sources and include.sources are mutually exclusive".to_string(),
+                )
+                .into());
+            }
+            let path = yaml_string(value, "include.sources")?;
+            let source_path = resolve_local_path(config_dir, &path);
+            let sources_doc = with_source_path(&source_path, load_single_doc(&source_path))?;
+            let sources_root = with_source_path(&source_path, yaml_hash(&sources_doc, "sources"))?;
+            with_source_path(
+                &source_path,
+                validate_known_keys(sources_root, "sources file", &["sources"]),
+            )?;
+            let sources =
+                with_source_path(&source_path, get_value(sources_root, "sources", "root"))?;
+            root.insert(Yaml::String("sources".to_string()), sources.clone());
+            config_files.push(source_path.clone());
+            Some(source_path)
+        }
+        None => None,
+    };
     let base = glob_base(config_dir);
     let mut domains = Vec::new();
     let mut entities = Vec::new();
-    for pattern in get_array(include, "domains", "include")? {
+    let patterns: &[Yaml] = match hash_get(include, "domains") {
+        Some(value) => yaml_array(value, "include.domains")?,
+        None if sources_path.is_some() => &[],
+        None => return Err(FloeError::config("missing required field include.domains").into()),
+    };
+    for pattern in patterns {
         let pattern = yaml_string(pattern, "include.domains")?;
         let full = Path::new(&base).join(&pattern);
         let matches = glob::glob(&full.to_string_lossy())?.collect::<Result<Vec<_>, _>>()?;
@@ -210,7 +238,19 @@ fn assemble_includes(
             _ => return Err(FloeError::config(format!("expected array at {key}")).into()),
         }
     }
-    Ok(())
+    Ok(sources_path)
+}
+
+fn with_source_path<T>(path: &Path, result: FloeResult<T>) -> FloeResult<T> {
+    result.map_err(|error| {
+        let path = path.display().to_string();
+        let message = format!("{path}: {error}");
+        if error.downcast_ref::<std::io::Error>().is_some() {
+            FloeError::io_at(path, message).into()
+        } else {
+            FloeError::config(message).into()
+        }
+    })
 }
 
 fn glob_base(dir: &Path) -> String {
@@ -223,7 +263,7 @@ fn glob_base(dir: &Path) -> String {
     glob::Pattern::escape(&dir)
 }
 
-fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
+fn parse_root(doc: &Yaml, included_sources: Option<&Path>) -> FloeResult<RootConfig> {
     let root = yaml_hash(doc, "root")?;
     validate_known_keys(
         root,
@@ -276,7 +316,7 @@ fn parse_root(doc: &Yaml) -> FloeResult<RootConfig> {
     };
 
     let sources = match hash_get(root, "sources") {
-        Some(value) => parse_sources(value, &version)?,
+        Some(value) => parse_sources(value, &version, included_sources)?,
         None => Hash::new(),
     };
 
@@ -502,26 +542,33 @@ fn parse_domains(
     Ok((domains, defaults))
 }
 
-fn parse_sources(value: &Yaml, version: &str) -> FloeResult<Hash> {
-    if ConfigVersion::parse(version)? < MIN_SOURCES_CONFIG_VERSION {
-        return Err(
-            FloeError::config("root.sources requires root.version >= \"0.3\"".to_string()).into(),
-        );
-    }
-    let mut sources = Hash::new();
-    for item in yaml_array(value, "sources")? {
-        let mut hash = yaml_hash(item, "sources")?.clone();
-        validate_known_keys(&hash, "sources", &[&["name"], SOURCE_KEYS].concat())?;
-        let name = get_string(&hash, "name", "sources")?;
-        hash.remove(&Yaml::String("name".to_string()));
-        if sources
-            .insert(Yaml::String(name.clone()), Yaml::Hash(hash))
-            .is_some()
-        {
-            return Err(FloeError::config(format!("duplicate source name {name}")).into());
+fn parse_sources(value: &Yaml, version: &str, source_path: Option<&Path>) -> FloeResult<Hash> {
+    let result = (|| {
+        if ConfigVersion::parse(version)? < MIN_SOURCES_CONFIG_VERSION {
+            return Err(FloeError::config(
+                "root.sources requires root.version >= \"0.3\"".to_string(),
+            )
+            .into());
         }
+        let mut sources = Hash::new();
+        for item in yaml_array(value, "sources")? {
+            let mut hash = yaml_hash(item, "sources")?.clone();
+            validate_known_keys(&hash, "sources", &[&["name"], SOURCE_KEYS].concat())?;
+            let name = get_string(&hash, "name", "sources")?;
+            hash.remove(&Yaml::String("name".to_string()));
+            if sources
+                .insert(Yaml::String(name.clone()), Yaml::Hash(hash))
+                .is_some()
+            {
+                return Err(FloeError::config(format!("duplicate source name {name}")).into());
+            }
+        }
+        Ok(sources)
+    })();
+    match source_path {
+        Some(path) => with_source_path(path, result),
+        None => result,
     }
-    Ok(sources)
 }
 
 /// Replaces an entity's `source: { ref, resource, ... }` with the referenced
