@@ -41,6 +41,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       floe_python: ${{ steps.filter.outputs.floe_python }}
       io_write_duckdb: ${{ steps.filter.outputs.io_write_duckdb }}
+      config_schema: ${{ steps.filter.outputs.config_schema }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -133,6 +134,24 @@ jobs:
               # `clippy`/`test` jobs, so guard it here.
               - "crates/floe-cli/src/**"
               - "crates/floe-cli/Cargo.toml"
+            config_schema:
+              - "schemas/config.schema.yaml"
+              - "scripts/test_config_schema.py"
+              - ".github/workflows/ci.yml"
+
+  config-schema:
+    needs: changes
+    if: needs.changes.outputs.config_schema == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install schema test dependencies
+        run: python -m pip install jsonschema==4.26.0 PyYAML==6.0.2
+      - name: Validate config schema and fixtures
+        run: python scripts/test_config_schema.py
 
   rustfmt:
     needs: changes
