@@ -17,6 +17,36 @@ def validator_for(branch):
 
 
 class ConfigSchemaTest(unittest.TestCase):
+    def test_numeric_versions(self):
+        fragment = {"name": "orders", "schema": {"columns": []}}
+        for version in ("0.01", "00.2", "+0.+02"):
+            with self.subTest(version=version):
+                self.assert_invalid(ROOT_VALIDATOR, {"version": version, "entities": [fragment]})
+        for version in ("abc", "0.0", "0.3.1", "-1.0"):
+            with self.subTest(version=version):
+                self.assert_invalid(ROOT_VALIDATOR, {"version": version, "entities": [fragment]})
+        for version in ("0.03", "01.0", "+1.+0"):
+            with self.subTest(version=version):
+                self.assert_valid(ROOT_VALIDATOR, {"version": version, "entities": [fragment]})
+
+    def test_source_reference_boundaries(self):
+        for source in ({"ref": "crm"}, {"resource": "orders"}):
+            self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {"source": source}})
+        entity = {"name": "orders", "schema": {"columns": []}}
+        self.assert_invalid(validator_for("entity_file"), {**entity, "source": {"format": "csv", "path": "in.csv", "resource": "orders"}})
+        self.assert_valid(validator_for("entity_file"), {**entity, "source": {"ref": "crm", "resource": "orders"}})
+
+    def test_inherited_schema_evolution(self):
+        self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"schema_evolution": {"mode": "add_columns"}}}})
+        self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"schema_evolution": {"mode": "unknown"}}}})
+        self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"schema_evolution": {"on_incompatible": "reject"}}}})
+        self.assert_valid(validator_for("entity_file"), {"name": "orders", "schema": {"columns": [], "schema_evolution": {"mode": "add_columns", "on_incompatible": "fail"}}})
+
+    def test_ci_covers_fixture_changes(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+        filters = yaml.safe_load(workflow["jobs"]["changes"]["steps"][1]["with"]["filters"])
+        self.assertIn("example/project/**", filters["config_schema"])
+
     def assert_valid(self, validator, document):
         self.assertTrue(validator.is_valid(document), list(validator.iter_errors(document)))
 

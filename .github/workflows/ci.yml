@@ -137,6 +137,7 @@ jobs:
             config_schema:
               - "schemas/config.schema.yaml"
               - "scripts/test_config_schema.py"
+              - "example/project/**"
               - ".github/workflows/ci.yml"
 
   config-schema:

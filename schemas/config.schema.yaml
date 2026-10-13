@@ -11,7 +11,7 @@ allOf:
   - if:
       properties:
         version:
-          enum: ["0.1", "0.2"]
+          pattern: '^\+?0+\.\+?0*[12]$'
     then:
       required: [entities]
       properties:
@@ -41,7 +41,7 @@ allOf:
       not:
         properties:
           version:
-            enum: ["0.1", "0.2"]
+            pattern: '^\+?0+\.\+?0*[12]$'
     then:
       properties:
         entities:
@@ -66,6 +66,9 @@ allOf:
 properties:
   version:
     type: string
+    pattern: '^\+?[0-9]+\.\+?[0-9]+$'
+    not:
+      pattern: '^\+?0+\.\+?0+$'
   metadata:
     $ref: "#/$defs/project_metadata"
   storages:
@@ -297,7 +300,12 @@ $defs:
       state:
         $ref: "#/$defs/entity_state"
       source:
-        $ref: "#/$defs/source_fragment"
+        allOf:
+          - $ref: "#/$defs/source_fragment"
+          - not:
+              anyOf:
+                - required: [ref]
+                - required: [resource]
       sink:
         $ref: "#/$defs/sink_fragment"
       policy:
@@ -313,6 +321,8 @@ $defs:
         $ref: "#/$defs/normalize_columns"
       mismatch:
         $ref: "#/$defs/schema_mismatch"
+      schema_evolution:
+        $ref: "#/$defs/schema_evolution"
       unique_keys:
         type: array
         minItems: 1
@@ -325,6 +335,8 @@ $defs:
   source_fragment:
     type: object
     additionalProperties: false
+    dependentRequired:
+      resource: [ref]
     properties:
       ref:
         type: string
@@ -571,6 +583,8 @@ $defs:
         $ref: "#/$defs/normalize_columns"
       mismatch:
         $ref: "#/$defs/schema_mismatch"
+      schema_evolution:
+        $ref: "#/$defs/schema_evolution"
       primary_key:
         type: array
         minItems: 1
@@ -588,6 +602,17 @@ $defs:
         type: array
         items:
           $ref: "#/$defs/column"
+
+  schema_evolution:
+    type: object
+    additionalProperties: false
+    properties:
+      mode:
+        type: string
+        enum: [strict, add_columns]
+      on_incompatible:
+        type: string
+        enum: [fail]
 
   normalize_columns:
     type: object
