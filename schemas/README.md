@@ -18,3 +18,33 @@ config.yml` to validate the assembled configuration and its inherited values.
 
 Run `python3 scripts/test_config_schema.py` to check the schemas and examples.
 These checks also run in CI when schemas or example configs change.
+
+## Config 0.3 files
+
+The split schemas reference the shared definitions in `config.schema.yaml`.
+Associate each YAML file with its document schema in your editor:
+
+| YAML document | Schema |
+|---|---|
+| Full inline config | `schemas/config.schema.yaml` |
+| Project root | `schemas/0.3/project.schema.yaml` |
+| `sources.yml` | `schemas/0.3/sources.schema.yaml` |
+| `_domain.yml` | `schemas/0.3/domains.schema.yaml` |
+| Sibling entity file | `schemas/0.3/entity.schema.yaml` |
+
+For the VS Code YAML extension, a project's `.vscode/settings.json` can use:
+
+```json
+{
+  "yaml.schemas": {
+    "./schemas/0.3/project.schema.yaml": ["/example/project/config.yml"],
+    "./schemas/0.3/sources.schema.yaml": ["/example/project/sources.yml"],
+    "./schemas/0.3/domains.schema.yaml": ["/example/project/domains/*/_domain.yml"],
+    "./schemas/0.3/entity.schema.yaml": ["/example/project/domains/*/accounts.yml"]
+  }
+}
+```
+
+Adapt the file patterns to your project. Fragment schemas describe local fields;
+they do not turn a fragment into a standalone runnable config. Keep the schema
+directory layout when copying these files so their relative references resolve.

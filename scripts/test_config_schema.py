@@ -3,6 +3,7 @@ from pathlib import Path
 
 import yaml
 from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,31 @@ def validator_for(branch):
 
 
 class ConfigSchemaTest(unittest.TestCase):
+    def test_split_document_entry_points(self):
+        paths = [ROOT / "schemas/config.schema.yaml"] + list((ROOT / "schemas/0.3").glob("*.schema.yaml"))
+        self.assertEqual(len(paths), 5)
+        resources = []
+        schemas = {}
+        for path in paths:
+            schema = yaml.safe_load(path.read_text())
+            Draft202012Validator.check_schema(schema)
+            resource = Resource.from_contents(schema)
+            resources.extend([(schema["$id"], resource), (path.as_uri(), resource)])
+            schemas[path.name] = schema
+        registry = Registry().with_resources(resources)
+        validators = {name: Draft202012Validator(schema, registry=registry) for name, schema in schemas.items()}
+        project = ROOT / "example/project"
+        self.assert_valid(validators["project.schema.yaml"], yaml.safe_load((project / "config.yml").read_text()))
+        self.assert_valid(validators["sources.schema.yaml"], yaml.safe_load((project / "sources.yml").read_text()))
+        for path in (project / "domains").rglob("*.yml"):
+            name = "domains.schema.yaml" if path.name == "_domain.yml" else "entity.schema.yaml"
+            self.assert_valid(validators[name], yaml.safe_load(path.read_text()))
+        self.assert_invalid(validators["project.schema.yaml"], {"version": "0.2", "entities": [complete_entity()]})
+        self.assert_invalid(validators["project.schema.yaml"], {"sources": []})
+        self.assert_invalid(validators["sources.schema.yaml"], {"name": "crm"})
+        self.assert_invalid(validators["domains.schema.yaml"], {"defaults": {}})
+        self.assert_invalid(validators["entity.schema.yaml"], {"name": "orders"})
+
     def test_numeric_versions(self):
         fragment = {"name": "orders", "schema": {"columns": []}}
         for version in ("0.01", "00.2", "+0.+02"):
