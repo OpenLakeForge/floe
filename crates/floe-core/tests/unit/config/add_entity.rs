@@ -91,6 +91,42 @@ fn add_entity_writes_included_domain_sibling_and_omits_defaults() {
     assert_eq!(entity.schema.columns.len(), 2);
 }
 
+#[cfg(unix)]
+#[test]
+fn add_entity_sibling_uses_normal_file_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempdir().expect("tempdir");
+    let (config_path, domain_dir) = included_sales_project(dir.path());
+    let input_path = dir.path().join("orders.csv");
+    let control_path = dir.path().join("normal.yml");
+    write_file(&input_path, "id\n1\n");
+    write_file(&control_path, "");
+
+    add_entity_to_config(AddEntityOptions {
+        config_path,
+        output_path: None,
+        input: input_path.display().to_string(),
+        format: None,
+        name: None,
+        domain: Some("sales".to_string()),
+        dry_run: false,
+    })
+    .expect("add entity");
+
+    let expected_mode = fs::metadata(control_path)
+        .expect("metadata for regular file")
+        .permissions()
+        .mode()
+        & 0o777;
+    let actual_mode = fs::metadata(domain_dir.join("orders.yml"))
+        .expect("metadata for entity file")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(actual_mode, expected_mode);
+}
+
 #[test]
 fn add_entity_refuses_to_overwrite_included_domain_sibling() {
     let dir = tempdir().expect("tempdir");
@@ -164,6 +200,64 @@ fn add_entity_dry_run_in_included_domain_renders_sibling_without_writing() {
     assert!(rendered.contains("name: orders"));
     assert!(!rendered.contains("accepted:"));
     assert!(!entity_path.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn add_entity_dry_run_does_not_write_to_read_only_domain_directory() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempdir().expect("tempdir");
+    let (config_path, domain_dir) = included_sales_project(dir.path());
+    let input_path = dir.path().join("orders.csv");
+    write_file(&input_path, "id\n1\n");
+    fs::set_permissions(&domain_dir, fs::Permissions::from_mode(0o555))
+        .expect("make domain directory read-only");
+
+    let outcome = add_entity_to_config(AddEntityOptions {
+        config_path,
+        output_path: None,
+        input: input_path.display().to_string(),
+        format: None,
+        name: None,
+        domain: Some("sales".to_string()),
+        dry_run: true,
+    })
+    .expect("dry-run succeeds for a read-only domain directory");
+
+    assert!(outcome.rendered_yaml.is_some());
+    assert!(!domain_dir.join("orders.yml").exists());
+}
+
+#[test]
+fn add_entity_matches_domain_files_with_nonstandard_names() {
+    let dir = tempdir().expect("tempdir");
+    let (config_path, domain_dir) = included_sales_project(dir.path());
+    fs::rename(
+        domain_dir.join("_domain.yml"),
+        domain_dir.join("domain.yml"),
+    )
+    .expect("rename domain file");
+    write_file(
+        &config_path,
+        "version: \"0.3\"\ninclude:\n  domains: [\"silver/*/domain.yml\"]\n",
+    );
+    let input_path = dir.path().join("orders.csv");
+    write_file(&input_path, "id\n1\n");
+
+    let outcome = add_entity_to_config(AddEntityOptions {
+        config_path,
+        output_path: None,
+        input: input_path.display().to_string(),
+        format: None,
+        name: None,
+        domain: Some("sales".to_string()),
+        dry_run: false,
+    })
+    .expect("add entity to domain with a nonstandard file name");
+
+    assert_eq!(outcome.output_path, domain_dir.join("orders.yml"));
+    assert!(domain_dir.join("orders.yml").exists());
 }
 
 #[test]

@@ -2,6 +2,8 @@ use crate::errors::FloeError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use polars::prelude::{ArrowDataType, DataType, SerReader};
@@ -140,9 +142,22 @@ pub fn add_entity_to_config(options: AddEntityOptions) -> FloeResult<AddEntityOu
         }
         let entity_yaml = build_included_entity_yaml(&inferred, defaults);
         let rendered_yaml = render_yaml(&entity_yaml)?;
-        let staged_file =
-            validate_included_entity(&options.config_path, &output_path, &rendered_yaml)?;
+        config::validate_with_entity_yaml(
+            &options.config_path,
+            &rendered_yaml,
+            inferred
+                .domain
+                .as_deref()
+                .expect("included domain was matched"),
+        )
+        .map_err(|err| {
+            FloeError::validation(format!(
+                "generated entity file {} failed validation: {err}",
+                output_path.display()
+            ))
+        })?;
         if !options.dry_run {
+            let staged_file = stage_included_entity(&output_path, &rendered_yaml)?;
             staged_file.persist_noclobber(&output_path).map_err(|err| {
                 FloeError::io_at(
                     output_path.display().to_string(),
@@ -238,12 +253,6 @@ fn find_included_domain(
                     config_path.display()
                 ))
             })?;
-            if domain_file
-                .file_name()
-                .is_none_or(|name| name != "_domain.yml")
-            {
-                continue;
-            }
             let text = fs::read_to_string(&domain_file).map_err(|err| {
                 FloeError::io_at(
                     domain_file.display().to_string(),
@@ -930,34 +939,24 @@ fn render_yaml(value: &Yaml) -> FloeResult<String> {
     Ok(format!("{body}\n"))
 }
 
-fn validate_included_entity(
-    config_path: &Path,
-    entity_path: &Path,
-    yaml: &str,
-) -> FloeResult<NamedTempFile> {
+fn stage_included_entity(entity_path: &Path, yaml: &str) -> FloeResult<NamedTempFile> {
     let parent = entity_path.parent().unwrap_or_else(|| Path::new("."));
-    let mut temp_file = Builder::new()
-        .prefix(".floe-add-entity-")
-        .suffix(".yml")
-        .tempfile_in(parent)
-        .map_err(|err| {
-            FloeError::io_at(
-                entity_path.display().to_string(),
-                format!("failed to stage entity file: {err}"),
-            )
-        })?;
+    let mut builder = Builder::new();
+    builder.prefix(".floe-add-entity-").suffix(".yml");
+    #[cfg(unix)]
+    builder.permissions(fs::Permissions::from_mode(0o666));
+    let mut temp_file = builder.tempfile_in(parent).map_err(|err| {
+        FloeError::io_at(
+            entity_path.display().to_string(),
+            format!("failed to stage entity file: {err}"),
+        )
+    })?;
     use std::io::Write;
     temp_file.write_all(yaml.as_bytes()).map_err(|err| {
         FloeError::io_at(
             entity_path.display().to_string(),
             format!("failed to stage entity file: {err}"),
         )
-    })?;
-    crate::validate(config_path, ValidateOptions::default()).map_err(|err| {
-        FloeError::validation(format!(
-            "generated entity file {} failed validation: {err}",
-            entity_path.display()
-        ))
     })?;
     Ok(temp_file)
 }

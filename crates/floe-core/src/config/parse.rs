@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use yaml_rust2::yaml::Hash;
-use yaml_rust2::Yaml;
+use yaml_rust2::{Yaml, YamlLoader};
 
 use crate::config::apply_templates_with_vars;
 use crate::config::storage::resolve_local_path;
@@ -110,6 +110,47 @@ pub(crate) fn parse_config_with_vars(
     config.config_files = config_files;
     apply_templates_with_vars(&mut config, config_dir, profile_vars)?;
     Ok(config)
+}
+
+pub(crate) fn validate_with_entity_yaml(
+    path: &Path,
+    entity_yaml: &str,
+    domain: &str,
+) -> FloeResult<()> {
+    let mut doc = load_single_doc(path)?;
+    let config_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut config_files = vec![path.to_path_buf()];
+    let included_sources = assemble_includes(&mut doc, config_dir, &mut config_files)?;
+    let mut entity_docs = YamlLoader::load_from_str(entity_yaml)?;
+    if entity_docs.len() != 1 {
+        return Err(FloeError::config(
+            "generated entity YAML must contain exactly one document".to_string(),
+        )
+        .into());
+    }
+    let mut entity = entity_docs.remove(0);
+    let Yaml::Hash(entity_hash) = &mut entity else {
+        return Err(FloeError::config("expected map at generated entity".to_string()).into());
+    };
+    entity_hash.insert(
+        Yaml::String("domain".to_string()),
+        Yaml::String(domain.to_string()),
+    );
+    let Yaml::Hash(root) = &mut doc else {
+        return Err(FloeError::config("expected map at root".to_string()).into());
+    };
+    let entities = root
+        .entry(Yaml::String("entities".to_string()))
+        .or_insert_with(|| Yaml::Array(Vec::new()));
+    let Yaml::Array(entities) = entities else {
+        return Err(FloeError::config("expected array at entities".to_string()).into());
+    };
+    entities.push(entity);
+
+    let mut config = parse_root(&doc, included_sources.as_deref())?;
+    config.config_files = config_files;
+    apply_templates_with_vars(&mut config, config_dir, &HashMap::new())?;
+    super::validate_config(&config)
 }
 
 fn load_single_doc(path: &Path) -> FloeResult<Yaml> {
