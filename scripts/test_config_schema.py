@@ -209,6 +209,45 @@ class ConfigSchemaTest(unittest.TestCase):
             target.pop("path")
             target.pop(alias)
 
+    def test_pii_excludes_raw_output_modes(self):
+        mutations = [
+            lambda entity: entity["policy"].update(severity="abort"),
+            lambda entity: entity["sink"].update(archive={"path": "archive"}),
+            lambda entity: entity["schema"].update(mismatch={"missing_columns": "reject_file"}),
+            lambda entity: entity["schema"].update(mismatch={"extra_columns": "reject_file"}),
+        ]
+        for index, mutate in enumerate(mutations):
+            entity = complete_entity()
+            mutate(entity)
+            document = {"version": "0.3", "entities": [entity]}
+            with self.subTest(case=index):
+                self.assert_valid(ROOT_VALIDATOR, document)
+                entity["pii"] = {"columns": [{"name": "id", "strategy": "hash"}]}
+                self.assert_invalid(ROOT_VALIDATOR, document)
+                self.assert_invalid(validator_for("entity_file"), entity)
+
+    def test_drop_pii_sink_compatibility(self):
+        entity = complete_entity()
+        column = {"name": "id", "strategy": "drop"}
+        entity["pii"] = {"columns": [column]}
+        document = {"version": "0.3", "entities": [entity]}
+        self.assert_valid(ROOT_VALIDATOR, document)
+        for sink in ("delta", "iceberg"):
+            entity["sink"]["accepted"]["format"] = sink
+            column["strategy"] = "drop"
+            with self.subTest(sink=sink):
+                self.assert_invalid(ROOT_VALIDATOR, document)
+                self.assert_invalid(validator_for("entity_file"), entity)
+                column["strategy"] = "hash"
+                self.assert_valid(ROOT_VALIDATOR, document)
+
+    def test_default_pii_safety_values_can_be_overridden(self):
+        entity = complete_entity()
+        defaults = {"pii": {"columns": [{"name": "id", "strategy": "hash"}]}, "policy": {"severity": "abort"}}
+        self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": defaults})
+        entity["domain"] = "sales"
+        self.assert_valid(ROOT_VALIDATOR, {"version": "0.3", "domains": [{"name": "sales", "defaults": defaults}], "entities": [entity]})
+
     def test_standalone_document(self):
         path = ROOT / "example/standalone/config.yml"
         self.assert_valid(ROOT_VALIDATOR, yaml.safe_load(path.read_text()))

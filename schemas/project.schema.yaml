@@ -215,6 +215,8 @@ $defs:
         $ref: '#/$defs/schema'
       pii:
         $ref: '#/$defs/pii_fragment'
+    allOf:
+    - $ref: '#/$defs/pii_safety'
   entity_metadata:
     type: object
     additionalProperties: false
@@ -1350,3 +1352,56 @@ $defs:
     required:
     - url
     - namespace
+  pii_safety:
+    allOf:
+    - if:
+        required:
+        - pii
+      then:
+        properties:
+          policy:
+            properties:
+              severity:
+                not:
+                  const: abort
+          sink:
+            not:
+              required:
+              - archive
+          schema:
+            properties:
+              mismatch:
+                properties:
+                  missing_columns:
+                    not:
+                      const: reject_file
+                  extra_columns:
+                    not:
+                      const: reject_file
+    - if:
+        required:
+        - pii
+        - sink
+        properties:
+          sink:
+            required:
+            - accepted
+            properties:
+              accepted:
+                required:
+                - format
+                properties:
+                  format:
+                    enum:
+                    - delta
+                    - iceberg
+      then:
+        properties:
+          pii:
+            properties:
+              columns:
+                items:
+                  properties:
+                    strategy:
+                      not:
+                        const: drop

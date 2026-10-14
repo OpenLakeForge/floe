@@ -4,6 +4,10 @@ All notable changes to Floe are documented in this file.
 
 ## Floe core (unreleased)
 
+- **Self-contained YAML authoring schemas (#574).** Replace editor/tooling references to
+  `schemas/config.schema.yaml` with `schemas/project.schema.yaml`. Included source,
+  domain and entity documents use `sources.schema.yaml`, `domains.schema.yaml` and
+  `entity.schema.yaml` directly under `schemas/`; each carries its own definitions.
 - **`add-entity` can reference a declared source (#515).** Pass `--source <ref>` and
   `--resource <name>`; `--input` still supplies the file used for schema inference.
 - **`add-entity` writes included-domain entities as sibling files (#514).** With `--domain` 
