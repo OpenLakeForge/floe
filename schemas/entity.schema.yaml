@@ -1,0 +1,516 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://floe.local/schema/entity.schema.yaml
+allOf:
+- $ref: '#/$defs/entity_base'
+- required:
+  - name
+  - schema
+- $ref: '#/$defs/local_evolution_sink'
+title: Floe entity document
+$defs:
+  entity_base:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+      metadata:
+        $ref: '#/$defs/entity_metadata'
+      domain:
+        type: string
+      incremental_mode:
+        type: string
+        enum:
+        - none
+        - archive
+        - file
+        - row
+      state:
+        $ref: '#/$defs/entity_state'
+      source:
+        $ref: '#/$defs/source_fragment'
+      sink:
+        $ref: '#/$defs/sink_fragment'
+      policy:
+        $ref: '#/$defs/policy_fragment'
+      schema:
+        $ref: '#/$defs/schema'
+      pii:
+        $ref: '#/$defs/pii_fragment'
+  entity_metadata:
+    type: object
+    additionalProperties: false
+    properties:
+      data_product:
+        type: string
+      domain:
+        type: string
+      owner:
+        type: string
+      description:
+        type: string
+      tags:
+        type: array
+        items:
+          type: string
+  entity_state:
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        type: string
+  source_fragment:
+    type: object
+    additionalProperties: false
+    dependentRequired:
+      resource:
+      - ref
+    properties:
+      ref:
+        type: string
+      resource:
+        type: string
+      format:
+        type: string
+        enum:
+        - csv
+        - tsv
+        - fixed
+        - parquet
+        - json
+        - xlsx
+        - orc
+        - avro
+        - xml
+      path:
+        type: string
+      storage:
+        type: string
+      options:
+        $ref: '#/$defs/source_options'
+      cast_mode:
+        type: string
+        enum:
+        - strict
+        - coerce
+      filesystem:
+        type: string
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+  source_options:
+    type: object
+    additionalProperties: false
+    properties:
+      header:
+        type: boolean
+      separator:
+        type: string
+      encoding:
+        type: string
+      null_values:
+        type: array
+        items:
+          type: string
+      recursive:
+        type: boolean
+      glob:
+        type: string
+      json_mode:
+        type: string
+        enum:
+        - array
+        - ndjson
+      sheet:
+        type: string
+      header_row:
+        type: integer
+        minimum: 1
+      data_row:
+        type: integer
+        minimum: 1
+      row_tag:
+        type: string
+      namespace:
+        type: string
+      value_tag:
+        type: string
+  sink_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      write_mode:
+        type: string
+        enum:
+        - overwrite
+        - append
+        - merge_scd1
+        - merge_scd2
+      accepted:
+        $ref: '#/$defs/sink_accepted_fragment'
+      rejected:
+        $ref: '#/$defs/sink_rejected_fragment'
+      archive:
+        $ref: '#/$defs/archive_target'
+  sink_accepted_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      format:
+        type: string
+        enum:
+        - parquet
+        - delta
+        - iceberg
+        - duckdb
+      path:
+        type: string
+      storage:
+        type: string
+      options:
+        type: object
+        additionalProperties: false
+        properties:
+          compression:
+            type: string
+            enum:
+            - snappy
+            - gzip
+            - zstd
+            - uncompressed
+          row_group_size:
+            type: integer
+            minimum: 1
+          max_size_per_file:
+            type: integer
+            minimum: 1
+      filesystem:
+        type: string
+      merge:
+        $ref: '#/$defs/merge'
+      iceberg:
+        $ref: '#/$defs/iceberg'
+      delta:
+        $ref: '#/$defs/delta'
+      duckdb:
+        $ref: '#/$defs/duckdb'
+      partition_by:
+        type: array
+        items:
+          type: string
+        minItems: 1
+      partition_spec:
+        type: array
+        items:
+          $ref: '#/$defs/partition_field'
+        minItems: 1
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+  merge:
+    type: object
+    additionalProperties: false
+    properties:
+      ignore_columns:
+        type: array
+        items:
+          type: string
+      compare_columns:
+        type: array
+        items:
+          type: string
+      scd2:
+        $ref: '#/$defs/merge_scd2'
+  merge_scd2:
+    type: object
+    additionalProperties: false
+    properties:
+      current_flag_column:
+        type: string
+      valid_from_column:
+        type: string
+      valid_to_column:
+        type: string
+  iceberg:
+    type: object
+    additionalProperties: false
+    properties:
+      catalog:
+        type: string
+      namespace:
+        type: string
+      table:
+        type: string
+      location:
+        type: string
+  delta:
+    type: object
+    additionalProperties: false
+    properties:
+      catalog:
+        type: string
+      schema:
+        type: string
+      table:
+        type: string
+  duckdb:
+    type: object
+    additionalProperties: false
+    properties:
+      table:
+        type: string
+        pattern: \S
+      schema:
+        type: string
+      connection:
+        type: string
+        anyOf:
+        - pattern: '^\s*md:'
+        - pattern: ^\s*$
+      token:
+        type: string
+  partition_field:
+    type: object
+    additionalProperties: false
+    properties:
+      column:
+        type: string
+      transform:
+        type: string
+        enum:
+        - identity
+        - year
+        - month
+        - day
+        - hour
+    required:
+    - column
+  sink_rejected_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      format:
+        type: string
+        enum:
+        - csv
+      path:
+        type: string
+      storage:
+        type: string
+      filesystem:
+        type: string
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+  archive_target:
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        type: string
+      storage:
+        type: string
+  policy_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      severity:
+        type: string
+        enum:
+        - warn
+        - reject
+        - abort
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+    - columns
+    properties:
+      normalize_columns:
+        $ref: '#/$defs/normalize_columns'
+      mismatch:
+        $ref: '#/$defs/schema_mismatch'
+      schema_evolution:
+        $ref: '#/$defs/schema_evolution'
+      primary_key:
+        type: array
+        minItems: 1
+        items:
+          type: string
+      unique_keys:
+        type: array
+        minItems: 1
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: string
+      columns:
+        type: array
+        items:
+          $ref: '#/$defs/column'
+  normalize_columns:
+    type: object
+    additionalProperties: false
+    properties:
+      enabled:
+        type: boolean
+      strategy:
+        type: string
+        enum:
+        - snake_case
+        - lower
+        - camel_case
+        - none
+  schema_mismatch:
+    type: object
+    additionalProperties: false
+    properties:
+      missing_columns:
+        type: string
+        enum:
+        - reject_file
+        - fill_nulls
+      extra_columns:
+        type: string
+        enum:
+        - reject_file
+        - ignore
+  schema_evolution:
+    type: object
+    additionalProperties: false
+    properties:
+      mode:
+        type: string
+        enum:
+        - strict
+        - add_columns
+      on_incompatible:
+        type: string
+        enum:
+        - fail
+  column:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    - type
+    properties:
+      name:
+        type: string
+      source:
+        type: string
+      type:
+        type: string
+        enum:
+        - string
+        - str
+        - text
+        - boolean
+        - bool
+        - int8
+        - int16
+        - int32
+        - int64
+        - int
+        - integer
+        - long
+        - uint8
+        - uint16
+        - uint32
+        - uint64
+        - float32
+        - float64
+        - float
+        - double
+        - number
+        - decimal
+        - date
+        - datetime
+        - timestamp
+        - time
+      nullable:
+        type: boolean
+      unique:
+        type: boolean
+      width:
+        type: integer
+        minimum: 1
+      trim:
+        type: boolean
+  pii_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      columns:
+        type: array
+        items:
+          $ref: '#/$defs/pii_column'
+  pii_column:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+      mask_pattern:
+        type: string
+      redact_value:
+        type: string
+      key:
+        type: string
+      strategy:
+        type: string
+        enum:
+        - hash
+        - drop
+        - nullify
+        - redact
+        - mask
+    required:
+    - name
+    - strategy
+    allOf:
+    - if:
+        properties:
+          strategy:
+            const: mask
+      then:
+        required:
+        - mask_pattern
+  local_evolution_sink:
+    if:
+      required:
+      - schema
+      - sink
+      properties:
+        schema:
+          required:
+          - schema_evolution
+          properties:
+            schema_evolution:
+              required:
+              - mode
+              properties:
+                mode:
+                  const: add_columns
+        sink:
+          required:
+          - accepted
+          properties:
+            accepted:
+              required:
+              - format
+    then:
+      properties:
+        sink:
+          properties:
+            accepted:
+              properties:
+                format:
+                  const: delta

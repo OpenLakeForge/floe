@@ -1,9 +1,0 @@
-$schema: https://json-schema.org/draft/2020-12/schema
-$id: project.schema.yaml
-title: Floe project (config 0.3 and later)
-description: A runnable project document, with inline definitions or file includes.
-$ref: ../config.schema.yaml
-properties:
-  version:
-    not:
-      pattern: '^\+?0+\.\+?0*[12]$'

@@ -1,13 +1,14 @@
 import unittest
+import re
+from copy import deepcopy
 from pathlib import Path
 
 import yaml
 from jsonschema import Draft202012Validator
-from referencing import Registry, Resource
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = yaml.safe_load((ROOT / "schemas/config.schema.yaml").read_text())
+SCHEMA = yaml.safe_load((ROOT / "schemas/project.schema.yaml").read_text())
 ROOT_VALIDATOR = Draft202012Validator(SCHEMA)
 
 
@@ -22,36 +23,76 @@ def complete_entity():
 
 
 def validator_for(branch):
-    return Draft202012Validator(
-        {"$schema": SCHEMA["$schema"], "$ref": f"#/$defs/{branch}", "$defs": SCHEMA["$defs"]}
-    )
+    name = {"sources_file": "sources", "domain_file": "domains", "entity_file": "entity"}[branch]
+    return Draft202012Validator(yaml.safe_load((ROOT / f"schemas/{name}.schema.yaml").read_text()))
 
 
 class ConfigSchemaTest(unittest.TestCase):
-    def test_split_document_entry_points(self):
-        paths = [ROOT / "schemas/config.schema.yaml"] + list((ROOT / "schemas/0.3").glob("*.schema.yaml"))
-        self.assertEqual(len(paths), 5)
-        resources = []
-        schemas = {}
-        for path in paths:
-            schema = yaml.safe_load(path.read_text())
+    def test_independent_document_schemas(self):
+        self.assertFalse((ROOT / "schemas/config.schema.yaml").exists())
+        self.assertFalse((ROOT / "schemas/0.3").exists())
+        for name in ("project", "sources", "domains", "entity"):
+            schema = yaml.safe_load((ROOT / f"schemas/{name}.schema.yaml").read_text())
             Draft202012Validator.check_schema(schema)
-            resource = Resource.from_contents(schema)
-            resources.extend([(schema["$id"], resource), (path.as_uri(), resource)])
-            schemas[path.name] = schema
-        registry = Registry().with_resources(resources)
-        validators = {name: Draft202012Validator(schema, registry=registry) for name, schema in schemas.items()}
-        project = ROOT / "example/project"
-        self.assert_valid(validators["project.schema.yaml"], yaml.safe_load((project / "config.yml").read_text()))
-        self.assert_valid(validators["sources.schema.yaml"], yaml.safe_load((project / "sources.yml").read_text()))
-        for path in (project / "domains").rglob("*.yml"):
-            name = "domains.schema.yaml" if path.name == "_domain.yml" else "entity.schema.yaml"
-            self.assert_valid(validators[name], yaml.safe_load(path.read_text()))
-        self.assert_invalid(validators["project.schema.yaml"], {"version": "0.2", "entities": [complete_entity()]})
-        self.assert_invalid(validators["project.schema.yaml"], {"sources": []})
-        self.assert_invalid(validators["sources.schema.yaml"], {"name": "crm"})
-        self.assert_invalid(validators["domains.schema.yaml"], {"defaults": {}})
-        self.assert_invalid(validators["entity.schema.yaml"], {"name": "orders"})
+            def check_refs(node):
+                if isinstance(node, dict):
+                    if "$ref" in node:
+                        self.assertTrue(node["$ref"].startswith("#/$defs/"), node["$ref"])
+                        self.assertIn(node["$ref"].split("/")[-1], schema["$defs"])
+                    for value in node.values():
+                        check_refs(value)
+                elif isinstance(node, list):
+                    for value in node:
+                        check_refs(value)
+            check_refs(schema)
+        self.assert_invalid(ROOT_VALIDATOR, {"sources": []})
+        self.assert_invalid(validator_for("sources_file"), {"name": "crm"})
+        self.assert_invalid(validator_for("domain_file"), {"defaults": {}})
+        self.assert_invalid(validator_for("entity_file"), {"name": "orders"})
+
+    def test_rust_model_field_coverage(self):
+        source = (ROOT / "crates/floe-core/src/config/types.rs").read_text()
+        structs = {
+            name: set(re.findall(r"pub (\w+):", body))
+            for name, body in re.findall(r"pub struct (\w+) \{(.*?)^\}", source, re.M | re.S)
+        }
+        bindings = {
+            "RootConfig": None, "ProjectMetadata": "project_metadata",
+            "LineageConfig": "lineage", "EnvConfig": "env",
+            "DomainConfig": "domain", "EntityConfig": "entity_base",
+            "PiiConfig": "pii", "PiiColumnConfig": "pii_column",
+            "EntityMetadata": "entity_metadata", "EntityStateConfig": "entity_state",
+            "SourceConfig": "source_fragment", "SourceOptions": "source_options",
+            "SinkConfig": "sink", "SinkTarget": "sink_accepted_fragment",
+            "SinkOptions": "sink_accepted_fragment", "MergeOptionsConfig": "merge",
+            "MergeScd2OptionsConfig": "merge_scd2", "IcebergPartitionFieldConfig": "partition_field",
+            "IcebergSinkTargetConfig": "iceberg", "DeltaSinkTargetConfig": "delta",
+            "DuckDbSinkTargetConfig": "duckdb", "StoragesConfig": "storages",
+            "StorageDefinition": "storage_definition", "CatalogsConfig": "catalogs",
+            "CatalogDefinition": "catalog_definition", "ReportConfig": "report",
+            "ArchiveTarget": "archive_target", "PolicyConfig": "policy_fragment",
+            "SchemaConfig": "schema", "NormalizeColumnsConfig": "normalize_columns",
+            "SchemaEvolutionConfig": "schema_evolution", "SchemaMismatchConfig": "schema_mismatch",
+            "ColumnConfig": "column",
+        }
+        self.assertEqual(set(structs), set(bindings))
+        internal = {"RootConfig": {"config_files"}, "DomainConfig": {"resolved_incoming_dir"}, "EntityConfig": {"id"}, "SinkTarget": {"write_mode"}}
+        aliases = {"SourceConfig": {"source_ref": "ref"}, "StorageDefinition": {"fs_type": "type"}, "ColumnConfig": {"column_type": "type"}, "CatalogDefinition": {"type_config": "type"}}
+        wire_extras = {
+            "RootConfig": {"sources", "include", "filesystems"},
+            "DomainConfig": {"defaults"}, "SourceConfig": {"filesystem"},
+            "SinkTarget": {"filesystem"},
+            "CatalogDefinition": {"region", "database", "create_database_if_missing", "allow_takeover", "uri", "credential", "warehouse", "oauth2_server_uri", "scope", "host", "catalog", "schema", "token", "create_schema_if_missing"},
+        }
+        for model, definition in bindings.items():
+            with self.subTest(model=model):
+                expected = structs[model] - internal.get(model, set())
+                expected = {aliases.get(model, {}).get(field, field) for field in expected}
+                block = SCHEMA if definition is None else SCHEMA["$defs"][definition]
+                if model == "SinkOptions":
+                    block = block["properties"]["options"]
+                self.assertEqual(expected | wire_extras.get(model, set()), set(block["properties"]))
+                self.assertFalse(internal.get(model, set()) & set(block["properties"]))
 
     def test_numeric_versions(self):
         fragment = {"name": "orders", "schema": {"columns": []}}
@@ -103,13 +144,33 @@ class ConfigSchemaTest(unittest.TestCase):
         }
         document = {
             "version": "0.3", "entities": [entity],
-            "storages": {"definitions": [{"name": "local", "type": "local"}]},
-            "catalogs": {"definitions": []},
+            "storages": {"default": "local", "definitions": [{"name": "local", "type": "local"}]},
+            "catalogs": {"definitions": [{"name": "rest", "type": "rest", "uri": "https://catalog.example"}]},
             "lineage": {"url": "https://lineage.example", "namespace": "floe"},
         }
         self.assert_valid(ROOT_VALIDATOR, document)
         entity["source"]["storage"] = "local"
         self.assert_invalid(ROOT_VALIDATOR, document)
+
+    def test_reviewed_runtime_rejections(self):
+        base = {"version": "0.3", "entities": [complete_entity()]}
+        mutations = [
+            lambda doc: doc["entities"][0]["sink"].update(archive={"filesystem": "local"}),
+            lambda doc: doc["entities"][0]["sink"]["accepted"].update(format="iceberg", partition_spec=[{"column": "id", "transform": "bucket[16]"}]),
+            lambda doc: doc["entities"][0]["sink"].update(rejected={"format": "parquet", "path": "out"}),
+            lambda doc: doc.update(storages={"definitions": [{"name": "local", "type": "local"}]}),
+            lambda doc: doc.update(catalogs={"definitions": []}),
+            lambda doc: doc.update(lineage={"url": "https://lineage.example", "namespace": "floe", "max_failures": 0}),
+            lambda doc: doc["entities"][0]["sink"]["accepted"].update(format="duckdb"),
+            lambda doc: doc["entities"][0]["sink"]["accepted"].update(iceberg={}),
+            lambda doc: doc["entities"][0]["sink"]["accepted"].update(delta={}),
+            lambda doc: doc["entities"][0]["sink"]["accepted"].update(merge={}),
+        ]
+        for index, mutate in enumerate(mutations):
+            document = deepcopy(base)
+            mutate(document)
+            with self.subTest(case=index):
+                self.assert_invalid(ROOT_VALIDATOR, document)
 
     def test_standalone_document(self):
         path = ROOT / "example/standalone/config.yml"

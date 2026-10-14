@@ -1,5 +1,0 @@
-$schema: https://json-schema.org/draft/2020-12/schema
-$id: entity.schema.yaml
-title: Floe included entity (config 0.3)
-description: One entity beside its domain file; its domain is supplied during assembly.
-$ref: ../config.schema.yaml#/$defs/entity_file
