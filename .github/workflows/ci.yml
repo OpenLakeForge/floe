@@ -51,6 +51,7 @@ jobs:
             config_schema:
               - "schemas/**"
               - "scripts/test_config_schema.py"
+              - "crates/floe-core/src/config/types.rs"
               - "example/project/**"
               - "example/standalone/**"
               - ".github/workflows/ci.yml"

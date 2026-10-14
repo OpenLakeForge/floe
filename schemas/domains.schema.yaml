@@ -433,3 +433,8 @@ $defs:
       then:
         required:
         - mask_pattern
+        properties:
+          mask_pattern:
+            anyOf:
+            - pattern: ^(?:(?!\{first)[\s\S])*\{first\+?0*[1-9][0-9]*\}
+            - pattern: ^(?:(?!\{last)[\s\S])*\{last\+?0*[1-9][0-9]*\}

@@ -172,6 +172,43 @@ class ConfigSchemaTest(unittest.TestCase):
             with self.subTest(case=index):
                 self.assert_invalid(ROOT_VALIDATOR, document)
 
+    def test_partition_by_requires_delta(self):
+        entity = complete_entity()
+        entity["sink"]["accepted"]["partition_by"] = ["id"]
+        self.assert_invalid(ROOT_VALIDATOR, {"version": "0.3", "entities": [entity]})
+        entity["sink"]["accepted"]["format"] = "delta"
+        self.assert_valid(ROOT_VALIDATOR, {"version": "0.3", "entities": [entity]})
+
+    def test_mask_tokens_follow_runtime_syntax(self):
+        entity = complete_entity()
+        column = {"name": "id", "strategy": "mask", "mask_pattern": "****"}
+        entity["pii"] = {"columns": [column]}
+        document = {"version": "0.3", "entities": [entity]}
+        for pattern in ("****", "{first0}", "{last-1}", "{firstx}{first3}"):
+            column["mask_pattern"] = pattern
+            with self.subTest(pattern=pattern):
+                self.assert_invalid(ROOT_VALIDATOR, document)
+        for pattern in ("****{last4}", "{first03}***", "{first+3}", "{firstx}{last2}"):
+            column["mask_pattern"] = pattern
+            with self.subTest(pattern=pattern):
+                self.assert_valid(ROOT_VALIDATOR, document)
+                self.assert_valid(validator_for("entity_file"), entity)
+                self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": {"pii": entity["pii"]}})
+
+    def test_motherduck_has_no_filesystem_storage(self):
+        entity = complete_entity()
+        target = {"format": "duckdb", "duckdb": {"table": "orders", "connection": "md:lake"}}
+        entity["sink"]["accepted"] = target
+        document = {"version": "0.3", "entities": [entity]}
+        self.assert_valid(ROOT_VALIDATOR, document)
+        for alias in ("storage", "filesystem"):
+            target[alias] = "local"
+            self.assert_invalid(ROOT_VALIDATOR, document)
+            target["path"] = "ignored.db"
+            self.assert_invalid(ROOT_VALIDATOR, document)
+            target.pop("path")
+            target.pop(alias)
+
     def test_standalone_document(self):
         path = ROOT / "example/standalone/config.yml"
         self.assert_valid(ROOT_VALIDATOR, yaml.safe_load(path.read_text()))
@@ -193,6 +230,7 @@ class ConfigSchemaTest(unittest.TestCase):
         workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
         filters = yaml.safe_load(workflow["jobs"]["changes"]["steps"][1]["with"]["filters"])
         self.assertIn("example/project/**", filters["config_schema"])
+        self.assertIn("crates/floe-core/src/config/types.rs", filters["config_schema"])
 
     def assert_valid(self, validator, document):
         self.assertTrue(validator.is_valid(document), list(validator.iter_errors(document)))

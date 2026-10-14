@@ -661,6 +661,11 @@ $defs:
       then:
         required:
         - mask_pattern
+        properties:
+          mask_pattern:
+            anyOf:
+            - pattern: ^(?:(?!\{first)[\s\S])*\{first\+?0*[1-9][0-9]*\}
+            - pattern: ^(?:(?!\{last)[\s\S])*\{last\+?0*[1-9][0-9]*\}
   source:
     type: object
     additionalProperties: false
@@ -853,6 +858,33 @@ $defs:
         properties:
           format:
             const: iceberg
+    - if:
+        required:
+        - partition_by
+      then:
+        properties:
+          format:
+            const: delta
+    - if:
+        required:
+        - format
+        - duckdb
+        properties:
+          format:
+            const: duckdb
+          duckdb:
+            required:
+            - connection
+            properties:
+              connection:
+                pattern: '^\s*md:'
+      then:
+        not:
+          anyOf:
+          - required:
+            - storage
+          - required:
+            - filesystem
   sink_rejected:
     allOf:
     - $ref: '#/$defs/sink_rejected_fragment'
