@@ -294,6 +294,43 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_valid(validator_for("entity_file"), entity)
         self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": {"metadata": entity["metadata"]}})
 
+    def test_empty_catalog_name_matches_runtime(self):
+        document = {"version": "0.3", "entities": [complete_entity()], "catalogs": {"definitions": [{"name": "", "type": "rest", "uri": "https://catalog.example"}]}}
+        self.assert_valid(ROOT_VALIDATOR, document)
+
+    def test_xlsx_sheet_names_are_not_blank(self):
+        entity = complete_entity()
+        entity["source"].update(format="xlsx", options={"sheet": " "})
+        document = {"version": "0.3", "entities": [entity]}
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        self.assert_invalid(validator_for("entity_file"), entity)
+        entity["source"]["options"]["sheet"] = "Sheet1"
+        self.assert_valid(ROOT_VALIDATOR, document)
+        entity["source"]["format"] = "csv"
+        entity["source"]["options"]["sheet"] = " "
+        self.assert_valid(ROOT_VALIDATOR, document)
+
+    def test_state_paths_are_not_blank(self):
+        entity = complete_entity()
+        entity["state"] = {"path": " "}
+        document = {"version": "0.3", "entities": [entity]}
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        self.assert_invalid(validator_for("entity_file"), entity)
+        entity["state"]["path"] = "./state.json"
+        self.assert_valid(ROOT_VALIDATOR, document)
+
+    def test_json_selector_column_limit(self):
+        entity = complete_entity()
+        entity["source"]["format"] = "json"
+        entity["schema"]["columns"] = [{"name": f"c{i}", "type": "string"} for i in range(1024)]
+        document = {"version": "0.3", "entities": [entity]}
+        self.assert_valid(ROOT_VALIDATOR, document)
+        entity["schema"]["columns"].append({"name": "overflow", "type": "string"})
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        self.assert_invalid(validator_for("entity_file"), entity)
+        entity["source"]["format"] = "csv"
+        self.assert_valid(ROOT_VALIDATOR, document)
+
     def test_standalone_document(self):
         path = ROOT / "example/standalone/config.yml"
         self.assert_valid(ROOT_VALIDATOR, yaml.safe_load(path.read_text()))

@@ -241,6 +241,40 @@ $defs:
                 items:
                   required:
                   - width
+    - if:
+        required:
+        - source
+        properties:
+          source:
+            required:
+            - format
+            properties:
+              format:
+                const: xlsx
+      then:
+        properties:
+          source:
+            properties:
+              options:
+                properties:
+                  sheet:
+                    pattern: \S
+    - if:
+        required:
+        - source
+        properties:
+          source:
+            required:
+            - format
+            properties:
+              format:
+                const: json
+      then:
+        properties:
+          schema:
+            properties:
+              columns:
+                maxItems: 1024
   entity_metadata:
     type: object
     additionalProperties: true
@@ -263,6 +297,7 @@ $defs:
     properties:
       path:
         type: string
+        pattern: \S
   source_fragment:
     type: object
     additionalProperties: false
@@ -1295,7 +1330,6 @@ $defs:
     properties:
       name:
         type: string
-        minLength: 1
       type:
         type: string
         enum:

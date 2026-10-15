@@ -69,6 +69,7 @@ $defs:
     properties:
       path:
         type: string
+        pattern: \S
   source_fragment:
     type: object
     additionalProperties: false
