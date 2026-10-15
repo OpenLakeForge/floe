@@ -49,7 +49,7 @@ $defs:
         $ref: '#/$defs/pii_fragment'
   entity_metadata:
     type: object
-    additionalProperties: false
+    additionalProperties: true
     properties:
       data_product:
         type: string

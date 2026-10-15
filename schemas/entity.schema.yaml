@@ -6,6 +6,11 @@ allOf:
   - name
   - schema
 - $ref: '#/$defs/local_evolution_sink'
+- properties:
+    name:
+      pattern: ^[^./\\]+$
+    domain:
+      pattern: ^[^./\\]+$
 title: Floe entity document
 $defs:
   entity_base:
@@ -39,9 +44,27 @@ $defs:
         $ref: '#/$defs/pii_fragment'
     allOf:
     - $ref: '#/$defs/pii_safety'
+    - if:
+        required:
+        - source
+        properties:
+          source:
+            required:
+            - format
+            properties:
+              format:
+                const: fixed
+      then:
+        properties:
+          schema:
+            properties:
+              columns:
+                items:
+                  required:
+                  - width
   entity_metadata:
     type: object
-    additionalProperties: false
+    additionalProperties: true
     properties:
       data_product:
         type: string

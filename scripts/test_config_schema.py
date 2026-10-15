@@ -248,6 +248,52 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["domain"] = "sales"
         self.assert_valid(ROOT_VALIDATOR, {"version": "0.3", "domains": [{"name": "sales", "defaults": defaults}], "entities": [entity]})
 
+    def test_qualified_entity_ids(self):
+        for field in ("name", "domain"):
+            for value in ("", "sales/orders", "sales.orders", "sales\\orders"):
+                entity = complete_entity()
+                entity[field] = value
+                with self.subTest(field=field, value=value):
+                    self.assert_invalid(ROOT_VALIDATOR, {"version": "0.3", "entities": [entity]})
+                    self.assert_invalid(validator_for("entity_file"), entity)
+        entity = complete_entity()
+        entity["name"] = "legacy/orders"
+        self.assert_valid(ROOT_VALIDATOR, {"version": "0.2", "entities": [entity]})
+
+    def test_fixed_columns_require_width(self):
+        entity = complete_entity()
+        entity["source"]["format"] = "fixed"
+        document = {"version": "0.3", "entities": [entity]}
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        self.assert_invalid(validator_for("entity_file"), entity)
+        entity["schema"]["columns"][0]["width"] = 12
+        self.assert_valid(ROOT_VALIDATOR, document)
+        self.assert_valid(validator_for("entity_file"), entity)
+
+    def test_complete_xml_source_requires_row_tag(self):
+        entity = complete_entity()
+        entity["source"]["format"] = "xml"
+        document = {"version": "0.3", "entities": [entity]}
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        entity["source"]["options"] = {"row_tag": " "}
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        entity["source"]["options"]["row_tag"] = "order"
+        self.assert_valid(ROOT_VALIDATOR, document)
+        entity["source"].pop("options")
+        defaults = {"source": {"options": {"row_tag": "order"}}}
+        entity["domain"] = "sales"
+        document["domains"] = [{"name": "sales", "defaults": defaults}]
+        self.assert_valid(ROOT_VALIDATOR, document)
+        self.assert_valid(validator_for("entity_file"), entity)
+
+    def test_free_form_metadata(self):
+        entity = complete_entity()
+        entity["metadata"] = {"owner": "team", "cost_center": "finops", "custom": {"a": 1}}
+        document = {"version": "0.3", "metadata": {"project": "demo", "cost_center": "finops"}, "entities": [entity]}
+        self.assert_valid(ROOT_VALIDATOR, document)
+        self.assert_valid(validator_for("entity_file"), entity)
+        self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": {"metadata": entity["metadata"]}})
+
     def test_standalone_document(self):
         path = ROOT / "example/standalone/config.yml"
         self.assert_valid(ROOT_VALIDATOR, yaml.safe_load(path.read_text()))

@@ -49,7 +49,13 @@ allOf:
       entities:
         type: array
         items:
-          $ref: '#/$defs/inline_entity'
+          allOf:
+          - $ref: '#/$defs/inline_entity'
+          - properties:
+              name:
+                pattern: ^[^./\\]+$
+              domain:
+                pattern: ^[^./\\]+$
     anyOf:
     - required:
       - entities
@@ -217,9 +223,27 @@ $defs:
         $ref: '#/$defs/pii_fragment'
     allOf:
     - $ref: '#/$defs/pii_safety'
+    - if:
+        required:
+        - source
+        properties:
+          source:
+            required:
+            - format
+            properties:
+              format:
+                const: fixed
+      then:
+        properties:
+          schema:
+            properties:
+              columns:
+                items:
+                  required:
+                  - width
   entity_metadata:
     type: object
-    additionalProperties: false
+    additionalProperties: true
     properties:
       data_product:
         type: string
@@ -687,6 +711,29 @@ $defs:
         required:
         - storage
         - filesystem
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xml
+        not:
+          required:
+          - ref
+      then:
+        required:
+        - options
+        properties:
+          options:
+            required:
+            - row_tag
+            properties:
+              row_tag:
+                pattern: \S
+              namespace:
+                pattern: \S
+              value_tag:
+                pattern: \S
     anyOf:
     - required:
       - format
@@ -989,7 +1036,7 @@ $defs:
     - $ref: '#/$defs/local_evolution_sink'
   project_metadata:
     type: object
-    additionalProperties: false
+    additionalProperties: true
     properties:
       project:
         type: string
