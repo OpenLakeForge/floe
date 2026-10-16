@@ -36,55 +36,155 @@ $defs:
       path:
         type: string
       storage:
-        type: string
+        type:
+        - string
+        - 'null'
       options:
         $ref: '#/$defs/source_options'
       cast_mode:
-        type: string
+        type:
+        - string
+        - 'null'
         enum:
         - strict
         - coerce
+        - null
       filesystem:
-        type: string
+        type:
+        - string
+        - 'null'
     allOf:
     - not:
         required:
         - storage
         - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            enum:
+            - csv
+            - tsv
+      then:
+        properties:
+          options:
+            properties:
+              encoding:
+                pattern: ^[_-]*(?:[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*|[lL][_-]*[oO][_-]*[sS][_-]*[sS][_-]*[yY][_-]*[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*)$
+              separator:
+                pattern: ^[\x00-\x7F]$
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xlsx
+      then:
+        properties:
+          options:
+            properties:
+              header_row:
+                minimum: 1
+              data_row:
+                minimum: 1
+              sheet:
+                pattern: \S
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: json
+      then:
+        properties:
+          options:
+            properties:
+              json_mode:
+                enum:
+                - array
+                - ndjson
+                - null
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xml
+      then:
+        properties:
+          options:
+            properties:
+              row_tag:
+                pattern: \S
+              namespace:
+                pattern: \S
+              value_tag:
+                pattern: \S
   source_options:
     type: object
     additionalProperties: false
     properties:
       header:
-        type: boolean
+        type:
+        - boolean
+        - 'null'
       separator:
-        type: string
+        type:
+        - string
+        - 'null'
       encoding:
-        type: string
+        type:
+        - string
+        - 'null'
       null_values:
-        type: array
+        type:
+        - array
+        - 'null'
         items:
           type: string
       recursive:
-        type: boolean
+        type:
+        - boolean
+        - 'null'
       glob:
-        type: string
+        type:
+        - string
+        - 'null'
       json_mode:
-        type: string
-        enum:
-        - array
-        - ndjson
+        type:
+        - string
+        - 'null'
       sheet:
-        type: string
+        type:
+        - string
+        - 'null'
       header_row:
-        type: integer
-        minimum: 1
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
       data_row:
-        type: integer
-        minimum: 1
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
       row_tag:
-        type: string
+        type:
+        - string
+        - 'null'
       namespace:
-        type: string
+        type:
+        - string
+        - 'null'
       value_tag:
-        type: string
+        type:
+        - string
+        - 'null'

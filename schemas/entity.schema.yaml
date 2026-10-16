@@ -22,14 +22,14 @@ $defs:
       metadata:
         $ref: '#/$defs/entity_metadata'
       domain:
-        type: string
+        type:
+        - string
+        - 'null'
       incremental_mode:
-        type: string
-        enum:
-        - none
-        - archive
-        - file
-        - row
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[nN][oO][nN][eE]|[aA][rR][cC][hH][iI][vV][eE]|[fF][iI][lL][eE]|[rR][oO][wW])\s*$
       state:
         $ref: '#/$defs/entity_state'
       source:
@@ -50,9 +50,8 @@ $defs:
         - sink
         properties:
           incremental_mode:
-            enum:
-            - file
-            - row
+            type: string
+            pattern: ^\s*(?:[fF][iI][lL][eE]|[rR][oO][wW])\s*$
           sink:
             required:
             - archive
@@ -76,6 +75,9 @@ $defs:
                 items:
                   required:
                   - width
+                  properties:
+                    width:
+                      minimum: 1
     - if:
         required:
         - source
@@ -94,6 +96,10 @@ $defs:
                 properties:
                   sheet:
                     pattern: \S
+                  header_row:
+                    minimum: 1
+                  data_row:
+                    minimum: 1
     - if:
         required:
         - source
@@ -110,20 +116,50 @@ $defs:
             properties:
               columns:
                 maxItems: 1024
+    - if:
+        required:
+        - sink
+        properties:
+          sink:
+            required:
+            - write_mode
+            properties:
+              write_mode:
+                type: string
+                pattern: ^\s*(?:[mM][eE][rR][gG][eE]_[sS][cC][dD]1|[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+      then:
+        properties:
+          schema:
+            required:
+            - primary_key
+            properties:
+              primary_key:
+                type: array
+                minItems: 1
   entity_metadata:
     type: object
     additionalProperties: true
     properties:
       data_product:
-        type: string
+        type:
+        - string
+        - 'null'
       domain:
-        type: string
+        type:
+        - string
+        - 'null'
       owner:
-        type: string
+        type:
+        - string
+        - 'null'
       description:
-        type: string
+        type:
+        - string
+        - 'null'
       tags:
-        type: array
+        type:
+        - array
+        - 'null'
         items:
           type: string
   entity_state:
@@ -131,7 +167,9 @@ $defs:
     additionalProperties: false
     properties:
       path:
-        type: string
+        type:
+        - string
+        - 'null'
         pattern: \S
   source_fragment:
     type: object
@@ -159,75 +197,218 @@ $defs:
       path:
         type: string
       storage:
-        type: string
+        type:
+        - string
+        - 'null'
       options:
         $ref: '#/$defs/source_options'
       cast_mode:
-        type: string
+        type:
+        - string
+        - 'null'
         enum:
         - strict
         - coerce
+        - null
       filesystem:
-        type: string
+        type:
+        - string
+        - 'null'
     allOf:
     - not:
         required:
         - storage
         - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            enum:
+            - csv
+            - tsv
+      then:
+        properties:
+          options:
+            properties:
+              encoding:
+                pattern: ^[_-]*(?:[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*|[lL][_-]*[oO][_-]*[sS][_-]*[sS][_-]*[yY][_-]*[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*)$
+              separator:
+                pattern: ^[\x00-\x7F]$
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xlsx
+      then:
+        properties:
+          options:
+            properties:
+              header_row:
+                minimum: 1
+              data_row:
+                minimum: 1
+              sheet:
+                pattern: \S
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: json
+      then:
+        properties:
+          options:
+            properties:
+              json_mode:
+                enum:
+                - array
+                - ndjson
+                - null
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xml
+      then:
+        properties:
+          options:
+            properties:
+              row_tag:
+                pattern: \S
+              namespace:
+                pattern: \S
+              value_tag:
+                pattern: \S
   source_options:
     type: object
     additionalProperties: false
     properties:
       header:
-        type: boolean
+        type:
+        - boolean
+        - 'null'
       separator:
-        type: string
+        type:
+        - string
+        - 'null'
       encoding:
-        type: string
+        type:
+        - string
+        - 'null'
       null_values:
-        type: array
+        type:
+        - array
+        - 'null'
         items:
           type: string
       recursive:
-        type: boolean
+        type:
+        - boolean
+        - 'null'
       glob:
-        type: string
+        type:
+        - string
+        - 'null'
       json_mode:
-        type: string
-        enum:
-        - array
-        - ndjson
+        type:
+        - string
+        - 'null'
       sheet:
-        type: string
+        type:
+        - string
+        - 'null'
       header_row:
-        type: integer
-        minimum: 1
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
       data_row:
-        type: integer
-        minimum: 1
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
       row_tag:
-        type: string
+        type:
+        - string
+        - 'null'
       namespace:
-        type: string
+        type:
+        - string
+        - 'null'
       value_tag:
-        type: string
+        type:
+        - string
+        - 'null'
   sink_fragment:
     type: object
     additionalProperties: false
     properties:
       write_mode:
-        type: string
-        enum:
-        - overwrite
-        - append
-        - merge_scd1
-        - merge_scd2
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[oO][vV][eE][rR][wW][rR][iI][tT][eE]|[aA][pP][pP][eE][nN][dD]|[mM][eE][rR][gG][eE]_[sS][cC][dD]1|[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
       accepted:
         $ref: '#/$defs/sink_accepted_fragment'
       rejected:
         $ref: '#/$defs/sink_rejected_fragment'
       archive:
         $ref: '#/$defs/archive_target'
+    allOf:
+    - if:
+        required:
+        - accepted
+        properties:
+          accepted:
+            properties:
+              format:
+                enum:
+                - parquet
+                - iceberg
+      then:
+        properties:
+          write_mode:
+            pattern: ^\s*(?:[oO][vV][eE][rR][wW][rR][iI][tT][eE]|[aA][pP][pP][eE][nN][d])\s*$
+    - if:
+        required:
+        - accepted
+        - write_mode
+        properties:
+          accepted:
+            required:
+            - merge
+      then:
+        properties:
+          write_mode:
+            type: string
+            pattern: ^\s*(?:[mM][eE][rR][gG][eE]_[sS][cC][dD]1|[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+    - if:
+        required:
+        - accepted
+        - write_mode
+        properties:
+          accepted:
+            properties:
+              merge:
+                required:
+                - scd2
+            required:
+            - merge
+      then:
+        properties:
+          write_mode:
+            type: string
+            pattern: ^\s*(?:[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
   sink_accepted_fragment:
     type: object
     additionalProperties: false
@@ -240,28 +421,35 @@ $defs:
         - iceberg
         - duckdb
       path:
-        type: string
+        type:
+        - string
+        - 'null'
       storage:
-        type: string
+        type:
+        - string
+        - 'null'
       options:
         type: object
         additionalProperties: false
         properties:
           compression:
-            type: string
-            enum:
-            - snappy
-            - gzip
-            - zstd
-            - uncompressed
+            type:
+            - string
+            - 'null'
           row_group_size:
-            type: integer
-            minimum: 1
+            type:
+            - integer
+            - 'null'
+            maximum: 9223372036854775807
           max_size_per_file:
-            type: integer
-            minimum: 1
+            type:
+            - integer
+            - 'null'
+            maximum: 9223372036854775807
       filesystem:
-        type: string
+        type:
+        - string
+        - 'null'
       merge:
         $ref: '#/$defs/merge'
       iceberg:
@@ -271,9 +459,12 @@ $defs:
       duckdb:
         $ref: '#/$defs/duckdb'
       partition_by:
-        type: array
+        type:
+        - array
+        - 'null'
         items:
           type: string
+          pattern: \S
         minItems: 1
       partition_spec:
         type: array
@@ -285,18 +476,52 @@ $defs:
         required:
         - storage
         - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: parquet
+      then:
+        properties:
+          options:
+            properties:
+              compression:
+                enum:
+                - snappy
+                - gzip
+                - zstd
+                - uncompressed
+                - null
+              row_group_size:
+                minimum: 1
+              max_size_per_file:
+                minimum: 1
   merge:
     type: object
     additionalProperties: false
     properties:
       ignore_columns:
-        type: array
+        type:
+        - array
+        - 'null'
         items:
           type: string
+          pattern: \S
       compare_columns:
-        type: array
+        type:
+        - array
+        - 'null'
         items:
           type: string
+          pattern: \S
       scd2:
         $ref: '#/$defs/merge_scd2'
   merge_scd2:
@@ -304,36 +529,56 @@ $defs:
     additionalProperties: false
     properties:
       current_flag_column:
-        type: string
-        pattern: '\S'
+        type:
+        - string
+        - 'null'
+        pattern: \S
       valid_from_column:
-        type: string
-        pattern: '\S'
+        type:
+        - string
+        - 'null'
+        pattern: \S
       valid_to_column:
-        type: string
-        pattern: '\S'
+        type:
+        - string
+        - 'null'
+        pattern: \S
   iceberg:
     type: object
     additionalProperties: false
     properties:
       catalog:
-        type: string
+        type:
+        - string
+        - 'null'
       namespace:
-        type: string
+        type:
+        - string
+        - 'null'
       table:
-        type: string
+        type:
+        - string
+        - 'null'
       location:
-        type: string
+        type:
+        - string
+        - 'null'
   delta:
     type: object
     additionalProperties: false
     properties:
       catalog:
-        type: string
+        type:
+        - string
+        - 'null'
       schema:
-        type: string
+        type:
+        - string
+        - 'null'
       table:
-        type: string
+        type:
+        - string
+        - 'null'
   duckdb:
     type: object
     additionalProperties: false
@@ -342,28 +587,32 @@ $defs:
         type: string
         pattern: \S
       schema:
-        type: string
+        type:
+        - string
+        - 'null'
       connection:
-        type: string
+        type:
+        - string
+        - 'null'
         anyOf:
         - pattern: '^\s*md:'
         - pattern: ^\s*$
       token:
-        type: string
+        type:
+        - string
+        - 'null'
   partition_field:
     type: object
     additionalProperties: false
     properties:
       column:
         type: string
+        pattern: \S
       transform:
-        type: string
-        enum:
-        - identity
-        - year
-        - month
-        - day
-        - hour
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[iI][dD][eE][nN][tT][iI][tT][yY]|[yY][eE][aA][rR]|[mM][oO][nN][tT][hH]|[dD][aA][yY]|[hH][oO][uU][rR])\s*$
     required:
     - column
   sink_rejected_fragment:
@@ -377,14 +626,25 @@ $defs:
       path:
         type: string
       storage:
-        type: string
+        type:
+        - string
+        - 'null'
       filesystem:
-        type: string
+        type:
+        - string
+        - 'null'
     allOf:
     - not:
         required:
         - storage
         - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
   archive_target:
     type: object
     additionalProperties: false
@@ -392,7 +652,9 @@ $defs:
       path:
         type: string
       storage:
-        type: string
+        type:
+        - string
+        - 'null'
   policy_fragment:
     type: object
     additionalProperties: false
@@ -416,18 +678,24 @@ $defs:
       schema_evolution:
         $ref: '#/$defs/schema_evolution'
       primary_key:
-        type: array
+        type:
+        - array
+        - 'null'
         minItems: 1
         items:
           type: string
+          pattern: \S
       unique_keys:
-        type: array
+        type:
+        - array
+        - 'null'
         minItems: 1
         items:
           type: array
           minItems: 1
           items:
             type: string
+            pattern: \S
       columns:
         type: array
         items:
@@ -437,41 +705,48 @@ $defs:
     additionalProperties: false
     properties:
       enabled:
-        type: boolean
+        type:
+        - boolean
+        - 'null'
       strategy:
-        type: string
-        enum:
-        - snake_case
-        - lower
-        - camel_case
-        - none
+        type:
+        - string
+        - 'null'
+        pattern: ^[_-]*(?:[sS][_-]*[nN][_-]*[aA][_-]*[kK][_-]*[eE][_-]*[cC][_-]*[aA][_-]*[sS][_-]*[eE][_-]*|[lL][_-]*[oO][_-]*[wW][_-]*[eE][_-]*[rR][_-]*|[cC][_-]*[aA][_-]*[mM][_-]*[eE][_-]*[lL][_-]*[cC][_-]*[aA][_-]*[sS][_-]*[eE][_-]*|[nN][_-]*[oO][_-]*[nN][_-]*[eE][_-]*)$
   schema_mismatch:
     type: object
     additionalProperties: false
     properties:
       missing_columns:
-        type: string
+        type:
+        - string
+        - 'null'
         enum:
         - reject_file
         - fill_nulls
+        - null
       extra_columns:
-        type: string
+        type:
+        - string
+        - 'null'
         enum:
         - reject_file
         - ignore
+        - null
   schema_evolution:
     type: object
     additionalProperties: false
     properties:
       mode:
-        type: string
-        enum:
-        - strict
-        - add_columns
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[sS][tT][rR][iI][cC][tT]|[aA][dD][dD]_[cC][oO][lL][uU][mM][nN][sS])\s*$
       on_incompatible:
-        type: string
-        enum:
-        - fail
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[fF][aA][iI][lL])\s*$
   column:
     type: object
     additionalProperties: false
@@ -482,19 +757,29 @@ $defs:
       name:
         type: string
       source:
-        type: string
+        type:
+        - string
+        - 'null'
       type:
         type: string
-        pattern: '^(?:[sS][_-]*[tT][_-]*[rR][_-]*[iI][_-]*[nN][_-]*[gG][_-]*|[sS][_-]*[tT][_-]*[rR][_-]*|[tT][_-]*[eE][_-]*[xX][_-]*[tT][_-]*|[bB][_-]*[oO][_-]*[oO][_-]*[lL][_-]*[eE][_-]*[aA][_-]*[nN][_-]*|[bB][_-]*[oO][_-]*[oO][_-]*[lL][_-]*|[iI][_-]*[nN][_-]*[tT][_-]*8[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*1[_-]*6[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*3[_-]*2[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*6[_-]*4[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*|[iI][_-]*[nN][_-]*[tT][_-]*[eE][_-]*[gG][_-]*[eE][_-]*[rR][_-]*|[lL][_-]*[oO][_-]*[nN][_-]*[gG][_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*8[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*1[_-]*6[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*3[_-]*2[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*6[_-]*4[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*3[_-]*2[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*6[_-]*4[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*|[dD][_-]*[oO][_-]*[uU][_-]*[bB][_-]*[lL][_-]*[eE][_-]*|[nN][_-]*[uU][_-]*[mM][_-]*[bB][_-]*[eE][_-]*[rR][_-]*|[dD][_-]*[eE][_-]*[cC][_-]*[iI][_-]*[mM][_-]*[aA][_-]*[lL][_-]*|[dD][_-]*[aA][_-]*[tT][_-]*[eE][_-]*|[dD][_-]*[aA][_-]*[tT][_-]*[eE][_-]*[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*|[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*[sS][_-]*[tT][_-]*[aA][_-]*[mM][_-]*[pP][_-]*|[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*)$'
+        pattern: ^[_-]*(?:[sS][_-]*[tT][_-]*[rR][_-]*[iI][_-]*[nN][_-]*[gG][_-]*|[sS][_-]*[tT][_-]*[rR][_-]*|[tT][_-]*[eE][_-]*[xX][_-]*[tT][_-]*|[bB][_-]*[oO][_-]*[oO][_-]*[lL][_-]*[eE][_-]*[aA][_-]*[nN][_-]*|[bB][_-]*[oO][_-]*[oO][_-]*[lL][_-]*|[iI][_-]*[nN][_-]*[tT][_-]*8[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*1[_-]*6[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*3[_-]*2[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*6[_-]*4[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*|[iI][_-]*[nN][_-]*[tT][_-]*[eE][_-]*[gG][_-]*[eE][_-]*[rR][_-]*|[lL][_-]*[oO][_-]*[nN][_-]*[gG][_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*8[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*1[_-]*6[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*3[_-]*2[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*6[_-]*4[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*3[_-]*2[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*6[_-]*4[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*|[dD][_-]*[oO][_-]*[uU][_-]*[bB][_-]*[lL][_-]*[eE][_-]*|[nN][_-]*[uU][_-]*[mM][_-]*[bB][_-]*[eE][_-]*[rR][_-]*|[dD][_-]*[eE][_-]*[cC][_-]*[iI][_-]*[mM][_-]*[aA][_-]*[lL][_-]*|[dD][_-]*[aA][_-]*[tT][_-]*[eE][_-]*|[dD][_-]*[aA][_-]*[tT][_-]*[eE][_-]*[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*|[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*[sS][_-]*[tT][_-]*[aA][_-]*[mM][_-]*[pP][_-]*|[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*)$
       nullable:
-        type: boolean
+        type:
+        - boolean
+        - 'null'
       unique:
-        type: boolean
+        type:
+        - boolean
+        - 'null'
       width:
-        type: integer
-        minimum: 1
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
       trim:
-        type: boolean
+        type:
+        - boolean
+        - 'null'
   pii_fragment:
     type: object
     additionalProperties: false
@@ -510,19 +795,20 @@ $defs:
       name:
         type: string
       mask_pattern:
-        type: string
+        type:
+        - string
+        - 'null'
       redact_value:
-        type: string
+        type:
+        - string
+        - 'null'
       key:
-        type: string
+        type:
+        - string
+        - 'null'
       strategy:
         type: string
-        enum:
-        - hash
-        - drop
-        - nullify
-        - redact
-        - mask
+        pattern: ^\s*(?:[hH][aA][sS][hH]|[dD][rR][oO][pP]|[nN][uU][lL][lL][iI][fF][yY]|[rR][eE][dD][aA][cC][tT]|[mM][aA][sS][kK])\s*$
     required:
     - name
     - strategy
@@ -530,7 +816,7 @@ $defs:
     - if:
         properties:
           strategy:
-            const: mask
+            pattern: ^\s*(?:[mM][aA][sS][kK])\s*$
       then:
         required:
         - mask_pattern
@@ -554,7 +840,8 @@ $defs:
               - mode
               properties:
                 mode:
-                  const: add_columns
+                  type: string
+                  pattern: ^\s*(?:[aA][dD][dD]_[cC][oO][lL][uU][mM][nN][sS])\s*$
         sink:
           required:
           - accepted
@@ -622,4 +909,4 @@ $defs:
                   properties:
                     strategy:
                       not:
-                        const: drop
+                        pattern: ^\s*(?:[dD][rR][oO][pP])\s*$
