@@ -7,6 +7,7 @@ required:
 properties:
   name:
     type: string
+    pattern: ^[^./\\]+$
   incoming_dir:
     type:
     - string
@@ -438,6 +439,54 @@ $defs:
         properties:
           path:
             type: string
+    - if:
+        required:
+        - format
+        - duckdb
+        properties:
+          format:
+            const: duckdb
+          duckdb:
+            required:
+            - connection
+            properties:
+              connection:
+                type: string
+                pattern: '^\s*md:'
+      then:
+        not:
+          anyOf:
+          - required:
+            - storage
+            properties:
+              storage:
+                not:
+                  type: 'null'
+          - required:
+            - filesystem
+            properties:
+              filesystem:
+                not:
+                  type: 'null'
+    - if:
+        required:
+        - format
+        - partition_by
+        properties:
+          partition_by:
+            type: array
+      then:
+        properties:
+          format:
+            const: delta
+    - if:
+        required:
+        - format
+        - partition_spec
+      then:
+        properties:
+          format:
+            const: iceberg
   merge:
     type: object
     additionalProperties: false

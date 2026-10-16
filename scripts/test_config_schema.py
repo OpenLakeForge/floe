@@ -253,6 +253,14 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["sink"]["accepted"] = target
         document = {"version": "0.3", "entities": [entity]}
         self.assert_valid(ROOT_VALIDATOR, document)
+        for alias in ("storage", "filesystem"):
+            target[alias] = None
+            self.assert_valid(ROOT_VALIDATOR, document)
+            self.assert_valid(validator_for("entity_file"), entity)
+            self.assert_valid(validator_for("domain_file"), {
+                "name": "sales", "defaults": {"sink": {"accepted": target}},
+            })
+            target.pop(alias)
         target["duckdb"]["connection"] = None
         self.assert_invalid(ROOT_VALIDATOR, document)
         target["duckdb"]["connection"] = "md:lake"
@@ -265,6 +273,72 @@ class ConfigSchemaTest(unittest.TestCase):
             target.pop(alias)
         target["duckdb"]["connection"] = None
         self.assert_invalid(ROOT_VALIDATOR, document)
+
+    def test_motherduck_storage_conflicts_in_fragments(self):
+        for alias in ("storage", "filesystem"):
+            target = {
+                "format": "duckdb", alias: "local",
+                "duckdb": {"table": "orders", "connection": "md:lake"},
+            }
+            entity = {"name": "orders", "domain": "sales", "schema": {"columns": []},
+                      "sink": {"accepted": target}}
+            with self.subTest(alias=alias):
+                self.assert_invalid(validator_for("entity_file"), entity)
+                self.assert_invalid(validator_for("domain_file"), {
+                    "name": "sales", "defaults": {"sink": {"accepted": target}},
+                })
+                self.assert_invalid(ROOT_VALIDATOR, {
+                    "version": "0.3", "domains": [{"name": "sales"}], "entities": [entity],
+                })
+                complete = complete_entity()
+                complete.update(domain="sales")
+                complete["sink"]["accepted"] = target
+                self.assert_invalid(ROOT_VALIDATOR, {
+                    "version": "0.3", "domains": [{"name": "sales"}], "entities": [complete],
+                })
+
+    def test_partition_formats_are_checked_in_sink_fragments(self):
+        entity = {"name": "orders", "domain": "sales", "schema": {"columns": []}, "sink": {
+            "accepted": {"format": "parquet", "partition_by": ["id"]},
+        }}
+        self.assert_invalid(validator_for("entity_file"), entity)
+        self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {
+            "sink": {"accepted": {"format": "parquet", "partition_by": ["id"]}},
+        }})
+        self.assert_invalid(ROOT_VALIDATOR, {
+            "version": "0.3", "domains": [{"name": "sales"}], "entities": [entity],
+        })
+        entity["sink"]["accepted"]["format"] = "delta"
+        self.assert_valid(validator_for("entity_file"), entity)
+
+        entity["sink"]["accepted"] = {"format": "delta", "partition_spec": [{
+            "column": "id", "transform": "identity",
+        }]}
+        self.assert_invalid(validator_for("entity_file"), entity)
+        self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {
+            "sink": {"accepted": {"format": "delta", "partition_spec": [{
+                "column": "id", "transform": "identity",
+            }]}},
+        }})
+        self.assert_invalid(ROOT_VALIDATOR, {
+            "version": "0.3", "domains": [{"name": "sales"}], "entities": [entity],
+        })
+        entity["sink"]["accepted"]["format"] = "iceberg"
+        self.assert_valid(validator_for("entity_file"), entity)
+
+        for field, format_name, values in (
+            ("partition_by", "delta", ["id"]),
+            ("partition_spec", "iceberg", [{"column": "id", "transform": "identity"}]),
+        ):
+            defaults = {"source": {"format": "csv", "path": "in.csv"}, "policy": {"severity": "warn"},
+                        "sink": {"accepted": {"path": "out", field: values}}}
+            fragment = {"name": "orders", "domain": "sales", "sink": {
+                "accepted": {"format": format_name},
+            }, "schema": {"columns": [{"name": "id", "type": "string"}]}}
+            self.assert_valid(ROOT_VALIDATOR, {
+                "version": "0.3", "domains": [{"name": "sales", "defaults": defaults}],
+                "entities": [fragment],
+            })
 
     def test_pii_excludes_raw_output_modes(self):
         mutations = [
@@ -316,6 +390,19 @@ class ConfigSchemaTest(unittest.TestCase):
         entity = complete_entity()
         entity["name"] = "legacy/orders"
         self.assert_valid(ROOT_VALIDATOR, {"version": "0.2", "entities": [entity]})
+
+    def test_included_domain_names_match_qualified_entity_ids(self):
+        for name in ("", "sales/orders", "sales.orders", "sales\\orders"):
+            with self.subTest(name=name):
+                self.assert_invalid(validator_for("domain_file"), {"name": name})
+                self.assert_invalid(ROOT_VALIDATOR, {
+                    "version": "0.3", "domains": [{"name": name}], "entities": [complete_entity()],
+                })
+        self.assert_valid(validator_for("domain_file"), {"name": "sales west"})
+        self.assert_valid(ROOT_VALIDATOR, {
+            "version": "0.2", "domains": [{"name": "sales/orders", "incoming_dir": "incoming"}],
+            "entities": [complete_entity()],
+        })
 
     def test_fixed_columns_require_width(self):
         entity = complete_entity()
@@ -767,6 +854,12 @@ class ConfigSchemaTest(unittest.TestCase):
     def test_empty_inline_entities_are_allowed_with_domain_includes(self):
         self.assert_valid(ROOT_VALIDATOR, {
             "version": "0.3", "entities": [], "include": {"domains": ["domains/*/_domain.yml"]},
+        })
+        self.assert_valid(ROOT_VALIDATOR, {
+            "version": "0.3", "entities": [complete_entity()], "include": {"domains": []},
+        })
+        self.assert_invalid(ROOT_VALIDATOR, {
+            "version": "0.3", "entities": [], "include": {"domains": []},
         })
         self.assert_invalid(ROOT_VALIDATOR, {"version": "0.3", "entities": []})
 
