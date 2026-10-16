@@ -117,6 +117,7 @@ class ConfigSchemaTest(unittest.TestCase):
         for version in ("0.03", "01.0", "+1.+0"):
             with self.subTest(version=version):
                 self.assert_valid(ROOT_VALIDATOR, {"version": version, "entities": [complete_entity()]})
+        self.assert_invalid(ROOT_VALIDATOR, {"version": "+0.+0", "entities": [complete_entity()]})
 
     def test_inline_entities_are_not_included_fragments(self):
         fragment = {"name": "orders", "schema": {"columns": []}}
@@ -154,6 +155,9 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_invalid(sources_validator, document)
         document["sources"][0]["options"] = {"sheet": "Sheet1", "header_row": 1, "data_row": 2}
         self.assert_valid(sources_validator, document)
+        document["sources"][0]["options"]["data_row"] = 1
+        self.assert_invalid(sources_validator, document)
+        document["sources"][0]["options"]["data_row"] = 2
 
         document["sources"][0]["options"] = {
             "header": None, "separator": None, "encoding": None, "json_mode": None,
@@ -228,6 +232,10 @@ class ConfigSchemaTest(unittest.TestCase):
         column = {"name": "id", "strategy": "mask", "mask_pattern": "****"}
         entity["pii"] = {"columns": [column]}
         document = {"version": "0.3", "entities": [entity]}
+        column["mask_pattern"] = None
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        self.assert_invalid(validator_for("entity_file"), entity)
+        self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {"pii": entity["pii"]}})
         for pattern in ("****", "{first0}", "{last-1}", "{firstx}{first3}"):
             column["mask_pattern"] = pattern
             with self.subTest(pattern=pattern):
@@ -245,6 +253,9 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["sink"]["accepted"] = target
         document = {"version": "0.3", "entities": [entity]}
         self.assert_valid(ROOT_VALIDATOR, document)
+        target["duckdb"]["connection"] = None
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        target["duckdb"]["connection"] = "md:lake"
         for alias in ("storage", "filesystem"):
             target[alias] = "local"
             self.assert_invalid(ROOT_VALIDATOR, document)
@@ -252,6 +263,8 @@ class ConfigSchemaTest(unittest.TestCase):
             self.assert_invalid(ROOT_VALIDATOR, document)
             target.pop("path")
             target.pop(alias)
+        target["duckdb"]["connection"] = None
+        self.assert_invalid(ROOT_VALIDATOR, document)
 
     def test_pii_excludes_raw_output_modes(self):
         mutations = [
@@ -310,6 +323,9 @@ class ConfigSchemaTest(unittest.TestCase):
         document = {"version": "0.3", "entities": [entity]}
         self.assert_invalid(ROOT_VALIDATOR, document)
         self.assert_invalid(validator_for("entity_file"), entity)
+        entity["schema"]["columns"][0]["width"] = None
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        self.assert_invalid(validator_for("entity_file"), entity)
         entity["schema"]["columns"][0]["width"] = 12
         self.assert_valid(ROOT_VALIDATOR, document)
         self.assert_valid(validator_for("entity_file"), entity)
@@ -330,6 +346,17 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_invalid(ROOT_VALIDATOR, document)
         entity["source"]["options"] = {"header_row": 1, "data_row": 2}
         self.assert_valid(ROOT_VALIDATOR, document)
+        entity["source"]["options"] = {"header_row": 1, "data_row": 1}
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        self.assert_invalid(validator_for("entity_file"), entity)
+        fragment = {"name": "orders", "domain": "sales", "schema": {"columns": []}, "source": {
+            "format": "xlsx", "path": "in.xlsx", "options": {"header_row": 1, "data_row": 1},
+        }}
+        self.assert_invalid(validator_for("entity_file"), fragment)
+        self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {
+            "source": {"format": "xlsx", "path": "in.xlsx", "options": {"header_row": 1, "data_row": 1}},
+        }})
+        entity["source"]["options"] = {"header_row": 1, "data_row": 2}
         entity["source"]["options"] = {"header_row": 0, "data_row": 1}
         self.assert_invalid(ROOT_VALIDATOR, document)
         entity["source"]["options"] = {"header_row": 1, "data_row": 0}
@@ -369,6 +396,12 @@ class ConfigSchemaTest(unittest.TestCase):
         document["domains"] = [{"name": "sales", "defaults": defaults}]
         self.assert_valid(ROOT_VALIDATOR, document)
         self.assert_valid(validator_for("entity_file"), entity)
+        entity["source"] = {"format": "xml", "path": "orders.xml", "options": {"row_tag": None}}
+        entity["domain"] = "sales"
+        document["domains"] = [{"name": "sales", "defaults": {
+            "source": {"format": "xml", "path": "orders.xml", "options": {"row_tag": "order"}},
+        }}]
+        self.assert_invalid(ROOT_VALIDATOR, document)
 
     def test_xml_source_options_cannot_be_blank_in_fragments(self):
         entity = {"name": "orders", "domain": "sales", "schema": {"columns": []},
@@ -377,6 +410,8 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["source"]["options"] = {"value_tag": "\t"}
         self.assert_invalid(validator_for("entity_file"), entity)
         entity["source"]["options"] = {"row_tag": " "}
+        self.assert_invalid(validator_for("entity_file"), entity)
+        entity["source"]["options"] = {"row_tag": None}
         self.assert_invalid(validator_for("entity_file"), entity)
         entity["source"]["options"] = {}
         self.assert_valid(validator_for("entity_file"), entity)
@@ -387,6 +422,12 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_valid(validator_for("sources_file"), source)
         self.assert_invalid(validator_for("domain_file"), {
             "name": "sales", "defaults": {"source": {"format": "xml", "options": {"namespace": " "}}},
+        })
+        self.assert_invalid(validator_for("domain_file"), {
+            "name": "sales", "defaults": {"source": {"format": "xml", "options": {"row_tag": None}}},
+        })
+        self.assert_invalid(validator_for("sources_file"), {
+            "sources": [{"name": "xml", "format": "xml", "options": {"row_tag": None}}],
         })
 
     def test_free_form_metadata(self):
@@ -453,12 +494,12 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["incremental_mode"] = "archive"
         self.assert_valid(ROOT_VALIDATOR, document)
 
-    def test_archive_path_is_required_and_non_null(self):
+    def test_null_archive_path_uses_runtime_default(self):
         entity = complete_entity()
         entity["sink"]["archive"] = {"path": None}
         entity["incremental_mode"] = "archive"
-        self.assert_invalid(ROOT_VALIDATOR, {"version": "0.3", "entities": [entity]})
-        self.assert_invalid(validator_for("entity_file"), entity)
+        self.assert_valid(ROOT_VALIDATOR, {"version": "0.3", "entities": [entity]})
+        self.assert_valid(validator_for("entity_file"), entity)
         entity["sink"]["archive"] = {}
         self.assert_valid(validator_for("entity_file"), entity)
 
@@ -492,6 +533,72 @@ class ConfigSchemaTest(unittest.TestCase):
                 "write_mode": "merge_scd2", "accepted": {"format": "iceberg", "path": "out"},
             }},
         })
+        self.assert_valid(validator_for("domain_file"), {
+            "name": "sales", "defaults": {"sink": {
+                "write_mode": "merge_scd1", "accepted": {"path": "out"},
+            }},
+        })
+        self.assert_valid(validator_for("entity_file"), {
+            "name": "orders", "domain": "sales", "sink": {
+                "write_mode": "APPEND", "accepted": {"format": "parquet"},
+            }, "schema": {"columns": []},
+        })
+        self.assert_valid(validator_for("domain_file"), {
+            "name": "sales", "defaults": {"sink": {
+                "write_mode": "APPEND", "accepted": {"format": "parquet"},
+            }},
+        })
+        defaults = {"sink": {"write_mode": "merge_scd1", "accepted": {"path": "out"}}}
+        entity = complete_entity()
+        entity.update(domain="sales")
+        entity["sink"]["accepted"].update(format="delta", path="out")
+        entity["schema"]["primary_key"] = ["id"]
+        document = {"version": "0.3", "domains": [{"name": "sales", "defaults": defaults}], "entities": [entity]}
+        self.assert_valid(ROOT_VALIDATOR, document)
+
+    def test_locally_formatted_sink_fragments_reject_null_paths(self):
+        entity = {"name": "orders", "domain": "sales", "sink": {
+            "accepted": {"format": "delta", "path": None},
+        }, "schema": {"columns": []}}
+        self.assert_invalid(validator_for("entity_file"), entity)
+        complete = complete_entity()
+        complete["sink"]["accepted"].update(format="delta", path=None)
+        self.assert_invalid(ROOT_VALIDATOR, {"version": "0.3", "entities": [complete]})
+        self.assert_invalid(validator_for("domain_file"), {
+            "name": "sales", "defaults": {"sink": {"accepted": {"format": "iceberg", "path": None}}},
+        })
+        entity["sink"]["accepted"]["path"] = "out"
+        self.assert_valid(validator_for("entity_file"), entity)
+
+    def test_unsigned_yaml_integer_fields_reject_negative_values(self):
+        entity = complete_entity()
+        document = {"version": "0.3", "entities": [entity]}
+        for field in ("header_row", "data_row"):
+            entity["source"]["options"] = {field: -1}
+            with self.subTest(field=field):
+                self.assert_invalid(ROOT_VALIDATOR, document)
+                self.assert_invalid(validator_for("entity_file"), entity)
+        entity["source"].pop("options")
+        entity["schema"]["columns"][0]["width"] = -1
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        self.assert_invalid(validator_for("entity_file"), entity)
+        entity["schema"]["columns"][0].pop("width")
+        entity["sink"]["accepted"]["format"] = "delta"
+        for field in ("row_group_size", "max_size_per_file"):
+            entity["sink"]["accepted"]["options"] = {field: -1}
+            with self.subTest(field=field):
+                self.assert_invalid(ROOT_VALIDATOR, document)
+                self.assert_invalid(validator_for("entity_file"), entity)
+                self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {
+                    "sink": {"accepted": {"format": "delta", "options": {field: -1}}},
+                }})
+        self.assert_invalid(validator_for("sources_file"), {"sources": [{
+            "name": "shared", "format": "csv", "options": {"header_row": -1},
+        }]})
+        self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {
+            "source": {"options": {"data_row": -1}},
+            "sink": {"accepted": {"format": "parquet", "options": {"row_group_size": -1}}},
+        }})
 
     def test_fragments_reject_merge_options_with_non_merge_write_modes(self):
         entity = {

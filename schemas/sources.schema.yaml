@@ -94,7 +94,7 @@ $defs:
               header_row:
                 minimum: 1
               data_row:
-                minimum: 1
+                minimum: 2
               sheet:
                 pattern: \S
     - if:
@@ -124,6 +124,7 @@ $defs:
             properties:
               row_tag:
                 pattern: \S
+                type: string
               namespace:
                 pattern: \S
               value_tag:
@@ -171,11 +172,13 @@ $defs:
         - integer
         - 'null'
         maximum: 9223372036854775807
+        minimum: 0
       data_row:
         type:
         - integer
         - 'null'
         maximum: 9223372036854775807
+        minimum: 0
       row_tag:
         type:
         - string

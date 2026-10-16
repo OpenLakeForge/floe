@@ -168,7 +168,7 @@ $defs:
               header_row:
                 minimum: 1
               data_row:
-                minimum: 1
+                minimum: 2
               sheet:
                 pattern: \S
     - if:
@@ -198,6 +198,7 @@ $defs:
             properties:
               row_tag:
                 pattern: \S
+                type: string
               namespace:
                 pattern: \S
               value_tag:
@@ -245,11 +246,13 @@ $defs:
         - integer
         - 'null'
         maximum: 9223372036854775807
+        minimum: 0
       data_row:
         type:
         - integer
         - 'null'
         maximum: 9223372036854775807
+        minimum: 0
       row_tag:
         type:
         - string
@@ -288,10 +291,12 @@ $defs:
                 enum:
                 - parquet
                 - iceberg
+            required:
+            - format
       then:
         properties:
           write_mode:
-            pattern: ^\s*(?:[oO][vV][eE][rR][wW][rR][iI][tT][eE]|[aA][pP][pP][eE][nN][d])\s*$
+            pattern: ^\s*(?:[oO][vV][eE][rR][wW][rR][iI][tT][eE]|[aA][pP][pP][eE][nN][dD])\s*$
     - if:
         required:
         - accepted
@@ -354,11 +359,13 @@ $defs:
             - integer
             - 'null'
             maximum: 9223372036854775807
+            minimum: 0
           max_size_per_file:
             type:
             - integer
             - 'null'
             maximum: 9223372036854775807
+            minimum: 0
       filesystem:
         type:
         - string
@@ -417,6 +424,20 @@ $defs:
                 minimum: 1
               max_size_per_file:
                 minimum: 1
+    - if:
+        required:
+        - format
+        - path
+        properties:
+          format:
+            enum:
+            - parquet
+            - delta
+            - iceberg
+      then:
+        properties:
+          path:
+            type: string
   merge:
     type: object
     additionalProperties: false
@@ -563,7 +584,9 @@ $defs:
     additionalProperties: false
     properties:
       path:
-        type: string
+        type:
+        - string
+        - 'null'
       storage:
         type:
         - string
@@ -691,3 +714,4 @@ $defs:
             anyOf:
             - pattern: ^(?:(?!\{first)[\s\S])*\{first\+?0*[1-9][0-9]*\}
             - pattern: ^(?:(?!\{last)[\s\S])*\{last\+?0*[1-9][0-9]*\}
+            type: string
