@@ -242,10 +242,13 @@ $defs:
     properties:
       current_flag_column:
         type: string
+        pattern: '\S'
       valid_from_column:
         type: string
+        pattern: '\S'
       valid_to_column:
         type: string
+        pattern: '\S'
   iceberg:
     type: object
     additionalProperties: false

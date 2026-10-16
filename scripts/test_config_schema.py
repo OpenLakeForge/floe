@@ -331,6 +331,53 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["source"]["format"] = "csv"
         self.assert_valid(ROOT_VALIDATOR, document)
 
+    def test_archive_conflict_is_checked_on_entity_fragments(self):
+        entity = {
+            "name": "orders", "domain": "sales", "incremental_mode": "file",
+            "sink": {"archive": {"path": "archive"}}, "schema": {"columns": []},
+        }
+        document = {
+            "version": "0.3",
+            "domains": [{"name": "sales", "defaults": {
+                "source": {"format": "csv", "path": "in.csv"},
+                "sink": {"accepted": {"format": "parquet", "path": "out"}},
+                "policy": {"severity": "warn"},
+            }}],
+            "entities": [entity],
+        }
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        self.assert_invalid(validator_for("entity_file"), entity)
+        entity["incremental_mode"] = "archive"
+        self.assert_valid(ROOT_VALIDATOR, document)
+
+    def test_scd2_system_columns_are_not_blank(self):
+        entity = complete_entity()
+        entity["sink"].update(write_mode="merge_scd2")
+        entity["sink"]["accepted"].update(format="delta", merge={"scd2": {"current_flag_column": " "}})
+        entity["schema"]["primary_key"] = ["id"]
+        document = {"version": "0.3", "entities": [entity]}
+        self.assert_invalid(ROOT_VALIDATOR, document)
+        self.assert_invalid(validator_for("entity_file"), entity)
+        entity["sink"]["accepted"]["merge"]["scd2"]["current_flag_column"] = "is_current"
+        self.assert_valid(ROOT_VALIDATOR, document)
+        for field in ("valid_from_column", "valid_to_column"):
+            entity["sink"]["accepted"]["merge"]["scd2"] = {field: "\t"}
+            with self.subTest(field=field):
+                self.assert_invalid(ROOT_VALIDATOR, document)
+
+    def test_column_type_spellings_match_runtime_normalization(self):
+        entity = complete_entity()
+        document = {"version": "0.3", "entities": [entity]}
+        for type_name in ("INT_64", "Date-Time", "B_O_O_L", "UINT_32", "FLOAT_64", "+int64"):
+            entity["schema"]["columns"][0]["type"] = type_name
+            # Rust removes underscores and hyphens, but does not trim or remove plus signs.
+            expected_valid = type_name != "+int64"
+            with self.subTest(type=type_name):
+                (self.assert_valid if expected_valid else self.assert_invalid)(ROOT_VALIDATOR, document)
+                (self.assert_valid if expected_valid else self.assert_invalid)(validator_for("entity_file"), entity)
+        entity["schema"]["columns"][0]["type"] = "int128"
+        self.assert_invalid(ROOT_VALIDATOR, document)
+
     def test_standalone_document(self):
         path = ROOT / "example/standalone/config.yml"
         self.assert_valid(ROOT_VALIDATOR, yaml.safe_load(path.read_text()))

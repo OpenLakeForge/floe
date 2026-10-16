@@ -46,6 +46,20 @@ $defs:
     - $ref: '#/$defs/pii_safety'
     - if:
         required:
+        - incremental_mode
+        - sink
+        properties:
+          incremental_mode:
+            enum:
+            - file
+            - row
+          sink:
+            required:
+            - archive
+      then:
+        not: {}
+    - if:
+        required:
         - source
         properties:
           source:
@@ -291,10 +305,13 @@ $defs:
     properties:
       current_flag_column:
         type: string
+        pattern: '\S'
       valid_from_column:
         type: string
+        pattern: '\S'
       valid_to_column:
         type: string
+        pattern: '\S'
   iceberg:
     type: object
     additionalProperties: false
@@ -468,33 +485,7 @@ $defs:
         type: string
       type:
         type: string
-        enum:
-        - string
-        - str
-        - text
-        - boolean
-        - bool
-        - int8
-        - int16
-        - int32
-        - int64
-        - int
-        - integer
-        - long
-        - uint8
-        - uint16
-        - uint32
-        - uint64
-        - float32
-        - float64
-        - float
-        - double
-        - number
-        - decimal
-        - date
-        - datetime
-        - timestamp
-        - time
+        pattern: '^(?:[sS][_-]*[tT][_-]*[rR][_-]*[iI][_-]*[nN][_-]*[gG][_-]*|[sS][_-]*[tT][_-]*[rR][_-]*|[tT][_-]*[eE][_-]*[xX][_-]*[tT][_-]*|[bB][_-]*[oO][_-]*[oO][_-]*[lL][_-]*[eE][_-]*[aA][_-]*[nN][_-]*|[bB][_-]*[oO][_-]*[oO][_-]*[lL][_-]*|[iI][_-]*[nN][_-]*[tT][_-]*8[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*1[_-]*6[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*3[_-]*2[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*6[_-]*4[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*|[iI][_-]*[nN][_-]*[tT][_-]*[eE][_-]*[gG][_-]*[eE][_-]*[rR][_-]*|[lL][_-]*[oO][_-]*[nN][_-]*[gG][_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*8[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*1[_-]*6[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*3[_-]*2[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*6[_-]*4[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*3[_-]*2[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*6[_-]*4[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*|[dD][_-]*[oO][_-]*[uU][_-]*[bB][_-]*[lL][_-]*[eE][_-]*|[nN][_-]*[uU][_-]*[mM][_-]*[bB][_-]*[eE][_-]*[rR][_-]*|[dD][_-]*[eE][_-]*[cC][_-]*[iI][_-]*[mM][_-]*[aA][_-]*[lL][_-]*|[dD][_-]*[aA][_-]*[tT][_-]*[eE][_-]*|[dD][_-]*[aA][_-]*[tT][_-]*[eE][_-]*[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*|[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*[sS][_-]*[tT][_-]*[aA][_-]*[mM][_-]*[pP][_-]*|[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*)$'
       nullable:
         type: boolean
       unique:
