@@ -1,0 +1,2134 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://floe.local/schema/project.schema.yaml
+type: object
+additionalProperties: false
+required:
+- version
+allOf:
+- if:
+    properties:
+      version:
+        pattern: ^\+?0+\.\+?0*[12]$
+  then:
+    required:
+    - entities
+    properties:
+      entities:
+        type: array
+        items:
+          allOf:
+          - $ref: '#/$defs/entity'
+          - properties:
+              source:
+                not:
+                  anyOf:
+                  - required:
+                    - ref
+                  - required:
+                    - resource
+      domains:
+        type: array
+        items:
+          $ref: '#/$defs/domain_legacy'
+    not:
+      anyOf:
+      - required:
+        - sources
+      - required:
+        - include
+- if:
+    properties:
+      version:
+        type: string
+    not:
+      properties:
+        version:
+          pattern: ^\+?0+\.\+?0*[12]$
+  then:
+    properties:
+      entities:
+        type: array
+        items:
+          allOf:
+          - $ref: '#/$defs/inline_entity'
+          - properties:
+              name:
+                pattern: ^[^./\\]+$
+              domain:
+                pattern: ^[^./\\]+$
+      domains:
+        type: array
+        items:
+          properties:
+            name:
+              pattern: ^[^./\\]+$
+    anyOf:
+    - required:
+      - entities
+      properties:
+        entities:
+          minItems: 1
+    - required:
+      - include
+      properties:
+        include:
+          required:
+          - domains
+          properties:
+            domains:
+              minItems: 1
+    not:
+      required:
+      - sources
+      - include
+      properties:
+        include:
+          required:
+          - sources
+- if:
+    properties:
+      version:
+        pattern: ^\+?0+\.\+?0*1$
+  then:
+    properties:
+      entities:
+        items:
+          properties:
+            schema:
+              not:
+                required:
+                - schema_evolution
+- not:
+    required:
+    - storages
+    - filesystems
+- if:
+    required:
+    - entities
+    not:
+      required:
+      - include
+      properties:
+        include:
+          required:
+          - domains
+  then:
+    properties:
+      entities:
+        minItems: 1
+properties:
+  version:
+    type: string
+    pattern: '^\+?0*(?:[0-9]{1,19}|0[0-9]{19}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|18446744073709550[0-9]{3}|18446744073709551[0-5][0-9]{2}|1844674407370955160[0-9]{1}|1844674407370955161[0-4][0-9]{0}|18446744073709551615)\.\+?0*(?:[0-9]{1,19}|0[0-9]{19}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|18446744073709550[0-9]{3}|18446744073709551[0-5][0-9]{2}|1844674407370955160[0-9]{1}|1844674407370955161[0-4][0-9]{0}|18446744073709551615)(?![\s\S])'
+    description: Numeric major.minor version; each component is parsed as u64, with optional leading plus signs and zeroes.
+    not:
+      pattern: ^\+?0+\.\+?0+$
+  metadata:
+    $ref: '#/$defs/project_metadata'
+  storages:
+    $ref: '#/$defs/storages'
+  env:
+    $ref: '#/$defs/env'
+  domains:
+    $ref: '#/$defs/domains'
+  sources:
+    $ref: '#/$defs/source_definitions'
+  include:
+    $ref: '#/$defs/include'
+  report:
+    $ref: '#/$defs/report'
+  entities:
+    type: array
+    items:
+      $ref: '#/$defs/inline_entity'
+  filesystems:
+    $ref: '#/$defs/storages'
+  catalogs:
+    $ref: '#/$defs/catalogs'
+  lineage:
+    $ref: '#/$defs/lineage'
+title: Floe project configuration
+description: A complete inline config or project root. Fields follow RootConfig and the YAML parser. Cross-file
+  reference resolution and merged validation are performed by floe validate.
+$defs:
+  entity:
+    allOf:
+    - $ref: '#/$defs/entity_base'
+    - required:
+      - name
+      - source
+      - sink
+      - policy
+      - schema
+    - properties:
+        source:
+          $ref: '#/$defs/source'
+        sink:
+          $ref: '#/$defs/sink'
+        policy:
+          $ref: '#/$defs/policy'
+        pii:
+          $ref: '#/$defs/pii'
+    - oneOf:
+      - $ref: '#/$defs/entity_reject'
+      - $ref: '#/$defs/entity_non_reject'
+    - $ref: '#/$defs/local_evolution_sink'
+    - if:
+        required:
+        - incremental_mode
+        properties:
+          incremental_mode:
+            type: string
+            pattern: ^\s*(?:[aA][rR][cC][hH][iI][vV][eE])\s*$
+      then:
+        properties:
+          sink:
+            required:
+            - archive
+    - if:
+        required:
+        - incremental_mode
+        properties:
+          incremental_mode:
+            type: string
+            pattern: ^\s*(?:[fF][iI][lL][eE]|[rR][oO][wW])\s*$
+      then:
+        properties:
+          sink:
+            not:
+              required:
+              - archive
+  entity_base:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+      metadata:
+        $ref: '#/$defs/entity_metadata'
+      domain:
+        type:
+        - string
+        - 'null'
+      incremental_mode:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[nN][oO][nN][eE]|[aA][rR][cC][hH][iI][vV][eE]|[fF][iI][lL][eE]|[rR][oO][wW])\s*$
+      state:
+        $ref: '#/$defs/entity_state'
+      source:
+        $ref: '#/$defs/source_fragment'
+      sink:
+        $ref: '#/$defs/sink_fragment'
+      policy:
+        $ref: '#/$defs/policy_fragment'
+      schema:
+        $ref: '#/$defs/schema'
+      pii:
+        $ref: '#/$defs/pii_fragment'
+    allOf:
+    - $ref: '#/$defs/pii_safety'
+    - if:
+        required:
+        - incremental_mode
+        - sink
+        properties:
+          incremental_mode:
+            type: string
+            pattern: ^\s*(?:[fF][iI][lL][eE]|[rR][oO][wW])\s*$
+          sink:
+            required:
+            - archive
+      then:
+        not: {}
+    - if:
+        required:
+        - source
+        properties:
+          source:
+            required:
+            - format
+            properties:
+              format:
+                const: fixed
+      then:
+        properties:
+          schema:
+            properties:
+              columns:
+                items:
+                  required:
+                  - width
+                  properties:
+                    width:
+                      minimum: 1
+                      type: integer
+    - if:
+        required:
+        - source
+        properties:
+          source:
+            required:
+            - format
+            properties:
+              format:
+                const: xlsx
+      then:
+        properties:
+          source:
+            properties:
+              options:
+                properties:
+                  sheet:
+                    pattern: \S
+                  header_row:
+                    minimum: 1
+                  data_row:
+                    minimum: 2
+    - if:
+        required:
+        - source
+        properties:
+          source:
+            required:
+            - format
+            properties:
+              format:
+                const: json
+      then:
+        properties:
+          schema:
+            properties:
+              columns:
+                maxItems: 1024
+    - if:
+        required:
+        - sink
+        properties:
+          sink:
+            required:
+            - write_mode
+            properties:
+              write_mode:
+                type: string
+                pattern: ^\s*(?:[mM][eE][rR][gG][eE]_[sS][cC][dD]1|[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+      then:
+        properties:
+          schema:
+            required:
+            - primary_key
+            properties:
+              primary_key:
+                type: array
+                minItems: 1
+  entity_metadata:
+    type: object
+    additionalProperties: true
+    properties:
+      data_product:
+        type:
+        - string
+        - 'null'
+      domain:
+        type:
+        - string
+        - 'null'
+      owner:
+        type:
+        - string
+        - 'null'
+      description:
+        type:
+        - string
+        - 'null'
+      tags:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+  entity_state:
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        type:
+        - string
+        - 'null'
+        pattern: \S
+  source_fragment:
+    type: object
+    additionalProperties: false
+    dependentRequired:
+      resource:
+      - ref
+    properties:
+      ref:
+        type: string
+      resource:
+        type: string
+      format:
+        type: string
+        enum:
+        - csv
+        - tsv
+        - fixed
+        - parquet
+        - json
+        - xlsx
+        - orc
+        - avro
+        - xml
+      path:
+        type: string
+      storage:
+        type:
+        - string
+        - 'null'
+      options:
+        $ref: '#/$defs/source_options'
+      cast_mode:
+        type:
+        - string
+        - 'null'
+        enum:
+        - strict
+        - coerce
+        - null
+      filesystem:
+        type:
+        - string
+        - 'null'
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            enum:
+            - csv
+            - tsv
+      then:
+        properties:
+          options:
+            properties:
+              encoding:
+                pattern: ^[_-]*(?:[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*|[lL][_-]*[oO][_-]*[sS][_-]*[sS][_-]*[yY][_-]*[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*)$
+              separator:
+                pattern: ^[\x00-\x7F]$
+                minLength: 1
+                maxLength: 1
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xlsx
+      then:
+        properties:
+          options:
+            properties:
+              header_row:
+                minimum: 1
+              data_row:
+                minimum: 2
+              sheet:
+                pattern: \S
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: json
+      then:
+        properties:
+          options:
+            properties:
+              json_mode:
+                enum:
+                - array
+                - ndjson
+                - null
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xml
+      then:
+        properties:
+          options:
+            properties:
+              row_tag:
+                pattern: \S
+                type: string
+              namespace:
+                pattern: \S
+              value_tag:
+                pattern: \S
+  source_options:
+    type: object
+    additionalProperties: false
+    properties:
+      header:
+        type:
+        - boolean
+        - 'null'
+      separator:
+        type:
+        - string
+        - 'null'
+      encoding:
+        type:
+        - string
+        - 'null'
+      null_values:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+      recursive:
+        type:
+        - boolean
+        - 'null'
+      glob:
+        type:
+        - string
+        - 'null'
+      json_mode:
+        type:
+        - string
+        - 'null'
+      sheet:
+        type:
+        - string
+        - 'null'
+      header_row:
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
+        minimum: 0
+      data_row:
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
+        minimum: 0
+      row_tag:
+        type:
+        - string
+        - 'null'
+      namespace:
+        type:
+        - string
+        - 'null'
+      value_tag:
+        type:
+        - string
+        - 'null'
+  sink_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      write_mode:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[oO][vV][eE][rR][wW][rR][iI][tT][eE]|[aA][pP][pP][eE][nN][dD]|[mM][eE][rR][gG][eE]_[sS][cC][dD]1|[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+      accepted:
+        $ref: '#/$defs/sink_accepted_fragment'
+      rejected:
+        $ref: '#/$defs/sink_rejected_fragment'
+      archive:
+        $ref: '#/$defs/archive_target'
+    allOf:
+    - if:
+        required:
+        - accepted
+        properties:
+          accepted:
+            properties:
+              format:
+                enum:
+                - parquet
+                - iceberg
+            required:
+            - format
+      then:
+        properties:
+          write_mode:
+            pattern: ^\s*(?:[oO][vV][eE][rR][wW][rR][iI][tT][eE]|[aA][pP][pP][eE][nN][dD])\s*$
+    - if:
+        required:
+        - accepted
+        - write_mode
+        properties:
+          accepted:
+            required:
+            - merge
+      then:
+        properties:
+          write_mode:
+            type: string
+            pattern: ^\s*(?:[mM][eE][rR][gG][eE]_[sS][cC][dD]1|[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+    - if:
+        required:
+        - accepted
+        - write_mode
+        properties:
+          accepted:
+            properties:
+              merge:
+                required:
+                - scd2
+            required:
+            - merge
+      then:
+        properties:
+          write_mode:
+            type: string
+            pattern: ^\s*(?:[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+  sink_accepted_fragment:
+    type: object
+    additionalProperties: false
+    not:
+      anyOf:
+      - required:
+        - delta
+        - iceberg
+      - required:
+        - delta
+        - duckdb
+      - required:
+        - iceberg
+        - duckdb
+    properties:
+      format:
+        type: string
+        enum:
+        - parquet
+        - delta
+        - iceberg
+        - duckdb
+      path:
+        type:
+        - string
+        - 'null'
+      storage:
+        type:
+        - string
+        - 'null'
+      options:
+        type: object
+        additionalProperties: false
+        properties:
+          compression:
+            type:
+            - string
+            - 'null'
+          row_group_size:
+            type:
+            - integer
+            - 'null'
+            maximum: 9223372036854775807
+            minimum: 0
+          max_size_per_file:
+            type:
+            - integer
+            - 'null'
+            maximum: 9223372036854775807
+            minimum: 0
+      filesystem:
+        type:
+        - string
+        - 'null'
+      merge:
+        $ref: '#/$defs/merge'
+      iceberg:
+        $ref: '#/$defs/iceberg'
+      delta:
+        $ref: '#/$defs/delta'
+      duckdb:
+        $ref: '#/$defs/duckdb'
+      partition_by:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+          pattern: \S
+        minItems: 1
+      partition_spec:
+        type: array
+        items:
+          $ref: '#/$defs/partition_field'
+        minItems: 1
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: parquet
+      then:
+        properties:
+          options:
+            properties:
+              compression:
+                enum:
+                - snappy
+                - gzip
+                - zstd
+                - uncompressed
+                - null
+              row_group_size:
+                minimum: 1
+              max_size_per_file:
+                minimum: 1
+    - if:
+        required:
+        - format
+        - path
+        properties:
+          format:
+            enum:
+            - parquet
+            - delta
+            - iceberg
+      then:
+        properties:
+          path:
+            type: string
+    - if:
+        required:
+        - format
+        - duckdb
+        properties:
+          format:
+            const: duckdb
+          duckdb:
+            required:
+            - connection
+            properties:
+              connection:
+                type: string
+                pattern: '^\s*md:'
+      then:
+        not:
+          anyOf:
+          - required:
+            - storage
+            properties:
+              storage:
+                not:
+                  type: 'null'
+          - required:
+            - filesystem
+            properties:
+              filesystem:
+                not:
+                  type: 'null'
+    - if:
+        required:
+        - format
+        - partition_by
+        properties:
+          partition_by:
+            type: array
+      then:
+        properties:
+          format:
+            const: delta
+    - if:
+        required:
+        - format
+        - partition_spec
+      then:
+        properties:
+          format:
+            const: iceberg
+    - if:
+        required:
+        - format
+        - iceberg
+      then:
+        properties:
+          format:
+            const: iceberg
+    - if:
+        required:
+        - format
+        - delta
+      then:
+        properties:
+          format:
+            const: delta
+    - if:
+        required:
+        - format
+        - duckdb
+      then:
+        properties:
+          format:
+            const: duckdb
+  merge:
+    type: object
+    additionalProperties: false
+    properties:
+      ignore_columns:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+          pattern: \S
+      compare_columns:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+          pattern: \S
+      scd2:
+        $ref: '#/$defs/merge_scd2'
+  merge_scd2:
+    type: object
+    additionalProperties: false
+    properties:
+      current_flag_column:
+        type:
+        - string
+        - 'null'
+        pattern: \S
+      valid_from_column:
+        type:
+        - string
+        - 'null'
+        pattern: \S
+      valid_to_column:
+        type:
+        - string
+        - 'null'
+        pattern: \S
+  iceberg:
+    type: object
+    additionalProperties: false
+    properties:
+      catalog:
+        type:
+        - string
+        - 'null'
+      namespace:
+        type:
+        - string
+        - 'null'
+      table:
+        type:
+        - string
+        - 'null'
+      location:
+        type:
+        - string
+        - 'null'
+  delta:
+    type: object
+    additionalProperties: false
+    properties:
+      catalog:
+        type:
+        - string
+        - 'null'
+      schema:
+        type:
+        - string
+        - 'null'
+      table:
+        type:
+        - string
+        - 'null'
+  duckdb:
+    type: object
+    additionalProperties: false
+    properties:
+      table:
+        type: string
+        pattern: \S
+      schema:
+        type:
+        - string
+        - 'null'
+      connection:
+        type:
+        - string
+        - 'null'
+        anyOf:
+        - pattern: '^\s*md:'
+        - pattern: ^\s*$
+      token:
+        type:
+        - string
+        - 'null'
+  partition_field:
+    type: object
+    additionalProperties: false
+    properties:
+      column:
+        type: string
+        pattern: \S
+      transform:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[iI][dD][eE][nN][tT][iI][tT][yY]|[yY][eE][aA][rR]|[mM][oO][nN][tT][hH]|[dD][aA][yY]|[hH][oO][uU][rR])\s*$
+    required:
+    - column
+  sink_rejected_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      format:
+        type: string
+        enum:
+        - csv
+      path:
+        type: string
+      storage:
+        type:
+        - string
+        - 'null'
+      filesystem:
+        type:
+        - string
+        - 'null'
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+  archive_target:
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        type:
+        - string
+        - 'null'
+      storage:
+        type:
+        - string
+        - 'null'
+  policy_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      severity:
+        type: string
+        enum:
+        - warn
+        - reject
+        - abort
+  schema:
+    type: object
+    additionalProperties: false
+    required:
+    - columns
+    properties:
+      normalize_columns:
+        $ref: '#/$defs/normalize_columns'
+      mismatch:
+        $ref: '#/$defs/schema_mismatch'
+      schema_evolution:
+        $ref: '#/$defs/schema_evolution'
+      primary_key:
+        type:
+        - array
+        - 'null'
+        minItems: 1
+        items:
+          type: string
+          pattern: \S
+      unique_keys:
+        type:
+        - array
+        - 'null'
+        minItems: 1
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            pattern: \S
+      columns:
+        type: array
+        items:
+          $ref: '#/$defs/column'
+  normalize_columns:
+    type: object
+    additionalProperties: false
+    properties:
+      enabled:
+        type:
+        - boolean
+        - 'null'
+      strategy:
+        type:
+        - string
+        - 'null'
+        pattern: ^[_-]*(?:[sS][_-]*[nN][_-]*[aA][_-]*[kK][_-]*[eE][_-]*[cC][_-]*[aA][_-]*[sS][_-]*[eE][_-]*|[lL][_-]*[oO][_-]*[wW][_-]*[eE][_-]*[rR][_-]*|[cC][_-]*[aA][_-]*[mM][_-]*[eE][_-]*[lL][_-]*[cC][_-]*[aA][_-]*[sS][_-]*[eE][_-]*|[nN][_-]*[oO][_-]*[nN][_-]*[eE][_-]*)$
+  schema_mismatch:
+    type: object
+    additionalProperties: false
+    properties:
+      missing_columns:
+        type:
+        - string
+        - 'null'
+        enum:
+        - reject_file
+        - fill_nulls
+        - null
+      extra_columns:
+        type:
+        - string
+        - 'null'
+        enum:
+        - reject_file
+        - ignore
+        - null
+  schema_evolution:
+    type: object
+    additionalProperties: false
+    properties:
+      mode:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[sS][tT][rR][iI][cC][tT]|[aA][dD][dD]_[cC][oO][lL][uU][mM][nN][sS])\s*$
+      on_incompatible:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[fF][aA][iI][lL])\s*$
+  column:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    - type
+    properties:
+      name:
+        type: string
+      source:
+        type:
+        - string
+        - 'null'
+      type:
+        type: string
+        pattern: ^[_-]*(?:[sS][_-]*[tT][_-]*[rR][_-]*[iI][_-]*[nN][_-]*[gG][_-]*|[sS][_-]*[tT][_-]*[rR][_-]*|[tT][_-]*[eE][_-]*[xX][_-]*[tT][_-]*|[bB][_-]*[oO][_-]*[oO][_-]*[lL][_-]*[eE][_-]*[aA][_-]*[nN][_-]*|[bB][_-]*[oO][_-]*[oO][_-]*[lL][_-]*|[iI][_-]*[nN][_-]*[tT][_-]*8[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*1[_-]*6[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*3[_-]*2[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*6[_-]*4[_-]*|[iI][_-]*[nN][_-]*[tT][_-]*|[iI][_-]*[nN][_-]*[tT][_-]*[eE][_-]*[gG][_-]*[eE][_-]*[rR][_-]*|[lL][_-]*[oO][_-]*[nN][_-]*[gG][_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*8[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*1[_-]*6[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*3[_-]*2[_-]*|[uU][_-]*[iI][_-]*[nN][_-]*[tT][_-]*6[_-]*4[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*3[_-]*2[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*6[_-]*4[_-]*|[fF][_-]*[lL][_-]*[oO][_-]*[aA][_-]*[tT][_-]*|[dD][_-]*[oO][_-]*[uU][_-]*[bB][_-]*[lL][_-]*[eE][_-]*|[nN][_-]*[uU][_-]*[mM][_-]*[bB][_-]*[eE][_-]*[rR][_-]*|[dD][_-]*[eE][_-]*[cC][_-]*[iI][_-]*[mM][_-]*[aA][_-]*[lL][_-]*|[dD][_-]*[aA][_-]*[tT][_-]*[eE][_-]*|[dD][_-]*[aA][_-]*[tT][_-]*[eE][_-]*[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*|[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*[sS][_-]*[tT][_-]*[aA][_-]*[mM][_-]*[pP][_-]*|[tT][_-]*[iI][_-]*[mM][_-]*[eE][_-]*)$
+      nullable:
+        type:
+        - boolean
+        - 'null'
+      unique:
+        type:
+        - boolean
+        - 'null'
+      width:
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
+        minimum: 0
+      trim:
+        type:
+        - boolean
+        - 'null'
+  pii_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      columns:
+        type: array
+        items:
+          $ref: '#/$defs/pii_column'
+  pii_column:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+      mask_pattern:
+        type:
+        - string
+        - 'null'
+      redact_value:
+        type:
+        - string
+        - 'null'
+      key:
+        type:
+        - string
+        - 'null'
+      strategy:
+        type: string
+        pattern: ^\s*(?:[hH][aA][sS][hH]|[dD][rR][oO][pP]|[nN][uU][lL][lL][iI][fF][yY]|[rR][eE][dD][aA][cC][tT]|[mM][aA][sS][kK])\s*$
+    required:
+    - name
+    - strategy
+    allOf:
+    - if:
+        properties:
+          strategy:
+            pattern: ^\s*(?:[mM][aA][sS][kK])\s*$
+      then:
+        required:
+        - mask_pattern
+        properties:
+          mask_pattern:
+            anyOf:
+            - pattern: ^(?:(?!\{first)[\s\S])*\{first\+?0*(?:[1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|18446744073709550[0-9]{3}|18446744073709551[0-5][0-9]{2}|1844674407370955160[0-9]|1844674407370955161[0-5])\}
+            - pattern: ^(?:(?!\{last)[\s\S])*\{last\+?0*(?:[1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|18446744073709550[0-9]{3}|18446744073709551[0-5][0-9]{2}|1844674407370955160[0-9]|1844674407370955161[0-5])\}
+            type: string
+  source:
+    type: object
+    additionalProperties: false
+    allOf:
+    - if:
+        required:
+        - ref
+      then:
+        properties:
+          ref:
+            type: string
+      else:
+        not:
+          required:
+          - resource
+    - not:
+        required:
+        - storage
+        - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xml
+        not:
+          required:
+          - ref
+      then:
+        required:
+        - options
+        properties:
+          options:
+            required:
+            - row_tag
+            properties:
+              row_tag:
+                pattern: \S
+                type: string
+              namespace:
+                pattern: \S
+              value_tag:
+                pattern: \S
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            enum:
+            - csv
+            - tsv
+      then:
+        properties:
+          options:
+            properties:
+              encoding:
+                pattern: ^[_-]*(?:[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*|[lL][_-]*[oO][_-]*[sS][_-]*[sS][_-]*[yY][_-]*[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*)$
+              separator:
+                pattern: ^[\x00-\x7F]$
+                minLength: 1
+                maxLength: 1
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xlsx
+      then:
+        properties:
+          options:
+            properties:
+              header_row:
+                minimum: 1
+              data_row:
+                minimum: 2
+              sheet:
+                pattern: \S
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: json
+      then:
+        properties:
+          options:
+            properties:
+              json_mode:
+                enum:
+                - array
+                - ndjson
+                - null
+    anyOf:
+    - required:
+      - format
+      - path
+    - required:
+      - ref
+    properties:
+      ref:
+        type: string
+      resource:
+        type: string
+      format:
+        type: string
+        enum:
+        - csv
+        - tsv
+        - fixed
+        - parquet
+        - json
+        - xlsx
+        - orc
+        - avro
+        - xml
+      path:
+        type: string
+      storage:
+        type:
+        - string
+        - 'null'
+      options:
+        $ref: '#/$defs/source_options'
+      cast_mode:
+        type:
+        - string
+        - 'null'
+        enum:
+        - strict
+        - coerce
+        - null
+      filesystem:
+        type:
+        - string
+        - 'null'
+  sink:
+    type: object
+    additionalProperties: false
+    required:
+    - accepted
+    properties:
+      write_mode:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[oO][vV][eE][rR][wW][rR][iI][tT][eE]|[aA][pP][pP][eE][nN][dD]|[mM][eE][rR][gG][eE]_[sS][cC][dD]1|[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+      accepted:
+        $ref: '#/$defs/sink_accepted'
+      rejected:
+        $ref: '#/$defs/sink_rejected'
+      archive:
+        $ref: '#/$defs/archive_target'
+    allOf:
+    - if:
+        required:
+        - accepted
+        properties:
+          accepted:
+            required:
+            - merge
+      then:
+        required:
+        - write_mode
+        properties:
+          write_mode:
+            type: string
+            pattern: ^\s*(?:[mM][eE][rR][gG][eE]_[sS][cC][dD]1|[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+    - if:
+        required:
+        - accepted
+        properties:
+          accepted:
+            required:
+            - merge
+            properties:
+              merge:
+                required:
+                - scd2
+      then:
+        properties:
+          write_mode:
+            type: string
+            pattern: ^\s*(?:[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+    - if:
+        required:
+        - accepted
+        properties:
+          accepted:
+            properties:
+              format:
+                enum:
+                - parquet
+                - iceberg
+      then:
+        properties:
+          write_mode:
+            pattern: ^\s*(?:[oO][vV][eE][rR][wW][rR][iI][tT][eE]|[aA][pP][pP][eE][nN][dD])\s*$
+  sink_accepted:
+    allOf:
+    - $ref: '#/$defs/sink_accepted_fragment'
+    - required:
+      - format
+    - anyOf:
+      - required:
+        - path
+        properties:
+          path:
+            type: string
+      - required:
+        - duckdb
+        properties:
+          format:
+            const: duckdb
+          duckdb:
+            required:
+            - connection
+            - table
+            properties:
+              connection:
+                pattern: '^\s*md:'
+                type: string
+    - if:
+        required:
+        - duckdb
+      then:
+        properties:
+          format:
+            const: duckdb
+          duckdb:
+            required:
+            - table
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: duckdb
+      then:
+        required:
+        - duckdb
+        properties:
+          duckdb:
+            required:
+            - table
+    - if:
+        required:
+        - iceberg
+        properties: {}
+      then:
+        properties:
+          format:
+            const: iceberg
+    - if:
+        required:
+        - delta
+        properties: {}
+      then:
+        properties:
+          format:
+            const: delta
+    - not:
+        required:
+        - partition_by
+        - partition_spec
+        properties:
+          partition_by:
+            not:
+              type: 'null'
+          partition_spec:
+            not:
+              type: 'null'
+    - if:
+        required:
+        - partition_spec
+        properties: {}
+      then:
+        properties:
+          format:
+            const: iceberg
+    - if:
+        required:
+        - partition_by
+        properties:
+          partition_by:
+            type: array
+      then:
+        properties:
+          format:
+            const: delta
+    - if:
+        required:
+        - format
+        - duckdb
+        properties:
+          format:
+            const: duckdb
+          duckdb:
+            required:
+            - connection
+            properties:
+              connection:
+                pattern: '^\s*md:'
+                type: string
+      then:
+        not:
+          anyOf:
+          - required:
+            - storage
+            properties:
+              storage:
+                not:
+                  type: 'null'
+          - required:
+            - filesystem
+            properties:
+              filesystem:
+                not:
+                  type: 'null'
+  sink_rejected:
+    allOf:
+    - $ref: '#/$defs/sink_rejected_fragment'
+    - required:
+      - format
+      - path
+  policy:
+    allOf:
+    - $ref: '#/$defs/policy_fragment'
+    - required:
+      - severity
+  pii:
+    type: object
+    additionalProperties: false
+    properties:
+      columns:
+        type: array
+        items:
+          $ref: '#/$defs/pii_column'
+    required:
+    - columns
+  entity_reject:
+    type: object
+    properties:
+      policy:
+        type: object
+        properties:
+          severity:
+            const: reject
+      sink:
+        type: object
+        required:
+        - rejected
+  entity_non_reject:
+    type: object
+    properties:
+      policy:
+        type: object
+        properties:
+          severity:
+            enum:
+            - warn
+            - abort
+  local_evolution_sink:
+    if:
+      required:
+      - schema
+      - sink
+      properties:
+        schema:
+          required:
+          - schema_evolution
+          properties:
+            schema_evolution:
+              required:
+              - mode
+              properties:
+                mode:
+                  type: string
+                  pattern: ^\s*(?:[aA][dD][dD]_[cC][oO][lL][uU][mM][nN][sS])\s*$
+        sink:
+          required:
+          - accepted
+          properties:
+            accepted:
+              required:
+              - format
+    then:
+      properties:
+        sink:
+          properties:
+            accepted:
+              properties:
+                format:
+                  const: delta
+  domain_legacy:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    - incoming_dir
+    properties:
+      name:
+        type: string
+      incoming_dir:
+        type: string
+  inline_entity:
+    allOf:
+    - $ref: '#/$defs/entity_fragment'
+    - anyOf:
+      - required:
+        - domain
+        properties:
+          domain:
+            type: string
+      - $ref: '#/$defs/entity'
+    - $ref: '#/$defs/local_evolution_sink'
+  entity_fragment:
+    allOf:
+    - $ref: '#/$defs/entity_base'
+    - required:
+      - name
+      - schema
+    - $ref: '#/$defs/local_evolution_sink'
+  project_metadata:
+    type: object
+    additionalProperties: true
+    properties:
+      project:
+        type:
+        - string
+        - 'null'
+      description:
+        type:
+        - string
+        - 'null'
+      owner:
+        type:
+        - string
+        - 'null'
+      tags:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+  storages:
+    type: object
+    additionalProperties: false
+    required:
+    - default
+    - definitions
+    properties:
+      default:
+        type: string
+      definitions:
+        type: array
+        items:
+          $ref: '#/$defs/storage_definition'
+        minItems: 1
+  storage_definition:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    - type
+    properties:
+      name:
+        type: string
+      type:
+        type: string
+        enum:
+        - local
+        - s3
+        - adls
+        - gcs
+      bucket:
+        type:
+        - string
+        - 'null'
+      region:
+        type:
+        - string
+        - 'null'
+      account:
+        type:
+        - string
+        - 'null'
+      container:
+        type:
+        - string
+        - 'null'
+      prefix:
+        type:
+        - string
+        - 'null'
+      endpoint:
+        type:
+        - string
+        - 'null'
+      path_style_access:
+        type:
+        - boolean
+        - 'null'
+    allOf:
+    - if:
+        required:
+        - type
+        properties:
+          type:
+            const: s3
+      then:
+        required:
+        - bucket
+        - region
+        properties:
+          bucket:
+            type: string
+          region:
+            type: string
+    - if:
+        required:
+        - type
+        properties:
+          type:
+            const: adls
+      then:
+        required:
+        - account
+        - container
+        properties:
+          account:
+            type: string
+          container:
+            type: string
+    - if:
+        required:
+        - type
+        properties:
+          type:
+            const: gcs
+      then:
+        required:
+        - bucket
+        properties:
+          bucket:
+            type: string
+  env:
+    type: object
+    additionalProperties: false
+    properties:
+      file:
+        type:
+        - string
+        - 'null'
+      vars:
+        type: object
+        additionalProperties:
+          type: string
+  domains:
+    type: array
+    items:
+      $ref: '#/$defs/domain'
+  domain:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    properties:
+      name:
+        type: string
+      incoming_dir:
+        type:
+        - string
+        - 'null'
+      defaults:
+        $ref: '#/$defs/entity_defaults'
+  entity_defaults:
+    type: object
+    additionalProperties: false
+    properties:
+      metadata:
+        $ref: '#/$defs/entity_metadata'
+      domain:
+        type:
+        - string
+        - 'null'
+      incremental_mode:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[nN][oO][nN][eE]|[aA][rR][cC][hH][iI][vV][eE]|[fF][iI][lL][eE]|[rR][oO][wW])\s*$
+      state:
+        $ref: '#/$defs/entity_state'
+      source:
+        allOf:
+        - $ref: '#/$defs/source_fragment'
+        - not:
+            anyOf:
+            - required:
+              - ref
+            - required:
+              - resource
+      sink:
+        $ref: '#/$defs/sink_fragment'
+      policy:
+        $ref: '#/$defs/policy_fragment'
+      schema:
+        $ref: '#/$defs/schema_defaults'
+      pii:
+        $ref: '#/$defs/pii_fragment'
+  schema_defaults:
+    type: object
+    additionalProperties: false
+    properties:
+      normalize_columns:
+        $ref: '#/$defs/normalize_columns'
+      mismatch:
+        $ref: '#/$defs/schema_mismatch'
+      schema_evolution:
+        $ref: '#/$defs/schema_evolution'
+      unique_keys:
+        type:
+        - array
+        - 'null'
+        minItems: 1
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            pattern: \S
+  source_definitions:
+    type: array
+    items:
+      $ref: '#/$defs/source_definition'
+  source_definition:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    properties:
+      name:
+        type: string
+      format:
+        type: string
+        enum:
+        - csv
+        - tsv
+        - fixed
+        - parquet
+        - json
+        - xlsx
+        - orc
+        - avro
+        - xml
+      path:
+        type: string
+      storage:
+        type:
+        - string
+        - 'null'
+      options:
+        $ref: '#/$defs/source_options'
+      cast_mode:
+        type:
+        - string
+        - 'null'
+        enum:
+        - strict
+        - coerce
+        - null
+      filesystem:
+        type:
+        - string
+        - 'null'
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            enum:
+            - csv
+            - tsv
+      then:
+        properties:
+          options:
+            properties:
+              encoding:
+                pattern: ^[_-]*(?:[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*|[lL][_-]*[oO][_-]*[sS][_-]*[sS][_-]*[yY][_-]*[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*)$
+              separator:
+                pattern: ^[\x00-\x7F]$
+                minLength: 1
+                maxLength: 1
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xlsx
+      then:
+        properties:
+          options:
+            properties:
+              header_row:
+                minimum: 1
+              data_row:
+                minimum: 2
+              sheet:
+                pattern: \S
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: json
+      then:
+        properties:
+          options:
+            properties:
+              json_mode:
+                enum:
+                - array
+                - ndjson
+                - null
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xml
+      then:
+        properties:
+          options:
+            properties:
+              row_tag:
+                pattern: \S
+                type: string
+              namespace:
+                pattern: \S
+              value_tag:
+                pattern: \S
+  include:
+    type: object
+    additionalProperties: false
+    anyOf:
+    - required:
+      - domains
+    - required:
+      - sources
+    properties:
+      domains:
+        type: array
+        items:
+          type: string
+          pattern: \S
+      sources:
+        type: string
+        pattern: \S
+  report:
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        type:
+        - string
+        - 'null'
+      formatter:
+        type:
+        - string
+        - 'null'
+        enum:
+        - json
+        - csv
+        - text
+        - null
+      storage:
+        type:
+        - string
+        - 'null'
+  catalogs:
+    type: object
+    additionalProperties: false
+    required:
+    - definitions
+    properties:
+      default:
+        type:
+        - string
+        - 'null'
+        description: Default catalog name used when entity sinks omit a catalog.
+      definitions:
+        type: array
+        items:
+          $ref: '#/$defs/catalog_definition'
+        minItems: 1
+  catalog_definition:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    - type
+    properties:
+      name:
+        type: string
+      type:
+        type: string
+        enum:
+        - glue
+        - rest
+        - unity
+      warehouse_storage:
+        type:
+        - string
+        - 'null'
+        description: Optional storage definition name used as the catalog warehouse root.
+      warehouse_prefix:
+        type:
+        - string
+        - 'null'
+        description: Optional path prefix under the warehouse storage.
+      region:
+        type: string
+        description: Glue catalog region; required when type is glue.
+      database:
+        type: string
+        description: Glue database; required when type is glue.
+      create_database_if_missing:
+        type:
+        - boolean
+        - 'null'
+      allow_takeover:
+        type:
+        - boolean
+        - 'null'
+      uri:
+        type: string
+        description: REST catalog URI; required when type is rest.
+      credential:
+        type:
+        - string
+        - 'null'
+      warehouse:
+        type:
+        - string
+        - 'null'
+      oauth2_server_uri:
+        type:
+        - string
+        - 'null'
+      scope:
+        type:
+        - string
+        - 'null'
+      host:
+        type: string
+        description: Unity Catalog host; required when type is unity.
+      catalog:
+        type: string
+        description: Unity Catalog name; required when type is unity.
+      schema:
+        type: string
+        description: Unity schema name; required when type is unity.
+      token:
+        type: string
+        description: Unity authentication token or substituted secret.
+      create_schema_if_missing:
+        type:
+        - boolean
+        - 'null'
+    allOf:
+    - if:
+        properties:
+          type:
+            const: glue
+      then:
+        required:
+        - region
+        - database
+    - if:
+        properties:
+          type:
+            const: rest
+      then:
+        required:
+        - uri
+    - if:
+        properties:
+          type:
+            const: unity
+      then:
+        required:
+        - host
+        - catalog
+        - schema
+        - token
+  lineage:
+    type: object
+    additionalProperties: false
+    properties:
+      url:
+        type: string
+        pattern: \S
+      endpoint:
+        type:
+        - string
+        - 'null'
+      api_key:
+        type:
+        - string
+        - 'null'
+      namespace:
+        type: string
+        pattern: \S
+      dataset_namespace:
+        type:
+        - string
+        - 'null'
+      producer:
+        type:
+        - string
+        - 'null'
+      job_name:
+        type:
+        - string
+        - 'null'
+      timeout_secs:
+        type:
+        - integer
+        - 'null'
+        minimum: 0
+        maximum: 9223372036854775807
+      max_failures:
+        type:
+        - integer
+        - 'null'
+        minimum: 1
+        maximum: 4294967295
+    required:
+    - url
+    - namespace
+  pii_safety:
+    allOf:
+    - if:
+        required:
+        - pii
+      then:
+        properties:
+          policy:
+            properties:
+              severity:
+                not:
+                  const: abort
+          sink:
+            not:
+              required:
+              - archive
+          schema:
+            properties:
+              mismatch:
+                properties:
+                  missing_columns:
+                    not:
+                      const: reject_file
+                  extra_columns:
+                    not:
+                      const: reject_file
+    - if:
+        required:
+        - pii
+        - sink
+        properties:
+          sink:
+            required:
+            - accepted
+            properties:
+              accepted:
+                required:
+                - format
+                properties:
+                  format:
+                    enum:
+                    - delta
+                    - iceberg
+      then:
+        properties:
+          pii:
+            properties:
+              columns:
+                items:
+                  properties:
+                    strategy:
+                      not:
+                        pattern: ^\s*(?:[dD][rR][oO][pP])\s*$
