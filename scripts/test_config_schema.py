@@ -275,12 +275,50 @@ class ConfigSchemaTest(unittest.TestCase):
             column["mask_pattern"] = pattern
             with self.subTest(pattern=pattern):
                 self.assert_invalid(ROOT_VALIDATOR, document)
-        for pattern in ("****{last4}", "{first03}***", "{first+3}", "{firstx}{last2}"):
+        for pattern in (
+            "****{last4}", "{first03}***", "{first+3}", "{firstx}{last2}",
+            "{first+00018446744073709551615}", "{last18446744073709551615}",
+        ):
             column["mask_pattern"] = pattern
             with self.subTest(pattern=pattern):
                 self.assert_valid(ROOT_VALIDATOR, document)
                 self.assert_valid(validator_for("entity_file"), entity)
                 self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": {"pii": entity["pii"]}})
+        for pattern in ("{first18446744073709551616}", "{last18446744073709551616}"):
+            column["mask_pattern"] = pattern
+            with self.subTest(pattern=pattern):
+                self.assert_invalid(ROOT_VALIDATOR, document)
+                self.assert_invalid(validator_for("entity_file"), entity)
+                self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {"pii": entity["pii"]}})
+
+    def test_unformatted_sink_fragments_cannot_combine_catalog_blocks(self):
+        combinations = (
+            {"delta": {}, "iceberg": {}},
+            {"delta": {}, "duckdb": {"table": "orders"}},
+            {"iceberg": {}, "duckdb": {"table": "orders"}},
+        )
+        for schema_name in ("entity", "domain", "project"):
+            for blocks in combinations:
+                if schema_name == "entity":
+                    valid = validator_for("entity_file").is_valid({
+                        "name": "orders", "domain": "sales", "schema": {"columns": []},
+                        "sink": {"accepted": blocks},
+                    })
+                elif schema_name == "domain":
+                    valid = validator_for("domain_file").is_valid({
+                        "name": "sales", "defaults": {"sink": {"accepted": blocks}},
+                    })
+                else:
+                    valid = ROOT_VALIDATOR.is_valid({
+                        "version": "0.3",
+                        "domains": [{"name": "sales", "defaults": {
+                            "source": {"format": "csv", "path": "in.csv"},
+                            "sink": {"accepted": blocks}, "policy": {"severity": "warn"},
+                        }}],
+                        "entities": [{"name": "orders", "domain": "sales", "schema": {"columns": []}}],
+                    })
+                with self.subTest(schema=schema_name, blocks=blocks):
+                    self.assertFalse(valid, blocks)
 
     def test_motherduck_has_no_filesystem_storage(self):
         entity = complete_entity()
@@ -1043,6 +1081,15 @@ class ConfigSchemaTest(unittest.TestCase):
         filters = yaml.safe_load(workflow["jobs"]["changes"]["steps"][1]["with"]["filters"])
         self.assertIn("example/project/**", filters["config_schema"])
         self.assertIn("crates/floe-core/src/config/types.rs", filters["config_schema"])
+        self.assertIn("crates/floe-core/src/config/parse.rs", filters["config_schema"])
+        self.assertIn("crates/floe-core/src/config/validate.rs", filters["config_schema"])
+
+    def test_include_paths_must_not_be_blank(self):
+        for include in ({"sources": ""}, {"sources": "   "}, {"domains": [""]}, {"domains": ["  "]}):
+            with self.subTest(include=include):
+                self.assert_invalid(ROOT_VALIDATOR, {
+                    "version": "0.3", "entities": [complete_entity()], "include": include,
+                })
 
     def assert_valid(self, validator, document):
         self.assertTrue(validator.is_valid(document), list(validator.iter_errors(document)))
