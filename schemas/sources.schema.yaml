@@ -81,6 +81,8 @@ $defs:
                 pattern: ^[_-]*(?:[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*|[lL][_-]*[oO][_-]*[sS][_-]*[sS][_-]*[yY][_-]*[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*)$
               separator:
                 pattern: ^[\x00-\x7F]$
+                minLength: 1
+                maxLength: 1
     - if:
         required:
         - format

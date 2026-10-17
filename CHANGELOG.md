@@ -8,6 +8,8 @@ All notable changes to Floe are documented in this file.
   `schemas/config.schema.yaml` with `schemas/project.schema.yaml`. Included source,
   domain and entity documents use `sources.schema.yaml`, `domains.schema.yaml` and
   `entity.schema.yaml` directly under `schemas/`; each carries its own definitions.
+  Fragment sink options, one-byte CSV separators and version integer bounds now match
+  the parser; YAML real scalars remain rejected by `floe validate`.
 - **`add-entity` can reference a declared source (#515).** Pass `--source <ref>` and
   `--resource <name>`; `--input` still supplies the file used for schema inference.
 - **`add-entity` writes included-domain entities as sibling files (#514).** With `--domain` 

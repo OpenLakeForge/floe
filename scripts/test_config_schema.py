@@ -4,12 +4,22 @@ from copy import deepcopy
 from pathlib import Path
 
 import yaml
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, validators
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = yaml.safe_load((ROOT / "schemas/project.schema.yaml").read_text())
-ROOT_VALIDATOR = Draft202012Validator(SCHEMA)
+
+
+def is_yaml_integer(_checker, instance):
+    return type(instance) is int
+
+
+YamlDraft202012Validator = validators.extend(
+    Draft202012Validator,
+    type_checker=Draft202012Validator.TYPE_CHECKER.redefine("integer", is_yaml_integer),
+)
+ROOT_VALIDATOR = YamlDraft202012Validator(SCHEMA)
 
 
 def complete_entity():
@@ -24,7 +34,7 @@ def complete_entity():
 
 def validator_for(branch):
     name = {"sources_file": "sources", "domain_file": "domains", "entity_file": "entity"}[branch]
-    return Draft202012Validator(yaml.safe_load((ROOT / f"schemas/{name}.schema.yaml").read_text()))
+    return YamlDraft202012Validator(yaml.safe_load((ROOT / f"schemas/{name}.schema.yaml").read_text()))
 
 
 class ConfigSchemaTest(unittest.TestCase):
@@ -61,6 +71,12 @@ class ConfigSchemaTest(unittest.TestCase):
             schemas["project"]["$defs"]["source_definition"],
             schemas["sources"]["$defs"]["source_definition"],
         )
+        for name in ("entity", "domains"):
+            self.assertEqual(
+                schemas["project"]["$defs"]["sink_accepted_fragment"],
+                schemas[name]["$defs"]["sink_accepted_fragment"],
+                f"{name} sink fragment schema drifted from the project contract",
+            )
 
     def test_rust_model_field_coverage(self):
         source = (ROOT / "crates/floe-core/src/config/types.rs").read_text()
@@ -118,6 +134,13 @@ class ConfigSchemaTest(unittest.TestCase):
             with self.subTest(version=version):
                 self.assert_valid(ROOT_VALIDATOR, {"version": version, "entities": [complete_entity()]})
         self.assert_invalid(ROOT_VALIDATOR, {"version": "+0.+0", "entities": [complete_entity()]})
+        max_u64 = "18446744073709551615"
+        self.assert_valid(ROOT_VALIDATOR, {
+            "version": f"000{max_u64}.{max_u64}", "entities": [complete_entity()],
+        })
+        for version in ("18446744073709551616.0", "0.18446744073709551616", "0.1\n"):
+            with self.subTest(version=version):
+                self.assert_invalid(ROOT_VALIDATOR, {"version": version, "entities": [complete_entity()]})
 
     def test_inline_entities_are_not_included_fragments(self):
         fragment = {"name": "orders", "schema": {"columns": []}}
@@ -145,6 +168,8 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_invalid(sources_validator, document)
         document["sources"][0]["options"]["separator"] = ""
         self.assert_invalid(sources_validator, document)
+        document["sources"][0]["options"]["separator"] = ",\n"
+        self.assert_invalid(sources_validator, document)
         document["sources"][0].update(format="json", options={"separator": "||", "encoding": "ignored"})
         self.assert_valid(sources_validator, document)
         document["sources"][0]["options"]["json_mode"] = "object"
@@ -165,6 +190,16 @@ class ConfigSchemaTest(unittest.TestCase):
         }
         document["sources"][0]["format"] = "csv"
         self.assert_valid(sources_validator, document)
+
+        entity = complete_entity()
+        entity["source"]["options"] = {"separator": ",\n"}
+        self.assert_invalid(ROOT_VALIDATOR, {"version": "0.3", "entities": [entity]})
+        self.assert_invalid(validator_for("entity_file"), entity)
+        self.assert_invalid(validator_for("domain_file"), {
+            "name": "sales", "defaults": {"source": {
+                "format": "csv", "path": "in.csv", "options": {"separator": ",\n"},
+            }},
+        })
 
     def test_evolution_version_and_local_sink(self):
         entity = complete_entity()
@@ -340,6 +375,42 @@ class ConfigSchemaTest(unittest.TestCase):
                 "entities": [fragment],
             })
 
+    def test_format_option_blocks_follow_local_sink_fragment_format(self):
+        formats = ("parquet", "delta", "iceberg", "duckdb")
+        option_blocks = {"delta": {}, "iceberg": {}, "duckdb": {"table": "orders"}}
+
+        for schema_name in ("entity", "domain", "project"):
+            for option_format, options in option_blocks.items():
+                def validate(target):
+                    if schema_name == "entity":
+                        return validator_for("entity_file").is_valid({
+                            "name": "orders", "domain": "sales", "schema": {"columns": []},
+                            "sink": {"accepted": target},
+                        })
+                    defaults = {"sink": {"accepted": target}}
+                    if schema_name == "domain":
+                        return validator_for("domain_file").is_valid({"name": "sales", "defaults": defaults})
+                    defaults.update(
+                        source={"format": "csv", "path": "in.csv"},
+                        policy={"severity": "warn"},
+                    )
+                    return ROOT_VALIDATOR.is_valid({
+                        "version": "0.3", "domains": [{"name": "sales", "defaults": defaults}],
+                        "entities": [{"name": "orders", "domain": "sales", "schema": {"columns": []}}],
+                    })
+
+                matching = {"format": option_format, option_format: options}
+                with self.subTest(schema=schema_name, format=option_format):
+                    self.assertTrue(validate(matching), matching)
+                    for format_name in formats:
+                        if format_name != option_format:
+                            mismatched = {**matching, "format": format_name}
+                            with self.subTest(schema=schema_name, option=option_format, format=format_name):
+                                self.assertFalse(validate(mismatched), mismatched)
+
+                # A fragment may supply one option block while inheriting its format.
+                self.assertTrue(validate({option_format: options}), (schema_name, option_format))
+
     def test_pii_excludes_raw_output_modes(self):
         mutations = [
             lambda entity: entity["policy"].update(severity="abort"),
@@ -448,6 +519,41 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_invalid(ROOT_VALIDATOR, document)
         entity["source"]["options"] = {"header_row": 1, "data_row": 0}
         self.assert_invalid(ROOT_VALIDATOR, document)
+
+    def test_yaml_float_scalars_are_not_integer_fields(self):
+        cases = []
+        for field, value in (("header_row", 1.0), ("data_row", 2.0)):
+            document = {"version": "0.3", "entities": [complete_entity()]}
+            document["entities"][0]["source"]["options"] = {field: value}
+            cases.append((field, document, ROOT_VALIDATOR, ("entities", 0, "source", "options", field)))
+
+        document = {"version": "0.3", "entities": [complete_entity()]}
+        document["entities"][0]["schema"]["columns"][0]["width"] = 1.0
+        cases.append(("width", document, ROOT_VALIDATOR, ("entities", 0, "schema", "columns", 0, "width")))
+
+        for field in ("row_group_size", "max_size_per_file"):
+            document = {"version": "0.3", "entities": [complete_entity()]}
+            document["entities"][0]["sink"]["accepted"]["options"] = {field: 1.0}
+            cases.append((field, document, ROOT_VALIDATOR, ("entities", 0, "sink", "accepted", "options", field)))
+
+        for field in ("timeout_secs", "max_failures"):
+            document = {"version": "0.3", "entities": [complete_entity()], "lineage": {
+                "url": "https://lineage.example", "namespace": "floe", field: 1.0,
+            }}
+            cases.append((field, document, ROOT_VALIDATOR, ("lineage", field)))
+
+        sources = {"sources": [{"name": "shared", "format": "xlsx", "options": {"header_row": 1.0}}]}
+        cases.append(("sources.header_row", sources, validator_for("sources_file"), ("sources", 0, "options", "header_row")))
+
+        for name, document, validator, path in cases:
+            parsed = yaml.safe_load(yaml.safe_dump(document))
+            value = parsed
+            for part in path:
+                value = value[part]
+            with self.subTest(field=name):
+                self.assertIs(type(value), float)
+                self.assertTrue(Draft202012Validator(validator.schema).is_valid(parsed))
+                self.assert_invalid(validator, parsed)
 
     def test_key_members_are_not_blank_and_storage_defaults_are_required(self):
         entity = complete_entity()

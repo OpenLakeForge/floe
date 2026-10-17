@@ -30,6 +30,12 @@ Schemas check local structure and expressible constraints on complete values.
 Run `floe validate -c config.yml` to resolve includes and validate inherited
 values, names, column references and storage/catalog relationships.
 
+JSON Schema defines `integer` by numeric value, so a generic JSON Schema validator
+may accept a YAML real scalar such as `1.0`. Floe's YAML parser accepts integer
+scalars such as `1` for integer fields and rejects real scalars; the regression
+suite uses a YAML-aware integer checker for this distinction, and `floe validate`
+is the authoring check for a project's actual YAML files.
+
 For the VS Code YAML extension, example schema associations are:
 
 ```json
