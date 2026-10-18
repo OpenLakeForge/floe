@@ -1,0 +1,195 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://floe.local/schema/sources.schema.yaml
+type: object
+additionalProperties: false
+required:
+- sources
+properties:
+  sources:
+    $ref: '#/$defs/source_definitions'
+title: Floe sources document
+$defs:
+  source_definitions:
+    type: array
+    items:
+      $ref: '#/$defs/source_definition'
+  source_definition:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    properties:
+      name:
+        type: string
+      format:
+        type: string
+        enum:
+        - csv
+        - tsv
+        - fixed
+        - parquet
+        - json
+        - xlsx
+        - orc
+        - avro
+        - xml
+      path:
+        type: string
+      storage:
+        type:
+        - string
+        - 'null'
+      options:
+        $ref: '#/$defs/source_options'
+      cast_mode:
+        type:
+        - string
+        - 'null'
+        enum:
+        - strict
+        - coerce
+        - null
+      filesystem:
+        type:
+        - string
+        - 'null'
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            enum:
+            - csv
+            - tsv
+      then:
+        properties:
+          options:
+            properties:
+              encoding:
+                pattern: ^[_-]*(?:[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*|[lL][_-]*[oO][_-]*[sS][_-]*[sS][_-]*[yY][_-]*[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*)(?![\s\S])
+              separator:
+                pattern: ^[\x00-\x7F]$
+                minLength: 1
+                maxLength: 1
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xlsx
+      then:
+        properties:
+          options:
+            properties:
+              header_row:
+                minimum: 1
+              data_row:
+                minimum: 2
+              sheet:
+                pattern: \S
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: json
+      then:
+        properties:
+          options:
+            properties:
+              json_mode:
+                enum:
+                - array
+                - ndjson
+                - null
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xml
+      then:
+        properties:
+          options:
+            properties:
+              row_tag:
+                pattern: \S
+                type: string
+              namespace:
+                pattern: \S
+              value_tag:
+                pattern: \S
+  source_options:
+    type: object
+    additionalProperties: false
+    properties:
+      header:
+        type:
+        - boolean
+        - 'null'
+      separator:
+        type:
+        - string
+        - 'null'
+      encoding:
+        type:
+        - string
+        - 'null'
+      null_values:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+      recursive:
+        type:
+        - boolean
+        - 'null'
+      glob:
+        type:
+        - string
+        - 'null'
+      json_mode:
+        type:
+        - string
+        - 'null'
+      sheet:
+        type:
+        - string
+        - 'null'
+      header_row:
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
+        minimum: 0
+      data_row:
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
+        minimum: 0
+      row_tag:
+        type:
+        - string
+        - 'null'
+      namespace:
+        type:
+        - string
+        - 'null'
+      value_tag:
+        type:
+        - string
+        - 'null'

@@ -1,0 +1,803 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://floe.local/schema/domains.schema.yaml
+type: object
+additionalProperties: false
+required:
+- name
+properties:
+  name:
+    type: string
+    pattern: ^[^./\\]+$
+  incoming_dir:
+    type:
+    - string
+    - 'null'
+  defaults:
+    $ref: '#/$defs/entity_defaults'
+title: Floe domains document
+$defs:
+  entity_defaults:
+    type: object
+    additionalProperties: false
+    properties:
+      metadata:
+        $ref: '#/$defs/entity_metadata'
+      domain:
+        type:
+        - string
+        - 'null'
+      incremental_mode:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[nN][oO][nN][eE]|[aA][rR][cC][hH][iI][vV][eE]|[fF][iI][lL][eE]|[rR][oO][wW])\s*$
+      state:
+        $ref: '#/$defs/entity_state'
+      source:
+        allOf:
+        - $ref: '#/$defs/source_fragment'
+        - not:
+            anyOf:
+            - required:
+              - ref
+            - required:
+              - resource
+      sink:
+        $ref: '#/$defs/sink_fragment'
+      policy:
+        $ref: '#/$defs/policy_fragment'
+      schema:
+        $ref: '#/$defs/schema_defaults'
+      pii:
+        $ref: '#/$defs/pii_fragment'
+  entity_metadata:
+    type: object
+    additionalProperties: true
+    properties:
+      data_product:
+        type:
+        - string
+        - 'null'
+      domain:
+        type:
+        - string
+        - 'null'
+      owner:
+        type:
+        - string
+        - 'null'
+      description:
+        type:
+        - string
+        - 'null'
+      tags:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+  entity_state:
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        type:
+        - string
+        - 'null'
+        pattern: \S
+  source_fragment:
+    type: object
+    additionalProperties: false
+    dependentRequired:
+      resource:
+      - ref
+    properties:
+      ref:
+        type: string
+      resource:
+        type: string
+      format:
+        type: string
+        enum:
+        - csv
+        - tsv
+        - fixed
+        - parquet
+        - json
+        - xlsx
+        - orc
+        - avro
+        - xml
+      path:
+        type: string
+      storage:
+        type:
+        - string
+        - 'null'
+      options:
+        $ref: '#/$defs/source_options'
+      cast_mode:
+        type:
+        - string
+        - 'null'
+        enum:
+        - strict
+        - coerce
+        - null
+      filesystem:
+        type:
+        - string
+        - 'null'
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            enum:
+            - csv
+            - tsv
+      then:
+        properties:
+          options:
+            properties:
+              encoding:
+                pattern: ^[_-]*(?:[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*|[lL][_-]*[oO][_-]*[sS][_-]*[sS][_-]*[yY][_-]*[uU][_-]*[tT][_-]*[fF][_-]*8[_-]*)(?![\s\S])
+              separator:
+                pattern: ^[\x00-\x7F]$
+                minLength: 1
+                maxLength: 1
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xlsx
+      then:
+        properties:
+          options:
+            properties:
+              header_row:
+                minimum: 1
+              data_row:
+                minimum: 2
+              sheet:
+                pattern: \S
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: json
+      then:
+        properties:
+          options:
+            properties:
+              json_mode:
+                enum:
+                - array
+                - ndjson
+                - null
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: xml
+      then:
+        properties:
+          options:
+            properties:
+              row_tag:
+                pattern: \S
+                type: string
+              namespace:
+                pattern: \S
+              value_tag:
+                pattern: \S
+  source_options:
+    type: object
+    additionalProperties: false
+    properties:
+      header:
+        type:
+        - boolean
+        - 'null'
+      separator:
+        type:
+        - string
+        - 'null'
+      encoding:
+        type:
+        - string
+        - 'null'
+      null_values:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+      recursive:
+        type:
+        - boolean
+        - 'null'
+      glob:
+        type:
+        - string
+        - 'null'
+      json_mode:
+        type:
+        - string
+        - 'null'
+      sheet:
+        type:
+        - string
+        - 'null'
+      header_row:
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
+        minimum: 0
+      data_row:
+        type:
+        - integer
+        - 'null'
+        maximum: 9223372036854775807
+        minimum: 0
+      row_tag:
+        type:
+        - string
+        - 'null'
+      namespace:
+        type:
+        - string
+        - 'null'
+      value_tag:
+        type:
+        - string
+        - 'null'
+  sink_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      write_mode:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[oO][vV][eE][rR][wW][rR][iI][tT][eE]|[aA][pP][pP][eE][nN][dD]|[mM][eE][rR][gG][eE]_[sS][cC][dD]1|[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+      accepted:
+        $ref: '#/$defs/sink_accepted_fragment'
+      rejected:
+        $ref: '#/$defs/sink_rejected_fragment'
+      archive:
+        $ref: '#/$defs/archive_target'
+    allOf:
+    - if:
+        required:
+        - accepted
+        properties:
+          accepted:
+            properties:
+              format:
+                enum:
+                - parquet
+                - iceberg
+            required:
+            - format
+      then:
+        properties:
+          write_mode:
+            pattern: ^\s*(?:[oO][vV][eE][rR][wW][rR][iI][tT][eE]|[aA][pP][pP][eE][nN][dD])\s*$
+    - if:
+        required:
+        - accepted
+        - write_mode
+        properties:
+          accepted:
+            required:
+            - merge
+      then:
+        properties:
+          write_mode:
+            type: string
+            pattern: ^\s*(?:[mM][eE][rR][gG][eE]_[sS][cC][dD]1|[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+    - if:
+        required:
+        - accepted
+        - write_mode
+        properties:
+          accepted:
+            properties:
+              merge:
+                required:
+                - scd2
+            required:
+            - merge
+      then:
+        properties:
+          write_mode:
+            type: string
+            pattern: ^\s*(?:[mM][eE][rR][gG][eE]_[sS][cC][dD]2)\s*$
+  sink_accepted_fragment:
+    type: object
+    additionalProperties: false
+    not:
+      anyOf:
+      - required:
+        - delta
+        - iceberg
+      - required:
+        - delta
+        - duckdb
+      - required:
+        - iceberg
+        - duckdb
+    properties:
+      format:
+        type: string
+        enum:
+        - parquet
+        - delta
+        - iceberg
+        - duckdb
+      path:
+        type:
+        - string
+        - 'null'
+      storage:
+        type:
+        - string
+        - 'null'
+      options:
+        type: object
+        additionalProperties: false
+        properties:
+          compression:
+            type:
+            - string
+            - 'null'
+          row_group_size:
+            type:
+            - integer
+            - 'null'
+            maximum: 9223372036854775807
+            minimum: 0
+          max_size_per_file:
+            type:
+            - integer
+            - 'null'
+            maximum: 9223372036854775807
+            minimum: 0
+      filesystem:
+        type:
+        - string
+        - 'null'
+      merge:
+        $ref: '#/$defs/merge'
+      iceberg:
+        $ref: '#/$defs/iceberg'
+      delta:
+        $ref: '#/$defs/delta'
+      duckdb:
+        $ref: '#/$defs/duckdb'
+      partition_by:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+          pattern: \S
+        minItems: 1
+      partition_spec:
+        type: array
+        items:
+          $ref: '#/$defs/partition_field'
+        minItems: 1
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+    - if:
+        required:
+        - format
+        properties:
+          format:
+            const: parquet
+      then:
+        properties:
+          options:
+            properties:
+              compression:
+                enum:
+                - snappy
+                - gzip
+                - zstd
+                - uncompressed
+                - null
+              row_group_size:
+                minimum: 1
+              max_size_per_file:
+                minimum: 1
+    - if:
+        required:
+        - format
+        - path
+        properties:
+          format:
+            enum:
+            - parquet
+            - delta
+            - iceberg
+      then:
+        properties:
+          path:
+            type: string
+    - if:
+        required:
+        - format
+        - duckdb
+        properties:
+          format:
+            const: duckdb
+          duckdb:
+            required:
+            - connection
+            properties:
+              connection:
+                type: string
+                pattern: '^\s*md:'
+      then:
+        not:
+          anyOf:
+          - required:
+            - storage
+            properties:
+              storage:
+                not:
+                  type: 'null'
+          - required:
+            - filesystem
+            properties:
+              filesystem:
+                not:
+                  type: 'null'
+    - if:
+        required:
+        - format
+        - partition_by
+        properties:
+          partition_by:
+            type: array
+      then:
+        properties:
+          format:
+            const: delta
+    - if:
+        required:
+        - format
+        - partition_spec
+      then:
+        properties:
+          format:
+            const: iceberg
+    - if:
+        required:
+        - format
+        - iceberg
+      then:
+        properties:
+          format:
+            const: iceberg
+    - if:
+        required:
+        - format
+        - delta
+      then:
+        properties:
+          format:
+            const: delta
+    - if:
+        required:
+        - format
+        - duckdb
+      then:
+        properties:
+          format:
+            const: duckdb
+  merge:
+    type: object
+    additionalProperties: false
+    properties:
+      ignore_columns:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+          pattern: \S
+      compare_columns:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+          pattern: \S
+      scd2:
+        $ref: '#/$defs/merge_scd2'
+  merge_scd2:
+    type: object
+    additionalProperties: false
+    properties:
+      current_flag_column:
+        type:
+        - string
+        - 'null'
+        pattern: \S
+      valid_from_column:
+        type:
+        - string
+        - 'null'
+        pattern: \S
+      valid_to_column:
+        type:
+        - string
+        - 'null'
+        pattern: \S
+  iceberg:
+    type: object
+    additionalProperties: false
+    properties:
+      catalog:
+        type:
+        - string
+        - 'null'
+      namespace:
+        type:
+        - string
+        - 'null'
+      table:
+        type:
+        - string
+        - 'null'
+      location:
+        type:
+        - string
+        - 'null'
+  delta:
+    type: object
+    additionalProperties: false
+    properties:
+      catalog:
+        type:
+        - string
+        - 'null'
+      schema:
+        type:
+        - string
+        - 'null'
+      table:
+        type:
+        - string
+        - 'null'
+  duckdb:
+    type: object
+    additionalProperties: false
+    properties:
+      table:
+        type: string
+        pattern: \S
+      schema:
+        type:
+        - string
+        - 'null'
+      connection:
+        type:
+        - string
+        - 'null'
+        anyOf:
+        - pattern: '^\s*md:'
+        - pattern: ^\s*$
+      token:
+        type:
+        - string
+        - 'null'
+  partition_field:
+    type: object
+    additionalProperties: false
+    properties:
+      column:
+        type: string
+        pattern: \S
+      transform:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[iI][dD][eE][nN][tT][iI][tT][yY]|[yY][eE][aA][rR]|[mM][oO][nN][tT][hH]|[dD][aA][yY]|[hH][oO][uU][rR])\s*$
+    required:
+    - column
+  sink_rejected_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      format:
+        type: string
+        enum:
+        - csv
+      path:
+        type: string
+      storage:
+        type:
+        - string
+        - 'null'
+      filesystem:
+        type:
+        - string
+        - 'null'
+    allOf:
+    - not:
+        required:
+        - storage
+        - filesystem
+        properties:
+          storage:
+            not:
+              type: 'null'
+          filesystem:
+            not:
+              type: 'null'
+  archive_target:
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        type:
+        - string
+        - 'null'
+      storage:
+        type:
+        - string
+        - 'null'
+  policy_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      severity:
+        type: string
+        enum:
+        - warn
+        - reject
+        - abort
+  schema_defaults:
+    type: object
+    additionalProperties: false
+    properties:
+      normalize_columns:
+        $ref: '#/$defs/normalize_columns'
+      mismatch:
+        $ref: '#/$defs/schema_mismatch'
+      schema_evolution:
+        $ref: '#/$defs/schema_evolution'
+      unique_keys:
+        type:
+        - array
+        - 'null'
+        minItems: 1
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            pattern: \S
+  normalize_columns:
+    type: object
+    additionalProperties: false
+    properties:
+      enabled:
+        type:
+        - boolean
+        - 'null'
+      strategy:
+        type:
+        - string
+        - 'null'
+        pattern: ^[_-]*(?:[sS][_-]*[nN][_-]*[aA][_-]*[kK][_-]*[eE][_-]*[cC][_-]*[aA][_-]*[sS][_-]*[eE][_-]*|[lL][_-]*[oO][_-]*[wW][_-]*[eE][_-]*[rR][_-]*|[cC][_-]*[aA][_-]*[mM][_-]*[eE][_-]*[lL][_-]*[cC][_-]*[aA][_-]*[sS][_-]*[eE][_-]*|[nN][_-]*[oO][_-]*[nN][_-]*[eE][_-]*)$
+  schema_mismatch:
+    type: object
+    additionalProperties: false
+    properties:
+      missing_columns:
+        type:
+        - string
+        - 'null'
+        enum:
+        - reject_file
+        - fill_nulls
+        - null
+      extra_columns:
+        type:
+        - string
+        - 'null'
+        enum:
+        - reject_file
+        - ignore
+        - null
+  schema_evolution:
+    type: object
+    additionalProperties: false
+    properties:
+      mode:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[sS][tT][rR][iI][cC][tT]|[aA][dD][dD]_[cC][oO][lL][uU][mM][nN][sS])\s*$
+      on_incompatible:
+        type:
+        - string
+        - 'null'
+        pattern: ^\s*(?:[fF][aA][iI][lL])\s*$
+  pii_fragment:
+    type: object
+    additionalProperties: false
+    properties:
+      columns:
+        type: array
+        items:
+          $ref: '#/$defs/pii_column'
+  pii_column:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+      mask_pattern:
+        type:
+        - string
+        - 'null'
+      redact_value:
+        type:
+        - string
+        - 'null'
+      key:
+        type:
+        - string
+        - 'null'
+      strategy:
+        type: string
+        pattern: ^\s*(?:[hH][aA][sS][hH]|[dD][rR][oO][pP]|[nN][uU][lL][lL][iI][fF][yY]|[rR][eE][dD][aA][cC][tT]|[mM][aA][sS][kK])\s*$
+    required:
+    - name
+    - strategy
+    allOf:
+    - if:
+        properties:
+          strategy:
+            pattern: ^\s*(?:[mM][aA][sS][kK])\s*$
+      then:
+        required:
+        - mask_pattern
+        properties:
+          mask_pattern:
+            anyOf:
+            - pattern: ^(?:(?!\{first)[\s\S])*\{first\+?0*(?:[1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|18446744073709550[0-9]{3}|18446744073709551[0-5][0-9]{2}|1844674407370955160[0-9]|1844674407370955161[0-5])\}
+            - pattern: ^(?:(?!\{last)[\s\S])*\{last\+?0*(?:[1-9][0-9]{0,18}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|18446744073709550[0-9]{3}|18446744073709551[0-5][0-9]{2}|1844674407370955160[0-9]|1844674407370955161[0-5])\}
+            type: string
