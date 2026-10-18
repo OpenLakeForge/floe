@@ -201,6 +201,33 @@ class ConfigSchemaTest(unittest.TestCase):
             }},
         })
 
+    def test_csv_encoding_rejects_terminal_newline_in_every_schema_copy(self):
+        invalid_encoding = "utf8\n"
+        entity = complete_entity()
+        entity["source"]["options"] = {"encoding": invalid_encoding}
+        self.assert_invalid(ROOT_VALIDATOR, {"version": "0.3", "entities": [entity]})
+
+        legacy_entity = complete_entity()
+        legacy_entity["source"]["options"] = {"encoding": invalid_encoding}
+        self.assert_invalid(ROOT_VALIDATOR, {"version": "0.2", "entities": [legacy_entity]})
+
+        self.assert_invalid(ROOT_VALIDATOR, {
+            "version": "0.3", "entities": [complete_entity()],
+            "sources": [{"name": "shared", "format": "csv", "options": {"encoding": invalid_encoding}}],
+        })
+        self.assert_invalid(validator_for("entity_file"), {
+            "name": "orders", "domain": "sales", "schema": {"columns": []},
+            "source": {"format": "csv", "path": "in.csv", "options": {"encoding": invalid_encoding}},
+        })
+        self.assert_invalid(validator_for("domain_file"), {
+            "name": "sales", "defaults": {"source": {
+                "format": "csv", "path": "in.csv", "options": {"encoding": invalid_encoding},
+            }},
+        })
+        self.assert_invalid(validator_for("sources_file"), {"sources": [{
+            "name": "shared", "format": "csv", "options": {"encoding": invalid_encoding},
+        }]})
+
     def test_evolution_version_and_local_sink(self):
         entity = complete_entity()
         entity["schema"]["schema_evolution"] = {"mode": "strict"}
@@ -1090,6 +1117,16 @@ class ConfigSchemaTest(unittest.TestCase):
                 self.assert_invalid(ROOT_VALIDATOR, {
                     "version": "0.3", "entities": [complete_entity()], "include": include,
                 })
+
+    def test_env_vars_require_yaml_string_keys(self):
+        yaml_vars = yaml.safe_load("1: value\n")
+        self.assertIs(type(next(iter(yaml_vars))), int)
+        self.assert_invalid(ROOT_VALIDATOR, {
+            "version": "0.3", "entities": [complete_entity()], "env": {"vars": yaml_vars},
+        })
+        self.assert_valid(ROOT_VALIDATOR, {
+            "version": "0.3", "entities": [complete_entity()], "env": {"vars": {"API_TOKEN": "value"}},
+        })
 
     def assert_valid(self, validator, document):
         self.assertTrue(validator.is_valid(document), list(validator.iter_errors(document)))
