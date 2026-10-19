@@ -330,6 +330,42 @@ fn entity_error_from_included_source_names_the_source_file() {
 }
 
 #[test]
+fn entity_error_from_inline_domain_and_included_source_names_both_files() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let source_path = dir.path().join("sources.yml");
+    std::fs::write(&source_path, "sources:\n  - name: crm\n    format: csv\n")
+        .expect("write sources");
+    let entities = config_with("{ ref: crm }");
+    let entities = entities.split_once("entities:\n").expect("entities").1;
+    let config_path = dir.path().join("floe.yml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "version: \"0.3\"\ninclude:\n  sources: sources.yml\n\
+             domains:\n  - name: sales\n    defaults:\n      bogus: 1\n\
+             entities:\n{}",
+            entities.replacen(
+                "  - name: \"orders\"\n",
+                "  - name: \"orders\"\n    domain: sales\n",
+                1
+            )
+        ),
+    )
+    .expect("write project");
+
+    let err = load_config(&config_path).expect_err("bad domain default");
+
+    assert_eq!(
+        err.to_string(),
+        format!(
+            "inherits from {}, {}: entities[0] (entity.name=orders): unknown field entity.bogus",
+            config_path.display(),
+            source_path.display()
+        )
+    );
+}
+
+#[test]
 fn inline_source_error_is_unchanged() {
     let path = write_temp_config(&config_with("{ ref: crm, options: { bogus: 1 } }"));
     let err = load_config(&path).expect_err("bad source option");
