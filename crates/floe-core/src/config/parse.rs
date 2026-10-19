@@ -437,10 +437,37 @@ fn parse_root(doc: &Yaml, origins: &IncludeOrigins) -> FloeResult<RootConfig> {
             .map_err(|err| {
                 FloeError::config(format_entity_error(index, name_hint, err.as_ref())).into()
             });
-        let entity = with_origin(
-            origins.entities.get(index).and_then(Option::as_deref),
-            entity,
-        )?;
+        let origin = origins.entities.get(index).and_then(Option::as_deref);
+        let domain_origin = entity_domain_hint(entity_yaml)
+            .filter(|domain| domain_defaults.contains_key(domain))
+            .and_then(|domain| {
+                let (_, origin) = domains
+                    .iter()
+                    .zip(&origins.domains)
+                    .rfind(|(config, _)| config.name == domain)?;
+                origin.as_deref()
+            });
+        let source_origin = origins
+            .sources
+            .as_deref()
+            .filter(|_| sources.contains_key(&entity_yaml["source"]["ref"]));
+        let inherited: Vec<String> = [domain_origin, source_origin]
+            .into_iter()
+            .flatten()
+            .map(|path| path.display().to_string())
+            .collect();
+        let entity = if inherited.is_empty() {
+            with_origin(origin, entity)?
+        } else {
+            let inherits = format!("inherits from {}", inherited.join(", "));
+            entity.map_err(|error| {
+                let prefix = match origin {
+                    Some(path) => format!("{} ({inherits})", path.display()),
+                    None => inherits,
+                };
+                FloeError::config(format!("{prefix}: {error}"))
+            })?
+        };
         entities.push(entity);
     }
     if super::qualifies_entity_ids(&version) {
