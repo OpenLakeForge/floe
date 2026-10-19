@@ -55,10 +55,11 @@ When variable sources are merged at runtime the following precedence applies
 (highest wins):
 
 ```
-config variables  >  profile variables
+config variables  >  env file variables  >  profile variables
 ```
 
 - **Profile variables** – defined in `variables:` of the profile file.
+- **Env file variables** – loaded from the YAML file named by `env.file:` in the main Floe YAML config.
 - **Config variables** – defined in `env.vars:` of the main Floe YAML config.
 
 Variable values may themselves contain `${VAR}` references that are
