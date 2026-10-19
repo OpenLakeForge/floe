@@ -4,6 +4,11 @@ All notable changes to Floe are documented in this file.
 
 ## Floe core (unreleased)
 
+- **Inherited-value errors name the contributing files (#582).** When an entity that
+  inherits `defaults` from an included `_domain.yml` or a source from an included
+  `sources.yml` fails to parse, the error adds `(inherits from <files>)` after the entity's
+  file (or leads with `inherits from <files>` for an inline entity); single-file config
+  errors are unchanged.
 - **Errors in included domain and entity files name the file (#581).** In an
   `include.domains` project, a load or parse error in a `_domain.yml` or entity file is
   prefixed with that file's path; single-file config errors are unchanged.
