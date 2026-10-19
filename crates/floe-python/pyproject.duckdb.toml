@@ -22,7 +22,7 @@ build-backend = "maturin"
 
 [project]
 name = "floe-duckdb"
-version = "0.6.11"
+version = "0.7.0"
 description = "DuckDB companion extension for floe — adds the native DuckDB sink to the floe Python package"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -46,7 +46,7 @@ classifiers = [
 # only contributes the compiled DuckDB extension module into that package. Pin to
 # the exact lean version so the companion's `_floe_duckdb` ABI always matches the
 # `floe` package it plugs into.
-dependencies = ["floe-python==0.6.11"]
+dependencies = ["floe-python==0.7.0"]
 
 [project.urls]
 Homepage = "https://github.com/OpenLakeForge/floe"

@@ -1,6 +1,6 @@
 [package]
 name = "floe-core"
-version = "0.6.11"
+version = "0.7.0"
 edition = "2021"
 description = "Core library for Floe, a YAML-driven technical ingestion tool."
 license = "MIT"

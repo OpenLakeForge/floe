@@ -2,8 +2,52 @@
 
 All notable changes to Floe are documented in this file.
 
-## Floe core (unreleased)
+## airflow-floe (unreleased)
 
+- **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest
+  (#511).** Only entities whose `domain` is listed land in the context; an unknown domain
+  or an empty list raises `ValueError`. Pass `entities=context.entity_names` to `FloeRunOperator` so the run
+  covers only that slice.
+
+## dagster-floe (unreleased)
+
+- **`load_floe_assets(domains=[...])` loads one domain slice of a project manifest (#510).**
+  Only entities whose `domain` is listed are loaded; an unknown domain raises `ValueError`.
+  Op names of entities with a domain are now derived from the full asset key
+  (`sales__accounts`), so two domains sharing an entity name load in one manifest.
+  Entities without a domain keep their existing op name.
+- **Fix: remote `s3://` reads honor S3-compatible endpoint env (#512).** Manifest and run
+  report reads via fsspec now pass `AWS_ENDPOINT_URL_S3` (falling back to
+  `AWS_ENDPOINT_URL`) as the endpoint and, when `AWS_S3_FORCE_PATH_STYLE` is `true`/`1`,
+  path-style addressing, matching Floe core (#448). Without these variables behaviour is
+  unchanged. Requires the existing `remote` extra.
+
+## v0.7.0
+
+Floe projects: config `version: "0.3"` scales one project across many domains and files.
+Existing 0.1/0.2 configs keep working unchanged; see the 0.2 → 0.3 migration section of
+`docs/config.md` and the project layouts in `docs/projects.md`.
+
+- **Qualified entity identity `<domain>.<name>` (#464).** With `version >= "0.3"`, an entity
+  with a `domain` is identified as `<domain>.<name>`; otherwise its identity stays the bare
+  `name`.
+  - The id keys report paths (`run_<id>/<domain>/<name>/run.json`), run events, the default
+    incremental state dir (`.floe/state/<domain>/<name>/`), manifest `entities[].name`
+    (`asset_key` is unchanged) and OpenLineage job names.
+  - `--entities` and `floe state` accept a qualified id or an unambiguous bare name; an
+    ambiguous bare name fails and lists the candidates.
+  - In 0.3, `name` and `domain` must be non-empty and must not contain `.`, `/` or `\`.
+    Regenerate manifests of 0.3 projects after upgrading.
+- **Domain `defaults` merged into entities (#501).** A 0.3 domain may declare `defaults`:
+  the entity wins, maps deep-merge, lists replace, and `schema.columns` /
+  `schema.primary_key` are never inherited.
+- **Reusable project `sources` and `source: { ref, resource }` (#503).** Named sources are
+  declared once and referenced by entities; the entity's own `source` fields win, and
+  `{{resource}}` in the source path resolves to `source.resource` (defaulting to the entity
+  name). An unknown `ref` lists the declared sources.
+- **Multi-file projects with `include.domains` (#505).** Glob patterns, relative to the
+  project file, load each `_domain.yml` and its sibling entity files (one entity per file);
+  the domain is implied by the folder. Includes resolve against local files only.
 - **Inherited-value errors name the contributing files (#582).** When an entity that
   inherits `defaults` from an included `_domain.yml` or a source from an included
   `sources.yml` fails to parse, the error adds `(inherits from <files>)` after the entity's
@@ -45,26 +89,16 @@ All notable changes to Floe are documented in this file.
   defaults can build a separate sink path for each entity.
 - **Fix `include.domains` for Windows UNC project paths (#526).** Verbatim UNC paths such as
   `\\?\UNC\server\share\project` now resolve relative include patterns from the network share.
+- **Docs (#516, #517, #519).** New `docs/projects.md` project-layout guide; config 0.3
+  merge-rules table and 0.2 → 0.3 migration in `docs/config.md`; removed the nonexistent
+  `--var` CLI flag from `docs/variables.md` and `docs/profiles.md`.
 
-## airflow-floe (unreleased)
+### Internal hardening
 
-- **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest
-  (#511).** Only entities whose `domain` is listed land in the context; an unknown domain
-  or an empty list raises `ValueError`. Pass `entities=context.entity_names` to `FloeRunOperator` so the run
-  covers only that slice.
-
-## dagster-floe (unreleased)
-
-- **`load_floe_assets(domains=[...])` loads one domain slice of a project manifest (#510).**
-  Only entities whose `domain` is listed are loaded; an unknown domain raises `ValueError`.
-  Op names of entities with a domain are now derived from the full asset key
-  (`sales__accounts`), so two domains sharing an entity name load in one manifest.
-  Entities without a domain keep their existing op name.
-- **Fix: remote `s3://` reads honor S3-compatible endpoint env (#512).** Manifest and run
-  report reads via fsspec now pass `AWS_ENDPOINT_URL_S3` (falling back to
-  `AWS_ENDPOINT_URL`) as the endpoint and, when `AWS_S3_FORCE_PATH_STYLE` is `true`/`1`,
-  path-style addressing, matching Floe core (#448). Without these variables behaviour is
-  unchanged. Requires the existing `remote` extra.
+- Repository moved to `OpenLakeForge/floe`: crate metadata, docs, release scripts and the
+  GHCR owner point at the new org (#483, #484, #485).
+- Dependency advisories patched (h2, rustls, yanked chacha20) (#486), plus routine
+  dependency bumps.
 
 ## v0.6.11
 
