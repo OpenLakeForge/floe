@@ -151,6 +151,43 @@ fn include_entity_with_mismatching_domain_fails() {
 }
 
 #[test]
+fn include_entity_with_unknown_key_names_its_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_project(dir.path(), "0.3");
+    write(
+        dir.path(),
+        "silver/sales/orders.yml",
+        &entity("orders", "nmae_typo: \"x\"\n", ""),
+    );
+    let err = load_config(&dir.path().join("floe.yml")).expect_err("unknown key");
+    let file = dir.path().join("silver/sales/orders.yml");
+    assert_eq!(
+        err.to_string(),
+        format!(
+            "{}: entities[1] (entity.name=orders): unknown field entity.nmae_typo",
+            file.display()
+        )
+    );
+}
+
+#[test]
+fn include_domain_with_unknown_key_names_its_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_project(dir.path(), "0.3");
+    write(
+        dir.path(),
+        "silver/finance/_domain.yml",
+        &format!("{FINANCE_DOMAIN}nmae_typo: \"x\"\n"),
+    );
+    let err = load_config(&dir.path().join("floe.yml")).expect_err("unknown key");
+    let file = dir.path().join("silver/finance/_domain.yml");
+    assert_eq!(
+        err.to_string(),
+        format!("{}: unknown field domains.nmae_typo", file.display())
+    );
+}
+
+#[test]
 fn include_requires_version_0_3() {
     let dir = tempfile::tempdir().expect("tempdir");
     write_project(dir.path(), "0.2");

@@ -4,6 +4,9 @@ All notable changes to Floe are documented in this file.
 
 ## Floe core (unreleased)
 
+- **Errors in included domain and entity files name the file (#581).** In an
+  `include.domains` project, a load or parse error in a `_domain.yml` or entity file is
+  prefixed with that file's path; single-file config errors are unchanged.
 - **Self-contained YAML authoring schemas (#574).** Replace editor/tooling references to
   `schemas/config.schema.yaml` with `schemas/project.schema.yaml`. Included source,
   domain and entity documents use `sources.schema.yaml`, `domains.schema.yaml` and

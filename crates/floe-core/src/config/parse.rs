@@ -105,8 +105,8 @@ pub(crate) fn parse_config_with_vars(
     let mut doc = load_single_doc(path)?;
     let config_dir = path.parent().unwrap_or_else(|| Path::new("."));
     let mut config_files = vec![path.to_path_buf()];
-    let included_sources = assemble_includes(&mut doc, config_dir, &mut config_files)?;
-    let mut config = parse_root(&doc, included_sources.as_deref())?;
+    let origins = assemble_includes(&mut doc, config_dir, &mut config_files)?;
+    let mut config = parse_root(&doc, &origins)?;
     config.config_files = config_files;
     apply_templates_with_vars(&mut config, config_dir, profile_vars)?;
     Ok(config)
@@ -120,7 +120,7 @@ pub(crate) fn validate_with_entity_yaml(
     let mut doc = load_single_doc(path)?;
     let config_dir = path.parent().unwrap_or_else(|| Path::new("."));
     let mut config_files = vec![path.to_path_buf()];
-    let included_sources = assemble_includes(&mut doc, config_dir, &mut config_files)?;
+    let origins = assemble_includes(&mut doc, config_dir, &mut config_files)?;
     let mut entity_docs = YamlLoader::load_from_str(entity_yaml)?;
     if entity_docs.len() != 1 {
         return Err(FloeError::config(
@@ -147,7 +147,7 @@ pub(crate) fn validate_with_entity_yaml(
     };
     entities.push(entity);
 
-    let mut config = parse_root(&doc, included_sources.as_deref())?;
+    let mut config = parse_root(&doc, &origins)?;
     config.config_files = config_files;
     apply_templates_with_vars(&mut config, config_dir, &HashMap::new())?;
     super::validate_config(&config)
@@ -167,17 +167,26 @@ fn load_single_doc(path: &Path) -> FloeResult<Yaml> {
     Ok(docs.remove(0))
 }
 
+/// Originating file of each `domains` and `entities` item, by array index;
+/// `None` for items written inline in the root file.
+#[derive(Default)]
+struct IncludeOrigins {
+    sources: Option<PathBuf>,
+    domains: Vec<Option<PathBuf>>,
+    entities: Vec<Option<PathBuf>>,
+}
+
 /// Splices included sources, domains, and entities so parsing sees one document.
 fn assemble_includes(
     doc: &mut Yaml,
     config_dir: &Path,
     config_files: &mut Vec<PathBuf>,
-) -> FloeResult<Option<PathBuf>> {
+) -> FloeResult<IncludeOrigins> {
     let Yaml::Hash(root) = doc else {
-        return Ok(None);
+        return Ok(IncludeOrigins::default());
     };
     let Some(include) = root.remove(&Yaml::String("include".to_string())) else {
-        return Ok(None);
+        return Ok(IncludeOrigins::default());
     };
     let version = hash_get(root, "version").and_then(Yaml::as_str);
     if version.and_then(|v| ConfigVersion::parse(v).ok()) < Some(MIN_INCLUDE_CONFIG_VERSION) {
@@ -231,10 +240,13 @@ fn assemble_includes(
             .into());
         }
         for domain_file in matches {
-            let domain = load_single_doc(&domain_file)?;
-            let name = get_string(yaml_hash(&domain, "domains")?, "name", "domains")?;
+            let domain = with_source_path(&domain_file, load_single_doc(&domain_file))?;
+            let name = with_source_path(
+                &domain_file,
+                yaml_hash(&domain, "domains").and_then(|hash| get_string(hash, "name", "domains")),
+            )?;
             config_files.push(domain_file.clone());
-            domains.push(domain);
+            domains.push((domain, domain_file.clone()));
             let dir = domain_file.parent().unwrap_or_else(|| Path::new("."));
             let mut siblings = Vec::new();
             for entry in std::fs::read_dir(dir)? {
@@ -245,11 +257,14 @@ fn assemble_includes(
             }
             siblings.sort();
             for entity_file in siblings {
-                let mut entity = load_single_doc(&entity_file)?;
+                let mut entity = with_source_path(&entity_file, load_single_doc(&entity_file))?;
                 let Yaml::Hash(hash) = &mut entity else {
-                    return Err(FloeError::config("expected map at entity".to_string()).into());
+                    return with_source_path(
+                        &entity_file,
+                        Err(FloeError::config("expected map at entity".to_string()).into()),
+                    );
                 };
-                match opt_string(hash, "domain", "entity")? {
+                match with_source_path(&entity_file, opt_string(hash, "domain", "entity"))? {
                     None => {
                         hash.insert(
                             Yaml::String("domain".to_string()),
@@ -265,21 +280,34 @@ fn assemble_includes(
                         .into())
                     }
                 }
-                config_files.push(entity_file);
-                entities.push(entity);
+                config_files.push(entity_file.clone());
+                entities.push((entity, entity_file));
             }
         }
     }
-    for (key, items) in [("domains", domains), ("entities", entities)] {
+    let mut origins = IncludeOrigins {
+        sources: sources_path,
+        ..IncludeOrigins::default()
+    };
+    for (key, items, item_origins) in [
+        ("domains", domains, &mut origins.domains),
+        ("entities", entities, &mut origins.entities),
+    ] {
         match root
             .entry(Yaml::String(key.to_string()))
             .or_insert(Yaml::Array(Vec::new()))
         {
-            Yaml::Array(array) => array.extend(items),
+            Yaml::Array(array) => {
+                item_origins.resize(array.len(), None);
+                for (item, file) in items {
+                    array.push(item);
+                    item_origins.push(Some(file));
+                }
+            }
             _ => return Err(FloeError::config(format!("expected array at {key}")).into()),
         }
     }
-    Ok(sources_path)
+    Ok(origins)
 }
 
 fn with_source_path<T>(path: &Path, result: FloeResult<T>) -> FloeResult<T> {
@@ -294,6 +322,13 @@ fn with_source_path<T>(path: &Path, result: FloeResult<T>) -> FloeResult<T> {
     })
 }
 
+fn with_origin<T>(origin: Option<&Path>, result: FloeResult<T>) -> FloeResult<T> {
+    match origin {
+        Some(path) => with_source_path(path, result),
+        None => result,
+    }
+}
+
 fn glob_base(dir: &Path) -> String {
     let dir = dir.to_string_lossy();
     // Escaping would turn the `?` of a Windows verbatim prefix into `[?]`.
@@ -304,7 +339,7 @@ fn glob_base(dir: &Path) -> String {
     glob::Pattern::escape(&dir)
 }
 
-fn parse_root(doc: &Yaml, included_sources: Option<&Path>) -> FloeResult<RootConfig> {
+fn parse_root(doc: &Yaml, origins: &IncludeOrigins) -> FloeResult<RootConfig> {
     let root = yaml_hash(doc, "root")?;
     validate_known_keys(
         root,
@@ -352,12 +387,12 @@ fn parse_root(doc: &Yaml, included_sources: Option<&Path>) -> FloeResult<RootCon
     };
 
     let (domains, domain_defaults) = match hash_get(root, "domains") {
-        Some(value) => parse_domains(value, &version)?,
+        Some(value) => parse_domains(value, &version, &origins.domains)?,
         None => (Vec::new(), HashMap::new()),
     };
 
     let sources = match hash_get(root, "sources") {
-        Some(value) => parse_sources(value, &version, included_sources)?,
+        Some(value) => parse_sources(value, &version, origins.sources.as_deref())?,
         None => Hash::new(),
     };
 
@@ -400,8 +435,12 @@ fn parse_root(doc: &Yaml, included_sources: Option<&Path>) -> FloeResult<RootCon
                 Ok(entity)
             })
             .map_err(|err| {
-                FloeError::config(format_entity_error(index, name_hint, err.as_ref()))
-            })?;
+                FloeError::config(format_entity_error(index, name_hint, err.as_ref())).into()
+            });
+        let entity = with_origin(
+            origins.entities.get(index).and_then(Option::as_deref),
+            entity,
+        )?;
         entities.push(entity);
     }
     if super::qualifies_entity_ids(&version) {
@@ -550,37 +589,49 @@ fn parse_env(value: &Yaml) -> FloeResult<EnvConfig> {
 fn parse_domains(
     value: &Yaml,
     version: &str,
+    origins: &[Option<PathBuf>],
 ) -> FloeResult<(Vec<DomainConfig>, HashMap<String, Yaml>)> {
     let array = yaml_array(value, "domains")?;
     let mut domains = Vec::with_capacity(array.len());
     let mut defaults = HashMap::new();
-    for item in array.iter() {
-        let hash = yaml_hash(item, "domains")?;
-        validate_known_keys(hash, "domains", &["name", "incoming_dir", "defaults"])?;
-        let name = get_string(hash, "name", "domains")?;
-        if let Some(value) = hash_get(hash, "defaults") {
-            if ConfigVersion::parse(version)? < MIN_DOMAIN_DEFAULTS_CONFIG_VERSION {
-                return Err(FloeError::config(
-                    "domains.defaults requires root.version >= \"0.3\"".to_string(),
-                )
-                .into());
-            }
-            yaml_hash(value, "domains.defaults")?;
-            defaults.insert(name.clone(), without_entity_only_fields(value));
-        }
-        let incoming_dir = opt_string(hash, "incoming_dir", "domains")?;
-        if incoming_dir.is_none()
-            && ConfigVersion::parse(version)? < MIN_DOMAIN_DEFAULTS_CONFIG_VERSION
-        {
-            return Err(FloeError::config("missing required field domains.incoming_dir").into());
-        }
-        domains.push(DomainConfig {
-            name,
-            incoming_dir,
-            resolved_incoming_dir: None,
-        });
+    for (index, item) in array.iter().enumerate() {
+        let domain = parse_domain(item, version, &mut defaults);
+        domains.push(with_origin(
+            origins.get(index).and_then(Option::as_deref),
+            domain,
+        )?);
     }
     Ok((domains, defaults))
+}
+
+fn parse_domain(
+    item: &Yaml,
+    version: &str,
+    defaults: &mut HashMap<String, Yaml>,
+) -> FloeResult<DomainConfig> {
+    let hash = yaml_hash(item, "domains")?;
+    validate_known_keys(hash, "domains", &["name", "incoming_dir", "defaults"])?;
+    let name = get_string(hash, "name", "domains")?;
+    if let Some(value) = hash_get(hash, "defaults") {
+        if ConfigVersion::parse(version)? < MIN_DOMAIN_DEFAULTS_CONFIG_VERSION {
+            return Err(FloeError::config(
+                "domains.defaults requires root.version >= \"0.3\"".to_string(),
+            )
+            .into());
+        }
+        yaml_hash(value, "domains.defaults")?;
+        defaults.insert(name.clone(), without_entity_only_fields(value));
+    }
+    let incoming_dir = opt_string(hash, "incoming_dir", "domains")?;
+    if incoming_dir.is_none() && ConfigVersion::parse(version)? < MIN_DOMAIN_DEFAULTS_CONFIG_VERSION
+    {
+        return Err(FloeError::config("missing required field domains.incoming_dir").into());
+    }
+    Ok(DomainConfig {
+        name,
+        incoming_dir,
+        resolved_incoming_dir: None,
+    })
 }
 
 fn parse_sources(value: &Yaml, version: &str, source_path: Option<&Path>) -> FloeResult<Hash> {
