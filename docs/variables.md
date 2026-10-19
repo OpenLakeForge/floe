@@ -1,6 +1,6 @@
 # Variable Resolution
 
-Floe supports a three-source variable system that lets you inject
+Floe supports a two-source variable system that lets you inject
 environment-specific values into config files without editing the config
 itself.
 
@@ -8,19 +8,18 @@ itself.
 
 ## Sources and precedence
 
-Variables are collected from three sources and merged before any
+Variables are collected from two sources and merged before any
 placeholder substitution occurs.  When the same key appears in more than
 one source the **highest-precedence** value wins:
 
 ```
-config variables  >  CLI overrides  >  profile variables
-                  (highest)                  (lowest)
+config variables  >  profile variables
+    (highest)              (lowest)
 ```
 
 | Source | Where defined | Precedence |
 |--------|---------------|-----------|
 | **Config variables** | `env.vars:` block in the main Floe YAML config | Highest |
-| **CLI overrides** | `--var KEY=VALUE` flag (future CLI flag) | Mid |
 | **Profile variables** | `variables:` block in the environment profile | Lowest |
 
 ---
@@ -66,7 +65,7 @@ entities:
 
 ## Resolution rules
 
-1. **Merge** – build a single map from all three sources, higher-priority
+1. **Merge** – build a single map from both sources, higher-priority
    sources overwriting lower ones.
 2. **Expand** – for every variable value, substitute `${KEY}` with the
    fully-resolved value of `KEY`, recursively.
