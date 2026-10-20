@@ -2,7 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use floe_core::config::PolicySeverity;
-use floe_core::{add_entity_to_config, load_config, validate, AddEntityOptions, ValidateOptions};
+use floe_core::{
+    add_entity_to_config, add_entity_to_config_with_source, load_config, validate,
+    AddEntityOptions, ValidateOptions,
+};
 use polars::prelude::{DataFrame, NamedFrom, ParquetWriter, Series};
 use tempfile::tempdir;
 use url::Url;
@@ -32,6 +35,259 @@ domains:
     incoming_dir: "./in/sales"
 entities: []
 "#
+}
+
+fn included_sales_project(dir: &Path) -> (PathBuf, PathBuf) {
+    let config_path = dir.join("floe.yml");
+    let domain_dir = dir.join("silver/sales");
+    fs::create_dir_all(&domain_dir).expect("create domain directory");
+    write_file(
+        &config_path,
+        "version: \"0.3\"\ninclude:\n  domains: [\"silver/*/_domain.yml\"]\n",
+    );
+    write_file(
+        &domain_dir.join("_domain.yml"),
+        "name: sales\nincoming_dir: ./in\ndefaults:\n  name: domain-default-name\n  sink:\n    accepted:\n      format: parquet\n      path: ./accepted\n  policy:\n    severity: warn\n  schema:\n    mismatch:\n      missing_columns: reject_file\n      extra_columns: ignore\n",
+    );
+    (config_path, domain_dir)
+}
+
+#[test]
+fn add_entity_writes_included_domain_sibling_and_omits_defaults() {
+    let dir = tempdir().expect("tempdir");
+    let (config_path, domain_dir) = included_sales_project(dir.path());
+    let input_path = dir.path().join("orders.csv");
+    write_file(&input_path, "id,total\n1,10\n");
+    let original_config = fs::read_to_string(&config_path).expect("read project config");
+
+    let outcome = add_entity_to_config(AddEntityOptions {
+        config_path: config_path.clone(),
+        output_path: None,
+        input: input_path.display().to_string(),
+        format: None,
+        name: None,
+        domain: Some("sales".to_string()),
+        dry_run: false,
+    })
+    .expect("add entity in included domain");
+
+    let entity_path = domain_dir.join("orders.yml");
+    let entity_yaml = fs::read_to_string(&entity_path).expect("read generated entity");
+    assert_eq!(outcome.output_path, entity_path);
+    assert_eq!(
+        fs::read_to_string(&config_path).expect("read project config"),
+        original_config
+    );
+    assert!(!entity_yaml.contains("domain:"));
+    assert!(!entity_yaml.contains("accepted:"));
+    assert!(!entity_yaml.contains("severity:"));
+    assert!(!entity_yaml.contains("mismatch:"));
+    assert!(entity_yaml.contains("columns:"));
+
+    validate(&config_path, ValidateOptions::default()).expect("validate updated project");
+    let config = load_config(&config_path).expect("load updated project");
+    let entity = config.entities.first().expect("entity");
+    assert_eq!(entity.name, "orders");
+    assert_eq!(entity.domain.as_deref(), Some("sales"));
+    assert_eq!(entity.sink.accepted.path, "./accepted");
+    assert_eq!(entity.policy.severity, PolicySeverity::Warn);
+    assert_eq!(entity.schema.columns.len(), 2);
+}
+
+#[cfg(unix)]
+#[test]
+fn add_entity_sibling_uses_normal_file_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempdir().expect("tempdir");
+    let (config_path, domain_dir) = included_sales_project(dir.path());
+    let input_path = dir.path().join("orders.csv");
+    let control_path = dir.path().join("normal.yml");
+    write_file(&input_path, "id\n1\n");
+    write_file(&control_path, "");
+
+    add_entity_to_config(AddEntityOptions {
+        config_path,
+        output_path: None,
+        input: input_path.display().to_string(),
+        format: None,
+        name: None,
+        domain: Some("sales".to_string()),
+        dry_run: false,
+    })
+    .expect("add entity");
+
+    let expected_mode = fs::metadata(control_path)
+        .expect("metadata for regular file")
+        .permissions()
+        .mode()
+        & 0o777;
+    let actual_mode = fs::metadata(domain_dir.join("orders.yml"))
+        .expect("metadata for entity file")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(actual_mode, expected_mode);
+}
+
+#[test]
+fn add_entity_refuses_to_overwrite_included_domain_sibling() {
+    let dir = tempdir().expect("tempdir");
+    let (config_path, domain_dir) = included_sales_project(dir.path());
+    let input_path = dir.path().join("orders.csv");
+    let entity_path = domain_dir.join("orders.yml");
+    write_file(&input_path, "id\n1\n");
+    write_file(&entity_path, "keep this file\n");
+
+    let err = add_entity_to_config(AddEntityOptions {
+        config_path,
+        output_path: None,
+        input: input_path.display().to_string(),
+        format: None,
+        name: None,
+        domain: Some("sales".to_string()),
+        dry_run: false,
+    })
+    .expect_err("existing entity file must not be overwritten");
+
+    assert!(err.to_string().contains(&entity_path.display().to_string()));
+    assert_eq!(
+        fs::read_to_string(entity_path).expect("read existing file"),
+        "keep this file\n"
+    );
+}
+
+#[test]
+fn add_entity_rejects_path_separator_in_included_domain_name() {
+    let dir = tempdir().expect("tempdir");
+    let (config_path, domain_dir) = included_sales_project(dir.path());
+    let input_path = dir.path().join("orders.csv");
+    write_file(&input_path, "id\n1\n");
+
+    let err = add_entity_to_config(AddEntityOptions {
+        config_path,
+        output_path: None,
+        input: input_path.display().to_string(),
+        format: None,
+        name: Some("../outside".to_string()),
+        domain: Some("sales".to_string()),
+        dry_run: false,
+    })
+    .expect_err("path separators must not escape the domain directory");
+
+    assert!(err.to_string().contains(&domain_dir.display().to_string()));
+    assert!(!dir.path().join("silver/outside.yml").exists());
+}
+
+#[test]
+fn add_entity_dry_run_in_included_domain_renders_sibling_without_writing() {
+    let dir = tempdir().expect("tempdir");
+    let (config_path, domain_dir) = included_sales_project(dir.path());
+    let input_path = dir.path().join("orders.csv");
+    write_file(&input_path, "id\n1\n");
+    let entity_path = domain_dir.join("orders.yml");
+
+    let outcome = add_entity_to_config(AddEntityOptions {
+        config_path,
+        output_path: None,
+        input: input_path.display().to_string(),
+        format: None,
+        name: None,
+        domain: Some("sales".to_string()),
+        dry_run: true,
+    })
+    .expect("dry-run add entity");
+
+    assert_eq!(outcome.output_path, entity_path);
+    let rendered = outcome.rendered_yaml.expect("rendered sibling YAML");
+    assert!(rendered.contains("name: orders"));
+    assert!(!rendered.contains("accepted:"));
+    assert!(!entity_path.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn add_entity_dry_run_does_not_write_to_read_only_domain_directory() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempdir().expect("tempdir");
+    let (config_path, domain_dir) = included_sales_project(dir.path());
+    let input_path = dir.path().join("orders.csv");
+    write_file(&input_path, "id\n1\n");
+    fs::set_permissions(&domain_dir, fs::Permissions::from_mode(0o555))
+        .expect("make domain directory read-only");
+
+    let outcome = add_entity_to_config(AddEntityOptions {
+        config_path,
+        output_path: None,
+        input: input_path.display().to_string(),
+        format: None,
+        name: None,
+        domain: Some("sales".to_string()),
+        dry_run: true,
+    })
+    .expect("dry-run succeeds for a read-only domain directory");
+
+    assert!(outcome.rendered_yaml.is_some());
+    assert!(!domain_dir.join("orders.yml").exists());
+}
+
+#[test]
+fn add_entity_matches_domain_files_with_nonstandard_names() {
+    let dir = tempdir().expect("tempdir");
+    let (config_path, domain_dir) = included_sales_project(dir.path());
+    fs::rename(
+        domain_dir.join("_domain.yml"),
+        domain_dir.join("domain.yml"),
+    )
+    .expect("rename domain file");
+    write_file(
+        &config_path,
+        "version: \"0.3\"\ninclude:\n  domains: [\"silver/*/domain.yml\"]\n",
+    );
+    let input_path = dir.path().join("orders.csv");
+    write_file(&input_path, "id\n1\n");
+
+    let outcome = add_entity_to_config(AddEntityOptions {
+        config_path,
+        output_path: None,
+        input: input_path.display().to_string(),
+        format: None,
+        name: None,
+        domain: Some("sales".to_string()),
+        dry_run: false,
+    })
+    .expect("add entity to domain with a nonstandard file name");
+
+    assert_eq!(outcome.output_path, domain_dir.join("orders.yml"));
+    assert!(domain_dir.join("orders.yml").exists());
+}
+
+#[test]
+fn add_entity_output_keeps_writing_a_root_config_copy_for_included_domains() {
+    let dir = tempdir().expect("tempdir");
+    let (config_path, domain_dir) = included_sales_project(dir.path());
+    let input_path = dir.path().join("orders.csv");
+    let output_path = dir.path().join("copy.yml");
+    write_file(&input_path, "id\n1\n");
+
+    add_entity_to_config(AddEntityOptions {
+        config_path: config_path.clone(),
+        output_path: Some(output_path.clone()),
+        input: input_path.display().to_string(),
+        format: None,
+        name: None,
+        domain: Some("sales".to_string()),
+        dry_run: false,
+    })
+    .expect("write alternate root config");
+
+    assert!(!domain_dir.join("orders.yml").exists());
+    assert!(load_config(&output_path).is_ok());
+    assert!(load_config(&config_path)
+        .expect("load original")
+        .entities
+        .is_empty());
 }
 
 #[test]
@@ -100,6 +356,30 @@ fn add_entity_infers_csv_and_appends_defaults() {
         .expect("active column");
     assert_eq!(active_col.source.as_deref(), Some("active"));
     assert_eq!(active_col.column_type, "boolean");
+}
+
+#[test]
+fn add_entity_requires_source_and_resource_together() {
+    let dir = tempdir().expect("tempdir");
+    let err = add_entity_to_config_with_source(
+        AddEntityOptions {
+            config_path: dir.path().join("config.yml"),
+            output_path: None,
+            input: dir.path().join("orders.csv").display().to_string(),
+            format: None,
+            name: None,
+            domain: None,
+            dry_run: true,
+        },
+        Some("crm".to_string()),
+        None,
+    )
+    .expect_err("source reference requires a resource");
+
+    assert_eq!(
+        err.to_string(),
+        "--source and --resource must be provided together"
+    );
 }
 
 #[test]

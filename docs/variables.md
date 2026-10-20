@@ -13,14 +13,14 @@ placeholder substitution occurs.  When the same key appears in more than
 one source the **highest-precedence** value wins:
 
 ```
-config variables  >  CLI overrides  >  profile variables
-                  (highest)                  (lowest)
+config variables  >  env file variables  >  profile variables
+    (highest)                                   (lowest)
 ```
 
 | Source | Where defined | Precedence |
 |--------|---------------|-----------|
 | **Config variables** | `env.vars:` block in the main Floe YAML config | Highest |
-| **CLI overrides** | `--var KEY=VALUE` flag (future CLI flag) | Mid |
+| **Env file variables** | YAML map loaded from `env.file:` in the main Floe YAML config | Mid |
 | **Profile variables** | `variables:` block in the environment profile | Lowest |
 
 ---

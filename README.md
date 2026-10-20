@@ -62,6 +62,7 @@ extra serialization hop.
 | Incremental file state | [docs/incremental.md](docs/incremental.md) |
 | Profiles and variables | [docs/profiles.md](docs/profiles.md), [docs/variables.md](docs/variables.md) |
 | PII masking | [docs/pii.md](docs/pii.md) |
+| Multi-file projects, named sources, and domain defaults | [docs/projects.md](docs/projects.md) |
 | Reports, logs, and OpenLineage | [docs/report.md](docs/report.md), [docs/logging.md](docs/logging.md), [docs/lineage.md](docs/lineage.md) |
 | Airflow and Dagster manifests | [docs/manifest.md](docs/manifest.md), [orchestrators/airflow-floe/README.md](orchestrators/airflow-floe/README.md), [orchestrators/dagster-floe/README.md](orchestrators/dagster-floe/README.md) |
 | Python and notebooks | [docs/python-bindings.md](docs/python-bindings.md) |

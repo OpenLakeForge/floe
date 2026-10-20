@@ -206,6 +206,10 @@ pub struct ManifestSource {
     pub uri: String,
     pub path: String,
     pub resolved: bool,
+    #[serde(rename = "ref", skip_serializing_if = "Option::is_none")]
+    pub source_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource: Option<String>,
     pub cast_mode: Option<String>,
     pub options: Option<serde_json::Value>,
 }

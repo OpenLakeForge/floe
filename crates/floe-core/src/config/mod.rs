@@ -18,7 +18,7 @@ pub use types::*;
 pub use parse::extract_raw_env_vars;
 pub(crate) use parse::{
     parse_catalogs_with_context, parse_config, parse_config_with_vars, parse_lineage_config,
-    parse_storages,
+    parse_storages, validate_with_entity_yaml,
 };
 pub(crate) use template::apply_templates_with_vars;
 pub(crate) use validate::{extract_first_n, extract_last_n, qualifies_entity_ids, validate_config};

@@ -43,6 +43,53 @@ fn manifest_uses_local_uri_for_local_config() {
 
     assert_eq!(value["schema"], "floe.manifest.v1");
     assert_eq!(value["config_uri"], expected_config_uri);
+    assert!(value["entities"][0]["source"].get("ref").is_none());
+    assert!(value["entities"][0]["source"].get("resource").is_none());
+}
+
+#[test]
+fn manifest_records_source_ref_and_effective_resource() {
+    let temp_dir = tempfile::TempDir::new().expect("temp dir");
+    let config_path = temp_dir.path().join("config.yml");
+    std::fs::write(
+        &config_path,
+        r#"version: "0.3"
+sources:
+  - name: crm
+    format: csv
+    path: ./bronze/{{resource}}.csv
+entities:
+  - name: orders
+    source: { ref: crm, resource: crm_orders }
+    sink:
+      accepted:
+        format: parquet
+        path: ./out/orders
+    policy:
+      severity: warn
+    schema:
+      columns:
+        - name: id
+          type: string
+"#,
+    )
+    .expect("write config");
+
+    let location = resolve_config_location(config_path.to_str().expect("utf8"))
+        .expect("resolve config location");
+    let config = load_config(&location.path).expect("load config");
+    let payload =
+        build_common_manifest_json(&location, &config, &[], None, &ManifestOptions::default())
+            .expect("build manifest");
+    let value: Value = serde_json::from_str(&payload).expect("manifest is valid json");
+
+    assert_eq!(value["entities"][0]["source"]["ref"], "crm");
+    assert_eq!(value["entities"][0]["source"]["resource"], "crm_orders");
+
+    let (reconstructed, _) = config_from_manifest_json(&payload).expect("reconstruct manifest");
+    let source = &reconstructed.entities[0].source;
+    assert_eq!(source.source_ref.as_deref(), Some("crm"));
+    assert_eq!(source.resource.as_deref(), Some("crm_orders"));
 }
 
 #[test]
@@ -1400,6 +1447,42 @@ fn manifest_id_covers_every_included_config_file() {
         dir,
         "silver/sales/orders.yml",
         &PROJECT_ENTITY.replace("type: string", "type: int64"),
+    );
+    let after: Value = serde_json::from_str(&project_manifest(&config_path)).expect("valid json");
+    assert_ne!(after["manifest_id"], value["manifest_id"]);
+    assert_ne!(after["config_checksum"], value["config_checksum"]);
+}
+
+#[test]
+fn manifest_id_covers_included_sources_file() {
+    let temp_dir = tempfile::TempDir::new().expect("temp dir");
+    let dir = temp_dir.path();
+    let config_path = dir.join("floe.yml");
+    write_project_file(
+        dir,
+        "floe.yml",
+        "version: \"0.3\"\ninclude:\n  sources: sources.yml\nentities:\n  - name: orders\n    source: { ref: crm }\n    sink:\n      accepted:\n        format: parquet\n        path: /tmp/out/orders\n    policy:\n      severity: warn\n    schema:\n      columns:\n        - name: id\n          type: string\n",
+    );
+    write_project_file(
+        dir,
+        "sources.yml",
+        "sources:\n  - name: crm\n    format: csv\n    path: /tmp/in/crm\n",
+    );
+
+    let before = project_manifest(&config_path);
+    let value: Value = serde_json::from_str(&before).expect("valid json");
+    let paths: Vec<&str> = value["config_files"]
+        .as_array()
+        .expect("config_files")
+        .iter()
+        .map(|file| file["path"].as_str().expect("path"))
+        .collect();
+    assert_eq!(paths, ["floe.yml", "sources.yml"]);
+
+    write_project_file(
+        dir,
+        "sources.yml",
+        "sources:\n  - name: crm\n    format: csv\n    path: /tmp/in/updated-crm\n",
     );
     let after: Value = serde_json::from_str(&project_manifest(&config_path)).expect("valid json");
     assert_ne!(after["manifest_id"], value["manifest_id"]);

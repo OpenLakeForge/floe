@@ -151,6 +151,99 @@ fn include_entity_with_mismatching_domain_fails() {
 }
 
 #[test]
+fn include_entity_with_unknown_key_names_its_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_project(dir.path(), "0.3");
+    write(
+        dir.path(),
+        "silver/sales/orders.yml",
+        &entity("orders", "nmae_typo: \"x\"\n", ""),
+    );
+    let err = load_config(&dir.path().join("floe.yml")).expect_err("unknown key");
+    let file = dir.path().join("silver/sales/orders.yml");
+    let domain = dir.path().join("silver/sales/_domain.yml");
+    assert_eq!(
+        err.to_string(),
+        format!(
+            "{} (inherits from {}): entities[1] (entity.name=orders): unknown field entity.nmae_typo",
+            file.display(),
+            domain.display()
+        )
+    );
+}
+
+#[test]
+fn include_domain_with_unknown_key_names_its_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_project(dir.path(), "0.3");
+    write(
+        dir.path(),
+        "silver/finance/_domain.yml",
+        &format!("{FINANCE_DOMAIN}nmae_typo: \"x\"\n"),
+    );
+    let err = load_config(&dir.path().join("floe.yml")).expect_err("unknown key");
+    let file = dir.path().join("silver/finance/_domain.yml");
+    assert_eq!(
+        err.to_string(),
+        format!("{}: unknown field domains.nmae_typo", file.display())
+    );
+}
+
+#[test]
+fn include_domain_default_with_unknown_key_names_the_domain_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_project(dir.path(), "0.3");
+    write(
+        dir.path(),
+        "silver/sales/_domain.yml",
+        &format!("{SALES_DOMAIN}  nmae_typo: \"x\"\n"),
+    );
+    let err = load_config(&dir.path().join("floe.yml")).expect_err("unknown key");
+    assert_eq!(
+        err.to_string(),
+        format!(
+            "{} (inherits from {}): entities[1] (entity.name=orders): unknown field entity.nmae_typo",
+            dir.path().join("silver/sales/orders.yml").display(),
+            dir.path().join("silver/sales/_domain.yml").display()
+        )
+    );
+}
+
+#[test]
+fn include_entity_error_names_domain_and_sources_files() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_project(dir.path(), "0.3");
+    write(
+        dir.path(),
+        "floe.yml",
+        "version: \"0.3\"\ninclude:\n  sources: sources.yml\n  domains: [\"silver/*/_domain.yml\"]\n",
+    );
+    write(
+        dir.path(),
+        "sources.yml",
+        "sources:\n  - name: crm\n    format: csv\n    options: { bogus: 1 }\n",
+    );
+    write(
+        dir.path(),
+        "silver/sales/orders.yml",
+        &entity("orders", "", "").replace(
+            "source:\n  format: \"csv\"\n  path: \"/tmp/input/orders\"\n",
+            "source:\n  ref: crm\n  path: \"/tmp/input/orders\"\n",
+        ),
+    );
+    let err = load_config(&dir.path().join("floe.yml")).expect_err("bad source option");
+    assert_eq!(
+        err.to_string(),
+        format!(
+            "{} (inherits from {}, {}): entities[1] (entity.name=orders): unknown field source.options.bogus",
+            dir.path().join("silver/sales/orders.yml").display(),
+            dir.path().join("silver/sales/_domain.yml").display(),
+            dir.path().join("sources.yml").display()
+        )
+    );
+}
+
+#[test]
 fn include_requires_version_0_3() {
     let dir = tempfile::tempdir().expect("tempdir");
     write_project(dir.path(), "0.2");

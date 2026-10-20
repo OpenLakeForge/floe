@@ -136,10 +136,13 @@ entities:
   - `defaults` (optional, requires `version: "0.3"`): entity fields merged into
     every entity whose `domain` matches, before parsing. The entity wins; maps
     merge key by key; lists are replaced, not appended. `schema.columns` and
-    `schema.primary_key` are never inherited.
+    `schema.primary_key` are never inherited. See [Merge rules](#merge-rules).
 - `sources` (optional, requires `version: "0.3"`)
   - Named, reusable entity `source` blocks: each entry is `name` plus any
     `source` fields (`format`, `path`, `storage`, `options`, `cast_mode`).
+  - A project may load these entries from one `sources.yml` file with
+    `include.sources`, relative to the main config file. The file has a top-level
+    `sources: [...]` array; inline `sources` and `include.sources` cannot be combined.
   - An entity uses one with `source: { ref: <name>, resource: <resource> }`.
     Other fields set on the entity's `source` override the referenced source
     (maps merge key by key, as for domain `defaults`). Domain `defaults` apply
@@ -148,6 +151,8 @@ entities:
     defaults to the entity `name`.
   - An unknown `ref` is an error listing the declared sources.
 - `include` (optional, requires `version: "0.3"`)
+  - `include.sources`: path to one file containing a top-level `sources: [...]`
+    array. It resolves relative to the main config file.
   - `include.domains`: glob patterns, relative to the main config file, each
     matching a domain file (e.g. `["silver/*/_domain.yml"]`). A domain file holds
     one `domains` entry; every sibling `*.yml` file holds one entity of that
@@ -159,6 +164,28 @@ entities:
 - `entities` (required)
   - Array of entity definitions (datasets). A single CLI run may process
     multiple entities.
+
+## Merge rules
+
+An entity's final definition is merged in two steps before it is parsed, so
+every inherited value is validated like an inline one:
+
+1. the entity's own `source` fields are overlaid on the referenced source;
+2. the resulting entity is overlaid on its domain's `defaults`.
+
+| Case | Rule |
+|---|---|
+| Precedence | entity > referenced source > domain `defaults` |
+| Maps (`sink`, `sink.accepted`, `source.options`, `policy`, ...) | Merged key by key, at every depth |
+| Scalars | The higher layer's value replaces the lower one |
+| Lists (`source.options.null_values`, `schema.unique_keys`, `pii.columns`, ...) | The higher layer's list replaces the lower one; lists are never appended |
+| `schema.columns`, `schema.primary_key` in `defaults` | Dropped; never inherited. Other `schema` keys (`normalize_columns`, `schema_evolution`, `unique_keys`) are |
+| `source.ref`, `source.resource` | Read from the entity's `source` only and removed before merging; a `ref` in domain `defaults` is an unknown field |
+| `{{resource}}` | Replaced in the merged `source.path` with `source.resource`, or the entity `name` when omitted |
+
+Example: with `sources: [{ name: csv_drop, format: csv, path: "./in/{{resource}}.csv", options: { header: true, separator: "," } }]`,
+an entity `source: { ref: csv_drop, options: { separator: ";" } }` named
+`orders` reads `./in/orders.csv` with `header: true` and `separator: ";"`.
 
 ## Entity fields
 
@@ -587,3 +614,49 @@ If an entity sets `domain: "<name>"`, the following is also available:
 - `{{domain.name}}` the domain name.
 
 Unresolved placeholders (or unknown domains) are configuration errors.
+
+## Migrating from 0.2 to 0.3
+
+A `0.2` config keeps working unchanged: nothing needs to move, and the
+features below stay off until you set `version: "0.3"`. `sources`, `include`
+and domain `defaults` are rejected in a `0.2` config.
+
+### What changes with `version: "0.3"`
+
+- Entities with a `domain` get the qualified id `<domain>.<name>` (see
+  [Entity identity](#entity-identity)); entities without one keep their bare `name`.
+- `name` and `domain` must be non-empty and must not contain `.`, `/` or `\`.
+  Rename a dotted entity (for example `sales.orders` → `orders` with
+  `domain: sales`) before bumping the version.
+- Report paths move from `run_<run_id>/<name>/run.json` to
+  `run_<run_id>/<domain>/<name>/run.json`.
+- The default incremental state dir moves from `.floe/state/<name>/` to
+  `.floe/state/<domain>/<name>/` under the source root. For an entity with
+  `incremental_mode: file` and no `state.path`, move the existing state
+  directory there before the first `0.3` run, or Floe treats every file as new.
+- Manifest `entities[].name` becomes the qualified id. Regenerate manifests
+  (`floe manifest generate`) and update orchestrator entity selections.
+- `domains[].incoming_dir` becomes optional.
+
+### Splitting a single file
+
+Each step leaves a config that validates; run `floe validate -c config.yml`
+after each. The result matches [`example/project/`](../example/project/); see
+[Floe Projects](projects.md) for the full walkthrough.
+
+1. Set `version: "0.3"` and apply the changes above.
+2. Move repeated input settings into a top-level `sources` list, and replace
+   each entity's `source` with `{ ref: <source>, resource: <resource> }`.
+   Use `{{resource}}` in the source `path` where entities differ.
+3. Move the `sources` list into `sources.yml` (top-level `sources: [...]`), drop
+   it from the root config, and add `include: { sources: sources.yml }`.
+4. Move repeated output and policy settings (`sink`, `policy`, ...) into each
+   domain's `defaults`, and delete them from the entities that match.
+5. For each domain, create `<dir>/_domain.yml` with its `name`, `defaults`
+   and optional `incoming_dir`, and one sibling `*.yml` file per entity
+   (`domain` may be omitted there). Remove those domains and entities from the
+   root config and add their glob under `include.domains`, for example
+   `domains/*/_domain.yml`.
+
+Relative paths in included files still resolve against the root config, so
+source and sink paths need no change when they move.

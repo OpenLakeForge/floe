@@ -40,6 +40,8 @@ fn source_config(
         storage: None,
         options,
         cast_mode: None,
+        source_ref: None,
+        resource: None,
     }
 }
 

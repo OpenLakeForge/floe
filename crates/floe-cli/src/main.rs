@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use floe_core::{
-    add_entity_to_config, build_common_manifest_json, inspect_entity_state,
+    add_entity_to_config_with_source, build_common_manifest_json, inspect_entity_state,
     load_config_with_profile_overrides, parse_profile, reset_entity_state, resolve_config_location,
     run_with_base, run_with_manifest_path, set_observer, validate_profile, validate_with_base,
     AddEntityOptions, FloeResult, MultiObserver, RunEvent, RunOptions, ValidateOptions,
@@ -80,9 +80,11 @@ const ADD_ENTITY_LONG_ABOUT: &str = concat!(
     "  - Creates a minimal config when -c points to a missing file\n",
     "  - Infers --format from file extension when omitted (.csv, .json, .parquet)\n",
     "  - Infers --name from the input filename stem when omitted\n",
+    "  - Use --source <ref> with --resource <name> to reference a declared source\n",
     "\n",
     "Example:\n",
     "  floe add-entity -c config.yml --input ./in/customers.csv\n",
+    "  floe add-entity -c config.yml --input ./sample.csv --source crm --resource customers\n",
 );
 
 const STATE_LONG_ABOUT: &str = concat!(
@@ -211,6 +213,18 @@ enum Command {
         name: Option<String>,
         #[arg(long, help = "Optional entity domain to set")]
         domain: Option<String>,
+        #[arg(
+            long = "source",
+            requires = "resource",
+            help = "Declared source name to reference"
+        )]
+        source_ref: Option<String>,
+        #[arg(
+            long,
+            requires = "source_ref",
+            help = "Resource value for the referenced source"
+        )]
+        resource: Option<String>,
         #[arg(
             long,
             help = "Write updated config to a new path instead of overwriting -c"
@@ -984,20 +998,26 @@ fn main() -> FloeResult<()> {
             format,
             name,
             domain,
+            source_ref,
+            resource,
             output,
             dry_run,
         } => {
             let config_path = std::path::PathBuf::from(&config);
             let output_path = output.as_ref().map(std::path::PathBuf::from);
-            let outcome = match add_entity_to_config(AddEntityOptions {
-                config_path,
-                output_path,
-                input,
-                format: format.as_ref().map(|value| value.as_str().to_string()),
-                name,
-                domain,
-                dry_run,
-            }) {
+            let outcome = match add_entity_to_config_with_source(
+                AddEntityOptions {
+                    config_path,
+                    output_path,
+                    input,
+                    format: format.as_ref().map(|value| value.as_str().to_string()),
+                    name,
+                    domain,
+                    dry_run,
+                },
+                source_ref,
+                resource,
+            ) {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     let mut err_out = std::io::stderr().lock();

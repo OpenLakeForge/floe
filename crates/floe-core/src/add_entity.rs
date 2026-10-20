@@ -2,11 +2,13 @@ use crate::errors::FloeError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use polars::prelude::{ArrowDataType, DataType, SerReader};
 use serde_json::Value as JsonValue;
-use tempfile::NamedTempFile;
+use tempfile::{Builder, NamedTempFile};
 use url::Url;
 use yaml_rust2::yaml::Hash as YamlHash;
 use yaml_rust2::{Yaml, YamlEmitter, YamlLoader};
@@ -45,6 +47,8 @@ struct InferredEntity {
     format: String,
     input: String,
     domain: Option<String>,
+    source_ref: Option<String>,
+    resource: Option<String>,
     source_options: Option<GeneratedSourceOptions>,
     columns: Vec<GeneratedColumn>,
     notes: Vec<String>,
@@ -98,18 +102,96 @@ struct JsonColumnStats {
 }
 
 pub fn add_entity_to_config(options: AddEntityOptions) -> FloeResult<AddEntityOutcome> {
-    let inferred = infer_entity_from_input(
+    add_entity_to_config_with_source(options, None, None)
+}
+
+pub fn add_entity_to_config_with_source(
+    options: AddEntityOptions,
+    source_ref: Option<String>,
+    resource: Option<String>,
+) -> FloeResult<AddEntityOutcome> {
+    if source_ref.is_some() != resource.is_some() {
+        return Err(FloeError::config("--source and --resource must be provided together").into());
+    }
+
+    let mut inferred = infer_entity_from_input(
         &options.input,
         options.format.as_deref(),
         options.name.as_deref(),
         options.domain.as_deref(),
     )?;
+    inferred.source_ref = source_ref;
+    inferred.resource = resource;
 
-    let output_path = options
-        .output_path
-        .clone()
-        .unwrap_or_else(|| options.config_path.clone());
     let config_text = load_or_initialize_config_text(&options.config_path)?;
+    let included_domain = if options.output_path.is_none() {
+        match inferred.domain.as_deref() {
+            Some(domain) => find_included_domain(&options.config_path, &config_text, domain)?,
+            None => None,
+        }
+    } else {
+        None
+    };
+    let output_path = included_domain
+        .as_ref()
+        .map(|(directory, _)| directory.join(format!("{}.yml", inferred.name)))
+        .or_else(|| options.output_path.clone())
+        .unwrap_or_else(|| options.config_path.clone());
+
+    if let Some((directory, defaults)) = &included_domain {
+        if inferred.name.contains(['/', '\\']) {
+            return Err(FloeError::config(format!(
+                "entity name cannot contain a path separator for an included domain at {}",
+                directory.display()
+            ))
+            .into());
+        }
+        if output_path.exists() {
+            return Err(FloeError::io_at(
+                output_path.display().to_string(),
+                format!(
+                    "refusing to overwrite existing entity file at {}",
+                    output_path.display()
+                ),
+            )
+            .into());
+        }
+        let entity_yaml = build_included_entity_yaml(&inferred, defaults);
+        let rendered_yaml = render_yaml(&entity_yaml)?;
+        config::validate_with_entity_yaml(
+            &options.config_path,
+            &rendered_yaml,
+            inferred
+                .domain
+                .as_deref()
+                .expect("included domain was matched"),
+        )
+        .map_err(|err| {
+            FloeError::validation(format!(
+                "generated entity file {} failed validation: {err}",
+                output_path.display()
+            ))
+        })?;
+        if !options.dry_run {
+            let staged_file = stage_included_entity(&output_path, &rendered_yaml)?;
+            staged_file.persist_noclobber(&output_path).map_err(|err| {
+                FloeError::io_at(
+                    output_path.display().to_string(),
+                    format!("failed to write entity file: {}", err.error),
+                )
+            })?;
+        }
+
+        return Ok(AddEntityOutcome {
+            entity_name: inferred.name,
+            output_path,
+            column_count: inferred.columns.len(),
+            format: inferred.format,
+            dry_run: options.dry_run,
+            rendered_yaml: options.dry_run.then_some(rendered_yaml),
+            notes: inferred.notes,
+        });
+    }
 
     let updated_yaml = append_entity_yaml(&config_text, &inferred)?;
     if !options.dry_run {
@@ -146,6 +228,92 @@ pub fn add_entity_to_config(options: AddEntityOptions) -> FloeResult<AddEntityOu
         rendered_yaml: options.dry_run.then_some(updated_yaml),
         notes: inferred.notes,
     })
+}
+
+fn find_included_domain(
+    config_path: &Path,
+    config_text: &str,
+    domain: &str,
+) -> FloeResult<Option<(PathBuf, Yaml)>> {
+    if !config_path.exists() {
+        return Ok(None);
+    }
+    let docs = YamlLoader::load_from_str(config_text)?;
+    let Some(include) = docs
+        .first()
+        .and_then(Yaml::as_hash)
+        .and_then(|root| root.get(&yaml_str("include")))
+    else {
+        return Ok(None);
+    };
+    let Some(patterns) = include
+        .as_hash()
+        .and_then(|include| include.get(&yaml_str("domains")))
+        .and_then(Yaml::as_vec)
+    else {
+        return Ok(None);
+    };
+    let base = glob_base(config_path.parent().unwrap_or_else(|| Path::new(".")));
+    for pattern in patterns.iter().filter_map(Yaml::as_str) {
+        let full = Path::new(&base).join(pattern);
+        let matches = glob::glob(&full.to_string_lossy()).map_err(|err| {
+            FloeError::config(format!(
+                "invalid include.domains pattern {pattern:?} in {}: {err}",
+                config_path.display()
+            ))
+        })?;
+        for domain_file in matches {
+            let domain_file = domain_file.map_err(|err| {
+                FloeError::config(format!(
+                    "failed to match include.domains pattern {pattern:?} in {}: {err}",
+                    config_path.display()
+                ))
+            })?;
+            let text = fs::read_to_string(&domain_file).map_err(|err| {
+                FloeError::io_at(
+                    domain_file.display().to_string(),
+                    format!("failed to read domain file: {err}"),
+                )
+            })?;
+            let Some(doc) = YamlLoader::load_from_str(&text)
+                .map_err(|err| {
+                    FloeError::config(format!(
+                        "failed to parse domain file {}: {err}",
+                        domain_file.display()
+                    ))
+                })?
+                .into_iter()
+                .next()
+            else {
+                continue;
+            };
+            let Some(root) = doc.as_hash() else {
+                continue;
+            };
+            if root.get(&yaml_str("name")).and_then(Yaml::as_str) == Some(domain) {
+                return Ok(Some((
+                    domain_file
+                        .parent()
+                        .unwrap_or_else(|| Path::new("."))
+                        .to_path_buf(),
+                    root.get(&yaml_str("defaults"))
+                        .cloned()
+                        .unwrap_or_else(|| Yaml::Hash(YamlHash::new())),
+                )));
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn glob_base(dir: &Path) -> String {
+    let dir = dir.to_string_lossy();
+    // Preserve the Windows verbatim prefix while escaping glob metacharacters.
+    let dir = dir
+        .strip_prefix(r"\\?\UNC\")
+        .map(|share| format!(r"\\{share}"))
+        .unwrap_or_else(|| dir.strip_prefix(r"\\?\").unwrap_or(&dir).to_owned());
+    glob::Pattern::escape(&dir)
 }
 
 fn infer_entity_from_input(
@@ -190,6 +358,8 @@ fn infer_entity_from_input(
         format,
         input: persisted_input_path,
         domain: domain.map(ToString::to_string),
+        source_ref: None,
+        resource: None,
         source_options,
         columns,
         notes,
@@ -666,10 +836,7 @@ fn append_entity_yaml(config_text: &str, inferred: &InferredEntity) -> FloeResul
         }
     }
 
-    let mut rendered = String::new();
-    YamlEmitter::new(&mut rendered).dump(&root)?;
-    let body = rendered.strip_prefix("---\n").unwrap_or(&rendered);
-    Ok(format!("{body}\n"))
+    render_yaml(&root)
 }
 
 fn entity_matches(value: &Yaml, inferred: &InferredEntity, qualified: bool) -> bool {
@@ -695,21 +862,26 @@ fn build_generated_entity_yaml(inferred: &InferredEntity) -> Yaml {
     }
 
     let mut source = YamlHash::new();
-    source.insert(yaml_str("format"), yaml_str(&inferred.format));
-    source.insert(yaml_str("path"), yaml_str(&inferred.input));
-    let source_options = match inferred.format.as_str() {
-        "json" | "csv" => inferred.source_options.as_ref(),
-        _ => None,
-    };
-    if let Some(options) = source_options {
-        let mut options_map = YamlHash::new();
-        if let Some(separator) = &options.separator {
-            options_map.insert(yaml_str("separator"), yaml_str(separator));
+    if let (Some(source_ref), Some(resource)) = (&inferred.source_ref, &inferred.resource) {
+        source.insert(yaml_str("ref"), yaml_str(source_ref));
+        source.insert(yaml_str("resource"), yaml_str(resource));
+    } else {
+        source.insert(yaml_str("format"), yaml_str(&inferred.format));
+        source.insert(yaml_str("path"), yaml_str(&inferred.input));
+        let source_options = match inferred.format.as_str() {
+            "json" | "csv" => inferred.source_options.as_ref(),
+            _ => None,
+        };
+        if let Some(options) = source_options {
+            let mut options_map = YamlHash::new();
+            if let Some(separator) = &options.separator {
+                options_map.insert(yaml_str("separator"), yaml_str(separator));
+            }
+            if let Some(json_mode) = &options.json_mode {
+                options_map.insert(yaml_str("json_mode"), yaml_str(json_mode));
+            }
+            source.insert(yaml_str("options"), Yaml::Hash(options_map));
         }
-        if let Some(json_mode) = &options.json_mode {
-            options_map.insert(yaml_str("json_mode"), yaml_str(json_mode));
-        }
-        source.insert(yaml_str("options"), Yaml::Hash(options_map));
     }
     entity.insert(yaml_str("source"), Yaml::Hash(source));
 
@@ -746,6 +918,70 @@ fn build_generated_entity_yaml(inferred: &InferredEntity) -> Yaml {
     entity.insert(yaml_str("schema"), Yaml::Hash(schema));
 
     Yaml::Hash(entity)
+}
+
+fn build_included_entity_yaml(inferred: &InferredEntity, defaults: &Yaml) -> Yaml {
+    let mut entity = build_generated_entity_yaml(inferred);
+    let mut defaults = defaults.clone();
+    if let (Yaml::Hash(entity), Yaml::Hash(defaults)) = (&mut entity, &mut defaults) {
+        // The generated name is the sibling filename's identity.
+        defaults.remove(&yaml_str("name"));
+        if let Some(Yaml::Hash(schema)) = defaults.get_mut(&yaml_str("schema")) {
+            schema.remove(&yaml_str("columns"));
+            schema.remove(&yaml_str("primary_key"));
+        }
+        remove_defaulted_fields(entity, defaults);
+        entity.remove(&yaml_str("domain"));
+    }
+    entity
+}
+
+fn remove_defaulted_fields(entity: &mut YamlHash, defaults: &YamlHash) {
+    let mut remove = Vec::new();
+    for (key, default) in defaults {
+        match (entity.get_mut(key), default) {
+            (Some(Yaml::Hash(value)), Yaml::Hash(defaults)) => {
+                remove_defaulted_fields(value, defaults);
+                if value.is_empty() {
+                    remove.push(key.clone());
+                }
+            }
+            (Some(_), _) => remove.push(key.clone()),
+            (None, _) => {}
+        }
+    }
+    for key in remove {
+        entity.remove(&key);
+    }
+}
+
+fn render_yaml(value: &Yaml) -> FloeResult<String> {
+    let mut rendered = String::new();
+    YamlEmitter::new(&mut rendered).dump(value)?;
+    let body = rendered.strip_prefix("---\n").unwrap_or(&rendered);
+    Ok(format!("{body}\n"))
+}
+
+fn stage_included_entity(entity_path: &Path, yaml: &str) -> FloeResult<NamedTempFile> {
+    let parent = entity_path.parent().unwrap_or_else(|| Path::new("."));
+    let mut builder = Builder::new();
+    builder.prefix(".floe-add-entity-").suffix(".yml");
+    #[cfg(unix)]
+    builder.permissions(fs::Permissions::from_mode(0o666));
+    let mut temp_file = builder.tempfile_in(parent).map_err(|err| {
+        FloeError::io_at(
+            entity_path.display().to_string(),
+            format!("failed to stage entity file: {err}"),
+        )
+    })?;
+    use std::io::Write;
+    temp_file.write_all(yaml.as_bytes()).map_err(|err| {
+        FloeError::io_at(
+            entity_path.display().to_string(),
+            format!("failed to stage entity file: {err}"),
+        )
+    })?;
+    Ok(temp_file)
 }
 
 fn generated_column_yaml(column: &GeneratedColumn) -> Yaml {

@@ -43,6 +43,7 @@ need a lightweight entry gate for file contracts and quality checks.
 | S3, ADLS, and GCS storage | [storages/s3.md](storages/s3.md), [storages/adls.md](storages/adls.md), [storages/gcs.md](storages/gcs.md) |
 | Incremental file state | [incremental.md](incremental.md) |
 | Profiles and variables | [profiles.md](profiles.md), [variables.md](variables.md) |
+| Multi-file projects, named sources, and domain defaults | [projects.md](projects.md) |
 | PII masking | [pii.md](pii.md) |
 | Run reports and logging | [report.md](report.md), [logging.md](logging.md) |
 | OpenLineage integration | [lineage.md](lineage.md) |

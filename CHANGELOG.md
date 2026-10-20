@@ -4,6 +4,35 @@ All notable changes to Floe are documented in this file.
 
 ## Floe core (unreleased)
 
+- **Inherited-value errors name the contributing files (#582).** When an entity that
+  inherits `defaults` from an included `_domain.yml` or a source from an included
+  `sources.yml` fails to parse, the error adds `(inherits from <files>)` after the entity's
+  file (or leads with `inherits from <files>` for an inline entity); single-file config
+  errors are unchanged.
+- **Errors in included domain and entity files name the file (#581).** In an
+  `include.domains` project, a load or parse error in a `_domain.yml` or entity file is
+  prefixed with that file's path; single-file config errors are unchanged.
+- **Self-contained YAML authoring schemas (#574).** Replace editor/tooling references to
+  `schemas/config.schema.yaml` with `schemas/project.schema.yaml`. Included source,
+  domain and entity documents use `sources.schema.yaml`, `domains.schema.yaml` and
+  `entity.schema.yaml` directly under `schemas/`; each carries its own definitions.
+  Fragment sink options, CSV encodings and separators, string `env.vars` keys, PII mask
+  count bounds, nonblank include paths and version integer bounds now match parser and
+  assembly constraints; YAML real scalars remain rejected by `floe validate`.
+- **`add-entity` can reference a declared source (#515).** Pass `--source <ref>` and
+  `--resource <name>`; `--input` still supplies the file used for schema inference.
+- **`add-entity` writes included-domain entities as sibling files (#514).** With `--domain` 
+  and no `--output`, the new entity is written beside `_domain.yml`; fields covered by domain 
+  defaults are omitted, and existing files are never overwritten.
+- **`include.sources` loads reusable sources from one project file (#508).** Config version
+  0.3 projects may put their named `sources` array in a root-relative `sources.yml`; inline
+  and included sources cannot be combined, and the included file is covered by the manifest
+  config checksum.
+- **Runnable standalone and multi-file project examples (#507).** `example/standalone/`
+  demonstrates inline source and domain config; `example/project/` demonstrates named sources,
+  source references, domain defaults, and sibling domain/entity files.
+- **Generated manifests retain source references (#504).** Referenced entities include
+  `source.ref` and the effective `source.resource`; inline sources omit both fields.
 - **Config 0.3 domains may omit `incoming_dir` (#500).** Config 0.2 still requires it;
   manifests omit the field for domains without an incoming directory.
 - **Manifest `config_checksum` covers every file of an `include.domains` project (#509).**

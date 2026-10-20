@@ -276,6 +276,8 @@ fn build_common_manifest(
                 uri: source.uri,
                 path: source_path,
                 resolved: source.resolved,
+                source_ref: entity.source.source_ref.clone(),
+                resource: entity.source.resource.clone(),
                 cast_mode: entity.source.cast_mode.clone(),
                 options: map_source_options(entity.source.options.as_ref()),
             },

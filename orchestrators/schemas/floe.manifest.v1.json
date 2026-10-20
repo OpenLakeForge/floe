@@ -604,6 +604,12 @@
               "resolved": {
                 "type": "boolean"
               },
+              "ref": {
+                "type": "string"
+              },
+              "resource": {
+                "type": "string"
+              },
               "cast_mode": {
                 "type": [
                   "string",

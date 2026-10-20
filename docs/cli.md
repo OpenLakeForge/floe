@@ -18,15 +18,17 @@
   - Validate config and generate a common orchestrator manifest JSON (`schema=floe.manifest.v1`).
   - `--output -` writes manifest JSON to stdout.
 
-- `floe add-entity -c <config> --input <path|file://...> [--format csv|json|parquet] [--name <entity>] [--domain <domain>]`
-  - Infer a schema from an input file and append a new entity to `entities[]`.
+- `floe add-entity -c <config> --input <path|file://...> [--format csv|json|parquet] [--name <entity>] [--domain <domain>] [--source <ref> --resource <name>]`
+  - Infer a schema from an input file and add a new entity to the config.
+  - If `--domain` matches an included domain and `--output` is omitted, writes `<domain folder>/<name>.yml`; fields supplied by domain defaults are omitted from that file.
   - If `-c` points to a missing file, Floe creates a minimal config and adds the entity.
   - If `--format` is omitted, Floe infers it from the input file extension (`.csv`, `.json`, `.parquet`).
   - If `--name` is omitted, Floe infers it from the input filename stem.
+  - `--source` and `--resource` write a reference to a declared `sources:` entry; `--input` remains the file used for schema inference.
   - Generates defaults for `sink`, `policy`, and `schema.mismatch`.
   - JSON inference is v0.3 bootstrap-focused: top-level keys only; nested objects/arrays are inferred as `string`.
-  - `--dry-run` prints the updated YAML without writing.
-  - `--output <new.yml>` writes the updated config to a new file instead of overwriting `-c`.
+  - `--dry-run` prints the YAML that would be written without creating the file.
+  - `--output <new.yml>` writes the updated root config to a new file instead of overwriting `-c`; with an included domain, this keeps the existing inline entity behavior.
 
 - `floe state inspect -c <config> --entity <name>`
   - Print the resolved incremental state URI for an entity and the current state JSON when present.
