@@ -41,6 +41,19 @@ ignore = [
   # files. Remove once those upstreams adopt quick-xml >= 0.41.
   { id = "RUSTSEC-2026-0194", reason = "quick-xml < 0.41 DoS; all copies transitive-pinned by calamine/iceberg/object_store/azure, unbumpable downstream" },
   { id = "RUSTSEC-2026-0195", reason = "quick-xml < 0.41 DoS; all copies transitive-pinned by calamine/iceberg/object_store/azure, unbumpable downstream" },
+  # rustls advisories fixed only in >= 0.23.46. The 0.23.x copy is patched in the
+  # lock; the remaining 0.21.12 copy is the same aws-smithy-http-client legacy TLS
+  # path as the rustls-webpki entries above. Remove with them.
+  { id = "RUSTSEC-2026-0346", reason = "remaining rustls 0.21 copy pinned by aws-smithy-http-client's legacy TLS path; 0.23 copy patched" },
+  { id = "RUSTSEC-2026-0349", reason = "remaining rustls 0.21 copy pinned by aws-smithy-http-client's legacy TLS path; 0.23 copy patched" },
+  # zip archive-extraction advisories (SUID bits, symlink targets), fixed only in
+  # >= 9.0.0. All three copies are transitive and pinned below 9 by calamine 0.24
+  # (xlsx read), rust_xlsxwriter 0.95 (xlsx write) and libduckdb-sys (build-time
+  # unpack of bundled sources). floe never extracts zip archives to disk. Remove
+  # once those crates are bumped (#592).
+  { id = "RUSTSEC-2026-0367", reason = "zip < 9 extraction issue; copies pinned by calamine/rust_xlsxwriter/libduckdb-sys, floe never extracts archives to disk" },
+  { id = "RUSTSEC-2026-0368", reason = "zip < 9 extraction issue; copies pinned by calamine/rust_xlsxwriter/libduckdb-sys, floe never extracts archives to disk" },
+  { id = "RUSTSEC-2026-0369", reason = "zip < 9 extraction issue; copies pinned by calamine/rust_xlsxwriter/libduckdb-sys, floe never extracts archives to disk" },
 ]
 
 [licenses]

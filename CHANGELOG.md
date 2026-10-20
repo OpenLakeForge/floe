@@ -4,6 +4,21 @@ All notable changes to Floe are documented in this file.
 
 ## Floe core (unreleased)
 
+- **Inherited-value errors name the contributing files (#582).** When an entity that
+  inherits `defaults` from an included `_domain.yml` or a source from an included
+  `sources.yml` fails to parse, the error adds `(inherits from <files>)` after the entity's
+  file (or leads with `inherits from <files>` for an inline entity); single-file config
+  errors are unchanged.
+- **Errors in included domain and entity files name the file (#581).** In an
+  `include.domains` project, a load or parse error in a `_domain.yml` or entity file is
+  prefixed with that file's path; single-file config errors are unchanged.
+- **Self-contained YAML authoring schemas (#574).** Replace editor/tooling references to
+  `schemas/config.schema.yaml` with `schemas/project.schema.yaml`. Included source,
+  domain and entity documents use `sources.schema.yaml`, `domains.schema.yaml` and
+  `entity.schema.yaml` directly under `schemas/`; each carries its own definitions.
+  Fragment sink options, CSV encodings and separators, string `env.vars` keys, PII mask
+  count bounds, nonblank include paths and version integer bounds now match parser and
+  assembly constraints; YAML real scalars remain rejected by `floe validate`.
 - **`add-entity` can reference a declared source (#515).** Pass `--source <ref>` and
   `--resource <name>`; `--input` still supplies the file used for schema inference.
 - **`add-entity` writes included-domain entities as sibling files (#514).** With `--domain` 
