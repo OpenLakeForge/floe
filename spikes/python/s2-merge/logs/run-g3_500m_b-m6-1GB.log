@@ -1,0 +1,23 @@
+Traceback (most recent call last):
+  File "/home/user/floe/spikes/python/s2-merge/scale.py", line 303, in <module>
+    main()
+  File "/home/user/floe/spikes/python/s2-merge/scale.py", line 299, in main
+    {"seed": seed, "run": run, "merge-child": merge_child}[args.cmd](args)
+  File "/home/user/floe/spikes/python/s2-merge/scale.py", line 109, in merge_child
+    rows = merge.scd2(con, fq(args.table), args.source, ["id"], BUSINESS, compare, ts)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/floe/spikes/python/s2-merge/merge.py", line 73, in scd2
+    return con.execute(sql).fetchall()
+           ^^^^^^^^^^^^^^^^
+_duckdb.IOException: IO Error: Could not write file "/home/user/floe/spikes/python/s2-merge/.spill/duckdb_temp_storage_S64K-2.tmp": No space left on device
+Traceback (most recent call last):
+  File "/home/user/floe/spikes/python/s2-merge/scale.py", line 303, in <module>
+    main()
+  File "/home/user/floe/spikes/python/s2-merge/scale.py", line 299, in main
+    {"seed": seed, "run": run, "merge-child": merge_child}[args.cmd](args)
+  File "/home/user/floe/spikes/python/s2-merge/scale.py", line 241, in run
+    perf = run_one_merge(args, source, ts)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/floe/spikes/python/s2-merge/scale.py", line 161, in run_one_merge
+    raise RuntimeError(f"merge child failed (status {status}): {out}")
+RuntimeError: merge child failed (status 256): 

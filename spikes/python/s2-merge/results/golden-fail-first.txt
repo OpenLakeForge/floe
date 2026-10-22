@@ -1,0 +1,9 @@
+FAIL  scd1 unpartitioned      error                      NotImplementedError: merge_scd1
+FAIL  scd1 identity(region)   error                      NotImplementedError: merge_scd1
+FAIL  scd1 day(event_date)    error                      NotImplementedError: merge_scd1
+FAIL  scd1 bucket(4,id)       error                      NotImplementedError: merge_scd1
+FAIL  scd2 unpartitioned      error                      NotImplementedError: merge_scd2
+FAIL  scd2 identity(region)   error                      NotImplementedError: merge_scd2
+FAIL  scd2 day(event_date)    error                      NotImplementedError: merge_scd2
+FAIL  scd2 bucket(4,id)       error                      NotImplementedError: merge_scd2
+FAIL: see above

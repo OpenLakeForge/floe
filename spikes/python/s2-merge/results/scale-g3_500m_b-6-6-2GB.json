@@ -1,0 +1,61 @@
+{
+  "args": {
+    "cmd": "run",
+    "table": "g3_500m_b",
+    "target_rows": 500000000,
+    "batch_rows": 10000000,
+    "merges": 1,
+    "first_merge": 6,
+    "verify": true,
+    "full_count": false,
+    "rerun": false,
+    "threads": 4,
+    "stage_dir": "/home/user/floe/spikes/python/s2-merge/.stage",
+    "memory_limit": "2GB",
+    "temp_dir": "/home/user/floe/spikes/python/s2-merge/.spill",
+    "max_spill": "15GB"
+  },
+  "merges": [
+    {
+      "merge": 6,
+      "changed": 5000000,
+      "unchanged": 3000000,
+      "new": 2000000,
+      "staged_mb": 156,
+      "wall_s": 83.6,
+      "merge_s": 82.69,
+      "duckdb_rows_affected": 12000000,
+      "peak_rss_mb": 4379,
+      "peak_spill_mb": 101,
+      "new_snapshots": 2,
+      "new_catalog_commits": 1,
+      "snapshots": 22,
+      "metadata_files": 17,
+      "data_files": 788,
+      "position_delete_files": 41,
+      "equality_delete_files": 0,
+      "contract": {
+        "closed": 5000000,
+        "inserted": 7000000,
+        "current_rows": 512000000,
+        "total_rows": 542000000,
+        "keys_with_2_current": 0,
+        "pass": true
+      },
+      "pyiceberg": {
+        "sample_keys": 200000,
+        "sample_rows": 400000,
+        "sample_identical": true,
+        "pyiceberg_full_count": null,
+        "pyiceberg_full_count_s": null
+      }
+    }
+  ],
+  "before": {
+    "snapshots": 20,
+    "metadata_files": 16,
+    "data_files": 757,
+    "position_delete_files": 34,
+    "equality_delete_files": 0
+  }
+}

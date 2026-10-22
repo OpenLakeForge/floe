@@ -1,0 +1,29 @@
+{
+  "target_rows": 10000000,
+  "batch_rows": 1000000,
+  "pyiceberg": {
+    "ok": true,
+    "wall_s": 101.5,
+    "engine_s": 98.84,
+    "updated": 500000,
+    "inserted": 500000,
+    "peak_rss_mb": 1865,
+    "new_snapshots": 3,
+    "data_files": 14,
+    "delete_files": 0,
+    "rows_after": 10500000,
+    "updated_rows_visible": 500000
+  },
+  "duckdb": {
+    "ok": true,
+    "wall_s": 2.8,
+    "engine_s": 1.56,
+    "rows_affected": 1000000,
+    "peak_rss_mb": 489,
+    "new_snapshots": 2,
+    "data_files": 16,
+    "delete_files": 1,
+    "rows_after": 10500000,
+    "updated_rows_visible": 500000
+  }
+}

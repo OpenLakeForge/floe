@@ -1,0 +1,45 @@
+{
+  "args": {
+    "cmd": "run",
+    "table": "g3_500m_b",
+    "target_rows": 500000000,
+    "batch_rows": 10000000,
+    "merges": 1,
+    "first_merge": 7,
+    "verify": true,
+    "full_count": false,
+    "rerun": false,
+    "threads": 4,
+    "stage_dir": "/home/user/floe/spikes/python/s2-merge/.stage",
+    "memory_limit": "1500MB",
+    "temp_dir": "/home/user/floe/spikes/python/s2-merge/.spill",
+    "max_spill": "15GB"
+  },
+  "merges": [
+    {
+      "merge": 7,
+      "changed": 5000000,
+      "unchanged": 3000000,
+      "new": 2000000,
+      "staged_mb": 156,
+      "wall_s": 102.1,
+      "error": "{\"merge_s\": 100.91, \"error\": \"Out of Memory Error: failed to offload data block of size 256.0 KiB (13.9 GiB/13.9 GiB used).\"}",
+      "peak_rss_mb": 4327,
+      "peak_spill_mb": 14305,
+      "new_snapshots": 0,
+      "new_catalog_commits": 0,
+      "snapshots": 22,
+      "metadata_files": 17,
+      "data_files": 788,
+      "position_delete_files": 41,
+      "equality_delete_files": 0
+    }
+  ],
+  "before": {
+    "snapshots": 22,
+    "metadata_files": 17,
+    "data_files": 788,
+    "position_delete_files": 41,
+    "equality_delete_files": 0
+  }
+}

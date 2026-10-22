@@ -1,0 +1,61 @@
+FAIL  scd1 unpartitioned      one_snapshot               2 new snapshot(s), ops=['overwrite', 'append']
+PASS  scd1 unpartitioned      one_catalog_commit         1 new metadata file(s)
+PASS  scd1 unpartitioned      duckdb_matches_golden      7 rows identical
+PASS  scd1 unpartitioned      pyiceberg_matches_golden   7 rows identical
+PASS  scd1 unpartitioned      partitions_consistent      n/a
+PASS  scd1 unpartitioned      rerun_no_change            rows identical=True, new snapshots on rerun=0
+PASS  scd1 unpartitioned      file_counts                {"after_merge": {"data_files": 3, "position_delete_files": 1, "equality_delete_files": 0}, "after_rerun": {"data_files": 3, "position_delete_files": 1, "equality_delete_files": 0}}
+FAIL  scd1 identity(region)   one_snapshot               2 new snapshot(s), ops=['overwrite', 'append']
+PASS  scd1 identity(region)   one_catalog_commit         1 new metadata file(s)
+PASS  scd1 identity(region)   duckdb_matches_golden      7 rows identical
+PASS  scd1 identity(region)   pyiceberg_matches_golden   7 rows identical
+PASS  scd1 identity(region)   partitions_consistent      4 data files consistent
+PASS  scd1 identity(region)   rerun_no_change            rows identical=True, new snapshots on rerun=0
+PASS  scd1 identity(region)   file_counts                {"after_merge": {"data_files": 4, "position_delete_files": 2, "equality_delete_files": 0}, "after_rerun": {"data_files": 4, "position_delete_files": 2, "equality_delete_files": 0}}
+FAIL  scd1 day(event_date)    one_snapshot               2 new snapshot(s), ops=['overwrite', 'append']
+PASS  scd1 day(event_date)    one_catalog_commit         1 new metadata file(s)
+PASS  scd1 day(event_date)    duckdb_matches_golden      7 rows identical
+PASS  scd1 day(event_date)    pyiceberg_matches_golden   7 rows identical
+PASS  scd1 day(event_date)    partitions_consistent      10 data files consistent
+PASS  scd1 day(event_date)    rerun_no_change            rows identical=True, new snapshots on rerun=0
+PASS  scd1 day(event_date)    file_counts                {"after_merge": {"data_files": 10, "position_delete_files": 3, "equality_delete_files": 0}, "after_rerun": {"data_files": 10, "position_delete_files": 3, "equality_delete_files": 0}}
+FAIL  scd1 bucket(4,id)       one_snapshot               2 new snapshot(s), ops=['overwrite', 'append']
+PASS  scd1 bucket(4,id)       one_catalog_commit         1 new metadata file(s)
+PASS  scd1 bucket(4,id)       duckdb_matches_golden      7 rows identical
+PASS  scd1 bucket(4,id)       pyiceberg_matches_golden   7 rows identical
+PASS  scd1 bucket(4,id)       partitions_consistent      8 data files consistent
+PASS  scd1 bucket(4,id)       rerun_no_change            rows identical=True, new snapshots on rerun=0
+PASS  scd1 bucket(4,id)       file_counts                {"after_merge": {"data_files": 8, "position_delete_files": 3, "equality_delete_files": 0}, "after_rerun": {"data_files": 8, "position_delete_files": 3, "equality_delete_files": 0}}
+FAIL  scd2 unpartitioned      one_snapshot               2 new snapshot(s), ops=['overwrite', 'append']
+PASS  scd2 unpartitioned      one_catalog_commit         1 new metadata file(s)
+PASS  scd2 unpartitioned      duckdb_matches_golden      11 rows identical
+PASS  scd2 unpartitioned      pyiceberg_matches_golden   11 rows identical
+PASS  scd2 unpartitioned      partitions_consistent      n/a
+PASS  scd2 unpartitioned      scd2_metrics               {"closed_count": 3, "inserted_count": 4, "unchanged_count": 2}
+PASS  scd2 unpartitioned      rerun_no_change            rows identical=True, new snapshots on rerun=0
+PASS  scd2 unpartitioned      file_counts                {"after_merge": {"data_files": 3, "position_delete_files": 1, "equality_delete_files": 0}, "after_rerun": {"data_files": 3, "position_delete_files": 1, "equality_delete_files": 0}}
+FAIL  scd2 identity(region)   one_snapshot               2 new snapshot(s), ops=['overwrite', 'append']
+PASS  scd2 identity(region)   one_catalog_commit         1 new metadata file(s)
+PASS  scd2 identity(region)   duckdb_matches_golden      11 rows identical
+PASS  scd2 identity(region)   pyiceberg_matches_golden   11 rows identical
+PASS  scd2 identity(region)   partitions_consistent      6 data files consistent
+PASS  scd2 identity(region)   scd2_metrics               {"closed_count": 3, "inserted_count": 4, "unchanged_count": 2}
+PASS  scd2 identity(region)   rerun_no_change            rows identical=True, new snapshots on rerun=0
+PASS  scd2 identity(region)   file_counts                {"after_merge": {"data_files": 6, "position_delete_files": 2, "equality_delete_files": 0}, "after_rerun": {"data_files": 6, "position_delete_files": 2, "equality_delete_files": 0}}
+FAIL  scd2 day(event_date)    one_snapshot               2 new snapshot(s), ops=['overwrite', 'append']
+PASS  scd2 day(event_date)    one_catalog_commit         1 new metadata file(s)
+PASS  scd2 day(event_date)    duckdb_matches_golden      11 rows identical
+PASS  scd2 day(event_date)    pyiceberg_matches_golden   11 rows identical
+PASS  scd2 day(event_date)    partitions_consistent      14 data files consistent
+PASS  scd2 day(event_date)    scd2_metrics               {"closed_count": 3, "inserted_count": 4, "unchanged_count": 2}
+PASS  scd2 day(event_date)    rerun_no_change            rows identical=True, new snapshots on rerun=0
+PASS  scd2 day(event_date)    file_counts                {"after_merge": {"data_files": 14, "position_delete_files": 3, "equality_delete_files": 0}, "after_rerun": {"data_files": 14, "position_delete_files": 3, "equality_delete_files": 0}}
+FAIL  scd2 bucket(4,id)       one_snapshot               2 new snapshot(s), ops=['overwrite', 'append']
+PASS  scd2 bucket(4,id)       one_catalog_commit         1 new metadata file(s)
+PASS  scd2 bucket(4,id)       duckdb_matches_golden      11 rows identical
+PASS  scd2 bucket(4,id)       pyiceberg_matches_golden   11 rows identical
+PASS  scd2 bucket(4,id)       partitions_consistent      10 data files consistent
+PASS  scd2 bucket(4,id)       scd2_metrics               {"closed_count": 3, "inserted_count": 4, "unchanged_count": 2}
+PASS  scd2 bucket(4,id)       rerun_no_change            rows identical=True, new snapshots on rerun=0
+PASS  scd2 bucket(4,id)       file_counts                {"after_merge": {"data_files": 10, "position_delete_files": 3, "equality_delete_files": 0}, "after_rerun": {"data_files": 10, "position_delete_files": 3, "equality_delete_files": 0}}
+FAIL: see above

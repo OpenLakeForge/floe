@@ -1,0 +1,205 @@
+{
+  "args": {
+    "cmd": "run",
+    "table": "g3_500m",
+    "target_rows": 500000000,
+    "batch_rows": 10000000,
+    "merges": 5,
+    "verify": true,
+    "full_count": true,
+    "rerun": true,
+    "threads": 4,
+    "stage_dir": "/home/user/floe/spikes/python/s2-merge/.stage",
+    "memory_limit": "4GB",
+    "temp_dir": "/home/user/floe/spikes/python/s2-merge/.spill"
+  },
+  "merges": [
+    {
+      "merge": 1,
+      "changed": 5000000,
+      "unchanged": 3000000,
+      "new": 2000000,
+      "staged_mb": 156,
+      "wall_s": 72.6,
+      "merge_s": 71.69,
+      "duckdb_rows_affected": 12000000,
+      "peak_rss_mb": 4403,
+      "peak_spill_mb": 0,
+      "new_snapshots": 2,
+      "new_catalog_commits": 1,
+      "snapshots": 12,
+      "metadata_files": 12,
+      "data_files": 619,
+      "position_delete_files": 6,
+      "equality_delete_files": 0,
+      "contract": {
+        "closed": 5000000,
+        "inserted": 7000000,
+        "current_rows": 502000000,
+        "total_rows": 507000000,
+        "keys_with_2_current": 0,
+        "pass": true
+      },
+      "pyiceberg": {
+        "sample_keys": 200000,
+        "sample_rows": 400000,
+        "sample_identical": true,
+        "pyiceberg_full_count": 507000000,
+        "pyiceberg_full_count_s": 9.1
+      }
+    },
+    {
+      "merge": 2,
+      "changed": 5000000,
+      "unchanged": 3000000,
+      "new": 2000000,
+      "staged_mb": 156,
+      "wall_s": 76.0,
+      "merge_s": 74.88,
+      "duckdb_rows_affected": 12000000,
+      "peak_rss_mb": 11962,
+      "peak_spill_mb": 0,
+      "new_snapshots": 2,
+      "new_catalog_commits": 1,
+      "snapshots": 14,
+      "metadata_files": 13,
+      "data_files": 654,
+      "position_delete_files": 13,
+      "equality_delete_files": 0,
+      "contract": {
+        "closed": 5000000,
+        "inserted": 7000000,
+        "current_rows": 504000000,
+        "total_rows": 514000000,
+        "keys_with_2_current": 0,
+        "pass": true
+      },
+      "pyiceberg": {
+        "sample_keys": 200000,
+        "sample_rows": 400000,
+        "sample_identical": true,
+        "pyiceberg_full_count": 514000000,
+        "pyiceberg_full_count_s": 10.4
+      }
+    },
+    {
+      "merge": 3,
+      "changed": 5000000,
+      "unchanged": 3000000,
+      "new": 2000000,
+      "staged_mb": 156,
+      "wall_s": 78.3,
+      "merge_s": 77.2,
+      "duckdb_rows_affected": 12000000,
+      "peak_rss_mb": 12823,
+      "peak_spill_mb": 0,
+      "new_snapshots": 2,
+      "new_catalog_commits": 1,
+      "snapshots": 16,
+      "metadata_files": 14,
+      "data_files": 683,
+      "position_delete_files": 20,
+      "equality_delete_files": 0,
+      "contract": {
+        "closed": 5000000,
+        "inserted": 7000000,
+        "current_rows": 506000000,
+        "total_rows": 521000000,
+        "keys_with_2_current": 0,
+        "pass": true
+      },
+      "pyiceberg": {
+        "sample_keys": 200000,
+        "sample_rows": 400000,
+        "sample_identical": true,
+        "pyiceberg_full_count": 521000000,
+        "pyiceberg_full_count_s": 12.7
+      }
+    },
+    {
+      "merge": 4,
+      "changed": 5000000,
+      "unchanged": 3000000,
+      "new": 2000000,
+      "staged_mb": 156,
+      "wall_s": 81.8,
+      "merge_s": 80.53,
+      "duckdb_rows_affected": 12000000,
+      "peak_rss_mb": 12823,
+      "peak_spill_mb": 0,
+      "new_snapshots": 2,
+      "new_catalog_commits": 1,
+      "snapshots": 18,
+      "metadata_files": 15,
+      "data_files": 718,
+      "position_delete_files": 27,
+      "equality_delete_files": 0,
+      "contract": {
+        "closed": 5000000,
+        "inserted": 7000000,
+        "current_rows": 508000000,
+        "total_rows": 528000000,
+        "keys_with_2_current": 0,
+        "pass": true
+      },
+      "pyiceberg": {
+        "sample_keys": 200000,
+        "sample_rows": 400000,
+        "sample_identical": true,
+        "pyiceberg_full_count": 528000000,
+        "pyiceberg_full_count_s": 14.6
+      }
+    },
+    {
+      "merge": 5,
+      "changed": 5000000,
+      "unchanged": 3000000,
+      "new": 2000000,
+      "staged_mb": 156,
+      "wall_s": 85.7,
+      "merge_s": 84.42,
+      "duckdb_rows_affected": 12000000,
+      "peak_rss_mb": 12894,
+      "peak_spill_mb": 0,
+      "new_snapshots": 2,
+      "new_catalog_commits": 1,
+      "snapshots": 20,
+      "metadata_files": 16,
+      "data_files": 754,
+      "position_delete_files": 34,
+      "equality_delete_files": 0,
+      "contract": {
+        "closed": 5000000,
+        "inserted": 7000000,
+        "current_rows": 510000000,
+        "total_rows": 535000000,
+        "keys_with_2_current": 0,
+        "pass": true
+      },
+      "pyiceberg": {
+        "sample_keys": 200000,
+        "sample_rows": 400000,
+        "sample_identical": true,
+        "pyiceberg_full_count": 535000000,
+        "pyiceberg_full_count_s": 15.2
+      }
+    }
+  ],
+  "before": {
+    "snapshots": 10,
+    "metadata_files": 11,
+    "data_files": 590,
+    "position_delete_files": 0,
+    "equality_delete_files": 0
+  },
+  "rerun": {
+    "wall_s": 82.1,
+    "merge_s": 80.93,
+    "duckdb_rows_affected": 0,
+    "peak_rss_mb": 13486,
+    "peak_spill_mb": 0,
+    "rows_before": 535000000,
+    "rows_after": 535000000,
+    "new_snapshots": 0
+  }
+}

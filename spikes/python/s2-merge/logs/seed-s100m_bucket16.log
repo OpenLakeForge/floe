@@ -1,0 +1,3 @@
+seeded 50,000,000 rows (40s)
+seeded 100,000,000 rows (79s)
+{"seed_rows": 100000000, "seed_s": 79.3}
