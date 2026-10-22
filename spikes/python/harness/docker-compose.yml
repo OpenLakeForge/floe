@@ -1,0 +1,45 @@
+# Local Polaris + S3-compatible store for the Python spikes (#596). Not for production.
+# Adapted from Apache Polaris's getting-started/minio (1.3.0) and getting-started/quickstart (1.8.0)
+# compose files, with SeaweedFS in place of MinIO. Credentials must match bootstrap.py and smoke.py.
+name: floe-spike-harness
+
+services:
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.48
+    # `mini` runs master, volume, filer and S3 in one process and creates the bucket on startup.
+    command: ["mini", "-dir=/data", "-bucket=warehouse"]
+    environment:
+      # Becomes the admin S3 identity.
+      AWS_ACCESS_KEY_ID: spike
+      AWS_SECRET_ACCESS_KEY: spike-s3-secret
+    ports:
+      - "127.0.0.1:8333:8333"
+    healthcheck:
+      # 403 without credentials means S3 is up and auth is on; curl -f would treat it as a failure.
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8333/warehouse | grep -q 403"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  polaris:
+    image: apache/polaris:1.8.0
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    environment:
+      # Polaris writes table metadata itself, with these credentials.
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: spike
+      AWS_SECRET_ACCESS_KEY: spike-s3-secret
+      POLARIS_BOOTSTRAP_CREDENTIALS: POLARIS,root,s3cr3t
+      polaris.realm-context.realms: POLARIS
+      quarkus.otel.sdk.disabled: "true"
+    ports:
+      - "127.0.0.1:8181:8181"
+      - "127.0.0.1:8182:8182"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8182/q/health"]
+      interval: 2s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
