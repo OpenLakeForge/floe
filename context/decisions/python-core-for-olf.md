@@ -86,6 +86,73 @@ thresholds live in #594.
 
 #596 provides the local Polaris + S3 harness the other spikes run on.
 
+## Migration plan (if Accepted)
+
+### Where the code lives
+
+**This repo, in a new pure-Python package at the root.** Not a new repo, and not inside
+`crates/floe-python`.
+
+- **Not a new repo.** During the port the Rust binary is the reference, and parity is checked by
+  running both in the same CI. A new repo would also lose the issues, milestones, history and
+  `orchestrators/dagster-floe`, which switches to the new library in lockstep. The clean tree a new
+  repo offers comes anyway, when `crates/` is deleted at cutover.
+- **Not inside `crates/floe-python`.** It is a maturin/PyO3 build, so building it needs the Rust
+  toolchain, and it would hold two implementations of `floe.run` in one `floe` namespace during
+  the port.
+- **What carries over from `floe-python`:**
+  - the distribution name `floe-python`. `floe` and `floe-core` on PyPI belong to other projects.
+  - the import name `floe`.
+  - the public API defined in `crates/floe-python/python/floe/_floe.pyi`: `run`, `validate`,
+    `load_config`, `inspect_entity_state`, `reset_entity_state`, the observer hooks,
+    `RunOutcome` and the typed exceptions.
+
+  The new package implements that surface, so existing Python users see no API change.
+
+```
+floe/
+├── pyproject.toml   ← pure Python, dist "floe-python", console script `floe`
+├── src/floe/        ← the new core
+├── tests/           ← pytest
+├── conformance/     ← golden cases: config + inputs + expected report / accepted / rejected
+├── spikes/python/   ← throwaway spike code (#596–#600)
+├── crates/          ← frozen Rust reference; deleted at cutover
+└── orchestrators/   ← dagster-floe moves to `import floe`; airflow-floe frozen
+```
+
+### Conformance suite
+
+The Rust integration tests build their inputs inline in code and commit no fixture files, so they
+cannot be reused as they are. Instead:
+
+- `conformance/` holds one case per kept feature: config, input files, expected run report,
+  accepted rows and rejected rows.
+- The expected outputs are recorded once from the Rust 0.7 binary.
+- CI runs the Python core against every case. Parity means zero diff, ignoring timings and run ids.
+- Once `crates/` is deleted, the recorded cases remain the regression suite.
+
+### Phases
+
+| Phase | Content | Exit |
+|---|---|---|
+| 0. Spike | #594 | Go / no-go |
+| 1. Foundation | Python versions of `AGENTS.md` and `context/` (ruff, pyright strict, pytest; size budget extended to `src/floe/`), Python CI workflow, root `pyproject.toml`, conformance recorder and first cases | CI green on an empty package |
+| 2. Port | config (pydantic, same error messages) → readers and checks → report → CAS state → Iceberg overwrite / append → merge → manifest and CLI (same commands and flags) → `floe` API per `_floe.pyi` → PII, lineage | Every conformance case passes |
+| 3. Dagster | dagster-floe runs Floe in-process or through Dagster Pipes; job per domain (#580) | OLF pipelines run on the Python core |
+| 4. Cutover | One PR deletes `crates/`, the Rust CI and the cargo / Homebrew / Scoop release jobs. Release becomes `uv build`, PyPI trusted publishing and a Python Docker image. | `floe-python` 0.8.0 on PyPI |
+
+Phases 1–3 follow the usual `AGENTS.md` workflow: one sub-issue per PR, within the size budget.
+
+### Rust freeze and versioning
+
+- From Acceptance on, `crates/` takes security fixes only. Any other Rust change would have to be
+  made twice.
+- The last Rust release is tagged (0.7.x). A maintenance branch is cut from that tag only if a
+  security fix is ever needed.
+- The first Python release is **0.8.0**. Staying pre-1.0 allows the non-OLF sinks to be dropped,
+  with the breaking changes listed in `CHANGELOG.md`. **1.0** follows once OLF has run it in
+  production.
+
 ## Trade-offs
 
 - **Lost:** a single static binary, a small Docker image, and compiler-enforced correctness.
@@ -102,9 +169,7 @@ thresholds live in #594.
 ## Consequences
 
 **If Accepted:**
-- A port milestone is opened. The Python package is built module by module within the
-  `AGENTS.md` size budget, with the Rust core as the reference until parity, then the Rust core
-  is deleted (no long-term dual maintenance).
+- Milestones are opened for phases 1–4 of the migration plan above.
 - This record supersedes the Iceberg part of `merge-delegated-to-sink.md` and the Rust-specific
   parts of `polars-and-arrow.md`.
 - The Arrow / Polars upgrade track (#523, #538, #565–#569, #387) and non-OLF sink requests
