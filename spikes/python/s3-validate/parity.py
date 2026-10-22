@@ -6,10 +6,10 @@ Compares, per config:
   - accepted rows (all accepted parquet parts, read in part-name order);
   - rejected CSV files, byte for byte.
 
-Exits 1 on any difference. Nothing else is ignored by default: if a field differs, it is printed.
-`--ignore-writer-bytes` (opt-in, never the gate verdict) also masks the two report fields that
-depend on the Parquet writer build (`total_bytes_written`, `avg_file_size_mb`), to show what
-remains once writer metadata is set aside.
+Exits 1 on any difference. `--ignore-writer-bytes` also masks the two report fields that depend
+on the Parquet writer build (`total_bytes_written`, `avg_file_size_mb`). Per the G5 ruling on #594
+those are excluded from parity, so `--ignore-writer-bytes` is the G5 verdict; the default strict
+run is kept for information.
 
 Usage: python parity.py --floe /path/to/floe [--ignore-writer-bytes] [config.yml ...]
 """

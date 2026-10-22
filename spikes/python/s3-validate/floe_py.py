@@ -83,7 +83,7 @@ def cast_expr(name: str, ctype: str) -> pl.Expr:
         return pad_ymd(c.str.extract_groups(DATE_RE)).str.to_date("%Y-%m-%d", strict=False).alias(name)
     if t in ("datetime", "timestamp"):
         g = c.str.extract_groups(DATETIME_RE)
-        f = lambda i: g.struct.field(str(i))  # noqa: E731
+        f = lambda i: g.struct.field(str(i))  # noqa: E731 - local shorthand for the regex groups
         base = pl.format("{} {}:{}:00", pad_ymd(g), f(4).str.zfill(2), f(5).str.zfill(2)).str.to_datetime(
             "%Y-%m-%d %H:%M:%S", time_unit="ms", strict=False
         )

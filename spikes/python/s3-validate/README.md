@@ -23,8 +23,8 @@ sha256sum -c floe-v0.7.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 tar -xzf floe-v0.7.0-x86_64-unknown-linux-gnu.tar.gz        # -> ./floe
 uv venv -p 3.11 .venv && VIRTUAL_ENV=.venv uv pip install -r requirements.txt
 
-.venv/bin/python parity.py --floe ./floe                       # G5, strict (the verdict)
-.venv/bin/python parity.py --floe ./floe --ignore-writer-bytes # the same, with Parquet byte counts masked
+.venv/bin/python parity.py --floe ./floe --ignore-writer-bytes # G5 verdict (writer byte metrics excluded, #594 ruling)
+.venv/bin/python parity.py --floe ./floe                       # strict, for information
 .venv/bin/python gen_data.py --rows 1000000 --out data
 .venv/bin/python parity.py --floe ./floe data/1000000/config.yml   # parity at 1M rows
 .venv/bin/python bench.py --floe ./floe --data data --threads 4    # G4: 1M, 5M, 20M x 3 runs
@@ -144,10 +144,12 @@ These two fields are the only differences: no accepted, rejected or other report
 
 Before the error columns existed (`validate_file` accepting every row), the same script reported `0/4 configs identical` and exited 1. That was the test that had to fail first.
 
-**G5: FAIL on the strict criterion.** Accepted rows, rejected rows (`__floe_row_index`, `__floe_errors` byte for byte), every count, rule summary and unique-constraint sample match. Two report fields differ: `accepted_output.total_bytes_written` and `avg_file_size_mb`.
+**G5: PASS** with writer-dependent byte metrics excluded, per the [ruling on #594](https://github.com/OpenLakeForge/floe/issues/594). `parity.py --ignore-writer-bytes` gives `5/5 configs identical`: accepted rows, rejected rows (`__floe_row_index`, `__floe_errors` byte for byte), every count, rule summary, unique-constraint sample and every other report field match.
+
+The strict run is kept for information. Two report fields differ there: `accepted_output.total_bytes_written` and `avg_file_size_mb`.
 - **Cause:** the two sides use different Parquet writer builds. Python Polars writes `created_by = "Polars (python) version 2.0.0 (build …)"` where Rust writes `"Polars"`, plus dictionary-page offsets. Compressed column chunks are the same size on the fixtures. At 1M rows the files differ by 0.8% (Rust 43,193,095 B vs Python 43,535,520 B).
 - **Can't close it here:** neither Polars nor pyarrow lets the caller set `created_by`. The same field would also change between two Rust releases that bump Polars.
-- **Needs a maintainer ruling on #594:** whether writer-dependent byte counts belong to the "identical run report" contract. If not, the opt-in `--ignore-writer-bytes` run shows an empty diff on all 5 configs.
+- **Ruled out of the contract on #594:** byte-size metrics are recorded but not compared, in this spike and in the future `conformance/` suite.
 
 ## Parity notes (what the Python path had to reproduce)
 
