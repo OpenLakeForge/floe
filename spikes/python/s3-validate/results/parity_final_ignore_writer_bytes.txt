@@ -1,0 +1,9 @@
+NOTE: --ignore-writer-bytes: total_bytes_written / avg_file_size_mb masked
+
+OK   example/standalone/config.yml
+OK   spikes/python/s3-validate/fixtures/casts/config.yml
+OK   spikes/python/s3-validate/fixtures/unique_pii/config.yml
+OK   spikes/python/s3-validate/fixtures/mismatch/config.yml
+OK   ../../..<scratch>/data/1000000/config.yml
+
+5/5 configs identical

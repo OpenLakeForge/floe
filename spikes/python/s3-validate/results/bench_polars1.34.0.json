@@ -1,0 +1,123 @@
+{
+ "env": {
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "cpu_count": 4,
+  "mem_gb": 15.7,
+  "os": "Linux-6.18.44-fc-v140-x86_64-with-glibc2.39",
+  "python": "3.11.17",
+  "polars": "1.34.0",
+  "pyarrow": "26.0.0",
+  "duckdb": "2.0.0",
+  "pyyaml": "6.0.3",
+  "floe": "floe 0.7.0 (5832a75)"
+ },
+ "threads": 4,
+ "sizes": {
+  "5000000": {
+   "rust": {
+    "wall_s_median": 25.758992329999955,
+    "peak_rss_mb_median": 3355.97265625,
+    "runs": [
+     {
+      "wall_s": 25.758992329999955,
+      "peak_rss_mb": 3355.97265625
+     },
+     {
+      "wall_s": 25.813957993999793,
+      "peak_rss_mb": 3338.30078125
+     },
+     {
+      "wall_s": 25.60474888800013,
+      "peak_rss_mb": 3367.4921875
+     }
+    ],
+    "counts": {
+     "rows_total": 5000000,
+     "accepted_total": 4803212,
+     "rejected_total": 196788,
+     "errors_total": 199772
+    }
+   },
+   "python": {
+    "wall_s_median": 10.730349450000176,
+    "peak_rss_mb_median": 3572.953125,
+    "runs": [
+     {
+      "wall_s": 10.730349450000176,
+      "peak_rss_mb": 3605.859375
+     },
+     {
+      "wall_s": 12.384315983000079,
+      "peak_rss_mb": 3572.953125
+     },
+     {
+      "wall_s": 10.701094106000028,
+      "peak_rss_mb": 3567.359375
+     }
+    ],
+    "counts": {
+     "rows_total": 5000000,
+     "accepted_total": 4803212,
+     "rejected_total": 196788,
+     "errors_total": 199772
+    }
+   },
+   "counts_match": true,
+   "wall_ratio": 0.41656712780271227,
+   "rss_ratio": 1.0646550168833784
+  },
+  "20000000": {
+   "rust": {
+    "wall_s_median": 148.39408472500008,
+    "peak_rss_mb_median": 12931.3359375,
+    "runs": [
+     {
+      "wall_s": 148.39408472500008,
+      "peak_rss_mb": 12931.3359375
+     },
+     {
+      "wall_s": 152.5396352639998,
+      "peak_rss_mb": 12932.00390625
+     },
+     {
+      "wall_s": 148.26029489999974,
+      "peak_rss_mb": 12931.23828125
+     }
+    ],
+    "counts": {
+     "rows_total": 20000000,
+     "accepted_total": 19215038,
+     "rejected_total": 784962,
+     "errors_total": 796827
+    }
+   },
+   "python": {
+    "wall_s_median": 57.92103632500039,
+    "peak_rss_mb_median": 12744.609375,
+    "runs": [
+     {
+      "wall_s": 61.81096167700002,
+      "peak_rss_mb": 12744.609375
+     },
+     {
+      "wall_s": 57.92103632500039,
+      "peak_rss_mb": 12747.36328125
+     },
+     {
+      "wall_s": 57.3598937769998,
+      "peak_rss_mb": 12446.4375
+     }
+    ],
+    "counts": {
+     "rows_total": 20000000,
+     "accepted_total": 19215038,
+     "rejected_total": 784962,
+     "errors_total": 796827
+    }
+   },
+   "counts_match": true,
+   "wall_ratio": 0.39031903752995334,
+   "rss_ratio": 0.9855601491290235
+  }
+ }
+}

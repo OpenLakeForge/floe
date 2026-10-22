@@ -1,0 +1,52 @@
+DIFF example/standalone/config.yml
+    --- rust/report/run_<id>/sales/orders/run.json
+    +++ python/report/run_<id>/sales/orders/run.json
+    @@ -53,4 +53,4 @@
+         ],
+    -    "total_bytes_written": 777,
+    -    "avg_file_size_mb": 0.0007410049438476562,
+    +    "total_bytes_written": 859,
+    +    "avg_file_size_mb": 0.0008192062377929688,
+         "small_files_count": 1
+DIFF spikes/python/s3-validate/fixtures/casts/config.yml
+    --- rust/report/run_<id>/spike/casts/run.json
+    +++ python/report/run_<id>/spike/casts/run.json
+    @@ -53,4 +53,4 @@
+         ],
+    -    "total_bytes_written": 2738,
+    -    "avg_file_size_mb": 0.0026111602783203125,
+    +    "total_bytes_written": 2846,
+    +    "avg_file_size_mb": 0.0027141571044921875,
+         "small_files_count": 1
+DIFF spikes/python/s3-validate/fixtures/unique_pii/config.yml
+    --- rust/report/run_<id>/spike/orders/run.json
+    +++ python/report/run_<id>/spike/orders/run.json
+    @@ -54,4 +54,4 @@
+         ],
+    -    "total_bytes_written": 2725,
+    -    "avg_file_size_mb": 0.0025987625122070312,
+    +    "total_bytes_written": 2819,
+    +    "avg_file_size_mb": 0.0026884078979492188,
+         "small_files_count": 1
+DIFF spikes/python/s3-validate/fixtures/mismatch/config.yml
+    --- rust/report/run_<id>/spike/customers/run.json
+    +++ python/report/run_<id>/spike/customers/run.json
+    @@ -53,4 +53,4 @@
+         ],
+    -    "total_bytes_written": 2654,
+    -    "avg_file_size_mb": 0.0025310516357421875,
+    +    "total_bytes_written": 2754,
+    +    "avg_file_size_mb": 0.0026264190673828125,
+         "small_files_count": 1
+DIFF ../../..<scratch>/data/1000000/config.yml
+    --- rust/report/run_<id>/bench/orders/run.json
+    +++ python/report/run_<id>/bench/orders/run.json
+    @@ -53,4 +53,4 @@
+         ],
+    -    "total_bytes_written": 43193095,
+    -    "avg_file_size_mb": 41.192145347595215,
+    +    "total_bytes_written": 43535520,
+    +    "avg_file_size_mb": 41.518707275390625,
+         "small_files_count": 1
+
+0/5 configs identical

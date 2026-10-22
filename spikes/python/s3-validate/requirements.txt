@@ -1,0 +1,5 @@
+# Pinned for spike S3 (#599). Approved spike deps only (#594).
+polars==2.0.0
+pyarrow==26.0.0
+pyyaml==6.0.3
+duckdb==2.0.0

@@ -1,0 +1,12 @@
+hashlib  hmac   rows=1000000 seconds=2.640 rows_per_s=378,785 identical_to_hashlib=True
+hashlib  sha256 rows=1000000 seconds=0.799 rows_per_s=1,252,241
+duckdb   hmac   rows=1000000 seconds=0.649 rows_per_s=1,540,354 identical_to_hashlib=True
+duckdb   sha256 rows=1000000 seconds=0.166 rows_per_s=6,026,622
+hashlib  hmac   rows=5000000 seconds=14.520 rows_per_s=344,342 identical_to_hashlib=True
+hashlib  sha256 rows=5000000 seconds=3.619 rows_per_s=1,381,601
+duckdb   hmac   rows=5000000 seconds=2.111 rows_per_s=2,368,154 identical_to_hashlib=True
+duckdb   sha256 rows=5000000 seconds=0.584 rows_per_s=8,562,122
+hashlib  hmac   rows=20000000 seconds=54.985 rows_per_s=363,737 identical_to_hashlib=True
+hashlib  sha256 rows=20000000 seconds=23.104 rows_per_s=865,669
+duckdb   hmac   rows=20000000 seconds=7.895 rows_per_s=2,533,295 identical_to_hashlib=True
+duckdb   sha256 rows=20000000 seconds=2.469 rows_per_s=8,100,514

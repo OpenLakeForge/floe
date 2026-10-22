@@ -1,0 +1,757 @@
+DIFF example/standalone/config.yml
+    --- rust/report/run_<id>/run.summary.json
+    +++ python/report/run_<id>/run.summary.json
+    @@ -11,3 +11,3 @@
+         "duration_ms": "<volatile>",
+    -    "status": "rejected",
+    +    "status": "success",
+         "exit_code": 0
+    @@ -26,6 +26,6 @@
+         "rows_total": 2,
+    -    "accepted_total": 1,
+    -    "rejected_total": 1,
+    +    "accepted_total": 2,
+    +    "rejected_total": 0,
+         "warnings_total": 0,
+    -    "errors_total": 1
+    +    "errors_total": 0
+       },
+    @@ -34,3 +34,3 @@
+           "name": "sales.orders",
+    -      "status": "rejected",
+    +      "status": "success",
+           "results": {
+    @@ -39,6 +39,6 @@
+             "rows_total": 2,
+    -        "accepted_total": 1,
+    -        "rejected_total": 1,
+    +        "accepted_total": 2,
+    +        "rejected_total": 0,
+             "warnings_total": 0,
+    -        "errors_total": 1
+    +        "errors_total": 0
+           },
+    --- rust/report/run_<id>/sales/orders/run.json
+    +++ python/report/run_<id>/sales/orders/run.json
+    @@ -47,3 +47,3 @@
+         "write_mode": "overwrite",
+    -    "accepted_rows": 1,
+    +    "accepted_rows": 2,
+         "files_written": 1,
+    @@ -53,4 +53,4 @@
+         ],
+    -    "total_bytes_written": 777,
+    -    "avg_file_size_mb": 0.0007410049438476562,
+    +    "total_bytes_written": 900,
+    +    "avg_file_size_mb": 0.000858306884765625,
+         "small_files_count": 1
+    @@ -67,6 +67,6 @@
+         "rows_total": 2,
+    -    "accepted_total": 1,
+    -    "rejected_total": 1,
+    +    "accepted_total": 2,
+    +    "rejected_total": 0,
+         "warnings_total": 0,
+    -    "errors_total": 1
+    +    "errors_total": 0
+       },
+    @@ -75,6 +75,6 @@
+           "input_file": "local://<ROOT>/in/orders.csv",
+    -      "status": "rejected",
+    +      "status": "success",
+           "row_count": 2,
+    -      "accepted_count": 1,
+    -      "rejected_count": 1,
+    +      "accepted_count": 2,
+    +      "rejected_count": 0,
+           "mismatch": {
+    @@ -88,3 +88,3 @@
+             "accepted_path": "local://<ROOT>/out/accepted/orders",
+    -        "rejected_path": "<ROOT>/out/rejected/orders/part-00000.csv",
+    +        "rejected_path": null,
+             "errors_path": null,
+    @@ -93,17 +93,5 @@
+           "validation": {
+    -        "errors": 1,
+    +        "errors": 0,
+             "warnings": 0,
+    -        "rules": [
+    -          {
+    -            "rule": "not_null",
+    -            "severity": "reject",
+    -            "violations": 1,
+    -            "columns": [
+    -              {
+    -                "column": "id",
+    -                "violations": 1
+    -              }
+    -            ]
+    -          }
+    -        ]
+    +        "rules": []
+           }
+    accepted out/accepted/orders: rows differ
+rust:
+shape: (1, 2)
+┌─────────┬──────┐
+│ id      ┆ item │
+│ ---     ┆ ---  │
+│ str     ┆ str  │
+╞═════════╪══════╡
+│ order-1 ┆ book │
+└─────────┴──────┘
+python:
+shape: (2, 2)
+┌─────────┬────────────┐
+│ id      ┆ item       │
+│ ---     ┆ ---        │
+│ str     ┆ str        │
+╞═════════╪════════════╡
+│ order-1 ┆ book       │
+│ null    ┆ missing-id │
+└─────────┴────────────┘
+    rejected out/rejected/orders/part-00000.csv: only in rust
+DIFF spikes/python/s3-validate/fixtures/casts/config.yml
+    --- rust/report/run_<id>/run.summary.json
+    +++ python/report/run_<id>/run.summary.json
+    @@ -11,3 +11,3 @@
+         "duration_ms": "<volatile>",
+    -    "status": "rejected",
+    +    "status": "success",
+         "exit_code": 0
+    @@ -26,6 +26,6 @@
+         "rows_total": 26,
+    -    "accepted_total": 10,
+    -    "rejected_total": 16,
+    +    "accepted_total": 26,
+    +    "rejected_total": 0,
+         "warnings_total": 0,
+    -    "errors_total": 32
+    +    "errors_total": 0
+       },
+    @@ -34,3 +34,3 @@
+           "name": "spike.casts",
+    -      "status": "rejected",
+    +      "status": "success",
+           "results": {
+    @@ -39,6 +39,6 @@
+             "rows_total": 26,
+    -        "accepted_total": 10,
+    -        "rejected_total": 16,
+    +        "accepted_total": 26,
+    +        "rejected_total": 0,
+             "warnings_total": 0,
+    -        "errors_total": 32
+    +        "errors_total": 0
+           },
+    --- rust/report/run_<id>/spike/casts/run.json
+    +++ python/report/run_<id>/spike/casts/run.json
+    @@ -47,3 +47,3 @@
+         "write_mode": "overwrite",
+    -    "accepted_rows": 10,
+    +    "accepted_rows": 26,
+         "files_written": 1,
+    @@ -53,4 +53,4 @@
+         ],
+    -    "total_bytes_written": 2738,
+    -    "avg_file_size_mb": 0.0026111602783203125,
+    +    "total_bytes_written": 3048,
+    +    "avg_file_size_mb": 0.00290679931640625,
+         "small_files_count": 1
+    @@ -67,6 +67,6 @@
+         "rows_total": 26,
+    -    "accepted_total": 10,
+    -    "rejected_total": 16,
+    +    "accepted_total": 26,
+    +    "rejected_total": 0,
+         "warnings_total": 0,
+    -    "errors_total": 32
+    +    "errors_total": 0
+       },
+    @@ -75,6 +75,6 @@
+           "input_file": "local://<ROOT>/in/casts.csv",
+    -      "status": "rejected",
+    +      "status": "success",
+           "row_count": 26,
+    -      "accepted_count": 10,
+    -      "rejected_count": 16,
+    +      "accepted_count": 26,
+    +      "rejected_count": 0,
+           "mismatch": {
+    @@ -88,3 +88,3 @@
+             "accepted_path": "local://<ROOT>/out/accepted/casts",
+    -        "rejected_path": "<ROOT>/out/rejected/casts/part-00000.csv",
+    +        "rejected_path": null,
+             "errors_path": null,
+    @@ -93,58 +93,5 @@
+           "validation": {
+    -        "errors": 32,
+    +        "errors": 0,
+             "warnings": 0,
+    -        "rules": [
+    -          {
+    -            "rule": "not_null",
+    -            "severity": "reject",
+    -            "violations": 7,
+    -            "columns": [
+    -              {
+    -                "column": "id",
+    -                "violations": 1
+    -              },
+    -              {
+    -                "column": "qty",
+    -                "violations": 6
+    -              }
+    -            ]
+    -          },
+    -          {
+    -            "rule": "cast_error",
+    -            "severity": "reject",
+    -            "violations": 25,
+    -            "columns": [
+    -              {
+    -                "column": "active",
+    -                "violations": 2,
+    -                "target_type": "boolean"
+    -              },
+    -              {
+    -                "column": "day",
+    -                "violations": 5,
+    -                "target_type": "date"
+    -              },
+    -              {
+    -                "column": "price",
+    -                "violations": 2,
+    -                "target_type": "number"
+    -              },
+    -              {
+    -                "column": "qty",
+    -                "violations": 5,
+    -                "target_type": "int64"
+    -              },
+    -              {
+    -                "column": "small",
+    -                "violations": 2,
+    -                "target_type": "int32"
+    -              },
+    -              {
+    -                "column": "ts",
+    -                "violations": 9,
+    -                "target_type": "datetime"
+    -              }
+    -            ]
+    -          }
+    -        ]
+    +        "rules": []
+           }
+    accepted out/accepted/casts: rows differ
+rust:
+shape: (10, 8)
+┌─────┬─────┬───────┬────────┬────────────┬─────────────────────────┬───────┬──────────────┐
+│ id  ┆ qty ┆ price ┆ active ┆ day        ┆ ts                      ┆ small ┆ note         │
+│ --- ┆ --- ┆ ---   ┆ ---    ┆ ---        ┆ ---                     ┆ ---   ┆ ---          │
+│ str ┆ i64 ┆ f64   ┆ bool   ┆ date       ┆ datetime[ms]            ┆ i32   ┆ str          │
+╞═════╪═════╪═══════╪════════╪════════════╪═════════════════════════╪═══════╪══════════════╡
+│ r0  ┆ 1   ┆ 1.5   ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 10:00:00     ┆ 1     ┆ plain        │
+│ r11 ┆ 7   ┆ inf   ┆ true   ┆ 0001-01-01 ┆ 9999-12-31 23:59:59     ┆ 0     ┆ leading zero │
+│ r12 ┆ 1   ┆ 1.0   ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 10:00:00     ┆ 1     ┆ probe        │
+│ r15 ┆ 1   ┆ 1.0   ┆ true   ┆ 0024-01-01 ┆ 2024-01-01 10:00:00.500 ┆ 1     ┆ probe        │
+│ r16 ┆ 1   ┆ 1.0   ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 10:01:00     ┆ 1     ┆ probe        │
+│ r19 ┆ 1   ┆ 1.0   ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 01:02:03     ┆ 1     ┆ probe        │
+│ r20 ┆ 1   ┆ 1.0   ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 10:00:00.123 ┆ 1     ┆ probe        │
+│ r21 ┆ 1   ┆ 1.0   ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 10:00:00     ┆ 1     ┆ probe        │
+│ r22 ┆ 1   ┆ 1.0   ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 10:00:00.123 ┆ 1     ┆ probe        │
+│ r25 ┆ 1   ┆ 1.0   ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 10:00:05     ┆ 1     ┆ probe        │
+└─────┴─────┴───────┴────────┴────────────┴─────────────────────────┴───────┴──────────────┘
+python:
+shape: (26, 8)
+┌─────┬──────┬────────┬────────┬────────────┬─────────────────────────┬───────┬───────────────┐
+│ id  ┆ qty  ┆ price  ┆ active ┆ day        ┆ ts                      ┆ small ┆ note          │
+│ --- ┆ ---  ┆ ---    ┆ ---    ┆ ---        ┆ ---                     ┆ ---   ┆ ---           │
+│ str ┆ i64  ┆ f64    ┆ bool   ┆ date       ┆ datetime[ms]            ┆ i32   ┆ str           │
+╞═════╪══════╪════════╪════════╪════════════╪═════════════════════════╪═══════╪═══════════════╡
+│ r0  ┆ 1    ┆ 1.5    ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 10:00:00     ┆ 1     ┆ plain         │
+│ r1  ┆ 2    ┆ 2.0    ┆ true   ┆ 2024-02-29 ┆ null                    ┆ 2     ┆ quoted, comma │
+│ r2  ┆ null ┆ 1000.0 ┆ true   ┆ null       ┆ 2024-01-01 10:00:00     ┆ 3     ┆ ws int        │
+│ r3  ┆ null ┆ -0.5   ┆ false  ┆ 2024-01-05 ┆ 2024-01-01 10:00:00.123 ┆ 4     ┆ float int     │
+│ r4  ┆ null ┆ null   ┆ null   ┆ null       ┆ null                    ┆ 5     ┆ garbage       │
+│ …   ┆ …    ┆ …      ┆ …      ┆ …          ┆ …                       ┆ …     ┆ …             │
+│ r21 ┆ 1    ┆ 1.0    ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 10:00:00     ┆ 1     ┆ probe         │
+│ r22 ┆ 1    ┆ 1.0    ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 10:00:00.123 ┆ 1     ┆ probe         │
+│ r23 ┆ 1    ┆ 1.0    ┆ true   ┆ 2024-01-01 ┆ null                    ┆ 1     ┆ probe         │
+│ r24 ┆ 1    ┆ 1.0    ┆ true   ┆ 2024-01-01 ┆ null                    ┆ 1     ┆ probe         │
+│ r25 ┆ 1    ┆ 1.0    ┆ true   ┆ 2024-01-01 ┆ 2024-01-01 10:00:05     ┆ 1     ┆ probe         │
+└─────┴──────┴────────┴────────┴────────────┴─────────────────────────┴───────┴───────────────┘
+    rejected out/rejected/casts/part-00000.csv: only in rust
+DIFF spikes/python/s3-validate/fixtures/unique_pii/config.yml
+    --- rust/report/run_<id>/run.summary.json
+    +++ python/report/run_<id>/run.summary.json
+    @@ -11,3 +11,3 @@
+         "duration_ms": "<volatile>",
+    -    "status": "rejected",
+    +    "status": "success",
+         "exit_code": 0
+    @@ -26,6 +26,6 @@
+         "rows_total": 21,
+    -    "accepted_total": 10,
+    -    "rejected_total": 11,
+    +    "accepted_total": 21,
+    +    "rejected_total": 0,
+         "warnings_total": 0,
+    -    "errors_total": 14
+    +    "errors_total": 0
+       },
+    @@ -34,3 +34,3 @@
+           "name": "spike.orders",
+    -      "status": "rejected",
+    +      "status": "success",
+           "results": {
+    @@ -39,6 +39,6 @@
+             "rows_total": 21,
+    -        "accepted_total": 10,
+    -        "rejected_total": 11,
+    +        "accepted_total": 21,
+    +        "rejected_total": 0,
+             "warnings_total": 0,
+    -        "errors_total": 14
+    +        "errors_total": 0
+           },
+    --- rust/report/run_<id>/spike/orders/run.json
+    +++ python/report/run_<id>/spike/orders/run.json
+    @@ -48,3 +48,3 @@
+         "write_mode": "overwrite",
+    -    "accepted_rows": 10,
+    +    "accepted_rows": 21,
+         "files_written": 1,
+    @@ -54,4 +54,4 @@
+         ],
+    -    "total_bytes_written": 2725,
+    -    "avg_file_size_mb": 0.0025987625122070312,
+    +    "total_bytes_written": 3248,
+    +    "avg_file_size_mb": 0.0030975341796875,
+         "small_files_count": 1
+    @@ -69,33 +69,8 @@
+           ],
+    -      "duplicates_count": 5,
+    -      "batch_duplicates_count": 5,
+    -      "affected_rows_count": 5,
+    -      "action": "reject_rows",
+    -      "status_effect": "rows_rejected",
+    -      "samples": [
+    -        {
+    -          "values": {
+    -            "customer_id": "16"
+    -          },
+    -          "count": 2
+    -        },
+    -        {
+    -          "values": {
+    -            "customer_id": "1"
+    -          },
+    -          "count": 1
+    -        },
+    -        {
+    -          "values": {
+    -            "customer_id": "10"
+    -          },
+    -          "count": 1
+    -        },
+    -        {
+    -          "values": {
+    -            "customer_id": "2"
+    -          },
+    -          "count": 1
+    -        }
+    -      ]
+    +      "duplicates_count": 0,
+    +      "batch_duplicates_count": 0,
+    +      "affected_rows_count": 0,
+    +      "action": "none",
+    +      "status_effect": "none",
+    +      "samples": []
+         },
+    @@ -106,37 +81,8 @@
+           ],
+    -      "duplicates_count": 6,
+    -      "batch_duplicates_count": 6,
+    -      "affected_rows_count": 6,
+    -      "action": "reject_rows",
+    -      "status_effect": "rows_rejected",
+    -      "samples": [
+    -        {
+    -          "values": {
+    -            "order_no": "101",
+    -            "region": "eu"
+    -          },
+    -          "count": 2
+    -        },
+    -        {
+    -          "values": {
+    -            "order_no": "302",
+    -            "region": "us"
+    -          },
+    -          "count": 2
+    -        },
+    -        {
+    -          "values": {
+    -            "order_no": "200",
+    -            "region": "apac"
+    -          },
+    -          "count": 1
+    -        },
+    -        {
+    -          "values": {
+    -            "order_no": "100",
+    -            "region": "eu"
+    -          },
+    -          "count": 1
+    -        }
+    -      ]
+    +      "duplicates_count": 0,
+    +      "batch_duplicates_count": 0,
+    +      "affected_rows_count": 0,
+    +      "action": "none",
+    +      "status_effect": "none",
+    +      "samples": []
+         }
+    @@ -147,6 +93,6 @@
+         "rows_total": 21,
+    -    "accepted_total": 10,
+    -    "rejected_total": 11,
+    +    "accepted_total": 21,
+    +    "rejected_total": 0,
+         "warnings_total": 0,
+    -    "errors_total": 14
+    +    "errors_total": 0
+       },
+    @@ -155,6 +101,6 @@
+           "input_file": "local://<ROOT>/in/a.csv",
+    -      "status": "rejected",
+    +      "status": "success",
+           "row_count": 13,
+    -      "accepted_count": 9,
+    -      "rejected_count": 4,
+    +      "accepted_count": 13,
+    +      "rejected_count": 0,
+           "mismatch": {
+    @@ -168,3 +114,3 @@
+             "accepted_path": "local://<ROOT>/out/accepted/orders",
+    -        "rejected_path": "<ROOT>/out/rejected/orders/part-00000.csv",
+    +        "rejected_path": null,
+             "errors_path": null,
+    @@ -173,48 +119,5 @@
+           "validation": {
+    -        "errors": 5,
+    +        "errors": 0,
+             "warnings": 0,
+    -        "rules": [
+    -          {
+    -            "rule": "not_null",
+    -            "severity": "reject",
+    -            "violations": 2,
+    -            "columns": [
+    -              {
+    -                "column": "amount",
+    -                "violations": 1
+    -              },
+    -              {
+    -                "column": "customer_id",
+    -                "violations": 1
+    -              }
+    -            ]
+    -          },
+    -          {
+    -            "rule": "cast_error",
+    -            "severity": "reject",
+    -            "violations": 1,
+    -            "columns": [
+    -              {
+    -                "column": "customer_id",
+    -                "violations": 1,
+    -                "target_type": "int64"
+    -              }
+    -            ]
+    -          },
+    -          {
+    -            "rule": "unique",
+    -            "severity": "reject",
+    -            "violations": 2,
+    -            "columns": [
+    -              {
+    -                "column": "[region,order_no]",
+    -                "violations": 1
+    -              },
+    -              {
+    -                "column": "customer_id",
+    -                "violations": 1
+    -              }
+    -            ]
+    -          }
+    -        ]
+    +        "rules": []
+           }
+    @@ -223,6 +126,6 @@
+           "input_file": "local://<ROOT>/in/b.csv",
+    -      "status": "rejected",
+    +      "status": "success",
+           "row_count": 8,
+    -      "accepted_count": 1,
+    -      "rejected_count": 7,
+    +      "accepted_count": 8,
+    +      "rejected_count": 0,
+           "mismatch": {
+    @@ -236,3 +139,3 @@
+             "accepted_path": "local://<ROOT>/out/accepted/orders",
+    -        "rejected_path": "<ROOT>/out/rejected/orders/part-<uuid>.csv",
+    +        "rejected_path": null,
+             "errors_path": null,
+    @@ -241,21 +144,5 @@
+           "validation": {
+    -        "errors": 9,
+    +        "errors": 0,
+             "warnings": 0,
+    -        "rules": [
+    -          {
+    -            "rule": "unique",
+    -            "severity": "reject",
+    -            "violations": 9,
+    -            "columns": [
+    -              {
+    -                "column": "[region,order_no]",
+    -                "violations": 5
+    -              },
+    -              {
+    -                "column": "customer_id",
+    -                "violations": 4
+    -              }
+    -            ]
+    -          }
+    -        ]
+    +        "rules": []
+           }
+    accepted out/accepted/orders: rows differ
+rust:
+shape: (10, 5)
+┌─────────────┬─────────────────────────────────┬────────┬──────────┬────────┐
+│ customer_id ┆ email                           ┆ region ┆ order_no ┆ amount │
+│ ---         ┆ ---                             ┆ ---    ┆ ---      ┆ ---    │
+│ i64         ┆ str                             ┆ str    ┆ i64      ┆ f64    │
+╞═════════════╪═════════════════════════════════╪════════╪══════════╪════════╡
+│ 1           ┆ d6fc569ba65945059861467732e6bf… ┆ eu     ┆ 100      ┆ 10.5   │
+│ 2           ┆ 38f6ec9780d67b19216194f3dcd98f… ┆ eu     ┆ 101      ┆ 11.0   │
+│ 3           ┆ 1a3f5f33f94a0fceff344b0535507b… ┆ us     ┆ 100      ┆ 12.0   │
+│ 5           ┆ null                            ┆ null   ┆ 103      ┆ 15.0   │
+│ 6           ┆ ab38a161c08a67800475e612abe41c… ┆ null   ┆ 103      ┆ 16.0   │
+│ 7           ┆ fe750b29b6bae3ae1c757554927b28… ┆ us     ┆ null     ┆ 17.0   │
+│ 8           ┆ 810760fc36015d8de184eb7c2159bd… ┆ us     ┆ null     ┆ 18.0   │
+│ 11          ┆ de158aa14f856520d6a86d167c1abb… ┆ apac   ┆ 200      ┆ 20.0   │
+│ 12          ┆ cb63e4a743d479605b0b3d9438fb72… ┆ apac   ┆ 201      ┆ 21.0   │
+│ 16          ┆ 448194d9b5948852aadc63d4ea928b… ┆ us     ┆ 302      ┆ 35.0   │
+└─────────────┴─────────────────────────────────┴────────┴──────────┴────────┘
+python:
+shape: (21, 5)
+┌─────────────┬─────────────────────────────────┬────────┬──────────┬────────┐
+│ customer_id ┆ email                           ┆ region ┆ order_no ┆ amount │
+│ ---         ┆ ---                             ┆ ---    ┆ ---      ┆ ---    │
+│ i64         ┆ str                             ┆ str    ┆ i64      ┆ f64    │
+╞═════════════╪═════════════════════════════════╪════════╪══════════╪════════╡
+│ 1           ┆ d6fc569ba65945059861467732e6bf… ┆ eu     ┆ 100      ┆ 10.5   │
+│ 2           ┆ 38f6ec9780d67b19216194f3dcd98f… ┆ eu     ┆ 101      ┆ 11.0   │
+│ 3           ┆ 1a3f5f33f94a0fceff344b0535507b… ┆ us     ┆ 100      ┆ 12.0   │
+│ 1           ┆ 524ab381ce5d5e5090e175107d7595… ┆ us     ┆ 102      ┆ 13.0   │
+│ 4           ┆ b4955e3d0f1935276888f600e40a4f… ┆ eu     ┆ 100      ┆ 14.0   │
+│ …           ┆ …                               ┆ …      ┆ …        ┆ …      │
+│ 10          ┆ 5a270379607e63790710a0d7784588… ┆ us     ┆ 301      ┆ 33.0   │
+│ 15          ┆ 35bf62e48d8f8f00640dd6c200c0ac… ┆ apac   ┆ 200      ┆ 34.0   │
+│ 16          ┆ 448194d9b5948852aadc63d4ea928b… ┆ us     ┆ 302      ┆ 35.0   │
+│ 16          ┆ 448194d9b5948852aadc63d4ea928b… ┆ us     ┆ 302      ┆ 36.0   │
+│ 16          ┆ 448194d9b5948852aadc63d4ea928b… ┆ us     ┆ 302      ┆ 37.0   │
+└─────────────┴─────────────────────────────────┴────────┴──────────┴────────┘
+    rejected out/rejected/orders/part-00000.csv: only in rust
+    rejected out/rejected/orders/part-<uuid>.csv: only in rust
+DIFF spikes/python/s3-validate/fixtures/mismatch/config.yml
+    --- rust/report/run_<id>/run.summary.json
+    +++ python/report/run_<id>/run.summary.json
+    @@ -11,3 +11,3 @@
+         "duration_ms": "<volatile>",
+    -    "status": "rejected",
+    +    "status": "success",
+         "exit_code": 0
+    @@ -26,6 +26,6 @@
+         "rows_total": 9,
+    -    "accepted_total": 3,
+    -    "rejected_total": 6,
+    +    "accepted_total": 9,
+    +    "rejected_total": 0,
+         "warnings_total": 0,
+    -    "errors_total": 6
+    +    "errors_total": 0
+       },
+    @@ -34,3 +34,3 @@
+           "name": "spike.customers",
+    -      "status": "rejected",
+    +      "status": "success",
+           "results": {
+    @@ -39,6 +39,6 @@
+             "rows_total": 9,
+    -        "accepted_total": 3,
+    -        "rejected_total": 6,
+    +        "accepted_total": 9,
+    +        "rejected_total": 0,
+             "warnings_total": 0,
+    -        "errors_total": 6
+    +        "errors_total": 0
+           },
+    --- rust/report/run_<id>/spike/customers/run.json
+    +++ python/report/run_<id>/spike/customers/run.json
+    @@ -47,3 +47,3 @@
+         "write_mode": "overwrite",
+    -    "accepted_rows": 3,
+    +    "accepted_rows": 9,
+         "files_written": 1,
+    @@ -53,4 +53,4 @@
+         ],
+    -    "total_bytes_written": 2654,
+    -    "avg_file_size_mb": 0.0025310516357421875,
+    +    "total_bytes_written": 2989,
+    +    "avg_file_size_mb": 0.0028505325317382812,
+         "small_files_count": 1
+    @@ -69,23 +69,8 @@
+           ],
+    -      "duplicates_count": 2,
+    -      "batch_duplicates_count": 2,
+    -      "affected_rows_count": 2,
+    -      "action": "reject_rows",
+    -      "status_effect": "rows_rejected",
+    -      "samples": [
+    -        {
+    -          "values": {
+    -            "code": "1",
+    -            "tenant": "t1"
+    -          },
+    -          "count": 1
+    -        },
+    -        {
+    -          "values": {
+    -            "code": "5",
+    -            "tenant": "t2"
+    -          },
+    -          "count": 1
+    -        }
+    -      ]
+    +      "duplicates_count": 0,
+    +      "batch_duplicates_count": 0,
+    +      "affected_rows_count": 0,
+    +      "action": "none",
+    +      "status_effect": "none",
+    +      "samples": []
+         }
+    @@ -96,6 +81,6 @@
+         "rows_total": 9,
+    -    "accepted_total": 3,
+    -    "rejected_total": 6,
+    +    "accepted_total": 9,
+    +    "rejected_total": 0,
+         "warnings_total": 0,
+    -    "errors_total": 6
+    +    "errors_total": 0
+       },
+    @@ -104,6 +89,6 @@
+           "input_file": "local://<ROOT>/in/customers.csv",
+    -      "status": "rejected",
+    +      "status": "success",
+           "row_count": 9,
+    -      "accepted_count": 3,
+    -      "rejected_count": 6,
+    +      "accepted_count": 9,
+    +      "rejected_count": 0,
+           "mismatch": {
+    @@ -122,3 +107,3 @@
+             "accepted_path": "local://<ROOT>/out/accepted/customers",
+    -        "rejected_path": "<ROOT>/out/rejected/customers/part-00000.csv",
+    +        "rejected_path": null,
+             "errors_path": null,
+    @@ -127,49 +112,5 @@
+           "validation": {
+    -        "errors": 6,
+    +        "errors": 0,
+             "warnings": 0,
+    -        "rules": [
+    -          {
+    -            "rule": "not_null",
+    -            "severity": "reject",
+    -            "violations": 2,
+    -            "columns": [
+    -              {
+    -                "column": "code",
+    -                "violations": 1
+    -              },
+    -              {
+    -                "column": "tenant",
+    -                "violations": 1
+    -              }
+    -            ]
+    -          },
+    -          {
+    -            "rule": "cast_error",
+    -            "severity": "reject",
+    -            "violations": 2,
+    -            "columns": [
+    -              {
+    -                "column": "score",
+    -                "violations": 1,
+    -                "target_type": "number"
+    -              },
+    -              {
+    -                "column": "signup",
+    -                "violations": 1,
+    -                "target_type": "date"
+    -              }
+    -            ]
+    -          },
+    -          {
+    -            "rule": "unique",
+    -            "severity": "reject",
+    -            "violations": 2,
+    -            "columns": [
+    -              {
+    -                "column": "[tenant,code]",
+    -                "violations": 2
+    -              }
+    -            ]
+    -          }
+    -        ]
+    +        "rules": []
+           }
+    accepted out/accepted/customers: rows differ
+rust:
+shape: (3, 6)
+┌─────────┬──────┬─────────────────────────────────┬───────┬────────────┬─────────────┐
+│ tenant  ┆ code ┆ phone                           ┆ score ┆ signup     ┆ missing_col │
+│ ---     ┆ ---  ┆ ---                             ┆ ---   ┆ ---        ┆ ---         │
+│ str     ┆ i64  ┆ str                             ┆ f64   ┆ date       ┆ str         │
+╞═════════╪══════╪═════════════════════════════════╪═══════╪════════════╪═════════════╡
+│ t1      ┆ 1    ┆ 19ce3827fcf57cdd9300f1f25bd9f2… ┆ 1.5   ┆ 2024-01-01 ┆ null        │
+│ t1      ┆ 2    ┆ 69a51cf319fe5625028e33aa1925f9… ┆ 2.5   ┆ 2024-01-02 ┆ null        │
+│ t3;semi ┆ 6    ┆ 5d3190a178afe7c8b7575e29aba22e… ┆ 8.5   ┆ 2024-01-09 ┆ null        │
+└─────────┴──────┴─────────────────────────────────┴───────┴────────────┴─────────────┘
+python:
+shape: (9, 6)
+┌─────────┬──────┬─────────────────────────────────┬───────┬────────────┬─────────────┐
+│ tenant  ┆ code ┆ phone                           ┆ score ┆ signup     ┆ missing_col │
+│ ---     ┆ ---  ┆ ---                             ┆ ---   ┆ ---        ┆ ---         │
+│ str     ┆ i64  ┆ str                             ┆ f64   ┆ date       ┆ str         │
+╞═════════╪══════╪═════════════════════════════════╪═══════╪════════════╪═════════════╡
+│ t1      ┆ 1    ┆ 19ce3827fcf57cdd9300f1f25bd9f2… ┆ 1.5   ┆ 2024-01-01 ┆ null        │
+│ t1      ┆ 2    ┆ 69a51cf319fe5625028e33aa1925f9… ┆ 2.5   ┆ 2024-01-02 ┆ null        │
+│ t1      ┆ 1    ┆ 3978e32a2fcb7ba097a3f7ba42a2e2… ┆ 3.5   ┆ 2024-01-03 ┆ null        │
+│ null    ┆ 3    ┆ 2de3a5fad12ece6c9ae3b874fb787c… ┆ 4.5   ┆ 2024-01-04 ┆ null        │
+│ t2      ┆ null ┆ 4517db7064a372378b828b39070c7c… ┆ 5.5   ┆ 2024-01-05 ┆ null        │
+│ t2      ┆ 4    ┆ null                            ┆ null  ┆ 2024-01-06 ┆ null        │
+│ t2      ┆ 5    ┆ 01b35aac6ff73efa9fc6286fede5e9… ┆ 6.5   ┆ null       ┆ null        │
+│ t2      ┆ 5    ┆ 9e07191e548174247b1a8900b45ffb… ┆ 7.5   ┆ 2024-01-08 ┆ null        │
+│ t3;semi ┆ 6    ┆ 5d3190a178afe7c8b7575e29aba22e… ┆ 8.5   ┆ 2024-01-09 ┆ null        │
+└─────────┴──────┴─────────────────────────────────┴───────┴────────────┴─────────────┘
+    rejected out/rejected/customers/part-00000.csv: only in rust
+
+0/4 configs identical
