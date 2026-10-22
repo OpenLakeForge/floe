@@ -1,0 +1,4 @@
+.venv/
+.stage/
+.spill/
+__pycache__/

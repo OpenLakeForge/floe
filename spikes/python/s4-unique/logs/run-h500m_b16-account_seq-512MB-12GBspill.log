@@ -1,0 +1,1 @@
+{"table": "h500m_b16", "cols": ["account", "seq"], "threads": 4, "max_spill": "12GB", "free_disk_gb_before": 13.6, "memory_limit": "512MB", "wall_s": 47.3, "check_s": 46.79, "error": "Out of Memory Error: failed to offload data block of size 256.0 KiB (11.1 GiB/11.1 GiB used).", "peak_vmhwm_mb": 823, "peak_rss_anon_mb": 761, "peak_spill_mb": 11445}

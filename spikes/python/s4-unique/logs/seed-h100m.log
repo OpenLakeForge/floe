@@ -1,0 +1,3 @@
+seeded 50,000,000 rows (34s)
+seeded 100,000,000 rows (67s)
+{"seed_rows": 100000000, "seed_s": 67.4, "data_files": 118, "rows_per_file_median": 860160, "table_mb": 967}

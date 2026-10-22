@@ -1,0 +1,1 @@
+{"table": "h500m", "cols": ["account", "seq"], "threads": 4, "max_spill": "12GB", "free_disk_gb_before": 13.6, "memory_limit": "512MB", "wall_s": 71.3, "check_s": 70.86, "peak_vmhwm_mb": 870, "peak_rss_anon_mb": 807, "peak_spill_mb": 8607, "flagged": 110178, "expected_flagged": 110178, "exact": true}
