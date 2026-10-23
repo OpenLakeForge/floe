@@ -42,6 +42,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       floe_python: ${{ steps.filter.outputs.floe_python }}
       python_core: ${{ steps.filter.outputs.python_core }}
+      conformance: ${{ steps.filter.outputs.conformance }}
       io_write_duckdb: ${{ steps.filter.outputs.io_write_duckdb }}
     steps:
       - uses: actions/checkout@v7
@@ -139,6 +140,12 @@ jobs:
               - "pyproject.toml"
               - "uv.lock"
               - ".github/workflows/ci.yml"
+            conformance:
+              - "conformance/**"
+              - "src/floe/**"
+              - "pyproject.toml"
+              - "uv.lock"
+              - ".github/workflows/ci.yml"
             io_write_duckdb:
               - "crates/floe-core/src/io/write/duckdb.rs"
               - "crates/floe-core/src/io/write/duckdb/**"
@@ -200,6 +207,26 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --all-groups --python ${{ matrix.python-version }}
       - run: uv run --python ${{ matrix.python-version }} pytest
+
+  conformance:
+    needs: changes
+    if: needs.changes.outputs.conformance == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups
+      # `record.py` downloads the v0.7.0 release binary into this directory.
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/floe-conformance
+          key: floe-conformance-${{ hashFiles('conformance/record.py') }}
+      - name: Rust 0.7 matches the recorded cases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run python conformance/check.py --impl rust
+      - name: Python passes every listed case
+        run: uv run python conformance/check.py --impl python --cases-file conformance/python_passing.txt
 
   rustfmt:
     needs: changes
