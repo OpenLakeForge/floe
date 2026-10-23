@@ -41,6 +41,7 @@ jobs:
       core_config: ${{ steps.filter.outputs.core_config }}
       docs: ${{ steps.filter.outputs.docs }}
       floe_python: ${{ steps.filter.outputs.floe_python }}
+      python_core: ${{ steps.filter.outputs.python_core }}
       io_write_duckdb: ${{ steps.filter.outputs.io_write_duckdb }}
     steps:
       - uses: actions/checkout@v7
@@ -131,6 +132,13 @@ jobs:
               - "README.md"
             floe_python:
               - "crates/floe-python/**"
+            python_core:
+              - "src/floe/**"
+              - "tests/**"
+              - "conformance/**"
+              - "pyproject.toml"
+              - "uv.lock"
+              - ".github/workflows/ci.yml"
             io_write_duckdb:
               - "crates/floe-core/src/io/write/duckdb.rs"
               - "crates/floe-core/src/io/write/duckdb/**"
@@ -156,6 +164,19 @@ jobs:
       - name: Install schema test dependencies
         run: python -m pip install jsonschema==4.26.0 PyYAML==6.0.2
       - run: python scripts/test_config_schema.py
+
+  python-core:
+    needs: changes
+    if: needs.changes.outputs.python_core == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run pyright
+      - run: uv run pytest
 
   rustfmt:
     needs: changes
