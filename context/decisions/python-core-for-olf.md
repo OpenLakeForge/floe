@@ -129,19 +129,25 @@ target. Phase 2 benchmarks the largest OLF table before merge ships.
     across 365 days ran out of memory or wrote 256k tiny files.
   - Time travel can reach a merge's intermediate snapshots. Floe's reports reference the final
     snapshot.
-- **Retry guard: decided, it matches on the input fingerprint, not the run id.** A rerun after a
-  crash gets a new run id (`crates/floe-core/src/run/context.rs:69-73`), so a run-id match
-  cannot recognise an already committed batch.
-  - Every append commit carries `floe.input_hash`: a hash of the sorted claimed file URIs with
-    their size and modification time or ETag.
-  - Before writing, the run looks for that hash in the table's snapshot properties. If it is
-    found, the run skips the write and only promotes incremental state.
-  - `floe.run_id` is kept for traceability only.
-  - Changed file content changes the fingerprint, so it is written.
-  - A deliberate reload of identical inputs (after a state reset) must bypass the guard
-    explicitly; the incremental-state port defines how.
-  - The evidence lives as long as the snapshot is retained, so snapshot expiry must keep at
-    least the claim TTL (1 hour).
+- **Retry guard (detailed design in #545).** A rerun after a crash gets a new run id
+  (`crates/floe-core/src/run/context.rs:69-73`), so the guard can't match on the run id. #545
+  must meet these requirements:
+  - **Fingerprint.** Each append commit carries `floe.input_hash`: a fingerprint of the entity's
+    stable identity plus its sorted claimed file URIs, with size and modification time or ETag.
+    Including the entity scopes it, because two entities may write the same table. A run that
+    finds its fingerprint in the table's snapshots skips the write and only promotes state.
+    `floe.run_id` is kept for traceability only.
+  - **Scope.** It covers claimed-but-unpromoted files only. The URI-based incremental contract
+    (`docs/incremental.md`) is unchanged: promoted URIs are still skipped, even if their content
+    changes.
+  - **Retention.** The evidence must outlive any retry. Snapshot expiry, including
+    `floe maintain`, must not drop a snapshot whose fingerprint isn't promoted yet; otherwise the
+    fingerprint has to be kept elsewhere until promotion.
+  - **Rejected output.** It must be idempotent too: deterministic paths derived from the
+    fingerprint, overwritten on retry, so a kill before or after the commit neither duplicates
+    nor loses rejected rows.
+  - **Deliberate reload.** Reloading identical inputs after a state reset bypasses the guard
+    explicitly.
 - **Casts.** Polars 2.0 removed string → date/datetime casts. A conformance table of
   date/datetime inputs, recorded from the Rust 0.7 binary, comes before the cast module is
   ported.
@@ -207,7 +213,9 @@ cannot be reused as they are. Instead:
   accepted rows and rejected rows.
 - The expected outputs are recorded once from the Rust 0.7 binary.
 - CI runs the Python core against every case. Parity means zero diff, ignoring timings, run ids
-  and writer byte metrics (`total_bytes_written`, `avg_file_size_mb`), per the G5 ruling.
+  and writer byte metrics (`total_bytes_written`, `avg_file_size_mb`, per the G5 ruling).
+  Generated identifiers (Iceberg `snapshot_id`, UUID-based data file names in `part_files`) are
+  compared by shape, not by value.
 - Once `crates/` is deleted, the recorded cases remain the regression suite.
 
 ### Phases
