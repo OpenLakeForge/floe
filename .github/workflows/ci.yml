@@ -199,7 +199,8 @@ jobs:
 
   python-test:
     needs: changes
-    if: needs.changes.outputs.python_core == 'true'
+    # Gated per step, not per job: a skipped matrix job reports one `python-test`
+    # check, so the required `python-test (<version>)` checks would never report.
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -208,9 +209,13 @@ jobs:
         python-version: ["3.11", "3.15"]
     steps:
       - uses: actions/checkout@v7
+        if: needs.changes.outputs.python_core == 'true'
       - uses: astral-sh/setup-uv@v7
+        if: needs.changes.outputs.python_core == 'true'
       - run: uv sync --all-groups --python ${{ matrix.python-version }}
+        if: needs.changes.outputs.python_core == 'true'
       - run: uv run --python ${{ matrix.python-version }} pytest
+        if: needs.changes.outputs.python_core == 'true'
 
   conformance:
     needs: changes
