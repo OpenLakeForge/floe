@@ -13,11 +13,14 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from record import (
     WRITER_BYTES_KEYS,
@@ -41,7 +44,17 @@ def comparable(name: str, value: Any) -> str:
         return value
     # parquet: schema, then one line per row
     table = value
-    rows = (json.dumps(r, default=str) for r in table.to_pylist())
+    # Arrow renders dates/timestamps itself: Python's `date` cannot hold years <= 0 or >= 10000
+    flat = pa.table(
+        [
+            pc.cast(c, pa.string())
+            if pa.types.is_date(c.type) or pa.types.is_timestamp(c.type)
+            else c
+            for c in table.columns
+        ],
+        names=table.column_names,
+    )
+    rows = (json.dumps(r, default=str) for r in flat.to_pylist())
     return f"schema:\n{table.schema}\nrows:\n" + "\n".join(rows) + "\n"
 
 
@@ -56,18 +69,29 @@ def mask_bytes(value: object) -> object:
     return value
 
 
-def load_expected(case: Path) -> Snapshot:
+def load_expected(case: Path, impl: str) -> Snapshot:
+    """`expected/`, with `expected_python/<file>` replacing the same file when checking Python."""
     expected: Snapshot = {}
-    for path in sorted((case / "expected").rglob("*")):
-        if path.is_file():
-            rel = path.relative_to(case / "expected").as_posix()
-            expected[rel] = (
-                pq.read_table(path) if path.suffix == ".parquet" else path.read_text()
-            )
+    dirs = ["expected", "expected_python"] if impl == "python" else ["expected"]
+    for d in dirs:
+        for path in sorted((case / d).rglob("*")):
+            if path.is_file():
+                rel = path.relative_to(case / d).as_posix()
+                expected[rel] = (
+                    pq.read_table(path)
+                    if path.suffix == ".parquet"
+                    else path.read_text()
+                )
     return expected
 
 
-def check_case(case: Path, cmd: list[str]) -> list[str]:
+def delta_ids(case: Path) -> list[str]:
+    """Ids in `delta.yml` (a one-line list such as `[D9]`); empty when the case has no delta."""
+    marker = case / "delta.yml"
+    return re.findall(r"D\d+", marker.read_text()) if marker.exists() else []
+
+
+def check_case(case: Path, cmd: list[str], impl: str) -> list[str]:
     problems: list[str] = []
     with tempfile.TemporaryDirectory(prefix="conformance-") as tmp:
         work, proc = run_in_copy(case, cmd, Path(tmp))
@@ -76,7 +100,7 @@ def check_case(case: Path, cmd: list[str]) -> list[str]:
                 f"`{' '.join(cmd)} run -c config.yml` exited {proc.returncode}: {proc.stderr.strip()}"
             )
         actual = snapshot(work)
-    expected = load_expected(case)
+    expected = load_expected(case, impl)
     for name in sorted(set(expected) | set(actual)):
         if name not in actual:
             problems.append(f"missing output: {name}")
@@ -113,7 +137,11 @@ def main() -> int:
         raise SystemExit(f"no such case: {args.case}")
     failed = 0
     for case in selected:
-        problems = check_case(case, cmd)
+        problems = check_case(case, cmd, args.impl)
+        if problems and args.impl == "python" and (ids := delta_ids(case)):
+            problems.insert(
+                0, f"intentional delta {', '.join(ids)}: expected_python/ applies"
+            )
         print(f"{'FAIL' if problems else 'ok  '} {case_name(case)}")
         for line in problems:
             print("    " + line)

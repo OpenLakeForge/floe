@@ -23,8 +23,8 @@
   "results": {
     "files_total": 1,
     "files_skipped": 0,
-    "rows_total": 43,
-    "accepted_total": 18,
+    "rows_total": 47,
+    "accepted_total": 22,
     "rejected_total": 25,
     "warnings_total": 0,
     "errors_total": 25
@@ -36,8 +36,8 @@
       "results": {
         "files_total": 1,
         "files_skipped": 0,
-        "rows_total": 43,
-        "accepted_total": 18,
+        "rows_total": 47,
+        "accepted_total": 22,
         "rejected_total": 25,
         "warnings_total": 0,
         "errors_total": 25
