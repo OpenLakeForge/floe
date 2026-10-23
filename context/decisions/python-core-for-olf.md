@@ -61,27 +61,27 @@ gates below pass.
 | Mode | Mechanism | Memory |
 |---|---|---|
 | Full load (`overwrite`) | One PyIceberg transaction: `delete(AlwaysTrue())`, then one `append` per chunk, then one catalog commit | Bounded by chunk size |
-| Incremental `append` | Same, without the delete. The snapshot carries `floe.run_id` and a hash of the claimed files; a retry that finds its run id skips the write and only promotes state. | Bounded |
+| Incremental `append` | Same, without the delete. The snapshot carries `floe.run_id` and `floe.input_hash`, a fingerprint of the claimed files; a retry that finds its input fingerprint skips the write and only promotes state. | Bounded |
 | `merge_scd1` / `merge_scd2` | Chunks staged as Parquet, then one DuckDB `MERGE INTO` (merge-on-read, positional deletes). SCD2 sends each changed row twice: once to close the current version, once to insert the new one. | Spills to disk |
 | `unique` vs target history | DuckDB anti-join between staged keys and the table's key columns | Spills to disk |
 
 Re-running an SCD1 merge with the same batch leaves the table unchanged, and an SCD2 batch with
-no changes adds no versions. Only `append` needs the run-id guard.
+no changes adds no versions. Only `append` needs the retry guard.
 
 CAS incremental state (`incremental-state-cas.md`) is ported as is. It is a port, not a risk.
 
 ## Go / no-go gates
 
 The volumes are placeholders, to be replaced with real OLF numbers before the spikes report. The
-thresholds live in #594.
+thresholds live in #594. The "one atomic catalog commit" and "byte metrics excluded" wording reflects the two rulings recorded under [Outcome](#outcome).
 
 | Gate | Spike | Proves |
 |---|---|---|
-| G1 | #597 | Large entity → Iceberg under a fixed memory limit, one snapshot |
+| G1 | #597 | Large entity → Iceberg under a fixed memory limit, one atomic catalog commit |
 | G2 | #597 | `kill -9` at any point, then rerun → exact row count, no duplicates |
-| G3 | #598 | SCD2 merge at scale, one snapshot, same semantics as `docs/write_modes.md` |
+| G3 | #598 | SCD2 merge at scale, one atomic catalog commit, same semantics as `docs/write_modes.md` |
 | G4 | #599 | Validation within 1.3× of Rust wall time and peak RSS, unique + PII enabled |
-| G5 | #599 | Identical run report and rejected rows on existing fixtures |
+| G5 | #599 | Identical run report and rejected rows on existing fixtures (writer byte metrics excluded) |
 | G6 | #600 | Exact unique check against large history with bounded memory |
 
 #596 provides the local Polaris + S3 harness the other spikes run on.
@@ -96,7 +96,7 @@ with DuckDB 1.5.6, PyIceberg 0.12.0, pyarrow 25.0.1 and Polars 2.0.0. Rulings on
 | Gate | Result | Evidence |
 |---|---|---|
 | G1 bounded-memory load | Pass: 17.8 GB CSV (152M rows) under a 4 GB limit (also 1.5 GB), ~0.9 GB working memory, one commit | #597, PR #606 |
-| G2 crash / retry | Pass: 24/24 `kill -9` + rerun cases exact. The run-id guard is load-bearing (without it, 10M duplicates) | #597, PR #606 |
+| G2 crash / retry | Pass: 24/24 `kill -9` + rerun cases exact. The retry guard is load-bearing (without it, 10M duplicates). The spike reran with the same run id; the port keys the guard on the input fingerprint so a new run id is caught too (see "Retry guard") | #597, PR #606 |
 | G3 merge at scale | Pass: 10M-row SCD2 into 500M rows. Unpartitioned 72–79 s, `day()` 105 s, `bucket(16)` 16–19 min | #598, #609, PRs #607, #610 |
 | G4 validation performance | Pass: Python 0.30–0.44× Rust wall time at 1M–20M rows; memory at parity on the same engine | #599, PR #605 |
 | G5 report parity | Pass: rows, rejected output and every report field identical (byte metrics excluded) | #599, PR #605 |
@@ -115,7 +115,11 @@ target. Phase 2 benchmarks the largest OLF table before merge ships.
   cliff below 2 GB for merges.
 - **Write path.** Loads use one PyIceberg producer feeding every chunk, which gives one commit
   and one snapshot (#597's `single` path). It relies on PyIceberg internals (the same calls
-  `Transaction.append` makes); the public-API fallback is one `append(RecordBatchReader)`.
+  `Transaction.append` makes). Public-API fallbacks, both measured in #597 as one commit:
+  - unpartitioned tables: one `append(RecordBatchReader)` (PyIceberg 0.12 rejects streaming
+    writes to partitioned tables);
+  - partitioned tables: stage Parquet files that each hold a single partition value, then
+    `add_files` in one transaction.
 - **Merges.**
   - Unpartitioned and `day()` targets: one plain DuckDB `MERGE INTO`.
   - `bucket()` targets: one MERGE per bucket inside one DuckDB transaction (one commit). It is
@@ -125,8 +129,19 @@ target. Phase 2 benchmarks the largest OLF table before merge ships.
     across 365 days ran out of memory or wrote 256k tiny files.
   - Time travel can reach a merge's intermediate snapshots. Floe's reports reference the final
     snapshot.
-- **Retry guard.** The guard matches on run id. Incremental state must give a retry the same run
-  id, or the guard must also match on the input hash.
+- **Retry guard: decided, it matches on the input fingerprint, not the run id.** A rerun after a
+  crash gets a new run id (`crates/floe-core/src/run/context.rs:69-73`), so a run-id match
+  cannot recognise an already committed batch.
+  - Every append commit carries `floe.input_hash`: a hash of the sorted claimed file URIs with
+    their size and modification time or ETag.
+  - Before writing, the run looks for that hash in the table's snapshot properties. If it is
+    found, the run skips the write and only promotes incremental state.
+  - `floe.run_id` is kept for traceability only.
+  - Changed file content changes the fingerprint, so it is written.
+  - A deliberate reload of identical inputs (after a state reset) must bypass the guard
+    explicitly; the incremental-state port defines how.
+  - The evidence lives as long as the snapshot is retained, so snapshot expiry must keep at
+    least the claim TTL (1 hour).
 - **Casts.** Polars 2.0 removed string → date/datetime casts. A conformance table of
   date/datetime inputs, recorded from the Rust 0.7 binary, comes before the cast module is
   ported.
@@ -191,7 +206,8 @@ cannot be reused as they are. Instead:
 - `conformance/` holds one case per kept feature: config, input files, expected run report,
   accepted rows and rejected rows.
 - The expected outputs are recorded once from the Rust 0.7 binary.
-- CI runs the Python core against every case. Parity means zero diff, ignoring timings and run ids.
+- CI runs the Python core against every case. Parity means zero diff, ignoring timings, run ids
+  and writer byte metrics (`total_bytes_written`, `avg_file_size_mb`), per the G5 ruling.
 - Once `crates/` is deleted, the recorded cases remain the regression suite.
 
 ### Phases
