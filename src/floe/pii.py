@@ -1,5 +1,3 @@
-# polars stubs reference numpy, which is not installed, so their member types are partly unknown
-# pyright: reportUnknownMemberType=false
 import hashlib
 import hmac
 import os

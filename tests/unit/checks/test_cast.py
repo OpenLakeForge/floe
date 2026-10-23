@@ -5,9 +5,6 @@ Expected values come from the Rust 0.7 conformance cases `casts`, `casts_date`, 
 deliberately differs (intentional delta D9, master issue #619).
 """
 
-# pyright: reportUnknownMemberType=false
-# ^ polars' IntoExpr alias contains an unresolved type, so pyright strict reports many of its methods
-
 import math
 from collections.abc import Sequence
 from datetime import date, datetime

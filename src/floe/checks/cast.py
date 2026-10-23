@@ -1,8 +1,5 @@
 """String to typed casts and cast-mismatch errors (Rust: `checks/cast.rs`, `io/format.rs`)."""
 
-# pyright: reportUnknownMemberType=false
-# ^ polars' IntoExpr alias contains an unresolved type, so pyright strict reports many of its methods
-
 import polars as pl
 
 CAST_ERROR_MESSAGE = "invalid value for target type"
