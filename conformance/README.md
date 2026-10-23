@@ -41,4 +41,6 @@ Runs the implementation on every case and prints a diff for each difference; exi
 - Masked when recording: run ids, timestamps, durations, absolute paths (`<ROOT>`, `run_<id>`).
 - Compared by shape: UUID-based part file names (`part-<uuid>`), Iceberg `snapshot_id`.
 - Recorded but ignored on compare (G5 ruling, #594): `total_bytes_written`, `avg_file_size_mb`.
+- Paths in `expected/` use `run_ID` and `part-UUID` (no `<`/`>`: Windows can't check them out); file contents keep `run_<id>` / `part-<uuid>`.
+- Only `out/accepted` and `out/rejected` are captured; `record.py` fails on a case that produces neither.
 - Key order in reports is kept: it is part of the contract.

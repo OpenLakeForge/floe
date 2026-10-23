@@ -32,6 +32,7 @@ VERSION = "0.7.0"
 ASSET = f"floe-v{VERSION}-x86_64-unknown-linux-gnu.tar.gz"
 CACHE = Path.home() / ".cache" / "floe-conformance" / f"v{VERSION}"
 
+# Paths in expected/ use filesystem-safe tokens (run_ID, part-UUID): `<` and `>` break Windows checkouts.
 # Differ between any two runs of the same binary: masked when recording.
 VOLATILE_KEYS = {"run_id", "started_at", "finished_at", "duration_ms", "elapsed_ms"}
 # Recorded, but ignored on compare (G5 ruling on #594).
@@ -116,7 +117,7 @@ def snapshot(work: Path) -> Snapshot:
     root = str(work.resolve())
     out: Snapshot = {}
     for path in sorted(work.glob("report/run_*/**/*.json")):
-        rel = RUN_DIR.sub("run_<id>", path.relative_to(work).as_posix())
+        rel = RUN_DIR.sub("run_ID", path.relative_to(work).as_posix())
         # key order is part of the contract, so it is preserved
         out[f"reports/{rel}"] = (
             json.dumps(normalize(json.loads(path.read_text()), root), indent=2) + "\n"
@@ -127,7 +128,7 @@ def snapshot(work: Path) -> Snapshot:
             pa.concat_tables([pq.read_table(p) for p in parts])
         )
     for path in sorted(work.glob("out/rejected/**/*.csv")):
-        key = f"rejected/{UUID_PART.sub('part-<uuid>', path.relative_to(work / 'out/rejected').as_posix())}"
+        key = f"rejected/{UUID_PART.sub('part-UUID', path.relative_to(work / 'out/rejected').as_posix())}"
         if key in out:
             raise SystemExit(f"{key}: two rejected files with the same normalized name")
         out[key] = path.read_text()
@@ -162,7 +163,12 @@ def main() -> int:
                 sys.stderr.write(proc.stdout + proc.stderr)
                 raise SystemExit(f"{case_name(case)}: floe exited {proc.returncode}")
             shutil.rmtree(case / "expected", ignore_errors=True)
-            for rel, content in snapshot(work).items():
+            snap = snapshot(work)
+            if not any(k.startswith(("accepted/", "rejected/")) for k in snap):
+                raise SystemExit(
+                    f"{case_name(case)}: no accepted or rejected output found under out/"
+                )
+            for rel, content in snap.items():
                 dest = case / "expected" / rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 if isinstance(content, str):
