@@ -1,14 +1,12 @@
 """Storage and catalog definitions, ported from `config/parse.rs` (`parse_storages`, `parse_catalogs_with_context`)."""
 
-from collections.abc import Callable
-from typing import TypeVar, cast
+from typing import cast
 
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from floe.config.yaml import yaml_hash, yaml_string
 from floe.errors import FloeConfigError
 
-T = TypeVar("T")
 Hash = dict[object, object]
 
 
@@ -83,27 +81,16 @@ def _opt_bool(hash: Hash, key: str, ctx: str) -> bool | None:
     return value
 
 
-def _block(
-    value: object, context: str, parse_item: Callable[[object, str], T]
-) -> tuple[str | None, list[T]]:
+def _items(value: object, context: str) -> tuple[Hash, list[object]]:
     """The `default` + `definitions` shape shared by `storages` and `catalogs`."""
     hash = yaml_hash(value, context)
     _known_keys(hash, context, ("default", "definitions"))
-    definitions_context = f"{context}.definitions"
     if "definitions" not in hash:
-        raise FloeConfigError(f"missing required field {definitions_context}")
-    raw = hash["definitions"]
-    if not isinstance(raw, list):
-        raise FloeConfigError(f"expected array at {definitions_context}")
-    definitions: list[T] = []
-    for index, item in enumerate(cast("list[object]", raw)):
-        try:
-            definitions.append(parse_item(item, definitions_context))
-        except _Unsupported:
-            raise
-        except FloeConfigError as e:
-            raise FloeConfigError(f"{definitions_context}[{index}]: {e}") from e
-    return _opt_string(hash, "default", context), definitions
+        raise FloeConfigError(f"missing required field {context}.definitions")
+    items = hash["definitions"]
+    if not isinstance(items, list):
+        raise FloeConfigError(f"expected array at {context}.definitions")
+    return hash, cast("list[object]", items)
 
 
 _STORAGE_KEYS = (
@@ -173,10 +160,30 @@ def _catalog(value: object, ctx: str) -> CatalogDefinition:
 
 
 def parse_storages(value: object) -> StoragesConfig:
-    default, definitions = _block(value, "storages", _storage)
-    return StoragesConfig(default=default, definitions=definitions)
+    hash, items = _items(value, "storages")
+    definitions: list[StorageDefinition] = []
+    for index, item in enumerate(items):
+        try:
+            definitions.append(_storage(item, "storages.definitions"))
+        except _Unsupported:
+            raise
+        except FloeConfigError as e:
+            raise FloeConfigError(f"storages.definitions[{index}]: {e}") from e
+    return StoragesConfig(
+        default=_opt_string(hash, "default", "storages"), definitions=definitions
+    )
 
 
 def parse_catalogs(value: object, context: str = "catalogs") -> CatalogsConfig:
-    default, definitions = _block(value, context, _catalog)
-    return CatalogsConfig(default=default, definitions=definitions)
+    hash, items = _items(value, context)
+    definitions: list[CatalogDefinition] = []
+    for index, item in enumerate(items):
+        try:
+            definitions.append(_catalog(item, f"{context}.definitions"))
+        except _Unsupported:
+            raise
+        except FloeConfigError as e:
+            raise FloeConfigError(f"{context}.definitions[{index}]: {e}") from e
+    return CatalogsConfig(
+        default=_opt_string(hash, "default", context), definitions=definitions
+    )
