@@ -62,8 +62,9 @@ def rust_debug(s: str) -> str:
     return '"' + "".join(map(_debug_char, s)) + '"'
 
 
-def _where(text: str, index: int, line: int, column: int) -> str:
-    return f"at byte {len(text[:index].encode())} line {line + 1} column {column + 1}"
+def _where(index: int, line: int, column: int) -> str:
+    # yaml-rust2 says "byte" but counts characters
+    return f"at byte {index} line {line + 1} column {column + 1}"
 
 
 def _debug(key: object, node: Node) -> str:
@@ -78,7 +79,7 @@ def _debug(key: object, node: Node) -> str:
     return f"String({rust_debug(cast(str, key))})"
 
 
-def _build(node: Node, text: str, active: tuple[int, ...] = ()) -> object:
+def _build(node: Node, active: tuple[int, ...] = ()) -> object:
     if id(node) in active:
         return None  # recursive alias (`&a [*a]`): yaml-rust2 loads BadValue, which no reader accepts either
     active = (*active, id(node))
@@ -87,14 +88,14 @@ def _build(node: Node, text: str, active: tuple[int, ...] = ()) -> object:
         # ponytail: an explicit tag (`!!str 5`) is ignored; yaml-rust2 honours it. Add when a config needs it.
         return _plain(value) if node.style is None else value
     if isinstance(node, SequenceNode):
-        return [_build(item, text, active) for item in cast("list[Node]", node.value)]
+        return [_build(item, active) for item in cast("list[Node]", node.value)]
     result: dict[object, object] = {}
     seen: set[tuple[type, object]] = set()
     for key_node, value_node in cast("list[tuple[Node, Node]]", node.value):
-        key = _build(key_node, text, active)
+        key = _build(key_node, active)
         if isinstance(key, (list, dict)):
             raise FloeError("unsupported complex mapping key")
-        value = _build(value_node, text, active)
+        value = _build(value_node, active)
         # yaml-rust2 keeps `true`, `1`, `1.0`, `1.00` apart. ponytail: `result` still merges `true` and `1`
         identity = (type(key), key_node.value if isinstance(key, float) else key)
         if identity in seen:
@@ -102,7 +103,7 @@ def _build(node: Node, text: str, active: tuple[int, ...] = ()) -> object:
             collection = isinstance(value_node, CollectionNode)
             mark = value_node.end_mark if collection else value_node.start_mark
             back = int(collection and bool(value_node.flow_style))
-            where = _where(text, mark.index - back, mark.line, mark.column - back)
+            where = _where(mark.index - back, mark.line, mark.column - back)
             raise FloeError(
                 f"{_debug(key, key_node)}: duplicated key in mapping {where}"
             )
@@ -126,13 +127,13 @@ def load_yaml(path: Path) -> list[object]:
             "Iterator[Node]",
             yaml.compose_all(text, Loader=yaml.SafeLoader),  # pyright: ignore[reportUnknownMemberType] -- the stub leaves the stream type unknown
         )
-        return [_build(doc, text) for doc in docs]
+        return [_build(doc) for doc in docs]
     except MarkedYAMLError as e:
         # ponytail: only some scanner messages match yaml-rust2 word for word; the rest keep PyYAML's wording
         context = f"{e.context}, " if e.context else ""
         problem = (e.problem or "").split(", but got")[0]
         mark = e.problem_mark
-        where = _where(text, mark.index, mark.line, mark.column) if mark else ""
+        where = _where(mark.index, mark.line, mark.column) if mark else ""
         raise FloeError(f"{context}{problem} {where}".strip()) from e
     except yaml.YAMLError as e:
         raise FloeError(str(e)) from e
