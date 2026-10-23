@@ -63,6 +63,17 @@ def test_full_entity() -> None:
     assert parsed.state.path == "s"
 
 
+def test_choice_trims_rust_white_space_only() -> None:
+    assert (
+        parse_entity(entity(incremental_mode="\u00a0row\u3000")).incremental_mode
+        == "row"
+    )
+    # U+001C is not White_Space in Rust, so `trim()` keeps it and the value is rejected
+    assert message(entity(incremental_mode="\x1crow")) == (
+        "unsupported value at entity.incremental_mode: \x1crow (allowed: none, archive, file, row)"
+    )
+
+
 def test_null_optionals_are_absent() -> None:  # parse_yaml_optional_null_is_absent
     parsed = parse_entity(entity(domain=None, incremental_mode=None))
     assert parsed.domain is None

@@ -23,6 +23,8 @@ from floe.errors import FloeConfigError
 
 _T = TypeVar("_T", bound=str)
 _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+# Rust's `trim()` strips Unicode White_Space only; `str.strip()` also strips U+001C to U+001F
+_WHITE_SPACE = "\t\n\v\f\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
 
 
 def _pick(value: str, allowed: tuple[_T, ...]) -> _T | None:
@@ -30,8 +32,7 @@ def _pick(value: str, allowed: tuple[_T, ...]) -> _T | None:
 
 
 def _choice(value: str, allowed: tuple[_T, ...], ctx: str) -> _T:
-    # ponytail: str.strip() and Rust's trim() differ on a few control characters; only the error echo could show it
-    picked = _pick(value.strip().translate(_ASCII_LOWER), allowed)
+    picked = _pick(value.strip(_WHITE_SPACE).translate(_ASCII_LOWER), allowed)
     if picked is None:
         raise FloeConfigError(
             f"unsupported value at {ctx}: {value} (allowed: {', '.join(allowed)})"
