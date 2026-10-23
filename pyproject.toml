@@ -21,7 +21,6 @@ dev = [
     "pyright",
     "pytest",
     "ruff",
-    "jinja2==3.1.2",
 ]
 conformance = ["pyarrow"]
 
