@@ -1,0 +1,14 @@
+customer_id,email,region,order_no,amount
+1,a@example.com,eu,100,10.5
+2,b@example.com,eu,101,11
+3,c@example.com,us,100,12
+1,dup-cust@example.com,us,102,13
+4,d@example.com,eu,100,14
+5,,,103,15
+6,e@example.com,,103,16
+7,f@example.com,us,,17
+8,g@example.com,us,,18
+x,h@example.com,us,104,19
+10,i@example.com,us,105,
+11,"quoted ""name""@example.com",apac,200,20
+12,ünïcødé@example.com,apac,201,21

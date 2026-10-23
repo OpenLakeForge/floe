@@ -14,16 +14,17 @@ floe = "floe._cli:main"
 
 [dependency-groups]
 dev = ["pyright", "pytest", "ruff"]
+conformance = ["pyarrow"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/floe"]
 
 [tool.ruff]
 src = ["src", "tests"]
-include = ["src/**/*.py", "tests/**/*.py"]
+include = ["src/**/*.py", "tests/**/*.py", "conformance/**/*.py"]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "conformance"]
 typeCheckingMode = "strict"
 pythonVersion = "3.11"
 

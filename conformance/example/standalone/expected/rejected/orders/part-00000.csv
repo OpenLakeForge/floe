@@ -1,0 +1,2 @@
+id,item,__floe_row_index,__floe_errors
+,missing-id,1,"[{""rule"":""not_null"",""column"":""id"",""message"":""required value missing""}]"

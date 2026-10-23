@@ -1,0 +1,43 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: casts
+    domain: spike
+    source:
+      format: csv
+      path: "./in/casts.csv"
+      options:
+        header: true
+        separator: ","
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/casts"
+      rejected:
+        format: csv
+        path: "./out/rejected/casts"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: qty
+          type: int64
+          nullable: false
+        - name: price
+          type: number
+        - name: active
+          type: boolean
+        - name: day
+          type: date
+        - name: ts
+          type: datetime
+        - name: small
+          type: int32
+        - name: note
+          type: string
+report:
+  path: "./report"

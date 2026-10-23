@@ -1,0 +1,45 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: orders
+    domain: spike
+    source:
+      format: csv
+      path: "./in"
+      options:
+        header: true
+        separator: ","
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/orders"
+      rejected:
+        format: csv
+        path: "./out/rejected/orders"
+    policy:
+      severity: reject
+    pii:
+      columns:
+        - name: email
+          strategy: hash
+          key: "spike-hmac-key"
+    schema:
+      unique_keys:
+        - [customer_id]
+        - [region, order_no]
+      columns:
+        - name: customer_id
+          type: int64
+          nullable: false
+        - name: email
+          type: string
+        - name: region
+          type: string
+        - name: order_no
+          type: int64
+        - name: amount
+          type: number
+          nullable: false
+report:
+  path: "./report"

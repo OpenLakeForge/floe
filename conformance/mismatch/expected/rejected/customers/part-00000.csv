@@ -1,0 +1,7 @@
+tenant,code,phone,score,signup,missing_col,__floe_row_index,__floe_errors
+t1,1,3978e32a2fcb7ba097a3f7ba42a2e28a270a483661d0bfad7f95d58a9cd83603,3.5,2024-01-03,,2,"[{""rule"":""unique"",""column"":""[tenant,code]"",""message"":""duplicate key""}]"
+,3,2de3a5fad12ece6c9ae3b874fb787cf4584f58262c66d7de4f6c1475c3bba1b8,4.5,2024-01-04,,3,"[{""rule"":""not_null"",""column"":""tenant"",""message"":""required value missing""}]"
+t2,,4517db7064a372378b828b39070c7cd06d01a1a8f1e78b9eb1e405622fc0b496,5.5,2024-01-05,,4,"[{""rule"":""not_null"",""column"":""code"",""message"":""required value missing""}]"
+t2,4,,,2024-01-06,,5,"[{""rule"":""cast_error"",""column"":""score"",""message"":""invalid value for target type""}]"
+t2,5,01b35aac6ff73efa9fc6286fede5e91c6238154d728b729692932d827b4c53ec,6.5,,,6,"[{""rule"":""cast_error"",""column"":""signup"",""message"":""invalid value for target type""}]"
+t2,5,9e07191e548174247b1a8900b45ffbdcbbdc5fa3d6a4491b2c02ea0c044c4711,7.5,2024-01-08,,7,"[{""rule"":""unique"",""column"":""[tenant,code]"",""message"":""duplicate key""}]"

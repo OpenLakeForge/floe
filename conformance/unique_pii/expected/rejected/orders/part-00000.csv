@@ -1,0 +1,5 @@
+customer_id,email,region,order_no,amount,__floe_row_index,__floe_errors
+1,524ab381ce5d5e5090e175107d7595849537ebcc4ef09448f5b19d1707bc384b,us,102,13.0,3,"[{""rule"":""unique"",""column"":""customer_id"",""message"":""duplicate value""}]"
+4,b4955e3d0f1935276888f600e40a4ff1a2663475e4725dd61f12c7b6aa926549,eu,100,14.0,4,"[{""rule"":""unique"",""column"":""[region,order_no]"",""message"":""duplicate key""}]"
+,8565035fa887b2d526042334975723b91168f355535cd6f8f60bf64f14ab6b92,us,104,19.0,9,"[{""rule"":""not_null"",""column"":""customer_id"",""message"":""required value missing""},{""rule"":""cast_error"",""column"":""customer_id"",""message"":""invalid value for target type""}]"
+10,c0ee81a4e414d526e639c86819e079cbb20936933ffce3efe707f1fc44c50146,us,105,,10,"[{""rule"":""not_null"",""column"":""amount"",""message"":""required value missing""}]"
