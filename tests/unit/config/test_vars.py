@@ -201,5 +201,46 @@ def test_extract_config_env_vars_never_raises(tmp_path: Path, content: str) -> N
     assert extract_config_env_vars(cfg) == {}
 
 
+@pytest.mark.parametrize(
+    ("value", "shown"),
+    [
+        ("a\0b", r"a\0b"),
+        ("a\x01b\x7f", r"a\u{1}b\u{7f}"),
+        ('q"\\\t\n\r', r"q\"\\\t\n\r"),
+        ("q'é日😀\u0903", "q'é日😀\u0903"),
+        (
+            "\u0301\u00a0\u2028\u200b\ufeff\u1160",
+            r"\u{301}\u{a0}\u{2028}\u{200b}\u{feff}\u{1160}",
+        ),
+    ],
+)
+def test_unclosed_placeholder_value_is_escaped_like_rust_debug(
+    value: str, shown: str
+) -> None:
+    with pytest.raises(FloeConfigError) as err:
+        resolve_vars({"A": f"{value}${{"}, {}, {})
+    assert str(err.value) == f'variable "A": unclosed placeholder in value "{shown}${{"'
+
+
+def test_extract_config_env_vars_ignores_an_invalid_env_file_path(
+    tmp_path: Path,
+) -> None:
+    cfg = tmp_path / "c.yml"
+    cfg.write_text('env:\n  file: "\\0"\n  vars:\n    A: ok\n')
+    assert extract_config_env_vars(cfg) == {"A": "ok"}
+
+
+def test_env_file_with_a_nul_path_is_an_io_error(tmp_path: Path) -> None:
+    with pytest.raises(FloeIoError) as err:
+        build_env_vars(tmp_path, "a\0b", {}, {})
+    assert str(err.value) == "file name contained an unexpected NUL byte"
+
+
+def test_extract_config_env_vars_survives_a_recursive_alias(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.yml"
+    cfg.write_text("env:\n  vars: &a\n    A: ok\n    B: *a\n")
+    assert extract_config_env_vars(cfg) == {}
+
+
 def test_extract_config_env_vars_missing_config(tmp_path: Path) -> None:
     assert extract_config_env_vars(tmp_path / "nope.yml") == {}

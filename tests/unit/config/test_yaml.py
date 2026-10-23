@@ -189,3 +189,38 @@ def test_merge_key_is_an_ordinary_key(tmp_path: Path) -> None:
 
 def test_scalar_keys_keep_their_type(tmp_path: Path) -> None:
     assert load_single_doc(write(tmp_path, "1: a\nyes: b\n")) == {1: "a", "yes": "b"}
+
+
+@pytest.mark.parametrize(
+    "content", ["true: a\n1: b\n", "1.0: a\n1.00: b\n", "1: a\n1.0: b\n"]
+)
+def test_keys_of_different_yaml_kinds_are_not_duplicates(
+    tmp_path: Path, content: str
+) -> None:
+    load_single_doc(write(tmp_path, content))
+
+
+def test_equal_integer_spellings_are_duplicates(tmp_path: Path) -> None:
+    with pytest.raises(FloeError) as err:
+        load_yaml(write(tmp_path, "1: a\n+1: b\n"))
+    assert (
+        str(err.value)
+        == "Integer(1): duplicated key in mapping at byte 9 line 2 column 5"
+    )
+
+
+@pytest.mark.parametrize("content", ["a: &a [*a]\n", "a: &a\n  x: *a\n"])
+def test_recursive_alias_loads_without_recursing(tmp_path: Path, content: str) -> None:
+    assert list(yaml_hash(load_single_doc(write(tmp_path, content)), "root")) == ["a"]
+
+
+def test_decimal_scalar_past_pythons_int_digit_limit(tmp_path: Path) -> None:
+    content = f"big: {'9' * 5000}\npadded: {'0' * 5000}1\n"
+    doc = yaml_hash(load_single_doc(write(tmp_path, content)), "root")
+    assert doc == {"big": float("inf"), "padded": 1}
+
+
+def test_nul_in_a_path_is_an_io_error() -> None:
+    with pytest.raises(FloeIoError) as err:
+        load_yaml(Path("a\0b"))
+    assert str(err.value) == "file name contained an unexpected NUL byte"

@@ -1,14 +1,12 @@
 """Variable resolution, ported from `config/template.rs`, `config/parse.rs` (`extract_raw_env_vars`) and `vars/resolve.rs`."""
 
-import json
 import os
 from collections.abc import Mapping
+from contextlib import suppress
 from pathlib import Path
 
-from floe.config.yaml import load_yaml, yaml_hash, yaml_string
+from floe.config.yaml import load_yaml, rust_debug, yaml_hash, yaml_string
 from floe.errors import FloeConfigError, FloeError
-
-_MAX_DEPTH = 32
 
 
 def _resolve_local_path(config_dir: Path, raw: str) -> Path:
@@ -26,7 +24,6 @@ def _string_map(value: object, ctx: str) -> dict[str, str]:
 def replace_placeholders(
     value: str, variables: Mapping[str, str], field: str, entity: str | None = None
 ) -> str:
-    """Substitute `{{ KEY }}` placeholders."""
     prefix = f"entity.name={entity} " if entity is not None else ""
     result: list[str] = []
     rest = value
@@ -52,7 +49,6 @@ def build_env_vars(
     env_vars: Mapping[str, str],
     profile_vars: Mapping[str, str],
 ) -> dict[str, str]:
-    """Merge profile variables, then `env.file`, then inline `env.vars` (last wins)."""
     merged = dict(profile_vars)
     if env_file is not None:
         path = _resolve_local_path(config_dir, env_file)
@@ -64,37 +60,26 @@ def build_env_vars(
 
 
 def extract_config_env_vars(path: Path) -> dict[str, str]:
-    """`env.file` and `env.vars` of a config, ignoring anything malformed (never raises)."""
-    try:
+    variables: dict[str, str] = {}
+    with suppress(FloeError):
         docs = load_yaml(path)
         root = yaml_hash(docs[0], "root") if docs else {}
         env = yaml_hash(root.get("env"), "env")
-        variables: dict[str, str] = {}
-        file = env.get("file")
-        if isinstance(file, str):
-            try:
-                file_doc = load_yaml(_resolve_local_path(path.parent, file))[0]
-                variables |= {
-                    k: v
-                    for k, v in yaml_hash(file_doc, "env.file").items()
-                    if isinstance(k, str) and isinstance(v, str)
-                }
-            except (FloeError, IndexError):
-                pass
-        if "vars" in env:
-            try:
-                variables |= _string_map(env["vars"], "env.vars")
-            except FloeError:
-                pass
-        return variables
-    except FloeError:
-        return {}
+        with suppress(FloeError, IndexError):
+            file = _resolve_local_path(
+                path.parent, yaml_string(env.get("file"), "env.file")
+            )
+            for k, v in yaml_hash(load_yaml(file)[0], "env.file").items():
+                if isinstance(k, str) and isinstance(v, str):
+                    variables[k] = v
+        with suppress(FloeError, KeyError):
+            variables |= _string_map(env["vars"], "env.vars")
+    return variables
 
 
 def resolve_vars(
     profile: Mapping[str, str], cli: Mapping[str, str], config: Mapping[str, str]
 ) -> dict[str, str]:
-    """Merge `config > cli > profile`, then expand `${KEY}` references in every value."""
     raw = dict(profile) | dict(cli) | dict(config)
     resolved: dict[str, str] = {}
     in_progress: list[str] = []
@@ -102,9 +87,9 @@ def resolve_vars(
     def expand_key(key: str, depth: int) -> str:
         if key in resolved:
             return resolved[key]
-        if depth > _MAX_DEPTH:
+        if depth > 32:
             raise FloeConfigError(
-                f"variable expansion exceeded maximum depth ({_MAX_DEPTH}); "
+                f"variable expansion exceeded maximum depth (32); "
                 f'check for deeply nested or circular references near "${{{key}}}"'
             )
         if key in in_progress:
@@ -127,7 +112,7 @@ def resolve_vars(
             rest = rest[start + 2 :]
             end = rest.find("}")
             if end == -1:
-                quoted = json.dumps(value, ensure_ascii=False)
+                quoted = rust_debug(value)
                 raise FloeConfigError(
                     f'variable "{owner}": unclosed placeholder in value {quoted}'
                 )
