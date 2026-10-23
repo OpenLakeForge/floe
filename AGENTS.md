@@ -9,8 +9,9 @@ The goal: **the smallest correct change, one concern per PR, nothing speculative
 |---|---|
 | `context/project.md` | First time in the repo: what Floe is and is not |
 | `context/architecture.md` | Before touching anything under `crates/` |
-| `context/coding-standards.md` | Before writing Rust |
-| `context/testing-strategy.md` | Before writing or moving tests |
+| `context/coding-standards.md` | Before writing Rust or Python (Python: the "Python (`src/floe/`)" section) |
+| `context/testing-strategy.md` | Before writing or moving tests (Python: the "Python tests" section) |
+| `context/decisions/python-core-for-olf.md` | Before touching `src/floe/`, `tests/` or `conformance/` |
 | `context/orchestrators.md` | Before touching `orchestrators/` |
 | `context/bump-release.md` | Version bump PRs only |
 | `context/decisions/*.md` | Before changing errors, incremental state, merge, or Polars/Arrow usage |
@@ -41,8 +42,8 @@ The goal: **the smallest correct change, one concern per PR, nothing speculative
 - Version bumps, dependency bumps and schema resyncs each get their own PR.
 
 **Size** (enforced by `.github/workflows/pr-size.yml`)
-- Budget: **≤ 300 changed lines and ≤ 8 files** of non-test code under `crates/` and
-  `orchestrators/`. Tests, fixtures, docs, CHANGELOG, lockfiles and JSON schemas don't count.
+- Budget: **≤ 300 changed lines and ≤ 8 files** of non-test code under `crates/`,
+  `orchestrators/` and `src/floe/` (`src/floe/` is enforced once #615 lands). Tests, fixtures, docs, CHANGELOG, lockfiles and JSON schemas don't count.
 - Over budget? Split it into stacked PRs: a behaviour-neutral prep PR (move, extract, rename)
   first, then the behaviour change on top.
 - Only a maintainer may apply the `large-pr` label. Agents never apply it.
@@ -88,6 +89,16 @@ cargo test -p floe-core --test integration -- --test-threads=1   # if floe-core/
 cargo test -p floe-core --doc                           # if floe-core changed
 cargo test -p floe-cli --tests                          # if floe-cli changed
 python scripts/check_orchestrator_drift.py              # if orchestrators/ changed
+```
+
+If `src/floe/`, `tests/` or `conformance/` changed (Python core, `uv`, Python >= 3.11):
+
+```bash
+uv sync
+uv run ruff check
+uv run ruff format --check
+uv run pyright                                          # strict
+uv run pytest
 ```
 
 If `crates/floe-python` changed (inside a venv with `maturin`, `pytest`, `mypy`):
