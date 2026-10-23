@@ -1,0 +1,35 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: casts_coerce
+    domain: spike
+    source:
+      format: csv
+      path: "./in/casts_coerce.csv"
+      options:
+        header: true
+        separator: ","
+      cast_mode: coerce
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/casts_coerce"
+      rejected:
+        format: csv
+        path: "./out/rejected/casts_coerce"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: date
+          type: date
+        - name: datetime
+          type: datetime
+        - name: timestamp
+          type: timestamp
+report:
+  path: "./report"
