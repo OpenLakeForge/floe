@@ -1,0 +1,9 @@
+customer_id,email,region,order_no,amount
+2,b2@example.com,us,300,30
+13,j@example.com,eu,101,31
+14,k@example.com,eu,101,32
+10,i2@example.com,us,301,33
+15,l@example.com,apac,200,34
+16,m@example.com,us,302,35
+16,m@example.com,us,302,36
+16,m@example.com,us,302,37

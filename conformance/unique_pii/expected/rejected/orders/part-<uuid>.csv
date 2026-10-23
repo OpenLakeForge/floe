@@ -1,0 +1,8 @@
+customer_id,email,region,order_no,amount,__floe_row_index,__floe_errors
+2,153e424d4ed3da34b4be26a123a9f00a8199520921accbad6993e13fe0443510,us,300,30.0,0,"[{""rule"":""unique"",""column"":""customer_id"",""message"":""duplicate value""}]"
+13,7ded724f654f7f45d9f4ee5786c1e8b69608c08ec8d4a3166948d5af1e6b1737,eu,101,31.0,1,"[{""rule"":""unique"",""column"":""[region,order_no]"",""message"":""duplicate key""}]"
+14,adf2a3641c4a555cf7793ec9a13768a865ead42d419f17104d5c69bcfd08ebd6,eu,101,32.0,2,"[{""rule"":""unique"",""column"":""[region,order_no]"",""message"":""duplicate key""}]"
+10,5a270379607e63790710a0d7784588f7f78fc9e043a7c4b8f5e50eade3bc1be7,us,301,33.0,3,"[{""rule"":""unique"",""column"":""customer_id"",""message"":""duplicate value""}]"
+15,35bf62e48d8f8f00640dd6c200c0ac63d2fe84b47c42f9a552f22b56d67ec653,apac,200,34.0,4,"[{""rule"":""unique"",""column"":""[region,order_no]"",""message"":""duplicate key""}]"
+16,448194d9b5948852aadc63d4ea928bbd332a5f875ffa90859991fb5d1581f06d,us,302,36.0,6,"[{""rule"":""unique"",""column"":""customer_id"",""message"":""duplicate value""},{""rule"":""unique"",""column"":""[region,order_no]"",""message"":""duplicate key""}]"
+16,448194d9b5948852aadc63d4ea928bbd332a5f875ffa90859991fb5d1581f06d,us,302,37.0,7,"[{""rule"":""unique"",""column"":""customer_id"",""message"":""duplicate value""},{""rule"":""unique"",""column"":""[region,order_no]"",""message"":""duplicate key""}]"
