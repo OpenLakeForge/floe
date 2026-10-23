@@ -1205,6 +1205,48 @@ class ConfigSchemaTest(unittest.TestCase):
             {"version": "0.1", "entities": [complete], "domains": [{"name": "sales"}]},
         )
 
+    def test_profile_accepts_what_rust_accepts(self):
+        schema = yaml.safe_load((ROOT / "schemas/profile.schema.yaml").read_text())
+        Draft202012Validator.check_schema(schema)
+        validator = YamlDraft202012Validator(schema)
+
+        def profile(**extra):
+            return {"apiVersion": "floe/v1", "kind": "EnvironmentProfile", "metadata": {"name": "n"}, **extra}
+
+        def runner(**fields):
+            return profile(execution={"runner": {"type": "local", **fields}})
+
+        # Each case is accepted by `floe validate --profile` in Rust 0.7.0 (#584 S18-S26).
+        cases = {
+            "S18": profile(storages={"default": "loc", "definitions": [{"name": "loc", "type": "local"}]}),
+            "S19": profile(lineage={"url": "http://lineage.example", "namespace": "floe"}),
+            "S20": runner(env_parameters={"A": "b"}),
+            "S21": runner(job_name="daily"),
+            "S22 timeout_seconds": runner(timeout_seconds=0),
+            "S22 poll_interval_seconds": runner(poll_interval_seconds=0),
+            "S23": runner(resources={"memory_mb": 0}),
+            "S24": runner(secrets=[{"name": "", "secret_name": "", "key": ""}]),
+            "S25 image": runner(image=""),
+            "S25 namespace": runner(namespace=""),
+            "S26": profile(catalogs={"default": None, "definitions": [{"name": "r", "type": "rest", "uri": "u"}]}),
+        }
+        for name, document in cases.items():
+            with self.subTest(id=name):
+                self.assert_valid(validator, document)
+        self.assert_invalid(validator, runner(env_parameters={"A": 1}))
+        self.assert_invalid(validator, runner(job_name=1))
+        self.assert_invalid(validator, runner(timeout_seconds=-1))
+        self.assert_invalid(validator, runner(resources={"memory_mb": -1}))
+        for name in ("storages", "lineage"):
+            self.assertEqual(SCHEMA["properties"][name], schema["properties"][name])
+            self.assertEqual(
+                SCHEMA["$defs"][name], schema["$defs"][name],
+                f"profile {name} drifted from the project contract",
+            )
+        self.assertEqual(SCHEMA["$defs"]["storage_definition"], schema["$defs"]["storage_definition"])
+        for path in sorted((ROOT / "example/profiles").glob("*.yml")):
+            self.assert_valid(validator, yaml.safe_load(path.read_text()))
+
     def test_example_project_documents(self):
         self.assert_valid(ROOT_VALIDATOR, yaml.safe_load((ROOT / "example/project/config.yml").read_text()))
         self.assert_valid(
