@@ -69,9 +69,11 @@ jobs:
               - ".github/workflows/ci.yml"
             floe_core:
               - "crates/floe-core/**"
+              - "Cargo.lock"
             core_code:
               - "crates/floe-core/src/**"
               - "crates/floe-core/Cargo.toml"
+              - "Cargo.lock"
             core_code_global:
               - "crates/floe-core/src/**"
               - "!crates/floe-core/src/io/**"
@@ -81,6 +83,7 @@ jobs:
               - "!crates/floe-core/src/config/**"
               - "!crates/floe-core/src/checks/**"
               - "crates/floe-core/Cargo.toml"
+              - "Cargo.lock"
             manifest:
               - "crates/floe-core/src/manifest/**"
               - "crates/floe-core/tests/unit/manifest/**"
@@ -92,6 +95,7 @@ jobs:
               - "crates/floe-core/tests/integration.rs"
             floe_cli:
               - "crates/floe-cli/**"
+              - "Cargo.lock"
             io_format:
               - "crates/floe-core/src/io/format.rs"
               - "crates/floe-core/tests/unit/io/format.rs"
