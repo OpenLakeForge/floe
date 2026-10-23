@@ -75,13 +75,29 @@ _STORAGE_KEYS = (
     "account",
     "container",
     "prefix",
-) + ("endpoint", "path_style_access")
+    "endpoint",
+    "path_style_access",
+)
 _CATALOG_KEYS = (
-    ("name", "type", "uri", "credential", "warehouse", "oauth2_server_uri", "scope")
-    + ("warehouse_storage", "warehouse_prefix")
+    "name",
+    "type",
+    "uri",
+    "credential",
+    "warehouse",
+    "oauth2_server_uri",
+    "scope",
+    "warehouse_storage",
+    "warehouse_prefix",
     # Glue and Unity keys stay allowed, as in Rust, so a typo reports the key first
-    + ("region", "database", "create_database_if_missing", "allow_takeover")
-    + ("host", "catalog", "schema", "token", "create_schema_if_missing")
+    "region",
+    "database",
+    "create_database_if_missing",
+    "allow_takeover",
+    "host",
+    "catalog",
+    "schema",
+    "token",
+    "create_schema_if_missing",
 )
 
 
@@ -117,7 +133,7 @@ def _catalog(value: object, ctx: str) -> CatalogDefinition:
         )
     if catalog_type != "rest":
         raise FloeConfigError(
-            f"{ctx} name={name} has unsupported type={catalog_type} (supported: glue, rest, unity)"
+            f"{ctx} name={name} has unsupported type={catalog_type} (supported: rest)"
         )
     uri = get_string(hash, "uri", ctx)
     credential = opt_string(hash, "credential", ctx)
@@ -133,18 +149,18 @@ def _catalog(value: object, ctx: str) -> CatalogDefinition:
     )
 
 
-def parse_storages(value: object) -> StoragesConfig:
-    hash, items = _items(value, "storages")
+def parse_storages(value: object, context: str = "storages") -> StoragesConfig:
+    hash, items = _items(value, context)
     definitions: list[StorageDefinition] = []
     for index, item in enumerate(items):
         try:
-            definitions.append(_storage(item, "storages.definitions"))
+            definitions.append(_storage(item, f"{context}.definitions"))
         except _Unsupported:
             raise
         except FloeConfigError as e:
-            raise FloeConfigError(f"storages.definitions[{index}]: {e}") from e
+            raise FloeConfigError(f"{context}.definitions[{index}]: {e}") from e
     return StoragesConfig(
-        default=opt_string(hash, "default", "storages"), definitions=definitions
+        default=opt_string(hash, "default", context), definitions=definitions
     )
 
 

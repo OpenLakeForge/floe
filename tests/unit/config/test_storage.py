@@ -82,7 +82,7 @@ def test_parse_storages_errors(value: object, message: str) -> None:
         # parse_catalogs_type_unsupported
         (
             {"definitions": [{"name": "c", "type": "hive"}]},
-            "catalogs.definitions[0]: catalogs.definitions name=c has unsupported type=hive (supported: glue, rest, unity)",
+            "catalogs.definitions[0]: catalogs.definitions name=c has unsupported type=hive (supported: rest)",
         ),
     ],
 )
@@ -121,7 +121,7 @@ def test_parse_catalogs_errors(value: object, message: str) -> None:
         # prof_catalogs_definition_type_unsupported
         (
             {"definitions": [{"name": "r", "type": "hive"}]},
-            "profile.catalogs.definitions[0]: profile.catalogs.definitions name=r has unsupported type=hive (supported: glue, rest, unity)",
+            "profile.catalogs.definitions[0]: profile.catalogs.definitions name=r has unsupported type=hive (supported: rest)",
         ),
         # prof_catalogs_definition_unknown_key
         (
@@ -141,6 +141,21 @@ def test_parse_catalogs_errors_use_the_given_context(
     with pytest.raises(FloeConfigError) as err:
         parse_catalogs(value, "profile.catalogs")
     assert str(err.value) == message
+
+
+def test_parse_storages_uses_the_given_context() -> None:
+    with pytest.raises(FloeConfigError) as err:
+        parse_storages(storages([LOCAL, {"name": "l"}]), "profile.storages")
+    assert (
+        str(err.value)
+        == "profile.storages.definitions[1]: missing required field profile.storages.definitions.type"
+    )
+    with pytest.raises(FloeConfigError) as err:
+        parse_storages(storages([{"name": "a", "type": "adls"}]), "profile.storages")
+    assert (
+        str(err.value)
+        == "profile.storages.definitions name=a type=adls is not supported in 0.8"
+    )
 
 
 @pytest.mark.parametrize(
