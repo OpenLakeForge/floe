@@ -1,13 +1,13 @@
 # polars stubs reference numpy, which is not installed, so their member types are partly unknown
 # pyright: reportUnknownMemberType=false
 import hashlib
+import hmac
 import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-import duckdb
 import polars as pl
 
 from floe.errors import FloeConfigError, FloeRunError
@@ -121,18 +121,16 @@ def _resolve_key(raw: str, name: str) -> str:
 
 
 def _hash(values: pl.Series, name: str, key: str | None) -> pl.Series:
-    # SHA-256, or HMAC-SHA256 (RFC 2104) composed from DuckDB's vectorised sha256 over blobs
+    # ponytail: ~0.8M rows/s single-threaded; upgrade to vectorised HMAC if it becomes a bottleneck
     if key is None:
-        sql = "SELECT sha256(v) AS h FROM frame"
-        params: list[bytes] = []
+        out = [
+            None if v is None else hashlib.sha256(v.encode()).hexdigest()
+            for v in values
+        ]
     else:
         raw = _resolve_key(key, name).encode()
-        if len(raw) > 64:
-            raw = hashlib.sha256(raw).digest()
-        raw = raw.ljust(64, b"\0")
-        params = [bytes(b ^ 0x36 for b in raw), bytes(b ^ 0x5C for b in raw)]
-        sql = "SELECT sha256($2 || unhex(sha256($1 || encode(v)))) AS h FROM frame"
-    with duckdb.connect() as con:
-        con.register("frame", values.to_frame("v"))
-        out = con.sql(sql, params=params).pl()["h"]
-    return out.alias(name)
+        out = [
+            None if v is None else hmac.digest(raw, v.encode(), "sha256").hex()
+            for v in values
+        ]
+    return pl.Series(name, out, dtype=pl.String)
