@@ -737,6 +737,37 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["source"]["format"] = "csv"
         self.assert_valid(ROOT_VALIDATOR, document)
 
+    def test_json_and_xml_selectors_are_not_blank(self):
+        # Rust: the selector is `source`, else `name`; blank is rejected for json/xml only.
+        blank = {
+            "source empty": {"name": "id", "type": "string", "source": ""},
+            "source blank": {"name": "id", "type": "string", "source": " "},
+            "name empty": {"name": "", "type": "string"},
+            "null source, name empty": {"name": "", "type": "string", "source": None},
+        }
+        fine = {"name empty, source set": {"name": "", "type": "string", "source": "a"}}
+
+        def document(fmt, column):
+            entity = complete_entity()
+            entity["source"]["format"] = fmt
+            if fmt == "xml":
+                entity["source"]["options"] = {"row_tag": "row"}
+            entity["schema"]["columns"] = [column]
+            return entity, {"version": "0.3", "entities": [entity]}
+
+        for fmt in ("json", "xml"):
+            for label, column in blank.items():
+                with self.subTest(fmt=fmt, case=label):
+                    entity, project = document(fmt, column)
+                    self.assert_invalid(ROOT_VALIDATOR, project)
+                    self.assert_invalid(validator_for("entity_file"), entity)
+                    self.assert_valid(ROOT_VALIDATOR, document("csv", column)[1])
+            for label, column in fine.items():
+                with self.subTest(fmt=fmt, case=label):
+                    entity, project = document(fmt, column)
+                    self.assert_valid(ROOT_VALIDATOR, project)
+                    self.assert_valid(validator_for("entity_file"), entity)
+
     def test_archive_conflict_is_checked_on_entity_fragments(self):
         entity = {
             "name": "orders", "domain": "sales", "incremental_mode": "file",

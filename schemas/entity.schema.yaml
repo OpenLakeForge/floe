@@ -117,6 +117,53 @@ $defs:
             properties:
               columns:
                 maxItems: 1024
+                items:
+                  description: Selector is source, else name; blank is rejected. Selector grammar is not checked.
+                  if:
+                    required:
+                    - source
+                    properties:
+                      source:
+                        type: string
+                  then:
+                    properties:
+                      source:
+                        pattern: \S
+                  else:
+                    properties:
+                      name:
+                        pattern: \S
+    - if:
+        required:
+        - source
+        properties:
+          source:
+            required:
+            - format
+            properties:
+              format:
+                const: xml
+      then:
+        properties:
+          schema:
+            properties:
+              columns:
+                items:
+                  description: Selector is source, else name; blank is rejected. Selector grammar is not checked.
+                  if:
+                    required:
+                    - source
+                    properties:
+                      source:
+                        type: string
+                  then:
+                    properties:
+                      source:
+                        pattern: \S
+                  else:
+                    properties:
+                      name:
+                        pattern: \S
     - if:
         required:
         - sink
