@@ -1,0 +1,2 @@
+{"table": "b16_500m", "snapshot_id": 5693604559014546742, "pyiceberg": {"total": 507000000, "current": 502000000, "closed": 5000000}, "duckdb": {"total": 507000000, "current": 502000000, "closed": 5000000}, "identical": true, "pyiceberg_s": 26.3}
+{"table": "day_500m", "snapshot_id": 6843666050118798320, "pyiceberg": {"total": 514000000, "current": 504000000, "closed": 10000000}, "duckdb": {"total": 514000000, "current": 504000000, "closed": 10000000}, "identical": true, "pyiceberg_s": 114.0}

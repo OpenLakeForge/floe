@@ -1,0 +1,1 @@
+{"table": "day_500m (first seed, default partitioned_write_max_open_files=100, memory_limit=10GB)", "data_files": 256350, "snapshots": 10, "rows": 500000000}

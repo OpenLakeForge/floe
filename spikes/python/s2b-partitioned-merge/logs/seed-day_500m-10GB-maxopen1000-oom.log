@@ -1,0 +1,18 @@
+Traceback (most recent call last):
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/spike.py", line 404, in <module>
+    main()
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/spike.py", line 400, in main
+    sys.exit({"seed": seed, "run": run, "merge-child": merge_child}[args.cmd](args) or 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/spike.py", line 65, in seed
+    scale.seed(args)
+  File "/home/user/floe/spikes/python/s2-merge/scale.py", line 72, in seed
+    con.execute(
+_duckdb.OutOfMemoryException: Out of Memory Error: could not allocate block of size 76.5 MiB (9.2 GiB/9.3 GiB used)
+
+Possible solutions:
+* Reducing the number of threads (SET threads=X)
+* Disabling insertion-order preservation (SET preserve_insertion_order=false)
+* Increasing the memory limit (SET memory_limit='...GB')
+
+See also https://duckdb.org/docs/stable/guides/performance/how_to_tune_workloads

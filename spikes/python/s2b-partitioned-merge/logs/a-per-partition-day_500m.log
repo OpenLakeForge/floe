@@ -1,0 +1,17 @@
+{"progress": 1, "of": 16, "s": 89.6}
+{"progress": 2, "of": 16, "s": 76.8}
+{"progress": 3, "of": 16, "s": 76.4}
+{"progress": 4, "of": 16, "s": 83.2}
+{"progress": 5, "of": 16, "s": 80.7}
+{"progress": 6, "of": 16, "s": 79.2}
+{"progress": 7, "of": 16, "s": 57.1}
+{"progress": 8, "of": 16, "s": 71.8}
+{"progress": 9, "of": 16, "s": 88.8}
+{"progress": 10, "of": 16, "s": 71.7}
+{"progress": 11, "of": 16, "s": 80.4}
+{"progress": 12, "of": 16, "s": 74.4}
+{"progress": 13, "of": 16, "s": 82.6}
+{"progress": 14, "of": 16, "s": 58.5}
+{"progress": 15, "of": 16, "s": 74.4}
+{"progress": 16, "of": 16, "s": 85.3}
+{"label": "a-per-partition-day", "table": "day_500m", "spec": "[\n  1000: event_day: day(4)\n]", "approach": "split", "slices": 16, "batch_rows": 10000000, "memory_limit": "4GB", "threads": 4, "settings": [], "changed": 5000000, "unchanged": 3000000, "new": 2000000, "split_s": 4.6, "wall_s": 1233.3, "duckdb": "1.5.6", "extensions": {"avro": "f9d5902", "httpfs": "4bc690d", "iceberg": "890b78a9c"}, "merge_s": 1231.7, "statements": 16, "statement_s": [89.6, 76.8, 76.4, 83.2, 80.7, 79.2, 57.1, 71.8, 88.8, 71.7, 80.4, 74.4, 82.6, 58.5, 74.4, 85.3], "commit_s": 0.6, "duckdb_rows_affected": 12000000, "vm_hwm_mib": 5645, "rss_anon_peak_mib": 5556, "peak_spill_mib": 0, "disk_free_min_gib": 15.0, "new_snapshots": 32, "new_catalog_commits": 1, "new_snapshot_ops": ["overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append"], "snapshots": 47, "data_files": 3274, "position_delete_files": 730, "equality_delete_files": 0, "contract": {"closed": 5000000, "inserted": 7000000, "current_rows": 504000000, "total_rows": 514000000, "keys_with_2_current": 0, "pass": true}, "pyiceberg": {"sample_rows": 300000, "identical": true}, "finished_utc": "2026-10-23T09:09:08+00:00"}

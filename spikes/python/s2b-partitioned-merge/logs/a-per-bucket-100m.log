@@ -1,0 +1,17 @@
+{"progress": 1, "of": 16, "s": 13.9}
+{"progress": 2, "of": 16, "s": 5.4}
+{"progress": 3, "of": 16, "s": 5.8}
+{"progress": 4, "of": 16, "s": 5.5}
+{"progress": 5, "of": 16, "s": 5.5}
+{"progress": 6, "of": 16, "s": 5.7}
+{"progress": 7, "of": 16, "s": 6.4}
+{"progress": 8, "of": 16, "s": 6.5}
+{"progress": 9, "of": 16, "s": 6.3}
+{"progress": 10, "of": 16, "s": 6.2}
+{"progress": 11, "of": 16, "s": 6.3}
+{"progress": 12, "of": 16, "s": 6.3}
+{"progress": 13, "of": 16, "s": 6.8}
+{"progress": 14, "of": 16, "s": 6.7}
+{"progress": 15, "of": 16, "s": 6.5}
+{"progress": 16, "of": 16, "s": 6.4}
+{"label": "a-per-bucket", "table": "b16_100m", "spec": "[\n  1000: id_bucket: bucket[16](1)\n]", "approach": "split", "slices": 16, "batch_rows": 10000000, "memory_limit": "4GB", "threads": 4, "settings": [], "changed": 5000000, "unchanged": 3000000, "new": 2000000, "split_s": 6.1, "wall_s": 107.6, "duckdb": "1.5.6", "extensions": {"avro": "f9d5902", "httpfs": "4bc690d", "iceberg": "890b78a9c"}, "merge_s": 106.7, "statements": 16, "statement_s": [13.9, 5.4, 5.8, 5.5, 5.5, 5.7, 6.4, 6.5, 6.3, 6.2, 6.3, 6.3, 6.8, 6.7, 6.5, 6.4], "commit_s": 0.3, "duckdb_rows_affected": 12000000, "vm_hwm_mib": 2397, "rss_anon_peak_mib": 2298, "peak_spill_mib": 0, "disk_free_min_gib": 26.1, "new_snapshots": 32, "new_catalog_commits": 1, "new_snapshot_ops": ["overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append"], "snapshots": 34, "data_files": 64, "position_delete_files": 16, "equality_delete_files": 0, "contract": {"closed": 5000000, "inserted": 7000000, "current_rows": 102000000, "total_rows": 107000000, "keys_with_2_current": 0, "pass": true}, "pyiceberg": {"sample_rows": 300000, "identical": true}, "finished_utc": "2026-10-23T07:24:05+00:00"}

@@ -1,0 +1,15 @@
+{"seed_rows": 0, "seed_s": 0.0}
+seeded days [0, 30) (46s)
+seeded days [30, 60) (91s)
+seeded days [60, 90) (137s)
+seeded days [90, 120) (180s)
+seeded days [120, 150) (224s)
+seeded days [150, 180) (267s)
+seeded days [180, 210) (310s)
+seeded days [210, 240) (354s)
+seeded days [240, 270) (401s)
+seeded days [270, 300) (448s)
+seeded days [300, 330) (491s)
+seeded days [330, 360) (535s)
+seeded days [360, 365) (545s)
+{"seed_rows": 500000000, "seed_s": 544.9}

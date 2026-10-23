@@ -1,0 +1,36 @@
+Traceback (most recent call last):
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/spike.py", line 391, in <module>
+    main()
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/spike.py", line 387, in main
+    sys.exit({"seed": seed, "run": run, "merge-child": merge_child}[args.cmd](args) or 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/spike.py", line 331, in run
+    after = table_state(tbl)
+            ^^^^^^^^^^^^^^^^
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/spike.py", line 256, in table_state
+    files = tbl.inspect.files().select(["content"]).to_pylist()
+            ^^^^^^^^^^^^^^^^^^^
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/.venv/lib/python3.11/site-packages/pyiceberg/table/inspect.py", line 894, in files
+    return self._files(snapshot_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/.venv/lib/python3.11/site-packages/pyiceberg/table/inspect.py", line 879, in _files
+    lambda manifest_list: self._get_files_from_manifest(manifest_list, data_file_filter), snapshot.manifests(io)
+                                                                                          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/.venv/lib/python3.11/site-packages/pyiceberg/table/snapshots.py", line 289, in manifests
+    return list(_manifests(io, self.manifest_list))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/.venv/lib/python3.11/site-packages/pyiceberg/manifest.py", line 982, in _manifests
+    manifest_files = list(read_manifest_list(file))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/.venv/lib/python3.11/site-packages/pyiceberg/manifest.py", line 997, in read_manifest_list
+    with AvroFile[ManifestFile](
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/.venv/lib/python3.11/site-packages/pyiceberg/avro/file.py", line 174, in __enter__
+    with self.input_file.open() as f:
+         ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/floe/spikes/python/s2b-partitioned-merge/.venv/lib/python3.11/site-packages/pyiceberg/io/pyarrow.py", line 340, in open
+    input_file = self._filesystem.open_input_file(self._path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pyarrow/_fs.pyx", line 815, in pyarrow._fs.FileSystem.open_input_file
+  File "pyarrow/error.pxi", line 155, in pyarrow.lib.pyarrow_internal_check_status
+  File "pyarrow/error.pxi", line 92, in pyarrow.lib.check_status
+OSError: When reading information for key 'spike/spike/day_500m/metadata/snap-5702455477890007127-f41f4e59-1c9e-449e-a97e-f07a63cb3bc0.avro' in bucket 'warehouse': AWS Error NETWORK_CONNECTION during HeadObject operation: curlCode: 56, Failure when receiving data from the peer; Details: Recv failure: Connection reset by peer

@@ -1,0 +1,17 @@
+{"progress": 1, "of": 16, "s": 83.3}
+{"progress": 2, "of": 16, "s": 69.6}
+{"progress": 3, "of": 16, "s": 62.4}
+{"progress": 4, "of": 16, "s": 73.1}
+{"progress": 5, "of": 16, "s": 74.6}
+{"progress": 6, "of": 16, "s": 73.7}
+{"progress": 7, "of": 16, "s": 74.9}
+{"progress": 8, "of": 16, "s": 52.4}
+{"progress": 9, "of": 16, "s": 70.3}
+{"progress": 10, "of": 16, "s": 61.7}
+{"progress": 11, "of": 16, "s": 50.4}
+{"progress": 12, "of": 16, "s": 67.5}
+{"progress": 13, "of": 16, "s": 72.0}
+{"progress": 14, "of": 16, "s": 76.4}
+{"progress": 15, "of": 16, "s": 75.4}
+{"progress": 16, "of": 16, "s": 77.2}
+{"label": "a-per-bucket-repeat", "table": "b16_500m", "spec": "[\n  1000: id_bucket: bucket[16](1)\n]", "approach": "split", "slices": 16, "batch_rows": 10000000, "memory_limit": "4GB", "threads": 4, "settings": [], "changed": 5000000, "unchanged": 3000000, "new": 2000000, "split_s": 6.2, "wall_s": 1116.5, "duckdb": "1.5.6", "extensions": {"avro": "f9d5902", "httpfs": "4bc690d", "iceberg": "890b78a9c"}, "merge_s": 1115.4, "statements": 16, "statement_s": [83.3, 69.6, 62.4, 73.1, 74.6, 73.7, 74.9, 52.4, 70.3, 61.7, 50.4, 67.5, 72.0, 76.4, 75.4, 77.2], "commit_s": 0.5, "duckdb_rows_affected": 12000000, "vm_hwm_mib": 5980, "rss_anon_peak_mib": 5897, "peak_spill_mib": 0, "disk_free_min_gib": 13.9, "new_snapshots": 32, "new_catalog_commits": 1, "new_snapshot_ops": ["overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append", "overwrite", "append"], "snapshots": 74, "data_files": 224, "position_delete_files": 32, "equality_delete_files": 0, "contract": {"closed": 5000000, "inserted": 7000000, "current_rows": 504000000, "total_rows": 514000000, "keys_with_2_current": 0, "pass": true}, "pyiceberg": {"sample_rows": 300000, "identical": true}, "finished_utc": "2026-10-23T09:34:26+00:00"}
