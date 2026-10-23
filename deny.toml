@@ -25,6 +25,7 @@ ignore = [
   { id = "RUSTSEC-2026-0098", reason = "remaining affected copy pinned by aws-smithy-http-client's rustls 0.21 legacy path" },
   { id = "RUSTSEC-2026-0099", reason = "remaining affected copy pinned by aws-smithy-http-client's rustls 0.21 legacy path" },
   { id = "RUSTSEC-2026-0104", reason = "remaining affected copy pinned by aws-smithy-http-client's rustls 0.21 legacy path" },
+  { id = "RUSTSEC-2026-0382", reason = "remaining affected copy pinned by aws-smithy-http-client's rustls 0.21 legacy path" },
   # h2 empty DATA frames DoS. The 0.4.x copy is patched in the lock; the remaining
   # 0.3.27 has no fixed 0.3 release and comes from the same legacy hyper 0.14
   # connector (aws-sdk-* `rustls` feature, also enabled by deltalake-aws).
