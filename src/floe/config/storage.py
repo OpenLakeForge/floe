@@ -1,10 +1,15 @@
 """Storage and catalog definitions, ported from `config/parse.rs` (`parse_storages`, `parse_catalogs_with_context`)."""
 
-from typing import cast
-
 from pydantic import BaseModel, ConfigDict, SecretStr
 
-from floe.config.yaml import yaml_hash, yaml_string
+from floe.config.yaml import (
+    get_string,
+    opt_bool,
+    opt_string,
+    validate_known_keys,
+    yaml_array,
+    yaml_hash,
+)
 from floe.errors import FloeConfigError
 
 Hash = dict[object, object]
@@ -53,44 +58,13 @@ class _Unsupported(FloeConfigError):
     """A D1 rejection: raised as is, without the `definitions[i]:` prefix."""
 
 
-def _known_keys(hash: Hash, ctx: str, allowed: tuple[str, ...]) -> None:
-    for key in hash:
-        if not isinstance(key, str):
-            raise FloeConfigError(f"expected string key at {ctx}")
-        if key not in allowed:
-            raise FloeConfigError(f"unknown field {ctx}.{key}")
-
-
-def _get_string(hash: Hash, key: str, ctx: str) -> str:
-    if key not in hash:
-        raise FloeConfigError(f"missing required field {ctx}.{key}")
-    return yaml_string(hash[key], f"{ctx}.{key}")
-
-
-def _opt_string(hash: Hash, key: str, ctx: str) -> str | None:
-    value = hash.get(key)
-    return None if value is None else yaml_string(value, f"{ctx}.{key}")
-
-
-def _opt_bool(hash: Hash, key: str, ctx: str) -> bool | None:
-    value = hash.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, bool):
-        raise FloeConfigError(f"expected boolean at {ctx}.{key}")
-    return value
-
-
 def _items(value: object, context: str) -> tuple[Hash, list[object]]:
     """The `default` + `definitions` shape shared by `storages` and `catalogs`."""
     hash = yaml_hash(value, context)
-    _known_keys(hash, context, ("default", "definitions"))
+    validate_known_keys(hash, context, ("default", "definitions"))
     if "definitions" not in hash:
         raise FloeConfigError(f"missing required field {context}.definitions")
-    items = hash["definitions"]
-    if not isinstance(items, list):
-        raise FloeConfigError(f"expected array at {context}.definitions")
-    return hash, cast("list[object]", items)
+    return hash, yaml_array(hash["definitions"], f"{context}.definitions")
 
 
 _STORAGE_KEYS = (
@@ -113,17 +87,17 @@ _CATALOG_KEYS = (
 
 def _storage(value: object, ctx: str) -> StorageDefinition:
     hash = yaml_hash(value, ctx)
-    _known_keys(hash, ctx, _STORAGE_KEYS)
+    validate_known_keys(hash, ctx, _STORAGE_KEYS)
     definition = StorageDefinition(
-        name=_get_string(hash, "name", ctx),
-        type=_get_string(hash, "type", ctx),
-        bucket=_opt_string(hash, "bucket", ctx),
-        region=_opt_string(hash, "region", ctx),
-        account=_opt_string(hash, "account", ctx),
-        container=_opt_string(hash, "container", ctx),
-        prefix=_opt_string(hash, "prefix", ctx),
-        endpoint=_opt_string(hash, "endpoint", ctx),
-        path_style_access=_opt_bool(hash, "path_style_access", ctx),
+        name=get_string(hash, "name", ctx),
+        type=get_string(hash, "type", ctx),
+        bucket=opt_string(hash, "bucket", ctx),
+        region=opt_string(hash, "region", ctx),
+        account=opt_string(hash, "account", ctx),
+        container=opt_string(hash, "container", ctx),
+        prefix=opt_string(hash, "prefix", ctx),
+        endpoint=opt_string(hash, "endpoint", ctx),
+        path_style_access=opt_bool(hash, "path_style_access", ctx),
     )
     if definition.type in ("adls", "gcs"):
         raise _Unsupported(
@@ -134,9 +108,9 @@ def _storage(value: object, ctx: str) -> StorageDefinition:
 
 def _catalog(value: object, ctx: str) -> CatalogDefinition:
     hash = yaml_hash(value, ctx)
-    _known_keys(hash, ctx, _CATALOG_KEYS)
-    name = _get_string(hash, "name", ctx)
-    catalog_type = _get_string(hash, "type", ctx)
+    validate_known_keys(hash, ctx, _CATALOG_KEYS)
+    name = get_string(hash, "name", ctx)
+    catalog_type = get_string(hash, "type", ctx)
     if catalog_type in ("glue", "unity"):
         raise _Unsupported(
             f"{ctx} name={name} type={catalog_type} is not supported in 0.8"
@@ -145,17 +119,17 @@ def _catalog(value: object, ctx: str) -> CatalogDefinition:
         raise FloeConfigError(
             f"{ctx} name={name} has unsupported type={catalog_type} (supported: glue, rest, unity)"
         )
-    uri = _get_string(hash, "uri", ctx)
-    credential = _opt_string(hash, "credential", ctx)
+    uri = get_string(hash, "uri", ctx)
+    credential = opt_string(hash, "credential", ctx)
     return CatalogDefinition(
         name=name,
         uri=uri,
         credential=None if credential is None else SecretStr(credential),
-        warehouse=_opt_string(hash, "warehouse", ctx),
-        oauth2_server_uri=_opt_string(hash, "oauth2_server_uri", ctx),
-        scope=_opt_string(hash, "scope", ctx),
-        warehouse_storage=_opt_string(hash, "warehouse_storage", ctx),
-        warehouse_prefix=_opt_string(hash, "warehouse_prefix", ctx),
+        warehouse=opt_string(hash, "warehouse", ctx),
+        oauth2_server_uri=opt_string(hash, "oauth2_server_uri", ctx),
+        scope=opt_string(hash, "scope", ctx),
+        warehouse_storage=opt_string(hash, "warehouse_storage", ctx),
+        warehouse_prefix=opt_string(hash, "warehouse_prefix", ctx),
     )
 
 
@@ -170,7 +144,7 @@ def parse_storages(value: object) -> StoragesConfig:
         except FloeConfigError as e:
             raise FloeConfigError(f"storages.definitions[{index}]: {e}") from e
     return StoragesConfig(
-        default=_opt_string(hash, "default", "storages"), definitions=definitions
+        default=opt_string(hash, "default", "storages"), definitions=definitions
     )
 
 
@@ -185,5 +159,5 @@ def parse_catalogs(value: object, context: str = "catalogs") -> CatalogsConfig:
         except FloeConfigError as e:
             raise FloeConfigError(f"{context}.definitions[{index}]: {e}") from e
     return CatalogsConfig(
-        default=_opt_string(hash, "default", context), definitions=definitions
+        default=opt_string(hash, "default", context), definitions=definitions
     )
