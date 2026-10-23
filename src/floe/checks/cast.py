@@ -22,7 +22,7 @@ _DTYPES: dict[str, pl.DataType] = {
 # groups 1-3 year/month/day, 4-7 hour/minute/second/fraction, 8-10 offset sign/hour/minute.
 _DATE = r"\+?([0-9]{1,4})-([0-9]{1,2})-([0-9]{1,2})"
 _TIME = r"T([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2})(?:\.([0-9]*))?)?"
-_OFFSET = r"(?:Z|([+-])([0-9]{2})(?::?([0-9]{2}))?)?"
+_OFFSET = r"(?:[Zz]|([+-])([0-9]{2})(?::?([0-9]{2}))?)?"
 _DATE_RE = f"^{_DATE}$"
 _DATETIME_RE = f"^{_DATE}{_TIME}{_OFFSET}$"
 
@@ -66,7 +66,9 @@ def _datetime(raw: pl.Expr) -> pl.Expr:
         minutes=-off_sign * off_minute,
         time_unit="ms",
     )
-    return pl.when(valid).then(local + shift)
+    utc = local + shift
+    # the 1..9999 year range applies to the final value (rollover, offset), not only the input
+    return pl.when(valid & utc.dt.year().is_between(1, 9999)).then(utc)
 
 
 def _boolean(raw: pl.Expr) -> pl.Expr:

@@ -121,6 +121,10 @@ D9_DATETIME_OFFSETS = [
     ("2024-01-01T10:00:60+02:00", at(8, 1)),
     ("2024-01-01T01:00:00+02:00", at(23, d=(2023, 12, 31))),
     ("2024-01-01T10:00:00-00:00", at(10)),
+    ("2024-01-01T10:00:00z", at(10)),
+    ("2024-01-01T10:00:00.5z", at(10, ms=500)),
+    ("0001-01-01T02:00:00+02:00", at(0, d=(1, 1, 1))),
+    ("9999-12-31T21:59:59-02:00", at(23, 59, 59, d=(9999, 12, 31))),
     (" 2024-01-01T10:00:00+02:00 ", at(8)),
     ("2024-01-01T10:00:00+23:59", at(10, 1, d=(2023, 12, 31))),
 ]
@@ -145,7 +149,6 @@ D9_DATETIME_REJECTED = [
     # offsets outside hh:mm, hhmm, hh, Z (Rust ignores them; not in the case READMEs)
     "2024-01-01T10:00:00+25:00", "2024-01-01T10:00:00+02:60", "2024-01-01T10:00:00+2:00",
     "2024-01-01T10:00:00+02:0", "2024-01-01T10:00:00+020", "2024-01-01T10:00:00+",
-    "2024-01-01T10:00:00z",
 ]  # fmt: skip
 
 
@@ -175,12 +178,15 @@ def test_datetime_d9_rejected() -> None:
     check_rejected("datetime", D9_DATETIME_REJECTED)
 
 
-def test_datetime_rollover_past_year_9999_is_kept() -> None:
-    # Rust 0.7 stores year 10000 too; datetime objects cannot hold it, so compare epoch ms.
-    df = pl.DataFrame({"v": ["9999-12-31T23:59:60"]})
-    assert df.select(cast_column("v", "datetime")[0].cast(pl.Int64))["v"].to_list() == [
-        253402300800000
-    ]
+def test_datetime_final_year_outside_1_9999_rejected() -> None:
+    check_rejected(
+        "datetime",
+        [
+            "9999-12-31T23:59:60",  # rollover to year 10000 (Rust stores it)
+            "9999-12-31T22:00:00-02:00",  # offset to year 10000
+            "0001-01-01T00:00:00+02:00",  # offset to year 0
+        ],
+    )
 
 
 def test_datetime_is_millisecond_datetime() -> None:
