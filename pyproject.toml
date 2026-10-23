@@ -20,6 +20,7 @@ dev = [
     "numpy>=2.4.6",
     "pyright",
     "pytest",
+    "pytest-cov>=7.1.0",
     "ruff",
 ]
 conformance = ["pyarrow"]
