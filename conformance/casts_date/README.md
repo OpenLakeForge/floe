@@ -57,11 +57,21 @@ Rejected rows go to `expected/rejected` with `__floe_errors` = one `cast_error` 
 - Empty string is null (accepted, null in the output). Whitespace-only is rejected.
 - Impossible calendar days are rejected; no time part is allowed.
 
-## Accepted by Rust but not in this case
-`check.py` reads Parquet through pyarrow `to_pylist`, which cannot represent years outside 1..9999, so these
-were run once against the Rust 0.7 binary (stored value shown, day number decoded by hand) and left out of `in/`:
-`-2024-01-01` -> `-2024-01-02`, `-0001-01-01` -> `-1-01-02`, `0000-01-01` -> `0-01-02`, `+10000-01-01` -> `10000-01-01`.
+## Out-of-range years (d43-d46)
+Rust accepts a signed year outside 1..9999: `0000-01-01` (d43), `-0001-01-01` (d44), `-2024-01-01` (d45), `+10000-01-01` (d46).
+They are stored as the proleptic Gregorian day (`d43` = day -719528). `check.py` renders them through Arrow, not Python `date`.
 
 ## Looks like a Rust bug (recorded as is; candidates for an intentional delta in #619)
-- Years <= 0 are stored one day late (see below; year 1 is exact).
 - Whitespace inside the value (`2024- 01-01`, `2024 -01-01`) is accepted.
+
+## Intentional delta D9 (`delta.yml`, `expected_python/`)
+Python rejects years outside 1..9999 and whitespace inside a value (#617 decision, D9), as a `cast_error` on `date`
+with the same message as Rust. Rows changed: d34, d35, d36 (spaces inside), d43-d46 (year outside 1..9999).
+Leading/trailing spaces (d06-d08) and the `+` sign (d09) are not touched by D9 and stay accepted.
+
+`expected_python/` was derived from `expected/` of the same case (no Python run exists yet):
+- `accepted/casts_date.parquet`: the seven rows removed, others unchanged;
+- `rejected/casts_date/part-00000.csv`: for each of the seven rows, a copy of a Rust-rejected `date` row with that `id`
+  and `__floe_row_index` (its 0-based line in `in/`), merged in row-index order;
+- `reports/`: `accepted_total`/`accepted_rows`/`accepted_count` minus 7, `rejected_total`/`rejected_count`/`errors`/`violations`
+  (global and the `date` column) plus 7. Writer byte metrics keep Rust's values (ignored on compare).

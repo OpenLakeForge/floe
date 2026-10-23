@@ -1,0 +1,48 @@
+{
+  "spec_version": "0.3",
+  "tool": {
+    "name": "floe",
+    "version": "0.7.0"
+  },
+  "run": {
+    "run_id": "<volatile>",
+    "started_at": "<volatile>",
+    "finished_at": "<volatile>",
+    "duration_ms": "<volatile>",
+    "status": "rejected",
+    "exit_code": 0
+  },
+  "config": {
+    "path": "<ROOT>/config.yml",
+    "version": "0.3"
+  },
+  "report": {
+    "path": "<ROOT>/report",
+    "report_file": "<ROOT>/report/run_<id>/run.summary.json"
+  },
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 47,
+    "accepted_total": 15,
+    "rejected_total": 32,
+    "warnings_total": 0,
+    "errors_total": 32
+  },
+  "entities": [
+    {
+      "name": "spike.casts_date",
+      "status": "rejected",
+      "results": {
+        "files_total": 1,
+        "files_skipped": 0,
+        "rows_total": 47,
+        "accepted_total": 15,
+        "rejected_total": 32,
+        "warnings_total": 0,
+        "errors_total": 32
+      },
+      "report_file": "<ROOT>/report/run_<id>/spike/casts_date/run.json"
+    }
+  ]
+}

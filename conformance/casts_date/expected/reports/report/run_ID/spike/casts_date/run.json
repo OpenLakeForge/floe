@@ -45,14 +45,14 @@
     "path": "local://<ROOT>/out/accepted/casts_date",
     "table_root_uri": "local://<ROOT>/out/accepted/casts_date",
     "write_mode": "overwrite",
-    "accepted_rows": 18,
+    "accepted_rows": 22,
     "files_written": 1,
     "parts_written": 1,
     "part_files": [
       "part-00000.parquet"
     ],
-    "total_bytes_written": 1574,
-    "avg_file_size_mb": 0.0015010833740234375,
+    "total_bytes_written": 1606,
+    "avg_file_size_mb": 0.0015316009521484375,
     "small_files_count": 1
   },
   "schema_evolution": {
@@ -64,8 +64,8 @@
   "results": {
     "files_total": 1,
     "files_skipped": 0,
-    "rows_total": 43,
-    "accepted_total": 18,
+    "rows_total": 47,
+    "accepted_total": 22,
     "rejected_total": 25,
     "warnings_total": 0,
     "errors_total": 25
@@ -74,8 +74,8 @@
     {
       "input_file": "local://<ROOT>/in/casts_date.csv",
       "status": "rejected",
-      "row_count": 43,
-      "accepted_count": 18,
+      "row_count": 47,
+      "accepted_count": 22,
       "rejected_count": 25,
       "mismatch": {
         "declared_columns_count": 4,
