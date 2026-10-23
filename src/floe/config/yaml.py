@@ -2,7 +2,7 @@
 
 import re
 import unicodedata
-from collections.abc import Iterator
+from collections.abc import Container, Iterator
 from pathlib import Path
 from typing import cast
 
@@ -157,4 +157,81 @@ def yaml_hash(value: object, ctx: str) -> dict[object, object]:
 def yaml_string(value: object, ctx: str) -> str:
     if not isinstance(value, str):
         raise FloeConfigError(f"expected string at {ctx}")
+    return value
+
+
+def yaml_array(value: object, ctx: str) -> list[object]:
+    if not isinstance(value, list):
+        raise FloeConfigError(f"expected array at {ctx}")
+    return cast("list[object]", value)
+
+
+def validate_known_keys(
+    hash: dict[object, object], ctx: str, allowed: Container[str]
+) -> None:
+    for key in hash:
+        if not isinstance(key, str):
+            raise FloeConfigError(f"expected string key at {ctx}")
+        if key not in allowed:
+            raise FloeConfigError(f"unknown field {ctx}.{key}")
+
+
+# Ports of the field readers in `config/parse.rs`; `None` is an absent or null value.
+
+
+def get_value(hash: dict[object, object], key: str, ctx: str) -> object:
+    if key not in hash:
+        raise FloeConfigError(f"missing required field {ctx}.{key}")
+    return hash[key]
+
+
+def get_string(hash: dict[object, object], key: str, ctx: str) -> str:
+    return yaml_string(get_value(hash, key, ctx), f"{ctx}.{key}")
+
+
+def get_array(hash: dict[object, object], key: str, ctx: str) -> list[object]:
+    return yaml_array(get_value(hash, key, ctx), f"{ctx}.{key}")
+
+
+def opt_string(hash: dict[object, object], key: str, ctx: str) -> str | None:
+    value = hash.get(key)
+    return None if value is None else yaml_string(value, f"{ctx}.{key}")
+
+
+def _strings(value: object, ctx: str) -> list[str]:
+    items = yaml_array(value, ctx)
+    return [yaml_string(item, f"{ctx}[{i}]") for i, item in enumerate(items)]
+
+
+def opt_vec_string(hash: dict[object, object], key: str, ctx: str) -> list[str] | None:
+    value = hash.get(key)
+    return None if value is None else _strings(value, f"{ctx}.{key}")
+
+
+def opt_vec_vec_string(
+    hash: dict[object, object], key: str, ctx: str
+) -> list[list[str]] | None:
+    value = hash.get(key)
+    if value is None:
+        return None
+    base = f"{ctx}.{key}"
+    rows = yaml_array(value, base)
+    return [_strings(row, f"{base}[{i}]") for i, row in enumerate(rows)]
+
+
+def opt_bool(hash: dict[object, object], key: str, ctx: str) -> bool | None:
+    value = hash.get(key)
+    if value is not None and not isinstance(value, bool):
+        raise FloeConfigError(f"expected boolean at {ctx}.{key}")
+    return value
+
+
+def opt_u64(hash: dict[object, object], key: str, ctx: str) -> int | None:
+    value = hash.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise FloeConfigError(f"expected integer at {ctx}.{key}")
+    if value < 0:
+        raise FloeConfigError(f"expected positive integer at {ctx}.{key}")
     return value
