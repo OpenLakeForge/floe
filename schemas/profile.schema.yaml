@@ -43,6 +43,12 @@ properties:
   validation:
     $ref: "#/$defs/profile_validation"
 
+  storages:
+    $ref: "#/$defs/storages"
+
+  lineage:
+    $ref: "#/$defs/lineage"
+
 $defs:
   profile_metadata:
     type: object
@@ -139,7 +145,7 @@ $defs:
           execution.base_args + execution.per_entity_args are used.
       timeout_seconds:
         type: integer
-        minimum: 1
+        minimum: 0
         maximum: 9223372036854775807
         description: >
           Maximum wall-clock time (in seconds) before the runner considers the job timed out.
@@ -153,7 +159,7 @@ $defs:
           completed Jobs after this many seconds.
       poll_interval_seconds:
         type: integer
-        minimum: 1
+        minimum: 0
         maximum: 9223372036854775807
         description: >
           Polling interval (in seconds) used by the runner while waiting for the job to
@@ -161,14 +167,12 @@ $defs:
       # ── Kubernetes runner fields ──────────────────────────────────────────
       image:
         type: string
-        minLength: 1
         description: >
           Container image for the Floe runner Pod
           (required when type = "kubernetes_job").
           Example: my-registry/floe:1.2.3
       namespace:
         type: string
-        minLength: 1
         description: >
           Kubernetes namespace where the Job will be created
           (required when type = "kubernetes_job").
@@ -189,9 +193,17 @@ $defs:
               (e.g. "500m", "1", "2000m").
           memory_mb:
             type: integer
-            minimum: 1
+            minimum: 0
             maximum: 9223372036854775807
             description: Memory request in mebibytes (e.g. 512 → 512Mi).
+      env_parameters:
+        type: object
+        additionalProperties:
+          type: string
+        description: String key→value parameters passed to the runner (used when building the manifest).
+      job_name:
+        type: string
+        description: Job name passed to the runner (used when building the manifest).
       env:
         type: object
         additionalProperties:
@@ -214,15 +226,12 @@ $defs:
           properties:
             name:
               type: string
-              minLength: 1
               description: Name of the environment variable set in the container.
             secret_name:
               type: string
-              minLength: 1
               description: Name of the Kubernetes Secret resource.
             key:
               type: string
-              minLength: 1
               description: Key within the Kubernetes Secret.
       # ── Databricks runner fields ──────────────────────────────────────────
       workspace_url:
@@ -327,7 +336,7 @@ $defs:
       config-level catalogs block for that command invocation.
     properties:
       default:
-        type: string
+        type: [string, 'null']
         description: Default catalog name used when entity sinks omit a catalog.
       definitions:
         type: array
@@ -421,3 +430,150 @@ $defs:
           schema columns must be present, no extra columns allowed).
           When false or absent, validation follows the default behaviour
           defined in the main Floe config.
+
+  storages:
+    type: object
+    additionalProperties: false
+    required:
+    - default
+    - definitions
+    properties:
+      default:
+        type: string
+      definitions:
+        type: array
+        items:
+          $ref: '#/$defs/storage_definition'
+        minItems: 1
+  storage_definition:
+    type: object
+    additionalProperties: false
+    required:
+    - name
+    - type
+    properties:
+      name:
+        type: string
+      type:
+        type: string
+        enum:
+        - local
+        - s3
+        - adls
+        - gcs
+      bucket:
+        type:
+        - string
+        - 'null'
+      region:
+        type:
+        - string
+        - 'null'
+      account:
+        type:
+        - string
+        - 'null'
+      container:
+        type:
+        - string
+        - 'null'
+      prefix:
+        type:
+        - string
+        - 'null'
+      endpoint:
+        type:
+        - string
+        - 'null'
+      path_style_access:
+        type:
+        - boolean
+        - 'null'
+    allOf:
+    - if:
+        required:
+        - type
+        properties:
+          type:
+            const: s3
+      then:
+        required:
+        - bucket
+        - region
+        properties:
+          bucket:
+            type: string
+          region:
+            type: string
+    - if:
+        required:
+        - type
+        properties:
+          type:
+            const: adls
+      then:
+        required:
+        - account
+        - container
+        properties:
+          account:
+            type: string
+          container:
+            type: string
+    - if:
+        required:
+        - type
+        properties:
+          type:
+            const: gcs
+      then:
+        required:
+        - bucket
+        properties:
+          bucket:
+            type: string
+  lineage:
+    type: object
+    additionalProperties: false
+    properties:
+      url:
+        type: string
+        pattern: \S
+      endpoint:
+        type:
+        - string
+        - 'null'
+      api_key:
+        type:
+        - string
+        - 'null'
+      namespace:
+        type: string
+        pattern: \S
+      dataset_namespace:
+        type:
+        - string
+        - 'null'
+      producer:
+        type:
+        - string
+        - 'null'
+      job_name:
+        type:
+        - string
+        - 'null'
+      timeout_secs:
+        type:
+        - integer
+        - 'null'
+        minimum: 0
+        maximum: 9223372036854775807
+      max_failures:
+        type:
+        - integer
+        - 'null'
+        minimum: 1
+        maximum: 4294967295
+    required:
+    - url
+    - namespace
