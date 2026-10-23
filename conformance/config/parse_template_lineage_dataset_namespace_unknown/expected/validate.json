@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "lineage.dataset_namespace references unknown variable nope"
+}

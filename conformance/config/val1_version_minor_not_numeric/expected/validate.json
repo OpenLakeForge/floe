@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "root.version=0.x is invalid; expected numeric major.minor format like \"0.1\""
+}

@@ -1,0 +1,233 @@
+version: "0.1"
+
+metadata:
+  project: "floe"
+  description: "Example multi-entity technical ingestion config"
+  owner: "data-platform"
+  tags: ["v0.1", "examples"]
+
+report:
+  path: "./report"
+
+entities:
+  - name: "customer"
+    incremental_mode: "file"
+    state:
+      path: "./state/customer.json"
+
+    metadata:
+      data_product: "customer_master"
+      domain: "sales"
+      owner: "data-platform"
+      description: "Technical ingestion contract for customer dataset"
+      tags: ["prepared", "masterdata"]
+
+    source:
+      format: "csv"
+      path: "./in/customer"
+      options:
+        header: true
+        separator: ","
+        encoding: "utf-8"
+        null_values: ["", "NULL", "null"]
+        glob: "*.csv"
+      cast_mode: "strict"   # strict | coerce
+
+    sink:
+      accepted:
+        format: "delta"
+        path: "./out/accepted/customer_delta/"
+      rejected:
+        format: "csv"
+        path: "./out/rejected/customer/"
+
+
+    policy:
+      severity: "reject"   # warn | reject | abort
+
+    schema:
+      mismatch:
+        missing_columns: "reject_file"
+        extra_columns: "ignore"
+      normalize_columns:
+        enabled: true
+        strategy: "snake_case"     # snake_case | lower | none
+
+      columns:
+        - name: "customer_id"
+          type: "string"
+          nullable: false
+          unique: true
+
+        - name: "email"
+          type: "string"
+          nullable: true
+          unique: true
+
+        - name: "country_code"
+          type: "string"
+          nullable: true
+          unique: false
+
+        - name: "created_at"
+          type: "datetime"
+          nullable: true
+          unique: false
+
+  - name: "orders"
+
+    metadata:
+      data_product: "order_events"
+      domain: "sales"
+      owner: "data-platform"
+      description: "Technical ingestion contract for order events"
+      tags: ["prepared", "events"]
+
+    source:
+      format: "json"
+      path: "./in/orders"
+      options:
+        json_mode: "array"
+      cast_mode: "strict"   # strict | coerce
+
+    sink:
+      accepted:
+        format: "parquet"
+        path: "./out/accepted/orders/"
+      rejected:
+        format: "csv"
+        path: "./out/rejected/orders/"
+
+    policy:
+      severity: "warn"   # warn | reject | abort
+
+    schema:
+      mismatch:
+        missing_columns: "fill_nulls"
+        extra_columns: "ignore"
+      normalize_columns:
+        enabled: true
+        strategy: "snake_case"     # snake_case | lower | none
+
+      columns:
+        - name: "order_id"
+          source: "order.id"
+          type: "string"
+          nullable: false
+          unique: true
+
+        - name: "customer_id"
+          source: "customer.id"
+          type: "string"
+          nullable: false
+          unique: false
+
+        - name: "order_total"
+          source: "totals.amount"
+          type: "number"
+          nullable: false
+          unique: false
+
+        - name: "currency"
+          source: "totals.currency"
+          type: "string"
+          nullable: true
+          unique: false
+
+        - name: "created_at"
+          source: "timestamps.created_at"
+          type: "datetime"
+          nullable: true
+          unique: false
+
+        - name: "order_date"
+          source: "timestamps.order_date"
+          type: "date"
+          nullable: true
+          unique: false
+
+        - name: "is_expedited"
+          source: "shipping.expedited"
+          type: "boolean"
+          nullable: true
+          unique: false
+
+        - name: "first_item_sku"
+          source: "items[0].sku"
+          type: "string"
+          nullable: true
+          unique: false
+
+        - name: "first_item_qty"
+          source: "items[0].quantity"
+          type: "number"
+          nullable: true
+          unique: false
+
+        - name: "first_tag"
+          source: "tags[0]"
+          type: "string"
+          nullable: true
+          unique: false
+
+  - name: "customer_warehouse"
+
+    metadata:
+      data_product: "customer_master"
+      domain: "sales"
+      owner: "data-platform"
+      description: "Customer master upserted into a local DuckDB warehouse"
+      tags: ["prepared", "masterdata", "duckdb"]
+
+    source:
+      format: "csv"
+      path: "./in/customer"
+      options:
+        header: true
+        separator: ","
+        encoding: "utf-8"
+        null_values: ["", "NULL", "null"]
+        glob: "*.csv"
+      cast_mode: "strict"
+
+    sink:
+      write_mode: "merge_scd1"   # overwrite | append | merge_scd1 | merge_scd2
+      accepted:
+        format: "duckdb"
+        path: "./out/accepted/warehouse.duckdb"   # local file (use MotherDuck `md:` for remote)
+        duckdb:
+          table: "customers"
+          schema: "main"
+      rejected:
+        format: "csv"
+        path: "./out/rejected/customer_warehouse/"
+
+    policy:
+      severity: "reject"   # warn | reject | abort
+
+    schema:
+      mismatch:
+        missing_columns: "reject_file"
+        extra_columns: "ignore"
+      normalize_columns:
+        enabled: true
+        strategy: "snake_case"
+      primary_key: ["customer_id"]
+
+      columns:
+        - name: "customer_id"
+          type: "string"
+          nullable: false
+          unique: true
+
+        - name: "email"
+          type: "string"
+          nullable: true
+
+        - name: "country_code"
+          type: "string"
+          nullable: true
+
+        - name: "created_at"
+          type: "datetime"
+          nullable: true

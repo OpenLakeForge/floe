@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "catalogs.definitions name=c warehouse_storage references unknown storage zz"
+}

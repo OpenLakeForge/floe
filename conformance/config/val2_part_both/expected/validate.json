@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.accepted.partition_by and sink.accepted.partition_spec are mutually exclusive"
+}

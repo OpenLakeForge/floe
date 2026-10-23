@@ -1,0 +1,11 @@
+name: sales
+defaults:
+  sink:
+    accepted:
+      format: parquet
+      path: "./out/accepted/{{domain.name}}/{{entity.name}}"
+    rejected:
+      format: csv
+      path: "./out/rejected/{{domain.name}}/{{entity.name}}"
+  policy:
+    severity: reject

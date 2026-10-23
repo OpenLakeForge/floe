@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "profile variable \"A\" contains malformed placeholder: ${... (unclosed placeholder in: \"${X\")}"
+}

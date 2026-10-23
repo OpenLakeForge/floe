@@ -1,0 +1,4 @@
+name: sales
+defaults:
+  policy:
+    severity: loud

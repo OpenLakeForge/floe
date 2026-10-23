@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.accepted.merge.scd2.current_flag_column=amt collides with schema column name"
+}

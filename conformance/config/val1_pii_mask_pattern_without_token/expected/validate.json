@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders pii.columns[name=id].mask_pattern must contain at least one token ({firstN} or {lastN})"
+}

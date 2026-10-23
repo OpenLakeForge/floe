@@ -1,0 +1,22 @@
+version: '0.1'
+entities:
+- name: orders
+  source:
+    format: csv
+    path: in/orders.csv
+    cast_mode: null
+  sink:
+    accepted:
+      format: parquet
+      path: out/accepted
+    write_mode: null
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string
+    - name: amt
+      type: number
+report:
+  path: null

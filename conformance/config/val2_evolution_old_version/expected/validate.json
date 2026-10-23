@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders schema.schema_evolution requires root.version >= \"0.2\""
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "profile.validation.strict must be a boolean"
+}

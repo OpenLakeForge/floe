@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "<ROOT>/sources.yml: missing required field root.sources"
+}

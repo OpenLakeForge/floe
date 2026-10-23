@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "storages.definitions.s.bucket references unknown variable nope"
+}

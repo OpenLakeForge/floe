@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "profile.storages.definitions name=l requires region for type s3"
+}

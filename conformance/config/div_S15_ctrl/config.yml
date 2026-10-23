@@ -1,0 +1,21 @@
+version: '0.1'
+entities:
+- name: orders
+  source:
+    format: xlsx
+    path: in/orders.csv
+    options:
+      header_row: 3
+      data_row: 4
+  sink:
+    accepted:
+      format: parquet
+      path: out/accepted
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string
+    - name: amt
+      type: number

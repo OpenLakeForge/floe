@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders schema.columns[0].source=a[-1] is invalid: selector index is not numeric: -1"
+}

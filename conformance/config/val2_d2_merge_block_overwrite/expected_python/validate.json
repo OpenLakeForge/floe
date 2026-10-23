@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.accepted.merge is only supported with sink.write_mode=merge_scd1 or merge_scd2"
+}

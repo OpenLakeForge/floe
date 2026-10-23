@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): expected positive integer at sink.accepted.options.row_group_size"
+}

@@ -1,0 +1,22 @@
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata:
+  name: uat
+  description: "User acceptance testing environment"
+  env: uat
+  tags:
+    - uat
+    - staging
+execution:
+  runner:
+    type: local
+variables:
+  # Unity catalog convention: catalog.schema.table
+  CATALOG: uat_catalog
+  SCHEMA: uat_bronze
+  TABLE_PREFIX: uat
+  INCOMING_DIR: /data/uat/incoming
+  OUTPUT_DIR: /data/uat/output
+  REPORT_DIR: /data/uat/reports
+validation:
+  strict: true

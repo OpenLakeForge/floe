@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "YAML contains multiple documents; expected one"
+}

@@ -1,0 +1,7 @@
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata:
+  name: n
+variables:
+  A: "${B}/x"
+  B: base

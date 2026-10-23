@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders is duplicated in config (entities[0] and entities[1])"
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): sink.accepted.storage and sink.accepted.storage are mutually exclusive"
+}

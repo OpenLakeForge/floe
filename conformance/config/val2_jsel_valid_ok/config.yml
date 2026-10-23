@@ -1,0 +1,25 @@
+version: '0.1'
+entities:
+- name: orders
+  source:
+    format: json
+    path: in/orders.json
+  sink:
+    accepted:
+      format: parquet
+      path: out/accepted
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string
+      source: $.a.b[0].c
+    - name: x
+      type: string
+      source: a[0][1]
+    - name: y
+      type: string
+      source: a[0].b
+    - name: amt
+      type: number

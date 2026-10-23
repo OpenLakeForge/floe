@@ -1,0 +1,9 @@
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata:
+  name: n
+---
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata:
+  name: n

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): sink.accepted.duckdb is only valid when format is \"duckdb\" (found format=\"parquet\")"
+}

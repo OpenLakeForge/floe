@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders entity.domain must be non-empty without '.', '/' or '\\' when root.version >= \"0.3\""
+}

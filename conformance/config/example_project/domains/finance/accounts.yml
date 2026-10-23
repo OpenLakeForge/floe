@@ -1,0 +1,11 @@
+name: accounts
+source:
+  ref: csv_drop
+  resource: ledger_accounts
+schema:
+  columns:
+    - name: id
+      type: string
+      nullable: false
+    - name: label
+      type: string

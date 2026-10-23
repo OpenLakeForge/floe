@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "storages.definitions name=loc requires bucket for type s3"
+}

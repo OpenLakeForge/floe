@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "profile.lineage.max_failures must be at least 1"
+}

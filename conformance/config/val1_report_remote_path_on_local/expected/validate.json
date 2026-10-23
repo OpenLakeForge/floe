@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "report.path must be a local path (got s3://bucket/report)"
+}

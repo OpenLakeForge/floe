@@ -1,0 +1,25 @@
+version: '0.1'
+entities:
+- name: orders
+  source:
+    format: csv
+    path: in/orders.csv
+  sink:
+    accepted:
+      format: delta
+      path: out/accepted
+      merge:
+        scd2:
+          current_flag_column: x
+          valid_from_column: y
+    write_mode: merge_scd2
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string
+    - name: amt
+      type: number
+    primary_key:
+    - id

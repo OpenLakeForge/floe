@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): schema.columns[1]: missing required field schema.columns.type"
+}
