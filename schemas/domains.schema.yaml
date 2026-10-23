@@ -393,6 +393,8 @@ $defs:
       duckdb:
         $ref: '#/$defs/duckdb'
       partition_by:
+        uniqueItems: true
+        description: Entries must be unique; this catches exact repeats only, Rust also compares trimmed values.
         type:
         - array
         - 'null'
@@ -401,6 +403,8 @@ $defs:
           pattern: \S
         minItems: 1
       partition_spec:
+        uniqueItems: true
+        description: Entries must be unique; this catches exact repeats only, Rust also compares trimmed columns, lowercases transforms and treats a missing transform as identity.
         type: array
         items:
           $ref: '#/$defs/partition_field'
@@ -529,6 +533,8 @@ $defs:
     additionalProperties: false
     properties:
       ignore_columns:
+        uniqueItems: true
+        description: Entries must be unique; this catches exact repeats only, Rust also compares trimmed values.
         type:
         - array
         - 'null'
@@ -536,6 +542,8 @@ $defs:
           type: string
           pattern: \S
       compare_columns:
+        uniqueItems: true
+        description: Entries must be unique; this catches exact repeats only, Rust also compares trimmed values.
         type:
         - array
         - 'null'
@@ -704,6 +712,8 @@ $defs:
         minItems: 1
         items:
           type: array
+          uniqueItems: true
+          description: Columns within one key must be unique; this catches exact repeats only, Rust also compares trimmed values. The outer list may repeat groups (a warning in Rust).
           minItems: 1
           items:
             type: string

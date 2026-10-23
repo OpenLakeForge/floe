@@ -986,6 +986,44 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_invalid(ROOT_VALIDATOR, document)
         self.assert_invalid(validator_for("entity_file"), entity)
 
+    def test_duplicate_list_entries_match_runtime(self):
+        # Rust rejects repeated entries at validate time; uniqueItems only catches exact repeats
+        # (Rust also trims, lowercases partition_spec transforms and defaults them to identity).
+        merge = {"write_mode": "merge_scd1"}
+        spec = {"column": "id", "transform": "day"}
+        cases = {
+            "S8": ("schema", {"primary_key": ["id", "id"]}, None),
+            "S9": ("schema", {"unique_keys": [["id", "id"]]}, None),
+            "S10": ("sink", {"format": "delta", "partition_by": ["id", "id"]}, None),
+            "S11": ("sink", {"format": "delta", "merge": {"ignore_columns": ["amt", "amt"]}}, merge),
+            "S12": ("sink", {"format": "delta", "merge": {"compare_columns": ["amt", "amt"]}}, merge),
+            "S13": ("sink", {"format": "iceberg", "partition_spec": [spec, spec]}, None),
+        }
+        for case, (kind, fields, sink_extra) in cases.items():
+            with self.subTest(case):
+                entity = complete_entity()
+                entity["schema"]["primary_key"] = ["id"]
+                entity["schema"]["columns"].append({"name": "amt", "type": "number"})
+                if kind == "schema":
+                    entity["schema"].update(fields)
+                else:
+                    entity["sink"].update(sink_extra or {})
+                    entity["sink"]["accepted"].update(fields)
+                self.assert_invalid(ROOT_VALIDATOR, {"version": "0.3", "entities": [entity]})
+                self.assert_invalid(validator_for("entity_file"), entity)
+                if case != "S8":  # domain defaults cannot declare primary_key
+                    defaults = {"schema": fields} if kind == "schema" else {"sink": {**(sink_extra or {}), "accepted": fields}}
+                    self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": defaults})
+                    self.assert_invalid(
+                        ROOT_VALIDATOR,
+                        {"version": "0.3", "domains": [{"name": "sales", "defaults": defaults}]},
+                    )
+        # duplicate groups are only a warning in Rust
+        entity = complete_entity()
+        entity["schema"]["unique_keys"] = [["id"], ["id"]]
+        self.assert_valid(ROOT_VALIDATOR, {"version": "0.3", "entities": [entity]})
+        self.assert_valid(validator_for("entity_file"), entity)
+
     def test_merge_column_entries_are_not_blank(self):
         entity = complete_entity()
         entity["sink"].update(write_mode="merge_scd1")
