@@ -2,8 +2,8 @@
 
 ## Status
 
-**Proposed.** Accepted or rejected by the go/no-go spike in #594 (sub-issues #596–#600).
-Nothing in `crates/` or `orchestrators/` changes until this record is Accepted.
+**Accepted** on 2026-10-23, after the go/no-go spike in #594 (sub-issues #596–#600, #609). Every
+gate passed; see [Outcome](#outcome).
 
 ## Context
 
@@ -86,7 +86,70 @@ thresholds live in #594.
 
 #596 provides the local Polaris + S3 harness the other spikes run on.
 
-## Migration plan (if Accepted)
+## Outcome
+
+Measured on a 4 vCPU / 16 GB sandbox against the #596 harness (Polaris 1.8.0, SeaweedFS 4.48),
+with DuckDB 1.5.6, PyIceberg 0.12.0, pyarrow 25.0.1 and Polars 2.0.0. Rulings on #594:
+- a run must land as **one atomic catalog commit**; several snapshots inside it are fine;
+- writer-dependent byte metrics are excluded from report parity.
+
+| Gate | Result | Evidence |
+|---|---|---|
+| G1 bounded-memory load | Pass: 17.8 GB CSV (152M rows) under a 4 GB limit (also 1.5 GB), ~0.9 GB working memory, one commit | #597, PR #606 |
+| G2 crash / retry | Pass: 24/24 `kill -9` + rerun cases exact. The run-id guard is load-bearing (without it, 10M duplicates) | #597, PR #606 |
+| G3 merge at scale | Pass: 10M-row SCD2 into 500M rows. Unpartitioned 72–79 s, `day()` 105 s, `bucket(16)` 16–19 min | #598, #609, PRs #607, #610 |
+| G4 validation performance | Pass: Python 0.30–0.44× Rust wall time at 1M–20M rows; memory at parity on the same engine | #599, PR #605 |
+| G5 report parity | Pass: rows, rejected output and every report field identical (byte metrics excluded) | #599, PR #605 |
+| G6 unique vs history | Pass: exact on 57/57 runs against 100M and 500M histories; memory bounded by the batch | #600, PR #608 |
+
+OLF sizes its platform at **about 1 TB per layer**. The gates validated merge targets up to about
+5 GB of Parquet (500M narrow rows). Loads, validation and unique checks are bounded by the batch,
+not the table. **Merge time grows with the target's size,** because every MERGE scans the whole
+target. Phase 2 benchmarks the largest OLF table before merge ships.
+
+### Supported limits and design notes for the port
+
+- **Memory.** Run DuckDB with `memory_limit=4GB`, `temp_directory` and
+  `max_temp_directory_size` set. Size pods at `memory_limit` + 2 GiB: DuckDB's RSS ran
+  0.2–1.9 GiB over the limit, and the overshoot grows as delete files accumulate. Spill has a
+  cliff below 2 GB for merges.
+- **Write path.** Loads use one PyIceberg producer feeding every chunk, which gives one commit
+  and one snapshot (#597's `single` path). It relies on PyIceberg internals (the same calls
+  `Transaction.append` makes); the public-API fallback is one `append(RecordBatchReader)`.
+- **Merges.**
+  - Unpartitioned and `day()` targets: one plain DuckDB `MERGE INTO`.
+  - `bucket()` targets: one MERGE per bucket inside one DuckDB transaction (one commit). It is
+    slow because each MERGE scans the whole target. The fix is to prune each MERGE to its bucket,
+    in Floe first, then upstream in duckdb-iceberg.
+  - DuckDB writes that span many `day()` partitions must be split by date range: one INSERT
+    across 365 days ran out of memory or wrote 256k tiny files.
+  - Time travel can reach a merge's intermediate snapshots. Floe's reports reference the final
+    snapshot.
+- **Retry guard.** The guard matches on run id. Incremental state must give a retry the same run
+  id, or the guard must also match on the input hash.
+- **Casts.** Polars 2.0 removed string → date/datetime casts. A conformance table of
+  date/datetime inputs, recorded from the Rust 0.7 binary, comes before the cast module is
+  ported.
+- **Dependencies.** `pyiceberg-core` is required for PyIceberg writes to `day()` or `bucket()`
+  tables. DuckDB stays pinned at 1.5.6, the version the Iceberg gates ran on, until 2.0 passes
+  the same checks.
+
+### Table maintenance becomes an optional Floe feature
+
+Merge-on-read adds position delete files on every merge: about 7 per merge on unpartitioned
+targets, 16 on `bucket(16)`, up to 365 on `day()`. Failed writes also leave orphan files. Floe
+therefore offers optional maintenance:
+- **What to do** comes from a per-table policy: compaction, snapshot expiry, orphan-file removal,
+  sort order.
+- It runs as a **separate `floe maintain` command,** exposed as a dagster-floe asset, never inside
+  `floe run`.
+- **Dagster decides when:** typically daily, after ingestion, run sequentially, because Polaris
+  handles concurrent commits to the same table poorly.
+
+What the Python Iceberg stack can do natively (compaction, z-order) is not yet verified. A
+feasibility spike comes before the feature.
+
+## Migration plan
 
 ### Where the code lives
 
@@ -160,21 +223,19 @@ Phases 1–3 follow the usual `AGENTS.md` workflow: one sub-issue per PR, within
 - **Library installs can conflict:** in shared Airflow or Dagster environments, Floe would compete
   over `pyarrow` and Polars versions. Run Floe in its own environment or image, as the
   orchestrators already do via subprocess and Kubernetes Jobs.
-- **DuckDB Iceberg writes are recent.** Partition transforms, schema evolution during MERGE and
-  Polaris authentication must be proven in #598, not assumed.
-- **Merge-on-read leaves positional delete files.** Compaction and snapshot expiry are table
-  maintenance. They are an OLF responsibility, not Floe's, but they must have an owner before
-  merge ships.
+- **DuckDB Iceberg writes are recent.** Partition transforms, schema evolution before a MERGE
+  and Polaris authentication were proven in #598 and #609. Partitioned writes have the limits
+  listed under [Outcome](#outcome).
+- **Merge-on-read leaves positional delete files.** Floe takes on optional table maintenance
+  (see [Outcome](#outcome)), scheduled by Dagster.
 
 ## Consequences
 
-**If Accepted:**
-- Milestones are opened for phases 1–4 of the migration plan above.
+- Milestones are opened for phases 1–4 of the migration plan above, starting with phase 1.
 - This record supersedes the Iceberg part of `merge-delegated-to-sink.md` and the Rust-specific
   parts of `polars-and-arrow.md`.
 - The Arrow / Polars upgrade track (#523, #538, #565–#569, #387) and non-OLF sink requests
   (#249, #250, #261) are closed.
 - #545–#549, #556 and #560 carry over as design requirements for the Python core.
-
-**If Rejected:** the failing gate and its numbers are recorded here, and the v0.8 Rust milestone
-resumes.
+- The spike PRs (#602, #605–#608, #610) are closed unmerged. Their code stays reachable through
+  `refs/pull/<n>/head`.
