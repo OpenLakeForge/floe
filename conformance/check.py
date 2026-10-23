@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
-import re
 import sys
 import tempfile
 from pathlib import Path
@@ -26,10 +25,13 @@ from record import (
     WRITER_BYTES_KEYS,
     Snapshot,
     case_name,
+    case_snapshot,
     cases,
+    delta_ids,
+    is_validate,
+    recorded,
     run_in_copy,
     rust_binary,
-    snapshot,
 )
 
 REPO = Path(__file__).resolve().parent.parent
@@ -85,21 +87,15 @@ def load_expected(case: Path, impl: str) -> Snapshot:
     return expected
 
 
-def delta_ids(case: Path) -> list[str]:
-    """Ids in `delta.yml` (a one-line list such as `[D9]`); empty when the case has no delta."""
-    marker = case / "delta.yml"
-    return re.findall(r"D\d+", marker.read_text()) if marker.exists() else []
-
-
 def check_case(case: Path, cmd: list[str], impl: str) -> list[str]:
     problems: list[str] = []
     with tempfile.TemporaryDirectory(prefix="conformance-") as tmp:
         work, proc = run_in_copy(case, cmd, Path(tmp))
-        if proc.returncode != 0:
+        if proc.returncode != 0 and not is_validate(case):
             problems.append(
                 f"`{' '.join(cmd)} run -c config.yml` exited {proc.returncode}: {proc.stderr.strip()}"
             )
-        actual = snapshot(work)
+        actual = case_snapshot(case, work, proc)
     expected = load_expected(case, impl)
     for name in sorted(set(expected) | set(actual)):
         if name not in actual:
@@ -144,8 +140,12 @@ def main() -> int:
     selected = [c for c in cases() if wanted is None or case_name(c) in wanted]
     if missing := set(wanted or []) - {case_name(c) for c in selected}:
         raise SystemExit(f"no such case: {', '.join(sorted(missing))}")
-    failed = 0
+    failed = skipped = 0
     for case in selected:
+        if args.impl == "rust" and not recorded(case):
+            print(f"skip {case_name(case)} (D1: not recorded)")
+            skipped += 1
+            continue
         problems = check_case(case, cmd, args.impl)
         if problems and args.impl == "python" and (ids := delta_ids(case)):
             problems.insert(
@@ -155,7 +155,11 @@ def main() -> int:
         for line in problems:
             print("    " + line)
         failed += bool(problems)
-    print(f"\n{len(selected) - failed}/{len(selected)} cases match")
+    checked = len(selected) - skipped
+    print(
+        f"\n{checked - failed}/{checked} cases match"
+        + (f" ({skipped} skipped)" if skipped else "")
+    )
     return 1 if failed else 0
 
 

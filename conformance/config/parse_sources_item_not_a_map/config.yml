@@ -1,0 +1,17 @@
+version: '0.3'
+sources:
+- lake
+entities:
+- name: orders
+  source:
+    ref: lake
+  sink:
+    accepted:
+      format: parquet
+      path: out/accepted
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string

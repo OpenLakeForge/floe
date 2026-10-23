@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders schema.primary_key[0] must not be empty"
+}

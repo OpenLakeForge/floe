@@ -19,6 +19,10 @@ conformance/<case>/
 
 A case is any directory holding a `config.yml` (it may be nested, e.g. `example/standalone`).
 
+**Validate cases** are the cases under `config/`: they run `floe validate -c config.yml` (plus `--profile profile.yml`
+when the case has one) and hold only `expected/validate.json`, `{"ok": true}` or `{"ok": false, "error": "<message>"}`.
+See [config/README.md](config/README.md).
+
 ## Record
 
 ```bash
@@ -36,7 +40,7 @@ uv run python conformance/check.py --impl rust|python [--case NAME | --cases-fil
 ```
 
 Runs the implementation on every case and prints a diff for each difference; exits 1 if any.
-`--impl python` runs `uv run floe run -c config.yml`. `--cases-file` runs only the case names listed in the file
+`--impl python` runs `uv run floe run -c config.yml` (`validate -c config.yml` for the cases under `config/`). `--cases-file` runs only the case names listed in the file
 (one per line, `#` comments; an empty list runs nothing and passes).
 
 ## CI
@@ -58,7 +62,10 @@ Where Python must differ from Rust 0.7 on purpose (the D-register in #619), a ca
 `check.py --impl rust` always compares against `expected/`. `--impl python` compares each file against
 `expected_python/<file>` when it exists, else `expected/<file>`, and prints the delta ids when such a case fails.
 `record.py` only writes `expected/` (from Rust); `expected_python/` is derived from it and committed. The case
-README says how, so a reviewer can redo it.
+README says how (for `config/` cases, the delta table in `config/README.md`), so a reviewer can redo it.
+
+D1 (dropped features) cases are not recorded: they hold only `expected_python/` with the Python error, `record.py`
+skips them and `check.py --impl rust` prints `skip` for them.
 
 ## Normalization
 

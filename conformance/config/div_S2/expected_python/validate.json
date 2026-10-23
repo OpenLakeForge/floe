@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders schema.normalize_columns.strategy= lower is unsupported (allowed: snake_case, lower, camel_case, none)"
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): pii.columns[0]: pii.columns[name=id].strategy=encrypt is unsupported (allowed: hash, drop, nullify, redact, mask)"
+}

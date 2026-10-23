@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders pii.columns[name=id].strategy=hash cannot be applied to a unique-key column: uniqueness checks record raw values in the run report before masking, leaking unmasked PII"
+}

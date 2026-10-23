@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "profile.storages.definitions name=l requires bucket for type s3"
+}

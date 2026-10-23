@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders source.cast_mode=loose is unsupported (allowed: strict, coerce)"
+}

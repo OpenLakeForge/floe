@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "<ROOT>/domains/sales/orders.yml has domain \"finance\" but its _domain.yml names \"sales\""
+}

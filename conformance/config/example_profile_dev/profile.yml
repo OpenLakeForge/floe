@@ -1,0 +1,22 @@
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata:
+  name: dev
+  description: "Local development environment"
+  env: dev
+  tags:
+    - development
+    - local
+execution:
+  runner:
+    type: local
+variables:
+  # Unity catalog convention: catalog.schema.table
+  CATALOG: dev_catalog
+  SCHEMA: dev_bronze
+  TABLE_PREFIX: dev
+  INCOMING_DIR: /tmp/floe/incoming
+  OUTPUT_DIR: /tmp/floe/output
+  REPORT_DIR: /tmp/floe/reports
+validation:
+  strict: false

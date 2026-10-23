@@ -1,0 +1,8 @@
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata:
+  name: n
+  description: d
+  env: e
+  tags:
+  - t

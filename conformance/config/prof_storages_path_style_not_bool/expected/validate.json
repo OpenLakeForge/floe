@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "storages.definitions[0]: expected boolean at storages.definitions.path_style_access"
+}

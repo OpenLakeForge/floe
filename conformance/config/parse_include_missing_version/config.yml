@@ -1,0 +1,3 @@
+include:
+  domains:
+  - domains/*/_domain.yml

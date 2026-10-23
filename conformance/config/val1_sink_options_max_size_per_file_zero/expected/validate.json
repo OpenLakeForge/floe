@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.accepted.options.max_size_per_file must be greater than 0"
+}

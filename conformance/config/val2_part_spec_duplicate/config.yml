@@ -1,0 +1,23 @@
+version: '0.1'
+entities:
+- name: orders
+  source:
+    format: csv
+    path: in/orders.csv
+  sink:
+    accepted:
+      format: iceberg
+      path: out/accepted
+      partition_spec:
+      - column: id
+        transform: day
+      - column: id
+        transform: DAY
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string
+    - name: amt
+      type: number

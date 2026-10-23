@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "value at lineage.max_failures exceeds maximum allowed value"
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders pii: schema.mismatch.extra_columns=reject_file writes the raw unmasked file to sink.rejected before PII masking can be applied; use extra_columns=ignore instead"
+}

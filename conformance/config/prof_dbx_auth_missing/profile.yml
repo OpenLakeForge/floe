@@ -1,0 +1,28 @@
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata:
+  name: n
+  description: d
+  env: e
+  tags:
+  - t
+execution:
+  runner:
+    type: databricks_job
+    workspace_url: https://w.example
+    existing_cluster_id: c-1
+    config_uri: s3://b/config.yml
+    python_file_uri: s3://b/run.py
+  orchestration:
+    max_concurrent_entities: 2
+    strategy: parallel
+variables:
+  A: b
+catalogs:
+  default: r
+  definitions:
+  - name: r
+    type: rest
+    uri: u
+validation:
+  strict: true

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders incremental_mode=archive requires sink.archive"
+}

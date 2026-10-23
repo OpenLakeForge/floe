@@ -1,0 +1,4 @@
+version: '0.3'
+include:
+  domains:
+  - nowhere/*/_domain.yml

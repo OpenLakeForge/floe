@@ -1,0 +1,42 @@
+version: '0.1'
+entities:
+- name: orders
+  source:
+    format: csv
+    path: in/orders.csv
+  sink:
+    accepted:
+      format: parquet
+      path: out/accepted
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: c0
+      type: str
+    - name: c1
+      type: text
+    - name: c2
+      type: float64
+    - name: c3
+      type: decimal
+    - name: c4
+      type: int32
+    - name: c5
+      type: Integer
+    - name: c6
+      type: long
+    - name: c7
+      type: uint8
+    - name: c8
+      type: uint64
+    - name: c9
+      type: bool
+    - name: c10
+      type: Boolean
+    - name: c11
+      type: timestamp
+    - name: c12
+      type: Date-Time
+    - name: c13
+      type: date

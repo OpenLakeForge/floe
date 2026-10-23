@@ -1,0 +1,7 @@
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata:
+  name: n
+execution:
+  runner: {type: local}
+  extra: 1

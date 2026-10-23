@@ -1,0 +1,33 @@
+version: '0.1'
+entities:
+- name: orders
+  source:
+    format: csv
+    path: in/orders.csv
+  sink:
+    accepted:
+      format: iceberg
+      path: out/accepted
+      iceberg:
+        catalog: r
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string
+    - name: amt
+      type: number
+catalogs:
+  default: r
+  definitions:
+  - name: r
+    type: rest
+    uri: u
+storages:
+  default: lake
+  definitions:
+  - name: lake
+    type: s3
+    bucket: b
+    region: r

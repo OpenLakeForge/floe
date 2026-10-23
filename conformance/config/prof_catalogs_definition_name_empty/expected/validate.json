@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "profile.catalogs.definitions.name must not be empty"
+}

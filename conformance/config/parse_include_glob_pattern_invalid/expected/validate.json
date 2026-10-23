@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "Pattern syntax error near position 41: wildcards are either regular `*` or recursive `**`"
+}

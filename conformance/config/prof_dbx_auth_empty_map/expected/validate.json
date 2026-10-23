@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "profile.execution.runner.auth.service_principal_oauth_ref is required for databricks_job"
+}

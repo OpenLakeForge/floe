@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "profile.execution.runner.type: unknown runner \"Local\"; known runners: local, kubernetes_job, databricks_job"
+}

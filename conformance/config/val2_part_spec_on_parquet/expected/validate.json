@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.accepted.partition_spec is only supported for sink.accepted.format=iceberg"
+}

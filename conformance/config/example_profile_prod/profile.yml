@@ -1,0 +1,22 @@
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata:
+  name: prod
+  description: "Production environment"
+  env: prod
+  tags:
+    - production
+    - stable
+execution:
+  runner:
+    type: local
+variables:
+  # Unity catalog convention: catalog.schema.table
+  CATALOG: prod_catalog
+  SCHEMA: prod_bronze
+  TABLE_PREFIX: prod
+  INCOMING_DIR: /data/prod/incoming
+  OUTPUT_DIR: /data/prod/output
+  REPORT_DIR: /data/prod/reports
+validation:
+  strict: true

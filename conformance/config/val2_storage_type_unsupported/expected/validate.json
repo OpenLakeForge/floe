@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "storages.definitions name=loc type=nfs is unsupported (allowed: local, s3, adls, gcs)"
+}

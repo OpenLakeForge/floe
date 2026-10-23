@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "String(\"version\"): duplicated key in mapping at byte 24 line 2 column 10"
+}

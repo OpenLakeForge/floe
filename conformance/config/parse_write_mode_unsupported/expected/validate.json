@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): unsupported value at sink.write_mode: upsert (allowed: overwrite, append, merge_scd1, merge_scd2)"
+}
