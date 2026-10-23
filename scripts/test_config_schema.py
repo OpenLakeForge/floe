@@ -32,6 +32,10 @@ def complete_entity():
     }
 
 
+def profile_validator():
+    return YamlDraft202012Validator(yaml.safe_load((ROOT / "schemas/profile.schema.yaml").read_text()))
+
+
 def validator_for(branch):
     name = {"sources_file": "sources", "domain_file": "domains", "entity_file": "entity"}[branch]
     return YamlDraft202012Validator(yaml.safe_load((ROOT / f"schemas/{name}.schema.yaml").read_text()))
@@ -1165,6 +1169,70 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_valid(ROOT_VALIDATOR, {
             "version": "0.3", "entities": [complete_entity()], "env": {"vars": {"API_TOKEN": "value"}},
         })
+
+    def test_profile_rejects_what_rust_rejects(self):
+        validator = profile_validator()
+
+        def profile(**sections):
+            return {"apiVersion": "floe/v1", "kind": "EnvironmentProfile", "metadata": {"name": "dev"}, **sections}
+
+        def runner(**fields):
+            return profile(execution={"runner": fields})
+
+        k8s = {"type": "kubernetes_job", "image": "i", "namespace": "n"}
+        databricks = {
+            "type": "databricks_job",
+            "workspace_url": "u",
+            "existing_cluster_id": "c",
+            "config_uri": "f",
+            "python_file_uri": "p",
+            "auth": {"service_principal_oauth_ref": "r"},
+        }
+        too_big = 9223372036854775808
+        invalid = {
+            "S27 missing image": runner(type="kubernetes_job", namespace="n"),
+            "S27 missing namespace": runner(type="kubernetes_job", image="i"),
+            "S27 blank image": runner(**{**k8s, "image": " "}),
+            "S27 blank namespace": runner(**{**k8s, "namespace": " "}),
+            "S28 only type": runner(type="databricks_job"),
+            "S28 blank workspace_url": runner(**{**databricks, "workspace_url": " "}),
+            "S28 blank existing_cluster_id": runner(**{**databricks, "existing_cluster_id": " "}),
+            "S28 blank config_uri": runner(**{**databricks, "config_uri": " "}),
+            "S28 blank python_file_uri": runner(**{**databricks, "python_file_uri": " "}),
+            "S28 blank oauth ref": runner(**{**databricks, "auth": {"service_principal_oauth_ref": " "}}),
+            "S28 missing auth": runner(**{k: v for k, v in databricks.items() if k != "auth"}),
+            "S29": {**profile(), "metadata": {"name": " "}},
+            "S30": profile(catalogs={"definitions": [{"name": " ", "type": "rest", "uri": "u"}]}),
+            "S31 unclosed": profile(variables={"A": "${X"}),
+            "S31 empty": profile(variables={"A": "${}"}),
+            "S31 blank": profile(variables={"A": "a ${ } b"}),
+            "S31 unclosed after valid": profile(variables={"A": "${B}/${X"}),
+            "S32 max_concurrent_entities": profile(
+                execution={"runner": {"type": "local"}, "orchestration": {"max_concurrent_entities": too_big}}
+            ),
+            **{
+                f"S32 {field}": runner(type="local", **{field: too_big})
+                for field in ("timeout_seconds", "ttl_seconds_after_finished", "poll_interval_seconds")
+            },
+            "S32 memory_mb": runner(type="local", resources={"memory_mb": too_big}),
+        }
+        for name, document in invalid.items():
+            with self.subTest(name):
+                self.assert_invalid(validator, document)
+
+        valid = {
+            "kubernetes_job": runner(**k8s),
+            "databricks_job": runner(**databricks),
+            "cross-reference": profile(variables={"B": "x", "A": "${B}/y", "C": "$${B} $ {"}),
+            "i64 maximum": runner(type="local", timeout_seconds=9223372036854775807, resources={"memory_mb": 9223372036854775807}),
+            "image on local runner": runner(type="local", image="x"),
+        }
+        for name, document in valid.items():
+            with self.subTest(name):
+                self.assert_valid(validator, document)
+        for path in (ROOT / "example/profiles").glob("*.yml"):
+            with self.subTest(path.name):
+                self.assert_valid(validator, yaml.safe_load(path.read_text()))
 
     def assert_valid(self, validator, document):
         self.assertTrue(validator.is_valid(document), list(validator.iter_errors(document)))

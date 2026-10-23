@@ -53,10 +53,10 @@ $defs:
     properties:
       name:
         type: string
-        minLength: 1
+        pattern: '\S'
         description: >
           Short identifier for this profile (e.g. "dev", "uat", "prod").
-          Must be a non-empty string.
+          Must contain a non-space character.
       description:
         type: string
         description: Human-readable description of this environment profile.
@@ -103,6 +103,7 @@ $defs:
       max_concurrent_entities:
         type: integer
         minimum: 1
+        maximum: 9223372036854775807
         description: >
           Maximum number of entities that may run at the same time.
           Must be >= 1.  When combined with strategy "sequential" this
@@ -139,18 +140,21 @@ $defs:
       timeout_seconds:
         type: integer
         minimum: 1
+        maximum: 9223372036854775807
         description: >
           Maximum wall-clock time (in seconds) before the runner considers the job timed out.
           Defaults to 3600 for kubernetes_job.
       ttl_seconds_after_finished:
         type: integer
         minimum: 0
+        maximum: 9223372036854775807
         description: >
           Kubernetes: ttlSecondsAfterFinished on the Job spec — automatically cleans up
           completed Jobs after this many seconds.
       poll_interval_seconds:
         type: integer
         minimum: 1
+        maximum: 9223372036854775807
         description: >
           Polling interval (in seconds) used by the runner while waiting for the job to
           finish. Defaults to 10 for kubernetes_job.
@@ -186,6 +190,7 @@ $defs:
           memory_mb:
             type: integer
             minimum: 1
+            maximum: 9223372036854775807
             description: Memory request in mebibytes (e.g. 512 → 512Mi).
       env:
         type: object
@@ -251,11 +256,51 @@ $defs:
               Reference to the OAuth credential for service-principal authentication
               (required when type = "databricks_job").
               Example: env://DATABRICKS_TOKEN
+    allOf:
+      - if:
+          required: [type]
+          properties:
+            type:
+              const: kubernetes_job
+        then:
+          description: >
+            Rust trims these values, so a blank string counts as missing.
+          required: [image, namespace]
+          properties:
+            image:
+              pattern: '\S'
+            namespace:
+              pattern: '\S'
+      - if:
+          required: [type]
+          properties:
+            type:
+              const: databricks_job
+        then:
+          description: >
+            Rust trims these values, so a blank string counts as missing.
+          required: [workspace_url, existing_cluster_id, config_uri, python_file_uri, auth]
+          properties:
+            workspace_url:
+              pattern: '\S'
+            existing_cluster_id:
+              pattern: '\S'
+            config_uri:
+              pattern: '\S'
+            python_file_uri:
+              pattern: '\S'
+            auth:
+              required: [service_principal_oauth_ref]
+              properties:
+                service_principal_oauth_ref:
+                  pattern: '\S'
 
   variables:
     type: object
     additionalProperties:
       type: string
+      # Rust: each ${ ends at the first }, and the trimmed key must be non-empty.
+      pattern: '^(?:(?!\$\{)[\s\S]|\$\{\s*[^}\s][^}]*\})*$'
     description: >
       Flat map of string → string variables injected into the Floe config at
       runtime via {{VAR}} placeholder substitution.
@@ -299,7 +344,7 @@ $defs:
     properties:
       name:
         type: string
-        minLength: 1
+        pattern: '\S'
       type:
         type: string
         enum: [glue, rest, unity]
