@@ -38,6 +38,8 @@ from floe.pii import PiiColumn, Strategy
 _T = TypeVar("_T", bound=str)
 _R = TypeVar("_R")
 _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+# Rust's `trim()` strips Unicode White_Space only; `str.strip()` also strips U+001C to U+001F
+_WHITE_SPACE = "\t\n\v\f\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
 
 
 def _pick(value: str, allowed: tuple[_T, ...]) -> _T | None:
@@ -45,8 +47,7 @@ def _pick(value: str, allowed: tuple[_T, ...]) -> _T | None:
 
 
 def _norm(value: str) -> str:
-    # ponytail: str.strip() and Rust's trim() differ on a few control characters; only the error echo could show it
-    return value.strip().translate(_ASCII_LOWER)
+    return value.strip(_WHITE_SPACE).translate(_ASCII_LOWER)
 
 
 def _choice(value: str, allowed: tuple[_T, ...], ctx: str) -> _T:
@@ -120,11 +121,14 @@ def _schema_evolution(value: object) -> SchemaEvolutionConfig:
     h = yaml_hash(value, ctx)
     validate_known_keys(h, ctx, ("mode", "on_incompatible"))
     mode = opt_string(h, "mode", ctx)
+    mode_value: SchemaEvolutionMode = (
+        "strict"
+        if mode is None
+        else _choice(mode, get_args(SchemaEvolutionMode), f"{ctx}.mode")
+    )
     action = opt_string(h, "on_incompatible", ctx)
     return SchemaEvolutionConfig(
-        mode="strict"
-        if mode is None
-        else _choice(mode, get_args(SchemaEvolutionMode), f"{ctx}.mode"),
+        mode=mode_value,
         on_incompatible="fail"
         if action is None
         else _choice(
