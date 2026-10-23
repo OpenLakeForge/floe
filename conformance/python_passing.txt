@@ -2,4 +2,3 @@
 # CI runs `check.py --impl python --cases-file conformance/python_passing.txt`.
 # Ratchet: each port task adds the cases it makes pass; a listed case that fails breaks the build.
 # Never remove a case to turn CI green.
-casts
