@@ -315,3 +315,11 @@ def test_cast_error_entry_matches_rust_json() -> None:
     assert cast_error_entry('we"ird\\n\n') == (
         '{"rule":"cast_error","column":"we\\"ird\\\\n\\n","message":"invalid value for target type"}'
     )
+
+
+def test_cast_error_entry_leaves_other_control_characters_raw() -> None:
+    # Rust's json_escape escapes only \\, ", \n, \r and \t; \b, \f and U+0001 stay as they are.
+    assert cast_error_entry("a\b\f\x01\t\r") == (
+        '{"rule":"cast_error","column":"a\b\f\x01\\t\\r",'
+        '"message":"invalid value for target type"}'
+    )

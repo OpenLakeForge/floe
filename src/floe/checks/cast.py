@@ -3,8 +3,6 @@
 # pyright: reportUnknownMemberType=false
 # ^ polars' IntoExpr alias contains an unresolved type, so pyright strict reports many of its methods
 
-import json
-
 import polars as pl
 
 CAST_ERROR_MESSAGE = "invalid value for target type"
@@ -110,10 +108,19 @@ def cast_column(
     return typed, mask.alias(f"_e_cast_{name}")
 
 
+_ESCAPES = str.maketrans(
+    {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+)
+
+
+def _json_escape(value: str) -> str:
+    """Rust's `json_escape`: only these five characters are escaped, all others stay raw."""
+    return value.translate(_ESCAPES)
+
+
 def cast_error_entry(column: str) -> str:
     """The `cast_error` entry written to `__floe_errors`, as Rust's `RowError::to_json`."""
-    return json.dumps(
-        {"rule": "cast_error", "column": column, "message": CAST_ERROR_MESSAGE},
-        separators=(",", ":"),
-        ensure_ascii=False,
+    return (
+        f'{{"rule":"cast_error","column":"{_json_escape(column)}",'
+        f'"message":"{CAST_ERROR_MESSAGE}"}}'
     )
