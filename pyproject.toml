@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "floe-python"
+version = "0.8.0.dev0"
+description = "Floe: a data-contract runtime for file ingestion"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+floe = "floe._cli:main"
+
+[dependency-groups]
+dev = ["pyright", "pytest", "ruff"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/floe"]
+
+[tool.ruff]
+src = ["src", "tests"]
+include = ["src/**/*.py", "tests/**/*.py"]
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+pythonVersion = "3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
