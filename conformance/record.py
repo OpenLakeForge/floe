@@ -58,6 +58,22 @@ def case_name(case: Path) -> str:
     return case.relative_to(HERE).as_posix()
 
 
+def is_validate(case: Path) -> bool:
+    """Cases under `config/` run `floe validate` (outcome only); all others run `floe run`."""
+    return case.relative_to(HERE).parts[0] == "config"
+
+
+def delta_ids(case: Path) -> list[str]:
+    """Ids in `delta.yml` (a one-line list such as `[D9]`); empty when the case has no delta."""
+    marker = case / "delta.yml"
+    return re.findall(r"D\d+", marker.read_text()) if marker.exists() else []
+
+
+def recorded(case: Path) -> bool:
+    """D1 cases (dropped features) are not recorded from Rust: only `expected_python/` exists."""
+    return "D1" not in delta_ids(case)
+
+
 def rust_binary() -> Path:
     binary = CACHE / "floe"
     if binary.exists():
@@ -135,6 +151,25 @@ def snapshot(work: Path) -> Snapshot:
     return out
 
 
+def validate_snapshot(work: Path, proc: subprocess.CompletedProcess[str]) -> Snapshot:
+    """`floe validate` outcome: `ok`, or the message from the last `Error: ` line of stderr."""
+    out: dict[str, object] = {"ok": proc.returncode == 0}
+    if proc.returncode != 0:
+        lines = proc.stderr.strip().splitlines()
+        start = max(
+            (i for i, l in enumerate(lines) if l.startswith("Error: ")), default=0
+        )
+        message = "\n".join(lines[start:]).removeprefix("Error: ")
+        out["error"] = normalize(message, str(work.resolve()))
+    return {"validate.json": json.dumps(out, indent=2) + "\n"}
+
+
+def case_snapshot(
+    case: Path, work: Path, proc: subprocess.CompletedProcess[str]
+) -> Snapshot:
+    return validate_snapshot(work, proc) if is_validate(case) else snapshot(work)
+
+
 def run_in_copy(
     case: Path, cmd: list[str], tmp: Path
 ) -> tuple[Path, subprocess.CompletedProcess[str]]:
@@ -142,8 +177,14 @@ def run_in_copy(
     shutil.copytree(
         case, work, ignore=shutil.ignore_patterns("expected", "expected_python")
     )
+    args = ["run", "-c", "config.yml"]
+    if is_validate(case):
+        profile = (
+            ["--profile", "profile.yml"] if (case / "profile.yml").exists() else []
+        )
+        args = ["validate", "-c", "config.yml", *profile]
     return work, subprocess.run(
-        [*cmd, "run", "-c", "config.yml"],
+        [*cmd, *args],
         cwd=work,
         check=False,
         capture_output=True,
@@ -157,16 +198,18 @@ def main() -> int:
     args = parser.parse_args()
     binary = rust_binary()
     for case in cases():
-        if args.case and args.case != case_name(case):
+        if (args.case and args.case != case_name(case)) or not recorded(case):
             continue
         with tempfile.TemporaryDirectory(prefix="conformance-") as tmp:
             work, proc = run_in_copy(case, [str(binary)], Path(tmp))
-            if proc.returncode != 0:
+            if proc.returncode != 0 and not is_validate(case):
                 sys.stderr.write(proc.stdout + proc.stderr)
                 raise SystemExit(f"{case_name(case)}: floe exited {proc.returncode}")
             shutil.rmtree(case / "expected", ignore_errors=True)
-            snap = snapshot(work)
-            if not any(k.startswith(("accepted/", "rejected/")) for k in snap):
+            snap = case_snapshot(case, work, proc)
+            if not is_validate(case) and not any(
+                k.startswith(("accepted/", "rejected/")) for k in snap
+            ):
                 raise SystemExit(
                     f"{case_name(case)}: no accepted or rejected output found under out/"
                 )
