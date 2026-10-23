@@ -183,6 +183,23 @@ def test_error_entry_escapes_like_rust() -> None:
     ]
 
 
+def test_cast_error_entry_matches_rust_json() -> None:
+    assert error_entry("cast_error", "ts", CAST_ERROR_MESSAGE) == (
+        '{"rule":"cast_error","column":"ts","message":"invalid value for target type"}'
+    )
+    assert error_entry("cast_error", 'we"ird\\n\n', CAST_ERROR_MESSAGE) == (
+        '{"rule":"cast_error","column":"we\\"ird\\\\n\\n","message":"invalid value for target type"}'
+    )
+
+
+def test_error_entry_leaves_other_control_characters_raw() -> None:
+    # Rust's json_escape escapes only \\, ", \n, \r and \t; \b, \f and U+0001 stay as they are.
+    assert error_entry("cast_error", "a\b\f\x01\t\r", CAST_ERROR_MESSAGE) == (
+        '{"rule":"cast_error","column":"a\b\f\x01\\t\\r",'
+        '"message":"invalid value for target type"}'
+    )
+
+
 @pytest.mark.parametrize(
     ("formatter", "sources", "expected"),
     [
