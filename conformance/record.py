@@ -139,7 +139,9 @@ def run_in_copy(
     case: Path, cmd: list[str], tmp: Path
 ) -> tuple[Path, subprocess.CompletedProcess[str]]:
     work = tmp / "work"
-    shutil.copytree(case, work, ignore=shutil.ignore_patterns("expected"))
+    shutil.copytree(
+        case, work, ignore=shutil.ignore_patterns("expected", "expected_python")
+    )
     return work, subprocess.run(
         [*cmd, "run", "-c", "config.yml"],
         cwd=work,
