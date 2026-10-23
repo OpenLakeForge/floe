@@ -16,7 +16,12 @@ dependencies = [
 floe = "floe._cli:main"
 
 [dependency-groups]
-dev = ["pyright", "pytest", "ruff"]
+dev = [
+    "numpy>=2.4.6",
+    "pyright",
+    "pytest",
+    "ruff",
+]
 conformance = ["pyarrow"]
 
 [tool.hatch.build.targets.wheel]
