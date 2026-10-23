@@ -40,3 +40,29 @@ jobs:
         if: steps.filter.outcome == 'skipped' || steps.filter.outputs.deps == 'true'
         with:
           command: check advisories bans licenses sources
+
+  # Same pattern as above: always reports, audits only when Python deps can change.
+  python-audit:
+    name: python-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        with:
+          filters: |
+            deps:
+              - "pyproject.toml"
+              - "uv.lock"
+              - ".github/workflows/supply-chain.yml"
+      - uses: astral-sh/setup-uv@v7
+        if: steps.filter.outcome == 'skipped' || steps.filter.outputs.deps == 'true'
+      # pip-audit runs via uvx, so it is not a project dependency. The export is
+      # hashed, so --disable-pip audits the lock as-is without resolving anything.
+      # Ignores (--ignore-vuln <ID>) must carry an inline reason, as in deny.toml.
+      - name: Audit locked Python dependencies
+        if: steps.filter.outcome == 'skipped' || steps.filter.outputs.deps == 'true'
+        run: |
+          uv export --frozen --all-groups --no-emit-project --no-header --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
+          uvx pip-audit --strict --disable-pip -r "$RUNNER_TEMP/requirements.txt"
