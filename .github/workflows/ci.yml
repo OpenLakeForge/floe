@@ -165,7 +165,7 @@ jobs:
         run: python -m pip install jsonschema==4.26.0 PyYAML==6.0.2
       - run: python scripts/test_config_schema.py
 
-  python-core:
+  python-lint:
     needs: changes
     if: needs.changes.outputs.python_core == 'true'
     runs-on: ubuntu-latest
@@ -175,8 +175,31 @@ jobs:
       - run: uv sync --all-groups
       - run: uv run ruff check
       - run: uv run ruff format --check
+
+  python-types:
+    needs: changes
+    if: needs.changes.outputs.python_core == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups
       - run: uv run pyright
-      - run: uv run pytest
+
+  python-test:
+    needs: changes
+    if: needs.changes.outputs.python_core == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest supported (`requires-python`) and newest stable; uv.lock has wheels for both.
+        python-version: ["3.11", "3.15"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups --python ${{ matrix.python-version }}
+      - run: uv run --python ${{ matrix.python-version }} pytest
 
   rustfmt:
     needs: changes
