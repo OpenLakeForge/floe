@@ -1,5 +1,7 @@
 # Decision — Merge logic is delegated to the sink library, not implemented in Floe
 
+> **Superseded in part** by [`python-core-for-olf.md`](python-core-for-olf.md) (2026-10-23): Iceberg merges are now done by DuckDB `MERGE INTO`. The "Iceberg has no merge" rationale below applies only to the Rust core.
+
 ## Context
 
 Some ingestion patterns require upsert or slowly-changing-dimension (SCD) semantics: instead of appending all incoming rows, you want to update existing records in the target table when a key matches, and insert new ones when it does not. This requires reading the existing target state, comparing keys, and producing an update plan.

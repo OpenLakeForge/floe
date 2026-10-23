@@ -1,5 +1,7 @@
 # Decision — Polars as DataFrame engine + Arrow as the inter-layer wire format
 
+> **Superseded in part** by [`python-core-for-olf.md`](python-core-for-olf.md) (2026-10-23): the Python core exchanges Arrow data through the C Data Interface, so the Rust-specific points below (crate versions, `RecordBatch` types) apply only to the Rust core.
+
 ## Context
 
 Floe needs to read heterogeneous file formats (CSV, JSON, Parquet, ORC, Avro, XLSX, XML), validate rows against a schema, and write to structured sinks (Parquet files, Delta Lake tables, Iceberg tables). A DataFrame engine is required for column-level type casting, null checks, and cross-row uniqueness evaluation.
