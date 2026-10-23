@@ -1,6 +1,6 @@
 """Run an implementation on every conformance case and diff it against `expected/`.
 
-Usage: uv run --group conformance python conformance/check.py --impl rust|python [--case NAME]
+Usage: uv run --group conformance python conformance/check.py --impl rust|python [--case NAME | --cases-file PATH]
 
 Exits 1 on any difference. Writer byte metrics are ignored on compare (G5 ruling on #594).
 """
@@ -121,16 +121,25 @@ def check_case(case: Path, cmd: list[str], impl: str) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--impl", choices=["rust", "python"], required=True)
-    parser.add_argument("--case")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--case")
+    group.add_argument("--cases-file", type=Path, help="run only the cases named here")
     args = parser.parse_args()
     cmd = (
         [str(rust_binary())]
         if args.impl == "rust"
         else ["uv", "run", "--project", str(REPO), "floe"]
     )
-    selected = [c for c in cases() if not args.case or args.case == case_name(c)]
-    if not selected:
-        raise SystemExit(f"no such case: {args.case}")
+    wanted = [args.case] if args.case else None
+    if args.cases_file:
+        lines = (
+            raw.split("#")[0].strip()
+            for raw in args.cases_file.read_text().splitlines()
+        )
+        wanted = [line for line in lines if line]
+    selected = [c for c in cases() if wanted is None or case_name(c) in wanted]
+    if missing := set(wanted or []) - {case_name(c) for c in selected}:
+        raise SystemExit(f"no such case: {', '.join(sorted(missing))}")
     failed = skipped = 0
     for case in selected:
         if args.impl == "rust" and not recorded(case):

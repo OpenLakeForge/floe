@@ -1,0 +1,47 @@
+name: Coverage (Python)
+
+# Informational only — never make this a required check. Runs on main after
+# Python core changes, on demand, and on PRs that edit this file. Separate from
+# coverage.yml so Python-only merges don't rerun the Rust llvm-cov build.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/floe/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/coverage-python.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/coverage-python.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups
+      - name: Measure floe coverage
+        # Explicit bash turns on pipefail so a test failure isn't masked by tee.
+        shell: bash
+        run: uv run pytest --cov=floe --cov-report=term | tee coverage.txt
+      - name: Publish summary
+        run: |
+          {
+            echo '## floe (Python) coverage'
+            echo '```'
+            grep '^TOTAL' coverage.txt
+            echo '```'
+            echo '<details><summary>Per file</summary>'
+            echo
+            echo '```'
+            cat coverage.txt
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"

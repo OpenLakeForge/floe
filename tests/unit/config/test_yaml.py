@@ -96,6 +96,10 @@ def test_yaml_string_rejects_non_strings(value: object) -> None:
             'Real("1.5"): duplicated key in mapping at byte 19 line 3 column 6',
         ),
         ("~: 1\n~: 2\n", "Null: duplicated key in mapping at byte 8 line 2 column 4"),
+        (
+            "é: 1\né: 2\n",
+            'String("é"): duplicated key in mapping at byte 8 line 2 column 4',
+        ),
     ],
 )
 def test_duplicate_key_message(tmp_path: Path, content: str, message: str) -> None:

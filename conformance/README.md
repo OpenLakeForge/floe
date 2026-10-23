@@ -36,11 +36,21 @@ Downloads the v0.7.0 binary with `gh`, verifies its `.sha256`, and caches it in
 ## Check
 
 ```bash
-uv run python conformance/check.py --impl rust|python [--case NAME]
+uv run python conformance/check.py --impl rust|python [--case NAME | --cases-file PATH]
 ```
 
 Runs the implementation on every case and prints a diff for each difference; exits 1 if any.
-`--impl python` runs `uv run floe run -c config.yml` (`validate -c config.yml` for the cases under `config/`).
+`--impl python` runs `uv run floe run -c config.yml` (`validate -c config.yml` for the cases under `config/`). `--cases-file` runs only the case names listed in the file
+(one per line, `#` comments; an empty list runs nothing and passes).
+
+## CI
+
+The `conformance` job in `.github/workflows/ci.yml` runs on changes to `conformance/`, `src/floe/`, `pyproject.toml`
+or `uv.lock`:
+
+- `check.py --impl rust` must pass on every case (guards the recorded cases).
+- `check.py --impl python --cases-file conformance/python_passing.txt` runs only the listed cases. Each port task adds
+  the cases it makes pass; a listed case that fails breaks the build, so parity only ratchets up.
 
 ## Intentional deltas
 
