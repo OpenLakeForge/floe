@@ -28,7 +28,7 @@ def transform_name(field: PartitionField) -> str:
 
 
 @contextmanager
-def _run_error(context: str) -> Generator[None]:
+def run_error(context: str) -> Generator[None]:
     try:
         yield
     except Exception as e:  # PyIceberg has no common base exception
@@ -94,7 +94,7 @@ def open_catalog(
             props["s3.force-virtual-addressing"] = str(
                 not storage.path_style_access
             ).lower()
-    with _run_error("rest catalog init failed"):
+    with run_error("rest catalog init failed"):
         return load_catalog(definition.name, **props)
 
 
@@ -218,16 +218,16 @@ def ensure_table(
     With `add_columns`, columns new in `schema` are added as optional (D13); partition changes stay rejected.
     """
     ident = (namespace,)
-    with _run_error("rest catalog namespace_exists check failed"):
+    with run_error("rest catalog namespace_exists check failed"):
         namespace_exists = catalog.namespace_exists(ident)
     if not namespace_exists:
-        with _run_error("rest catalog namespace create failed"):
+        with run_error("rest catalog namespace create failed"):
             catalog.create_namespace(ident)
     identifier = (namespace, name)
-    with _run_error("rest catalog table_exists check failed"):
+    with run_error("rest catalog table_exists check failed"):
         exists = catalog.table_exists(identifier)
     if exists:
-        with _run_error("rest catalog load_table failed"):
+        with run_error("rest catalog load_table failed"):
             table = catalog.load_table(identifier)
         added: list[NestedField] = []
         if schema_evolution == "add_columns":
@@ -245,7 +245,7 @@ def ensure_table(
             entity,
         )
         if added:
-            with _run_error("rest catalog update_schema failed"):
+            with run_error("rest catalog update_schema failed"):
                 with table.update_schema() as update:
                     for field in added:
                         update.add_column(field.name, field.field_type, required=False)
@@ -256,7 +256,7 @@ def ensure_table(
         if partition_fields is None
         else build_partition_spec(schema, partition_fields, entity)
     )
-    with _run_error("rest catalog create_table failed"):
+    with run_error("rest catalog create_table failed"):
         return catalog.create_table(  # pyright: ignore[reportUnknownMemberType] -- PyIceberg's `schema` is `Schema | Unknown`
             identifier,
             schema,
