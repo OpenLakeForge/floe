@@ -15,7 +15,7 @@ from pyiceberg.types import NestedField
 
 from floe.config.storage import CatalogDefinition, StorageDefinition
 from floe.config.types import SchemaEvolutionMode
-from floe.errors import FloeRunError
+from floe.errors import FloeConfigError, FloeRunError
 
 # (column, transform) pairs, as in the entity's `sink.accepted.partition_spec`
 PartitionFields = Sequence[tuple[str, str]]
@@ -109,10 +109,11 @@ def _sql_options(options: dict[str, str]) -> str:
     return ", ".join(f"{k} {_sql_literal(v)}" for k, v in options.items())
 
 
-def open_duckdb(
-    definition: CatalogDefinition, storage: StorageDefinition | None = None
-) -> duckdb.DuckDBPyConnection:
-    """DuckDB with the catalog attached as `DUCKDB_CATALOG`; S3 credentials come from the AWS chain, as for PyIceberg."""
+def _duckdb_setup(
+    definition: CatalogDefinition, storage: StorageDefinition | None
+) -> list[str]:
+    """Secrets, then the ATTACH; S3 credentials come from the AWS chain, as for PyIceberg."""
+    statements: list[str] = []
     auth: dict[str, str] = {}
     if definition.credential is not None:
         props = _credential_props(
@@ -121,7 +122,14 @@ def open_duckdb(
         if "token" in props:
             auth["TOKEN"] = props["token"]
         else:
-            client_id, _, secret = props["credential"].partition(":")
+            client_id, colon, secret = props["credential"].partition(":")
+            if (
+                not colon
+            ):  # PyIceberg sends it as a secret alone; DuckDB requires a client id
+                raise FloeConfigError(
+                    f"rest iceberg catalog {definition.name} credential needs client_id:client_secret "
+                    "for merges (DuckDB has no secret-only OAuth2)"
+                )
             auth |= {
                 "CLIENT_ID": client_id,
                 "CLIENT_SECRET": secret,
@@ -130,8 +138,8 @@ def open_duckdb(
             }
             if definition.scope is not None:
                 auth["OAUTH2_SCOPE"] = definition.scope
-    s3 = {"PROVIDER": "credential_chain"}
-    if storage is not None:
+    if storage is not None and storage.type == "s3":
+        s3 = {"PROVIDER": "credential_chain"}
         if storage.region is not None:
             s3["REGION"] = storage.region
         if storage.endpoint is not None:
@@ -140,19 +148,29 @@ def open_duckdb(
             s3["USE_SSL"] = str(endpoint.scheme != "http").lower()
         if storage.path_style_access:
             s3["URL_STYLE"] = "path"
+        statements.append(f"CREATE SECRET (TYPE s3, {_sql_options(s3)})")
     # no access delegation, as in `open_catalog`
     attach = {"TYPE": "iceberg", "ENDPOINT": definition.uri, "ACCESS_DELEGATION_MODE": "none"}  # fmt: skip
+    if auth:
+        statements.append(f"CREATE SECRET floe_auth (TYPE iceberg, {_sql_options(auth)})")  # fmt: skip
+        attach["SECRET"] = "floe_auth"
+    else:
+        attach["AUTHORIZATION_TYPE"] = "none"
+    warehouse = _sql_literal(definition.warehouse or "")
+    statements.append(f"ATTACH {warehouse} AS {DUCKDB_CATALOG} ({_sql_options(attach)})")  # fmt: skip
+    return statements
+
+
+def open_duckdb(
+    definition: CatalogDefinition, storage: StorageDefinition | None = None
+) -> duckdb.DuckDBPyConnection:
+    """DuckDB with the catalog attached as `DUCKDB_CATALOG`."""
+    statements = _duckdb_setup(definition, storage)
     with run_error("duckdb catalog attach failed"):
         # ponytail: DuckDB's default memory_limit and spill dir; set the ADR's limits when the run wires merges
         con = duckdb.connect()
-        con.execute(f"CREATE SECRET (TYPE s3, {_sql_options(s3)})")
-        if auth:
-            con.execute(f"CREATE SECRET floe_auth (TYPE iceberg, {_sql_options(auth)})")  # fmt: skip
-            attach["SECRET"] = "floe_auth"
-        else:
-            attach["AUTHORIZATION_TYPE"] = "none"
-        warehouse = _sql_literal(definition.warehouse or "")
-        con.execute(f"ATTACH {warehouse} AS {DUCKDB_CATALOG} ({_sql_options(attach)})")  # fmt: skip
+        for statement in statements:
+            con.execute(statement)
     return con
 
 

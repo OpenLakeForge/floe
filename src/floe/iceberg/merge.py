@@ -6,6 +6,7 @@ the update is guarded by a null-safe change predicate, so rerunning a batch writ
 resulting rows are the same.
 """
 
+# ponytail: DuckDB only as the Iceberg MERGE writer (merge-on-read, bounded memory); switch to Polars/PyIceberg and drop duckdb per #827 once upstream supports it.
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingTypeStubs=false
 # ^ pyarrow ships no type stubs
 
