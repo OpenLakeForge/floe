@@ -315,3 +315,29 @@ def test_local_recursive_unreadable_directory_is_an_error(tmp_path: Path) -> Non
     finally:
         (tmp_path / "restricted").chmod(0o700)
     assert str(err.value).startswith("glob match failed for ")
+
+
+def test_s3_negated_class_does_not_cross_directories() -> None:
+    keys = ["data/good.csv", "data/x/y.csv"]
+    _, _, listed = s3("data/*[!a]*.csv", keys, list_only=True)
+    assert listed == ["s3://bucket/data/good.csv"]
+
+
+def test_local_results_sort_by_complete_path_string(tmp_path: Path) -> None:
+    nested = touch(tmp_path / "a" / "b.csv")
+    flat = touch(tmp_path / "a.csv")
+    assert local(tmp_path, tmp_path, recursive=True) == [str(flat), str(nested)]
+    assert local(tmp_path, tmp_path / "**" / "*.csv") == [str(flat), str(nested)]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read any directory")
+def test_local_unreadable_directory_outside_the_glob_is_ignored(tmp_path: Path) -> None:
+    allowed = touch(tmp_path / "allowed1" / "a.csv")
+    touch(tmp_path / "restricted" / "b.csv")
+    (tmp_path / "restricted").chmod(0)
+    try:
+        assert local(Path("."), tmp_path / "allowed*" / "**" / "*.csv") == [
+            str(allowed)
+        ]
+    finally:
+        (tmp_path / "restricted").chmod(0o700)

@@ -4,6 +4,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from fnmatch import fnmatchcase
 from glob import glob
 from pathlib import Path, PurePath
 from typing import Literal
@@ -53,12 +54,15 @@ def _raise(error: OSError) -> None:
 
 
 def _glob_files(pattern: str) -> list[Path]:
-    if "**" in pattern:
-        parts = Path(pattern).parts
-        literal = [i for i, p in enumerate(parts) if any(c in p for c in "*?[")]
+    parts = Path(pattern).parts
+    magic = [i for i, p in enumerate(parts) if any(c in p for c in "*?[")]
+    if "**" in parts and magic:
+        base, rest = Path(*parts[: magic[0]]), parts[magic[0] :]
         try:
-            for _ in os.walk(Path(*parts[: literal[0]]), onerror=_raise):
-                pass
+            for root, dirs, _ in os.walk(base, onerror=_raise):
+                depth = len(Path(root).relative_to(base).parts)
+                if depth < rest.index("**"):
+                    dirs[:] = [d for d in dirs if fnmatchcase(d, rest[depth])]
         except OSError as e:
             raise FloeConfigError(f'glob match failed for "{pattern}": {e}') from e
     found = glob(pattern, recursive=True, include_hidden=True)
@@ -82,7 +86,7 @@ def _local_files(
 
     if any(c in raw for c in "*?["):
         pattern = Path(raw) if Path(raw).is_absolute() else config_dir / raw
-        files = sorted(set(_glob_files(str(pattern))))
+        files = sorted(set(_glob_files(str(pattern))), key=str)
         if not files:
             raise no_match(pattern.parent, pattern.name)
         return files, "directory"
@@ -100,7 +104,7 @@ def _local_files(
     if not base.is_dir():
         raise no_match(base, ",".join(globs))
     patterns = [str(base / "**" / g if recursive else base / g) for g in globs]
-    files = sorted({f for p in patterns for f in _glob_files(p)})
+    files = sorted({f for p in patterns for f in _glob_files(p)}, key=str)
     if not files:
         raise no_match(base, ",".join(globs))
     return files, "directory"
@@ -123,7 +127,7 @@ def _cloud_matcher(source: str) -> re.Pattern[str]:
                 raise FloeRunError("invalid cloud glob pattern: unclosed '['")
             negated = source[i + 1] == "!"
             body = re.sub(r"([\\\[^])", r"\\\1", source[i + 1 + negated : end])
-            out, i = out + f"[{'^' * negated}{body}]", end + 1
+            out, i = out + f"[{'^' * negated}{body}{'/' * negated}]", end + 1
         else:
             out, i = out + re.escape(source[i]), i + 1
     return re.compile(out)
