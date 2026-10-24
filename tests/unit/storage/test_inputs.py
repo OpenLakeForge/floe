@@ -7,7 +7,7 @@ import pytest
 
 from floe.errors import FloeConfigError, FloeRunError
 from floe.storage.inputs import resolve_inputs
-from floe.storage.types import ObjectRef
+from floe.storage.types import ObjectRef, StoredObject
 
 NO_FILES = "entity.name=customers source.storage=local no input files matched"
 
@@ -27,6 +27,20 @@ class FakeClient:
             for k in self.keys
             if k.startswith(prefix)
         ]
+
+    def copy(self, src_uri: str, dst_uri: str) -> None:
+        raise NotImplementedError
+
+    def delete(self, uri: str) -> None:
+        raise NotImplementedError
+
+    def read(self, uri: str) -> StoredObject | None:
+        raise NotImplementedError
+
+    def write_conditional(
+        self, uri: str, expected_version: str | None, body: bytes
+    ) -> str | None:
+        raise NotImplementedError
 
 
 def s3(

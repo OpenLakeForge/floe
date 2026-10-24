@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from floe.errors import FloeConfigError
-from floe.storage.paths import normalize_local_path, parse_s3_uri
+from floe.storage.paths import (
+    archive_relative_path_for_run,
+    normalize_local_path,
+    parse_s3_uri,
+)
 
 
 def test_normalize_local_path_removes_dot_segments_lexically() -> None:
@@ -48,3 +52,51 @@ def test_parse_s3_uri_errors(uri: str, message: str) -> None:
     with pytest.raises(FloeConfigError) as err:
         parse_s3_uri(uri)
     assert str(err.value) == message
+
+
+def test_archive_filename_avoids_collisions_across_runs_and_sources() -> None:
+    a = archive_relative_path_for_run(
+        "o", "input.csv", "run-1", "local:///src/a/input.csv"
+    )
+    b = archive_relative_path_for_run(
+        "o", "input.csv", "run-2", "local:///src/a/input.csv"
+    )
+    c = archive_relative_path_for_run(
+        "o", "input.csv", "run-1", "local:///src/b/input.csv"
+    )
+    assert len({a, b, c}) == 3
+    assert a.startswith("o/input__run-run-1__src-")
+    assert a.endswith(".csv")
+
+
+def test_archive_relative_path_sanitizes_run_and_keeps_entity() -> None:
+    rel = archive_relative_path_for_run(
+        "orders",
+        "nested/input.csv",
+        "2026/02/24 run",
+        "s3://bucket/data/nested/input.csv",
+    )
+    assert rel.startswith("orders/input__run-2026_02_24_run__src-")
+    assert rel.endswith(".csv")
+    assert archive_relative_path_for_run("", "input.csv", "r", "u").startswith(
+        "input__run-r"
+    )
+
+
+def test_archive_filename_bounds_long_names_and_run_ids() -> None:
+    rel = archive_relative_path_for_run(
+        "", "a" * 300 + ".csv", "run-1", "local:///tmp/input.csv"
+    )
+    assert len(rel) <= 255
+    assert "__run-run-1__src-" in rel
+    assert rel.endswith(".csv")
+    long_run = archive_relative_path_for_run("", "x.csv", "r" * 100, "u")
+    assert f"__run-{'r' * 48}_" in long_run
+
+
+def test_archive_fnv1a_hash_matches_rust() -> None:
+    # FNV-1a 64 of "a" is af63dc4c8601ec8c
+    assert (
+        archive_relative_path_for_run("", "x.csv", "r", "a")
+        == "x__run-r__src-af63dc4c8601ec8c.csv"
+    )
