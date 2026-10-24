@@ -183,13 +183,18 @@ def run_in_copy(
             ["--profile", "profile.yml"] if (case / "profile.yml").exists() else []
         )
         args = ["validate", "-c", "config.yml", *profile]
-    return work, subprocess.run(
-        [*cmd, *args],
-        cwd=work,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    marker = (
+        case / "runs"
+    )  # optional: number of runs; only the last run's report is kept
+    runs = int(marker.read_text()) if marker.exists() else 1
+    while True:
+        shutil.rmtree(work / "report", ignore_errors=True)
+        proc = subprocess.run(
+            [*cmd, *args], cwd=work, check=False, capture_output=True, text=True
+        )
+        runs -= 1
+        if runs <= 0:
+            return work, proc
 
 
 def main() -> int:
@@ -202,11 +207,13 @@ def main() -> int:
             continue
         with tempfile.TemporaryDirectory(prefix="conformance-") as tmp:
             work, proc = run_in_copy(case, [str(binary)], Path(tmp))
-            if proc.returncode != 0 and not is_validate(case):
+            if proc.returncode not in (0, 2) and not is_validate(case):  # 2 = aborted
                 sys.stderr.write(proc.stdout + proc.stderr)
                 raise SystemExit(f"{case_name(case)}: floe exited {proc.returncode}")
             shutil.rmtree(case / "expected", ignore_errors=True)
             snap = case_snapshot(case, work, proc)
+            if proc.returncode and not is_validate(case):
+                snap["exit_code"] = f"{proc.returncode}\n"  # absent file means 0
             if not is_validate(case) and not any(
                 k.startswith(("accepted/", "rejected/")) for k in snap
             ):

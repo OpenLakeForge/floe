@@ -4,17 +4,20 @@
 # ^ pyarrow ships no type stubs; check.py and record.py are scripts on the conformance sys.path
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
-from check import comparable, load_expected  # pyright: ignore[reportMissingImports]  # on sys.path via test_entity_report
-from record import normalize  # pyright: ignore[reportMissingImports]
 from test_entity_report import CASES, CONFORMANCE, run_entity
 
 from floe.config.parse import parse_config
 from floe.config.project import ProjectMetadata
 from floe.report.summary import build_summary, id_path, run_outcome, write_reports
+
+sys.path.insert(0, str(CONFORMANCE))
+from check import comparable, load_expected  # pyright: ignore[reportMissingImports]  # script on the sys.path entry above
+from record import normalize  # pyright: ignore[reportMissingImports]
 
 RUN_ID = "2026-01-01T00-00-00Z"
 SUMMARY_CASES = list(dict.fromkeys(case for case, _ in CASES))
