@@ -110,14 +110,6 @@ _ESCAPES = str.maketrans(
 )
 
 
-def _json_escape(value: str) -> str:
+def json_escape(value: str) -> str:
     """Rust's `json_escape`: only these five characters are escaped, all others stay raw."""
     return value.translate(_ESCAPES)
-
-
-def cast_error_entry(column: str) -> str:
-    """The `cast_error` entry written to `__floe_errors`, as Rust's `RowError::to_json`."""
-    return (
-        f'{{"rule":"cast_error","column":"{_json_escape(column)}",'
-        f'"message":"{CAST_ERROR_MESSAGE}"}}'
-    )
