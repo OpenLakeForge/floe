@@ -266,7 +266,6 @@ def _storage(h: dict[object, object], ctx: str) -> str | None:
     storage = opt_string(h, "storage", ctx)
     filesystem = opt_string(h, "filesystem", ctx)
     if storage is not None and filesystem is not None:
-        # Rust's message names `storage` twice
         raise FloeConfigError(f"{ctx}.storage and {ctx}.storage are mutually exclusive")
     return _or(storage, filesystem)
 
@@ -288,7 +287,7 @@ def _source(value: object, ref: str | None, resource: str | None) -> SourceConfi
     fmt = get_string(h, "format", "source")
     defaults = SourceOptions(separator="\t") if fmt == "tsv" else SourceOptions()
     options = _source_options(h["options"], defaults) if "options" in h else defaults
-    storage = _storage(h, "source")  # checked before `path`, as in Rust
+    storage = _storage(h, "source")
     return SourceConfig(
         format=fmt,
         path=get_string(h, "path", "source"),
@@ -311,7 +310,6 @@ def _sink_options(value: object, ctx: str) -> SinkOptions:
 
 
 def _strings_only(model: type[_M], value: object, ctx: str) -> _M:
-    """A block whose fields are all optional strings."""
     h = yaml_hash(value, ctx)
     validate_known_keys(h, ctx, tuple(model.model_fields))
     return model(**{key: opt_string(h, key, ctx) for key in model.model_fields})
@@ -406,12 +404,8 @@ def _archive(value: object) -> ArchiveTarget:
 def _sink(value: object) -> SinkConfig:
     h = yaml_hash(value, "sink")
     validate_known_keys(h, "sink", ("write_mode", "accepted", "rejected", "archive"))
-    mode = opt_string(h, "write_mode", "sink")
-    write_mode: WriteMode = (
-        "overwrite"
-        if mode is None
-        else _choice(mode, get_args(WriteMode), "sink.write_mode")
-    )
+    mode = _or(opt_string(h, "write_mode", "sink"), "overwrite")
+    write_mode = _choice(mode, get_args(WriteMode), "sink.write_mode")
     rejected = (
         _sink_target(h["rejected"], "sink.rejected", False, write_mode)
         if "rejected" in h
