@@ -13,7 +13,8 @@ conformance/<case>/
 │   ├── reports/      normalized run.summary.json and each entity run.json
 │   ├── accepted/     accepted rows, one Parquet file per accepted output dir
 │   └── rejected/     rejected rows (CSV)
-├── runs              optional: number of runs (default 1); only the last run is captured, state carries over
+├── runs              optional: number of runs (default 1), or one line of extra `run` args per run (`-` for none,
+│                     e.g. `-` then `--full-refresh`); only the last run is captured, state carries over
 ├── delta.yml         optional: intentional deltas of this case, e.g. `[D9]`
 └── expected_python/  optional: only the `expected/` files that differ for Python
 ```

@@ -1,6 +1,6 @@
 # Config conformance cases (`floe validate`)
 
-618 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
+620 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
 v0.7.0 release binary. See [../README.md](../README.md) for recording, checking and the delta mechanism.
 
 ## Layout
@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 5 D12, 1 D13.
+18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 5 D12, 1 D13, 2 D21.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -112,6 +112,8 @@ implementation exists yet; each is derived as its row says.
 | `val2_part_spec_bucket_not_integer` | D12 | `entities[0] (entity.name=orders): expected integer at sink.accepted.partition_spec[0].num_buckets` | As above; `num_buckets: 1.5` hits parse.rs's integer reader (`expected integer at`). |
 | `val2_part_spec_bucket_on_day` | D12 | `entity.name=orders sink.accepted.partition_spec[0].num_buckets is only supported with transform=bucket` | As above; `num_buckets` on `transform: day`. Wording follows the validate.rs `is only supported with sink.write_mode=...` rules. |
 | `val2_evolution_add_columns_iceberg_ok` | D13 | ok | D13: Python accepts `schema_evolution.mode: add_columns` on Iceberg sinks. Rust 0.7 rejects it unless the sink is Delta (validate.rs:1366), which D1 drops; other formats keep Rust's rejection. |
+| `val1_version_future_major_ok` | D21 | `root.version=1.0 is unsupported (newer than Floe 0.8)` | D21 (#797): root.version is the minimum Floe release the config targets; Python rejects one newer than its own major.minor. Rust 0.7 accepts any u64 version. Wording mirrors the validate.rs:140 minimum-version message. |
+| `val1_version_d21_newer_minor` | D21 | `root.version=0.9 is unsupported (newer than Floe 0.8)` | As `val1_version_future_major_ok`, one minor ahead. Its control `val1_version_d21_floe_ok` (`0.8`) is ok on both sides. |
 
 ## #584 divergences
 

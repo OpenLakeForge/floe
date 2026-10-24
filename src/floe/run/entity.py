@@ -52,6 +52,7 @@ from floe.state import (
     CLAIM_TTL_SECONDS,
     FileState,
     Loaded,
+    claim_all,
     claim_inputs,
     promote,
     release,
@@ -350,7 +351,8 @@ def _source_root(raw: str, fmt: str, resolved: Path) -> str:
     if resolved.is_dir():
         return trimmed
     if resolved.is_file() or trimmed.lower().endswith(tuple(suffixes_for_format(fmt))):
-        return (_parent(trimmed) or trimmed).rstrip(_SEPARATORS)
+        # #813: a bare filename lives in the config dir (Rust 0.7 used the file itself)
+        return (_parent(trimmed) or ".").rstrip(_SEPARATORS)
     return trimmed
 
 
@@ -426,8 +428,9 @@ def skipped_reports(
 class Incremental:
     """Claims the entity's inputs, renews the claims while it runs, then promotes or releases them."""
 
-    def __init__(self, entity: EntityConfig, config_dir: Path, run_id: str) -> None:
+    def __init__(self, entity: EntityConfig, config_dir: Path, run_id: str, full_refresh: bool = False) -> None:  # fmt: skip
         self.entity, self.config_dir, self.run_id = entity, config_dir, run_id
+        self.full_refresh = full_refresh
         self.client: StorageClient = LocalClient()
         self.uri = ""
         self.claimed: Loaded | None = None
@@ -435,21 +438,27 @@ class Incremental:
         self._thread: threading.Thread | None = None
 
     def claim(self, inputs: list[InputFile], emit: Emitter) -> tuple[list[InputFile], list[dict[str, Any]]]:  # fmt: skip
-        """The inputs left to process and the reports of the skipped ones; `row` mode never skips (Rust 0.7)."""
+        """The inputs left to process and the reports of the skipped ones; `row` mode and a full refresh never skip (Rust 0.7)."""
         e = self.entity
         if e.incremental_mode != "file":
             return inputs, []
         self.uri = state_uri(e, self.config_dir)
+        if self.full_refresh:
+            self._hold(claim_all(self.client, self.uri, e.name, self.run_id, inputs))
+            return inputs, []
         got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs)
         reports = skipped_reports(e, got.already_processed, got.active_claims)
         for r in reports:
             emit("file_finished", entity=e.name, input=r["input_file"], status="skipped",
                  skip_reason=r["skip_reason"], rows=0, accepted=0, rejected=0, elapsed_ms=0)  # fmt: skip
         if got.claimed:
-            self.claimed = got.claimed
-            self._thread = threading.Thread(target=self._beat, daemon=True)
-            self._thread.start()
+            self._hold(got.claimed)
         return got.pending, reports
+
+    def _hold(self, claimed: Loaded) -> None:
+        self.claimed = claimed
+        self._thread = threading.Thread(target=self._beat, daemon=True)
+        self._thread.start()
 
     def _beat(self) -> None:
         while not self._stop.wait(RENEW_INTERVAL_S):
@@ -474,7 +483,7 @@ class Incremental:
         if status in ("failed", "aborted"):
             return self.release()
         if claimed := self._end():
-            promote(self.client, self.uri, self.run_id, claimed)
+            promote(self.client, self.uri, self.run_id, claimed, self.full_refresh)
 
 
 def run_entity(
@@ -484,9 +493,10 @@ def run_entity(
     formatter: Formatter = "json",
     storages: StoragesConfig | None = None,
     emit: Emitter = NO_EVENTS,
+    full_refresh: bool = False,
 ) -> EntityRun:
     """Run one entity with local sources and sinks; `config_dir` is absolute and normalised."""
-    inc = Incremental(entity, config_dir, emit.run_id)
+    inc = Incremental(entity, config_dir, emit.run_id, full_refresh)
     try:
         run = _run_entity(
             entity, config_dir, spec_version, formatter, storages, emit, inc

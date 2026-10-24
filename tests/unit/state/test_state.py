@@ -13,6 +13,7 @@ from floe.state import (
     Claim,
     EntityState,
     FileState,
+    claim_all,
     claim_inputs,
     dump_state,
     promote,
@@ -273,3 +274,43 @@ def test_promote_reloads_after_conflict(tmp_path: Path) -> None:
     state = read_state(client, uri, "sales")
     assert state is not None
     assert list(state.files) == ["a"]
+
+
+def test_release_of_the_only_claim_deletes_the_state(tmp_path: Path) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    outcome = claim_inputs(client, uri, "sales", "run-a", [_input("a")])
+    assert outcome.claimed is not None
+    release(client, uri, "run-a", outcome.claimed)
+    assert not Path(uri).exists()
+
+
+def test_full_refresh_claims_all_and_promote_keeps_only_this_run(
+    tmp_path: Path,
+) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    first = claim_inputs(client, uri, "sales", "run-a", [_input("a"), _input("b")])
+    assert first.claimed is not None
+    promote(client, uri, "run-a", first.claimed)
+    claim_inputs(client, uri, "sales", "run-x", [_input("c")])
+    claimed = claim_all(client, uri, "sales", "run-b", [_input("a")])
+    stored = read_state(client, uri, "sales")
+    assert stored is not None
+    assert (sorted(stored.files), list(stored.claims)) == (["a", "b"], ["a"])
+    promote(client, uri, "run-b", claimed, full_refresh=True)
+    stored = read_state(client, uri, "sales")
+    assert stored is not None
+    assert (list(stored.files), stored.claims) == (["a"], {})
+
+
+def test_full_refresh_with_no_inputs_deletes_the_state(tmp_path: Path) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    first = claim_inputs(client, uri, "sales", "run-a", [_input("a")])
+    assert first.claimed is not None
+    promote(client, uri, "run-a", first.claimed)
+    promote(client, uri, "run-b", claim_all(client, uri, "sales", "run-b", []), True)
+    assert not Path(uri).exists()
+
+
+def test_claim_all_fails_after_retries(tmp_path: Path) -> None:
+    with pytest.raises(FloeConfigError, match="full-refresh state write conflicted after 8 retries"):  # fmt: skip
+        claim_all(Flaky(99), str(tmp_path / "state.json"), "sales", "run-a", [_input()])
