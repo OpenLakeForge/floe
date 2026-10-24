@@ -82,6 +82,13 @@ def config_version(raw: str) -> tuple[int, int]:
     return version
 
 
+def supports_v0_3(version: object) -> bool:
+    try:
+        return isinstance(version, str) and config_version(version) >= V0_3
+    except FloeConfigError:
+        return False
+
+
 def _field(value: object, key: str) -> object:
     return cast(Hash, value).get(key) if isinstance(value, dict) else None
 
@@ -167,12 +174,20 @@ def _merge_entity(
 
 
 def parse_entities(
-    entities: list[object], defaults: dict[str, Hash], sources: dict[str, Hash]
+    entities: list[object],
+    defaults: dict[str, Hash],
+    sources: dict[str, Hash],
+    qualified: bool,
 ) -> list[EntityConfig]:
     result: list[EntityConfig] = []
     for index, entity in enumerate(entities):
         try:
-            result.append(parse_entity(_merge_entity(entity, sources, defaults)))
+            parsed = parse_entity(_merge_entity(entity, sources, defaults))
+            if qualified and parsed.domain is not None:
+                parsed = parsed.model_copy(
+                    update={"id": f"{parsed.domain}.{parsed.name}"}
+                )
+            result.append(parsed)
         except FloeError as error:
             name = _hint(entity, "name")
             who = f"entities[{index}]" + (
@@ -214,17 +229,9 @@ def parse_root(doc: object) -> RootConfig:
     domains = [parse_domain(item, version) for item in items]
     defaults = {d.name: d.defaults for d in domains if d.defaults is not None}
     sources = parse_sources(root["sources"], version) if "sources" in root else {}
-    entities = parse_entities(get_array(root, "entities", "root"), defaults, sources)
-    try:
-        qualified = config_version(version) >= V0_3
-    except FloeConfigError:
-        qualified = False
-    entities = [
-        e.model_copy(update={"id": f"{e.domain}.{e.name}"})
-        if qualified and e.domain is not None
-        else e
-        for e in entities
-    ]
+    entities = parse_entities(
+        get_array(root, "entities", "root"), defaults, sources, supports_v0_3(version)
+    )
     return RootConfig(
         version=version,
         metadata=metadata,
