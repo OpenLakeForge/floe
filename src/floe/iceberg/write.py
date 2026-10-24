@@ -47,11 +47,15 @@ def _chunks(reader: pa.RecordBatchReader, chunk_rows: int) -> Iterator[pa.Table]
     pending: list[pa.RecordBatch] = []
     rows = 0
     for batch in reader:
-        pending.append(batch)
-        rows += batch.num_rows
-        if rows >= chunk_rows:
-            yield pa.Table.from_batches(pending, reader.schema)
-            pending, rows = [], 0
+        offset = 0
+        while offset < batch.num_rows:
+            part = batch.slice(offset, chunk_rows - rows)
+            offset += part.num_rows
+            pending.append(part)
+            rows += part.num_rows
+            if rows >= chunk_rows:
+                yield pa.Table.from_batches(pending, reader.schema)
+                pending, rows = [], 0
     if rows:
         yield pa.Table.from_batches(pending, reader.schema)
 
@@ -85,9 +89,10 @@ def write_table(
                 table.metadata, chunk, table.io, write_uuid, counter
             )
         ]
-    replaced = (
-        [task.file for task in table.scan().plan_files()] if mode == "overwrite" else []
-    )
+    replaced: list[DataFile] = []
+    if mode == "overwrite":
+        with run_error("iceberg overwrite scan failed"):
+            replaced = [task.file for task in table.scan().plan_files()]
     if data_files or replaced:
         with run_error("rest iceberg commit failed"):
             tx = table.transaction()

@@ -19,6 +19,7 @@ from pyiceberg.table import Table
 from pyiceberg.types import LongType, NestedField, StringType, TimestampType
 
 from floe.config.storage import CatalogDefinition, StorageDefinition
+from floe.errors import FloeRunError
 from floe.iceberg.catalog import ensure_table, open_catalog
 from floe.iceberg.write import INPUT_HASH, RUN_ID, WriteMode, write_table
 
@@ -124,3 +125,12 @@ def test_empty_append_commits_nothing(table: Table) -> None:
     assert result.snapshot_id is None
     assert result.avg_file_size_mb is None
     assert not list(table.snapshots())
+
+
+def test_overwrite_scan_failure_is_a_floe_error(table: Table) -> None:
+    run(table, "append", 0, 5)
+    snapshot = table.current_snapshot()
+    assert snapshot is not None
+    table.io.delete(snapshot.manifest_list)
+    with pytest.raises(FloeRunError, match="iceberg overwrite scan failed"):
+        write_table(table, rows(10, 3), "overwrite", "r", "h")

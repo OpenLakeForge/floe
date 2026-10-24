@@ -25,6 +25,11 @@ def test_chunks_group_batches_up_to_the_row_threshold() -> None:
     assert sizes == [8, 8, 1]
 
 
+def test_chunks_split_a_batch_larger_than_the_threshold() -> None:
+    sizes = [chunk.num_rows for chunk in _chunks(reader([25]), 8)]
+    assert sizes == [8, 8, 8, 1]
+
+
 def test_chunks_of_an_empty_stream_yield_nothing() -> None:
     assert list(_chunks(reader([]), 8)) == []
 
