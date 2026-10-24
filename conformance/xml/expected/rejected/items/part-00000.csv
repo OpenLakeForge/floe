@@ -1,0 +1,2 @@
+id,name,city,price,__floe_row_index,__floe_errors
+3,,Rome,,2,"[{""rule"":""not_null"",""column"":""name"",""message"":""required value missing""}]"
