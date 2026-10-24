@@ -1,11 +1,14 @@
 """`run_entity` with an Iceberg accepted sink, on a local warehouse behind a stub catalog."""
 
-# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportMissingTypeStubs=false
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingTypeStubs=false
 # ^ pyarrow ships no type stubs
 
+from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import Any
 
+import duckdb
+import pyarrow as pa
 import pytest
 from pyiceberg.io import load_file_io
 from pyiceberg.partitioning import PartitionSpec
@@ -22,9 +25,11 @@ from pyiceberg.table.update import (
 import floe.iceberg.sink as sink_module
 from floe.config.parse import parse_config
 from floe.config.project import RootConfig
-from floe.errors import FloeRunError
+from floe.errors import FloeConfigError, FloeRunError
+from floe.iceberg.merge import MergeResult
 from floe.iceberg.sink import input_hash, partition_fields
-from floe.iceberg.write import INPUT_HASH, RUN_ID
+from floe.iceberg.write import INPUT_HASH, RUN_ID, write_result
+from floe.run import run as run_project
 from floe.run.entity import run_entity
 from floe.run.events import NO_EVENTS
 from floe.storage.inputs import InputFile
@@ -247,9 +252,54 @@ def test_nulls_in_a_required_column_fail_the_write(tmp_path: Path, catalog: Loca
     assert not catalog.tables
 
 
-def test_merge_modes_are_not_yet_supported(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
-    with pytest.raises(FloeRunError, match="sink.write_mode=merge_scd1 is not yet supported for iceberg"):  # fmt: skip
-        run(tmp_path, "id,name\n1,a\n", mode="merge_scd1")
+Merges = list[tuple[list[str], set[str]]]
+
+
+@pytest.fixture
+def merges(monkeypatch: pytest.MonkeyPatch) -> Merges:
+    """DuckDB can't attach the stub catalog: PyIceberg's upsert stands in for `merge_scd1` (Polaris runs the real one)."""
+    calls: Merges = []
+
+    def merge_scd1(_: object, table: Table, reader: pa.RecordBatchReader, key: Sequence[str], ignore: Collection[str] = ()) -> MergeResult:  # fmt: skip
+        calls.append((list(key), set(ignore)))
+        done = table.upsert(reader.read_all(), join_cols=list(key))
+        return MergeResult(write_result(table, []), done.rows_inserted, done.rows_updated)  # fmt: skip
+
+    monkeypatch.setattr(sink_module, "open_duckdb", lambda *_: duckdb.connect())  # pyright: ignore[reportUnknownLambdaType] -- stub
+    monkeypatch.setattr(sink_module, "merge_scd1", merge_scd1)
+    return calls
+
+
+def test_merge_scd1_upserts_and_reports_the_counts(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
+    ignore = "merge: {ignore_columns: [name]}"
+    first = run(tmp_path, "id,name\n1,a\n2,b\n", mode="merge_scd1", partition=ignore)
+    report = run(tmp_path, "id,name\n2,B\n3,c\n", mode="merge_scd1", partition=ignore)
+    assert rows(catalog) == [
+        (1, "a"),
+        (2, "B"),
+        (3, "c"),
+    ]  # the stand-in ignores nothing
+    assert merges == [(["id"], {"name"})] * 2
+    assert (first["accepted_output"]["inserted_count"], first["accepted_output"]["updated_count"]) == (2, 0)  # fmt: skip
+    out = report["accepted_output"]
+    assert list(out)[-4:] == ["merge_key", "inserted_count", "updated_count", "merge_elapsed_ms"]  # fmt: skip
+    assert (out["write_mode"], out["merge_key"]) == ("merge_scd1", ["id"])
+    assert (out["inserted_count"], out["updated_count"]) == (1, 1)
+    assert out["merge_elapsed_ms"] >= 0 and out["snapshot_id"] is not None
+
+
+def test_merge_scd2_is_not_yet_supported(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    with pytest.raises(FloeRunError, match="sink.write_mode=merge_scd2 is not yet supported for iceberg"):  # fmt: skip
+        run(tmp_path, "id,name\n1,a\n", mode="merge_scd2")
+
+
+def test_full_refresh_with_a_merge_is_a_config_error(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
+    root = config(tmp_path, mode="merge_scd1")
+    with pytest.raises(FloeConfigError, match="^entity 'Orders': --full-refresh is not supported with write_mode 'merge_scd1'$"):  # fmt: skip
+        run_project(tmp_path / "config.yml", root, full_refresh=True)
+    assert not catalog.tables
 
 
 def test_input_hash_covers_the_entity_and_the_claimed_files(tmp_path: Path) -> None:  # fmt: skip

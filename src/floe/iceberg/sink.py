@@ -5,6 +5,7 @@
 
 import hashlib
 import json
+import time
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,18 +23,19 @@ from floe.config.storage import (
     StorageDefinition,
     StoragesConfig,
 )
-from floe.config.types import EntityConfig
+from floe.config.types import EntityConfig, WriteMode
 from floe.errors import FloeConfigError, FloeRunError
 from floe.iceberg.catalog import (
     PartitionFields,
     ensure_table,
     open_catalog,
+    open_duckdb,
     run_error,
 )
+from floe.iceberg.merge import merge_scd1
 from floe.iceberg.write import (
     SMALL_FILE_THRESHOLD_BYTES,
     IcebergWriteResult,
-    WriteMode,
     write_table,
 )
 from floe.storage.inputs import InputFile
@@ -155,8 +157,8 @@ def write_iceberg(
     mode: WriteMode,
     run_id: str,
     digest: str,
-) -> tuple[IcebergWriteResult, dict[str, Any]]:
-    """`frames` hold the output columns `names`; returns the result and its `accepted_output` fields."""
+) -> tuple[IcebergWriteResult, dict[str, Any], dict[str, Any] | None]:
+    """`frames` hold the output columns `names`; returns the result, its `accepted_output` table and merge fields."""
     reader = _reader(entity, frames, names)
     arrow_schema = Catalog._convert_schema_if_needed(reader.schema)  # pyright: ignore[reportPrivateUsage] -- PyIceberg's own pyarrow -> Iceberg conversion
     schema: Schema = assign_fresh_schema_ids(arrow_schema)
@@ -166,14 +168,34 @@ def write_iceberg(
         catalog, target.namespace, target.table, schema, entity.name, target.location.removeprefix("local://"),
         partition_fields(entity), evolution.mode if evolution else "strict",
     )  # fmt: skip
-    options = entity.sink.accepted.options
-    size = options.max_size_per_file if options else None
-    # Rust `default_small_file_threshold_bytes`
-    threshold = SMALL_FILE_THRESHOLD_BYTES if size is None else max(1, size // 2)
-    result = write_table(table, reader, mode, run_id, digest, threshold)
+    merge: dict[str, Any] | None = None
+    if mode == "merge_scd1":
+        output = {c.name: n for c, n in zip(entity.schema_.columns, names, strict=True)}
+        primary_key = entity.schema_.primary_key or []  # validated non-empty for merges
+        key = [output.get(k.strip(), k.strip()) for k in primary_key]
+        options = entity.sink.accepted.merge
+        ignore = {output.get(c, c) for c in (options.ignore_columns or [])} if options else set()  # fmt: skip
+        started = time.monotonic()
+        with open_duckdb(target.catalog, target.storage) as con:
+            merged = merge_scd1(con, table, reader, key, ignore)
+        result = merged.write
+        merge = {
+            "merge_key": primary_key,  # Rust's Delta merge reports the configured key
+            "inserted_count": merged.inserted_count,
+            "updated_count": merged.updated_count,
+            "merge_elapsed_ms": int((time.monotonic() - started) * 1000),
+        }
+    else:
+        options = entity.sink.accepted.options
+        size = options.max_size_per_file if options else None
+        # Rust `default_small_file_threshold_bytes`
+        threshold = SMALL_FILE_THRESHOLD_BYTES if size is None else max(1, size // 2)
+        append = "overwrite" if mode == "overwrite" else "append"
+        result = write_table(table, reader, append, run_id, digest, threshold)
     ids = {"table_version": result.metadata_version, "snapshot_id": result.snapshot_id}
-    return result, {k: v for k, v in ids.items() if v is not None} | {
+    fields = {k: v for k, v in ids.items() if v is not None} | {
         "iceberg_catalog_name": target.catalog.name,
         "iceberg_namespace": target.namespace,
         "iceberg_table": target.table,
     }
+    return result, fields, merge

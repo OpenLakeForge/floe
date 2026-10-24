@@ -552,7 +552,7 @@ def _run_entity(
     if sink.accepted.format not in ("parquet", "iceberg"):
         raise FloeRunError(f"entity.name={entity.name} unsupported sink format: {sink.accepted.format}")  # fmt: skip
     iceberg = sink.accepted.format == "iceberg"
-    if iceberg and sink.write_mode not in ("overwrite", "append"):
+    if iceberg and sink.write_mode == "merge_scd2":  # #654
         raise FloeRunError(f"entity.name={entity.name} sink.write_mode={sink.write_mode} is not yet supported for iceberg")  # fmt: skip
     who = f"entity.name={entity.name}"
     require_local(storages, src.storage, f"{who} source.storage")
@@ -614,6 +614,7 @@ def _run_entity(
             break
 
     table: dict[str, Any] | None = None
+    merge: dict[str, Any] | None = None
     if pending and (
         frames or sink.write_mode == "overwrite"
     ):  # Rust writes nothing when every input was skipped
@@ -625,9 +626,8 @@ def _run_entity(
         if target is None:
             write = write_accepted(pl.concat(frames), base, sink.write_mode, sink.accepted.options)  # fmt: skip
         else:
-            mode = "overwrite" if sink.write_mode == "overwrite" else "append"
             outputs = [plan.out_map.get(n, n) for n in names]
-            result, table = write_iceberg(entity, target, frames, outputs, mode, emit.run_id, input_hash(entity, pending))  # fmt: skip
+            result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, input_hash(entity, pending))  # fmt: skip
             write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
                                   result.avg_file_size_mb, result.small_files_count)  # fmt: skip
     else:
@@ -646,5 +646,6 @@ def _run_entity(
         unique=unique,
         table_root_uri=target.location if target and table else None,
         table=table,
+        merge=merge,
     )
     return EntityRun(report, any(f["status"] == "aborted" for f in files))

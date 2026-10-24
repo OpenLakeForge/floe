@@ -149,6 +149,7 @@ def build_report(
     write_mode: WriteMode | None = None,
     table_root_uri: str | None = None,
     table: Mapping[str, Any] | None = None,
+    merge: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The entity's `run.json`; `files` are the `file_report`s, in input order.
 
@@ -223,6 +224,7 @@ def build_report(
             "total_bytes_written": write.total_bytes_written if write.files_written or table else None,
             "avg_file_size_mb": write.avg_file_size_mb if write.files_written or table else None,
             "small_files_count": write.small_files_count if write.files_written or table else None,
+            **(merge or {}),
         },
         "schema_evolution": {
             "enabled": False,
