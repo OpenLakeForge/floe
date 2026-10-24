@@ -25,6 +25,7 @@ class StorageClient(Protocol):
     def write_conditional(
         self, uri: str, expected_version: str | None, body: bytes
     ) -> str | None: ...
+    def delete_conditional(self, uri: str, expected_version: str | None) -> bool: ...
 
 
 class Downloader(Protocol):
