@@ -199,7 +199,7 @@ the main config file.  The example below shows how catalog and schema values
 defined in a profile can drive path construction.
 
 ```yaml
-version: "0.1"
+version: "0.8"
 report:
   path: "{{REPORT_DIR}}"
 entities:
