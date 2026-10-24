@@ -350,7 +350,8 @@ def _source_root(raw: str, fmt: str, resolved: Path) -> str:
     if resolved.is_dir():
         return trimmed
     if resolved.is_file() or trimmed.lower().endswith(tuple(suffixes_for_format(fmt))):
-        return (_parent(trimmed) or trimmed).rstrip(_SEPARATORS)
+        # #813: a bare filename lives in the config dir (Rust 0.7 used the file itself)
+        return (_parent(trimmed) or ".").rstrip(_SEPARATORS)
     return trimmed
 
 
