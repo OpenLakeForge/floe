@@ -1,0 +1,5 @@
+pyiceberg==0.12.0
+pyiceberg-core
+duckdb==1.5.6
+pyarrow==25.0.1
+boto3
