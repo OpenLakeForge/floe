@@ -1,5 +1,6 @@
 """Entity validation, ported from `config/validate.rs` (`validate_sink`, `validate_schema` and their helpers)."""
 
+from floe import __version__
 from floe.checks.normalize import output_names
 from floe.config.project import LineageConfig, RootConfig, config_version
 from floe.config.types import EntityConfig, WriteMode
@@ -11,6 +12,8 @@ from floe.read.xml import parse_selector
 
 MIN_VERSION = (0, 1)
 QUALIFIED_VERSION = (0, 3)
+# D21: root.version is the minimum Floe release (major.minor) the config targets.
+FLOE_VERSION = config_version(".".join(__version__.split(".")[:2]))
 MAX_JSON_COLUMNS = 1024
 CAST_MODES = ("strict", "coerce")
 SOURCE_FORMATS = ("csv", "tsv", "parquet", "json", "orc", "avro", "xlsx", "xml")
@@ -693,6 +696,11 @@ def validate_entities(config: RootConfig) -> None:
         raise FloeConfigError(
             f"root.version={config.version} is unsupported "
             f"(minimum supported version: {MIN_VERSION[0]}.{MIN_VERSION[1]})"
+        )
+    if version > FLOE_VERSION:
+        raise FloeConfigError(
+            f"root.version={config.version} is unsupported "
+            f"(newer than Floe {FLOE_VERSION[0]}.{FLOE_VERSION[1]})"
         )
     if not config.entities:
         raise FloeConfigError(

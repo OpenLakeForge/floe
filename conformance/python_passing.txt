@@ -516,6 +516,8 @@ config/val1_source_json_mode_unknown
 config/val1_state_path_blank
 config/val1_state_path_ok
 config/val1_version_below_minimum
+config/val1_version_d21_floe_ok
+config/val1_version_d21_newer_minor
 config/val1_version_extra_dot
 config/val1_version_future_major_ok
 config/val1_version_major_not_numeric
