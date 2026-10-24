@@ -28,6 +28,8 @@ entities:
           type: number
         - name: active
           type: boolean
+        - name: day
+          type: date
         - name: note
           type: string
 report:

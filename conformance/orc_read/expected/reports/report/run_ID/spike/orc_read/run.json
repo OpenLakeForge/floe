@@ -51,8 +51,8 @@
     "part_files": [
       "part-00000.parquet"
     ],
-    "total_bytes_written": 1644,
-    "avg_file_size_mb": 0.001567840576171875,
+    "total_bytes_written": 1937,
+    "avg_file_size_mb": 0.0018472671508789062,
     "small_files_count": 1
   },
   "schema_evolution": {
@@ -78,8 +78,8 @@
       "accepted_count": 2,
       "rejected_count": 1,
       "mismatch": {
-        "declared_columns_count": 5,
-        "input_columns_count": 5,
+        "declared_columns_count": 6,
+        "input_columns_count": 6,
         "missing_columns": [],
         "extra_columns": [],
         "mismatch_action": "none"

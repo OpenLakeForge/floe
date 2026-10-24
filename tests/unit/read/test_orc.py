@@ -3,6 +3,7 @@
 # pyright: reportMissingTypeStubs=false, reportUnknownMemberType=false
 # pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false
 
+from datetime import date
 from pathlib import Path
 
 import polars as pl
@@ -16,15 +17,32 @@ from floe.read.orc import read_orc
 INPUT = Path(__file__).parents[3] / "conformance/orc_read/in/orc_read.orc"
 
 
-def test_conformance_input_is_raw_strings() -> None:
+def test_conformance_input_keeps_native_types() -> None:
     (chunk,) = read_orc(INPUT)
     assert chunk.offset == 0
+    assert chunk.df.schema == {
+        "id": pl.String,
+        "qty": pl.Int64,
+        "price": pl.Float64,
+        "active": pl.Boolean,
+        "day": pl.Date,
+        "note": pl.String,
+    }
     assert chunk.df.rows() == [
-        ("r0", "1", "1.5", "true", "plain"),
-        ("r1", "2", "2.0", "false", None),
-        ("r2", None, None, None, "x"),
+        ("r0", 1, 1.5, True, date(2024, 1, 1), "plain"),
+        ("r1", 2, 2.0, False, date(2024, 2, 29), None),
+        ("r2", None, None, None, None, "x"),
     ]
-    assert set(chunk.df.dtypes) == {pl.String}
+
+
+def test_projection_reads_only_declared_columns() -> None:
+    (chunk,) = read_orc(INPUT, columns={"qty", "id", "absent"})
+    assert chunk.df.columns == ["id", "qty"]
+
+
+def test_no_declared_column_present_reads_everything() -> None:
+    (chunk,) = read_orc(INPUT, columns={"absent"})
+    assert chunk.df.width == 6
 
 
 def test_one_chunk_per_stripe_with_whole_file_offsets(tmp_path: Path) -> None:
