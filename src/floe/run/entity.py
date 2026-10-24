@@ -31,7 +31,7 @@ from floe.checks.rows import (
     not_null_check,
     split_rows,
 )
-from floe.checks.unique import UniqueTracker, resolve_unique_keys
+from floe.checks.unique import UniqueResult, UniqueTracker, resolve_unique_keys
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeRunError
 from floe.pii import apply_pii_masking
@@ -212,6 +212,15 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
     return out, [] if out["status"] == "aborted" else [_output(plan, df) for df in accepted]  # fmt: skip
 
 
+def _report_names(
+    r: UniqueResult, key: list[str], runtime: dict[str, str]
+) -> UniqueResult:
+    """The report names the schema columns, in `columns` and in the sample values."""
+    back = {runtime.get(c, c): c for c in key}
+    samples = [replace(x, values={back.get(k, k): v for k, v in x.values.items()}) for x in r.samples]  # fmt: skip
+    return replace(r, columns=key, samples=samples)
+
+
 def run_entity(
     entity: EntityConfig,
     config_dir: Path,
@@ -236,7 +245,7 @@ def run_entity(
         [c.name for c in columns if c.unique],
         entity.schema_.primary_key,
     )
-    primary = {runtime.get(k, k) for k in entity.schema_.primary_key or []}
+    primary = {runtime.get(k.strip(), k.strip()) for k in entity.schema_.primary_key or []}  # fmt: skip
     plan = _Plan(
         entity, config_dir, formatter, strategy, names,
         output_column_mapping(columns, strategy),
@@ -274,10 +283,7 @@ def run_entity(
     else:
         write = AcceptedWrite(0, [], 0, 0.0, 0)
     rejected = sink.rejected and normalize_local_path(config_dir / sink.rejected.path)
-    unique = [
-        replace(r, columns=key)
-        for r, key in zip(plan.tracker.results(), keys, strict=True)
-    ]  # the report names the schema columns
+    unique = [_report_names(r, key, runtime) for r, key in zip(plan.tracker.results(), keys, strict=True)]  # fmt: skip
     report = build_report(
         entity,
         spec_version,
