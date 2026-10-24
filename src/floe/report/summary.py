@@ -1,13 +1,13 @@
 """Run `run.summary.json`, run status and exit code, report layout (Rust: `report/{mod,output}.rs`, `run/mod.rs`)."""
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 from floe import __version__
+from floe.config.project import ProjectMetadata
 from floe.config.types import EntityConfig
-from floe.errors import FloeStorageError
 from floe.report.entity import serialize
-from floe.storage.types import StorageClient
 
 _TOTALS = ("files_total", "files_skipped", "rows_total", "accepted_total",
            "rejected_total", "warnings_total", "errors_total")  # fmt: skip
@@ -41,6 +41,7 @@ def build_summary(
     duration_ms: int,
     config_path: str,
     report_path: str,
+    metadata: ProjectMetadata | None = None,
 ) -> dict[str, Any]:
     """`reports` are the entity `run.json` dicts in run order, each with its `id_path`."""
     run_dir = f"{report_path.rstrip('/')}/run_{run_id}"
@@ -69,7 +70,8 @@ def build_summary(
             "status": status,
             "exit_code": exit_code,
         },
-        "config": {"path": config_path, "version": version},
+        "config": {"path": config_path, "version": version}
+        | ({"metadata": metadata.model_dump(exclude_none=True)} if metadata else {}),
         "report": {"path": report_path, "report_file": f"{run_dir}/run.summary.json"},
         "results": totals,
         "entities": entities,
@@ -77,19 +79,16 @@ def build_summary(
 
 
 def write_reports(
-    client: StorageClient,
-    summary: dict[str, Any],
-    reports: Sequence[tuple[str, dict[str, Any]]],
+    summary: dict[str, Any], reports: Sequence[tuple[str, dict[str, Any]]]
 ) -> None:
-    """Write `<report>/run_<id>/<id_path>/run.json` per entity, then `run.summary.json`."""
-    summary_uri = summary["report"]["report_file"]
-    run_dir = summary_uri.removesuffix("/run.summary.json")
+    """Write `<report>/run_<id>/<id_path>/run.json` per entity, then `run.summary.json` (overwriting, as Rust)."""
+    summary_file = summary["report"]["report_file"]
+    run_dir = summary_file.removesuffix("/run.summary.json")
     for path, report in reports:
-        _write(client, f"{run_dir}/{path}/run.json", report)
-    _write(client, summary_uri, summary)
+        _write(f"{run_dir}/{path}/run.json", report)
+    _write(summary_file, summary)
 
 
-def _write(client: StorageClient, uri: str, doc: dict[str, Any]) -> None:
-    # a run id is unique, so an existing file is a clash, not an overwrite
-    if client.write_conditional(uri, None, serialize(doc).encode()) is None:
-        raise FloeStorageError(f"report already exists: {uri}")
+def _write(file: str, doc: dict[str, Any]) -> None:
+    Path(file).parent.mkdir(parents=True, exist_ok=True)
+    Path(file).write_text(serialize(doc), encoding="utf-8")
