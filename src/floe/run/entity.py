@@ -33,6 +33,7 @@ from floe.checks.rows import (
     split_rows,
 )
 from floe.checks.unique import UniqueResult, UniqueTracker, resolve_unique_keys
+from floe.config.storage import StoragesConfig
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
 from floe.pii import apply_pii_masking
@@ -47,6 +48,7 @@ from floe.run.events import NO_EVENTS, Emitter
 from floe.storage.inputs import ResolvedInputs, resolve_inputs
 from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
+from floe.storage.resolve import require_local
 from floe.write.outputs import AcceptedWrite, write_accepted, write_rejected
 
 Chunks = Iterator[tuple[int, pl.DataFrame, pl.Series | None]]  # fmt: skip  # offset, frame, ragged rows
@@ -313,6 +315,7 @@ def run_entity(
     config_dir: Path,
     spec_version: str,
     formatter: Formatter = "json",
+    storages: StoragesConfig | None = None,
     emit: Emitter = NO_EVENTS,
 ) -> EntityRun:
     """Run one entity with local sources and sinks; `config_dir` is absolute and normalised."""
@@ -324,6 +327,12 @@ def run_entity(
         # ponytail: incremental state lands with #648; refuse rather than re-ingest every run
         raise FloeRunError(f"entity.name={entity.name} incremental_mode {entity.incremental_mode} is not supported yet")  # fmt: skip
     src, sink = entity.source, entity.sink
+    who = f"entity.name={entity.name}"
+    require_local(storages, src.storage, f"{who} source.storage")
+    require_local(storages, sink.accepted.storage, f"{who} sink.accepted.storage")
+    if sink.rejected:
+        require_local(storages, sink.rejected.storage, f"{who} sink.rejected.storage")
+    # sink.archive.storage must equal source.storage (validated), so the source check covers it
     strategy = resolve_strategy(entity.schema_)
     columns = entity.schema_.columns
     names = source_names(columns, strategy)

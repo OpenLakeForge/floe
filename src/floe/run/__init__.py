@@ -10,7 +10,7 @@ from typing import Any, cast
 from floe.checks.rows import Formatter
 from floe.config.project import RootConfig
 from floe.config.types import EntityConfig
-from floe.errors import FloeConfigError, FloeError, FloeRunError
+from floe.errors import FloeConfigError, FloeError
 from floe.report.summary import (
     build_summary,
     id_path,
@@ -23,6 +23,7 @@ from floe.run.events import Emitter, Observer
 from floe.storage.inputs import resolve_inputs
 from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
+from floe.storage.resolve import require_local
 
 
 @dataclass(frozen=True)
@@ -93,13 +94,7 @@ def run(
     if full_refresh:
         selected = [_refresh(e) for e in selected]
     config_dir = normalize_local_path(path.parent)
-    storages = root.storages
-    where = root.report.storage or (storages and storages.default) or "local"
-    kind = next((d.type for d in storages.definitions if d.name == where), "local") if storages else "local"  # fmt: skip
-    if (
-        kind != "local"
-    ):  # ponytail: only local report targets until the storage resolver lands (#722)
-        raise FloeRunError(f"report.storage={where} (type {kind}) is not supported yet: reports are written to local storage only")  # fmt: skip
+    require_local(root.storages, root.report.storage, "report.storage")
     run_id = started.replace(":", "-")
     report_path = str(normalize_local_path(config_dir / root.report.path))
     if dry_run:  # Rust: no events, no reports; the inputs are only listed
@@ -120,7 +115,9 @@ def run(
     def one(entity: EntityConfig) -> EntityRun:
         emit("entity_started", name=entity.name)
         try:
-            return run_entity(entity, config_dir, root.version, formatter, emit)
+            return run_entity(
+                entity, config_dir, root.version, formatter, root.storages, emit
+            )
         except FloeError:
             _finished(emit, entity.name, None)
             raise
