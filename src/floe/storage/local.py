@@ -1,5 +1,6 @@
 """Local storage client, ported from `io/storage/providers/local.rs` (`LocalClient`)."""
 
+import hashlib
 import os
 import shutil
 import time
@@ -20,8 +21,7 @@ def _path(uri: str) -> Path:
 
 
 def _version(path: Path) -> str:
-    st = path.stat()
-    return f"{st.st_size}:{st.st_mtime_ns}"
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _lock_is_stale(lock: Path) -> bool:
@@ -36,6 +36,25 @@ def _lock_is_stale(lock: Path) -> bool:
     return age > _LOCK_STALE_TTL_S
 
 
+def _break_stale_lock(lock: Path) -> bool:
+    """Single-winner break: a hard link to a per-inode claim name succeeds once."""
+    try:
+        ino = lock.stat().st_ino
+        claim = Path(f"{lock}.{ino}.742.claim")
+        os.link(lock, claim)
+    except OSError:  # lock vanished, or another waiter already holds the claim
+        return False
+    try:
+        # the lock may have been released and retaken between the check and the link
+        if claim.stat().st_ino == ino and _lock_is_stale(claim):
+            lock.unlink(missing_ok=True)
+            return True
+        return False
+    finally:
+        # ponytail: a crash before this unlink leaves the claim; the lock then times out
+        claim.unlink(missing_ok=True)
+
+
 @contextmanager
 def _file_lock(base: Path) -> Generator[None]:
     lock = Path(f"{base}.lock")
@@ -44,8 +63,7 @@ def _file_lock(base: Path) -> Generator[None]:
         try:
             fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
         except FileExistsError:
-            if _lock_is_stale(lock):
-                lock.unlink(missing_ok=True)
+            if _lock_is_stale(lock) and _break_stale_lock(lock):
                 continue
             if time.monotonic() >= deadline:
                 raise FloeStorageError(
@@ -119,7 +137,17 @@ class LocalClient:
                 current = _version(path) if path.exists() else None
                 if current != expected_version:
                     return None
-                path.write_bytes(body)
+                tmp = path.with_name(f"{path.name}.{os.getpid()}.742.tmp")
+                try:
+                    with tmp.open("wb") as f:
+                        if current is not None:
+                            shutil.copymode(path, tmp)
+                        f.write(body)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(tmp, path)
+                finally:
+                    tmp.unlink(missing_ok=True)
                 return _version(path)
         except OSError as e:
             raise FloeStorageError(f"local write failed for {path}: {e}") from e
