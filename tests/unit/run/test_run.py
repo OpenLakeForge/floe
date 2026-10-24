@@ -1,5 +1,6 @@
 """`floe.run.run`: selection, dry run, full refresh, and events."""
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -137,3 +138,27 @@ def test_a_raising_observer_does_not_abort_the_run(tmp_path: Path) -> None:
 
     out = run(path, root, observer=boom)
     assert [e["name"] for e in out.summary["entities"]] == ["d.a", "d.b"]
+
+
+def test_full_refresh_reingests_archived_files(tmp_path: Path) -> None:
+    """D24: archived files first (by name, not moved again), then the current sources."""
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in/a.csv").write_text("id\n1\n2\n")
+    text = ENTITY.format(name="o", mode="append").replace("./in/o.csv", "./in")
+    text = text.replace("    sink:\n", "    incremental_mode: archive\n    sink:\n      archive: {path: ./arch}\n")  # fmt: skip
+    path = tmp_path / "config.yml"
+    path.write_text(f'version: "0.3"\ndomains:\n  - name: d\nentities:\n{text}report: {{path: ./report}}\n')  # fmt: skip
+    run(path, parse_config(path, {}))
+    assert not (tmp_path / "in/a.csv").exists()
+    (tmp_path / "in/b.csv").write_text("id\n3\n")
+    out = run(path, parse_config(path, {}), full_refresh=True)
+    assert rows(tmp_path, "o") == 3
+    assert out.summary["run"]["status"] == "success"
+    report = json.loads(max(tmp_path.glob("report/run_*/d/o/run.json")).read_text())
+    files = report["files"]
+    assert [Path(f["input_file"]).name.split("__")[0] for f in files] == ["a", "b.csv"]
+    assert [f["output"]["archived_path"] is None for f in files] == [True, False]
+    assert sorted(p.name.split("__")[0] for p in (tmp_path / "arch/o").iterdir()) == [
+        "a",
+        "b",
+    ]
