@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from floe.config.parse import parse_config
-from floe.config.validate import validate_schemas
+from floe.config.validate import validate_entities
 from floe.errors import FloeConfigError
 
 ALLOWED = "string, number, boolean, datetime, date"
@@ -31,7 +31,7 @@ def check(
           schema: {schema}
         """)
     )
-    validate_schemas(parse_config(path))
+    validate_entities(parse_config(path))
 
 
 COLS = "columns: [{name: id, type: string}, {name: amt, type: number}]"
@@ -128,3 +128,65 @@ def test_add_columns_on_iceberg(tmp_path: Path) -> None:
         f"{{{COLS}, schema_evolution: {{mode: add_columns}}}}",
         sink="{accepted: {format: iceberg, path: out}}",
     )
+
+
+def test_d2_iceberg_accepts_merge(tmp_path: Path) -> None:
+    check(
+        tmp_path,
+        f"{{{COLS}, primary_key: [id]}}",
+        sink="{write_mode: merge_scd2, accepted: {format: iceberg, path: out, merge: {scd2: {}}}}",
+    )
+
+
+def test_scd2_empty_column_is_not_defaulted(tmp_path: Path) -> None:
+    sink = "{write_mode: merge_scd2, accepted: {format: iceberg, path: out, merge: {scd2: {valid_to_column: ''}}}}"
+    with pytest.raises(FloeConfigError, match="scd2.valid_to_column must not be empty"):
+        check(tmp_path, f"{{{COLS}, primary_key: [id]}}", sink=sink)
+
+
+def test_empty_iceberg_catalog_is_not_defaulted(tmp_path: Path) -> None:
+    path = tmp_path / "config.yml"
+    path.write_text(
+        textwrap.dedent(f"""
+        version: "0.2"
+        catalogs: {{default: c, definitions: [{{name: c, type: rest, uri: u}}]}}
+        entities:
+        - name: orders
+          source: {{format: csv, path: in.csv}}
+          sink: {{accepted: {{format: iceberg, path: out, iceberg: {{catalog: ''}}}}}}
+          policy: {{severity: warn}}
+          schema: {{{COLS}}}
+        """)
+    )
+    with pytest.raises(FloeConfigError, match="references unknown catalog $"):
+        validate_entities(parse_config(path))
+
+
+@pytest.mark.parametrize(
+    ("sink", "message"),
+    [
+        (
+            "{accepted: {format: delta, path: out}}",
+            "sink.accepted.format=delta is not supported in 0.8",
+        ),
+        (
+            "{accepted: {format: duckdb, duckdb: {connection: 'md:x'}}}",
+            "sink.accepted.format=duckdb is not supported in 0.8",
+        ),
+        (
+            "{write_mode: merge_scd1, accepted: {format: parquet, path: out}}",
+            "sink.write_mode=merge_scd1 is not supported by sink.accepted.format=parquet",
+        ),
+        (
+            "{accepted: {format: iceberg, path: out, partition_spec: [{column: id, transform: bucket}]}}",
+            (
+                "sink.accepted.partition_spec[0].transform=bucket is unsupported "
+                "(allowed: identity, year, month, day, hour)"
+            ),
+        ),
+    ],
+)
+def test_sink_errors(tmp_path: Path, sink: str, message: str) -> None:
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}, primary_key: [id]}}", sink=sink)
+    assert str(err.value) == f"entity.name=orders {message}"

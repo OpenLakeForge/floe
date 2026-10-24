@@ -366,7 +366,10 @@ def _sink_target(
     spec = _partition_spec(h, ctx)
     return SinkTarget(
         format=fmt,
-        path=get_string(h, "path", ctx),
+        # a MotherDuck sink has no path; D1 rejects duckdb in validation (#633)
+        path=opt_string(h, "path", ctx) or ""
+        if fmt == "duckdb"
+        else get_string(h, "path", ctx),
         storage=storage,
         options=options,
         merge=merge,
