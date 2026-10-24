@@ -35,9 +35,10 @@ from floe.checks.rows import (
     split_rows,
 )
 from floe.checks.unique import UniqueResult, UniqueTracker, resolve_unique_keys
-from floe.config.storage import StoragesConfig
+from floe.config.storage import CatalogsConfig, StoragesConfig
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
+from floe.iceberg.sink import input_hash, resolve_target, write_iceberg
 from floe.pii import apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.csv import RAGGED_MESSAGE, read_csv
@@ -525,12 +526,13 @@ def run_entity(
     storages: StoragesConfig | None = None,
     emit: Emitter = NO_EVENTS,
     full_refresh: bool = False,
+    catalogs: CatalogsConfig | None = None,
 ) -> EntityRun:
-    """Run one entity with local sources and sinks; `config_dir` is absolute and normalised."""
+    """Run one entity with local sources and local or Iceberg sinks; `config_dir` is absolute and normalised."""
     inc = Incremental(entity, config_dir, emit.run_id, full_refresh)
     try:
         run = _run_entity(
-            entity, config_dir, spec_version, formatter, storages, emit, inc
+            entity, config_dir, spec_version, formatter, storages, emit, inc, catalogs
         )
     except BaseException:
         inc.release()  # a failed entity leaves no claims behind
@@ -547,15 +549,19 @@ def _run_entity(
     storages: StoragesConfig | None,
     emit: Emitter,
     inc: Incremental,
+    catalogs: CatalogsConfig | None,
 ) -> EntityRun:
-    if entity.sink.accepted.format != "parquet":
-        raise FloeRunError(
-            f"entity.name={entity.name} unsupported sink format: {entity.sink.accepted.format}"
-        )
     src, sink = entity.source, entity.sink
+    if sink.accepted.format not in ("parquet", "iceberg"):
+        raise FloeRunError(f"entity.name={entity.name} unsupported sink format: {sink.accepted.format}")  # fmt: skip
+    iceberg = sink.accepted.format == "iceberg"
+    if iceberg and sink.write_mode not in ("overwrite", "append"):
+        raise FloeRunError(f"entity.name={entity.name} sink.write_mode={sink.write_mode} is not yet supported for iceberg")  # fmt: skip
     who = f"entity.name={entity.name}"
     require_local(storages, src.storage, f"{who} source.storage")
-    require_local(storages, sink.accepted.storage, f"{who} sink.accepted.storage")
+    target = resolve_target(storages, catalogs, config_dir, entity) if iceberg else None
+    if target is None:  # PyIceberg writes the table's files, not Floe's storage clients
+        require_local(storages, sink.accepted.storage, f"{who} sink.accepted.storage")
     if sink.rejected:
         require_local(storages, sink.rejected.storage, f"{who} sink.rejected.storage")
     # sink.archive.storage must equal source.storage (validated), so the source check covers it
@@ -585,7 +591,7 @@ def _run_entity(
     if sink.archive and entity.incremental_mode in ("none", "archive"):
         plan.archive_dir = normalize_local_path(config_dir / sink.archive.path)
     base = normalize_local_path(config_dir / sink.accepted.path)
-    if sink.write_mode == "append":
+    if sink.write_mode == "append" and target is None:
         _seed_unique(plan, base, sorted({runtime.get(c, c) for k in keys for c in k}))
     client = LocalClient()
 
@@ -611,6 +617,7 @@ def _run_entity(
         if report["status"] == "aborted":
             break
 
+    table: dict[str, Any] | None = None
     if pending and (
         frames or sink.write_mode == "overwrite"
     ):  # Rust writes nothing when every input was skipped
@@ -618,8 +625,15 @@ def _run_entity(
             cast_column(n, c.column_type)[0]
             for n, c in zip(names, columns, strict=True)
         )
-        frame = pl.concat(frames) if frames else _output(plan, empty)
-        write = write_accepted(frame, base, sink.write_mode, sink.accepted.options)
+        frames = frames or [_output(plan, empty)]
+        if target is None:
+            write = write_accepted(pl.concat(frames), base, sink.write_mode, sink.accepted.options)  # fmt: skip
+        else:
+            mode = "overwrite" if sink.write_mode == "overwrite" else "append"
+            outputs = [plan.out_map.get(n, n) for n in names]
+            result, table = write_iceberg(entity, target, frames, outputs, mode, emit.run_id, input_hash(entity, pending))  # fmt: skip
+            write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
+                                  result.avg_file_size_mb, result.small_files_count)  # fmt: skip
     else:
         write = AcceptedWrite(0, [], 0, 0.0, 0)
     rejected = sink.rejected and normalize_local_path(config_dir / sink.rejected.path)
@@ -631,8 +645,10 @@ def _run_entity(
         files,
         write,
         source_uri=f"local://{normalize_local_path(config_dir / src.path)}",
-        accepted_uri=f"local://{base}",
+        accepted_uri=target.accepted_uri if target else f"local://{base}",
         rejected_uri=f"local://{rejected}" if rejected else None,
         unique=unique,
+        table_root_uri=target.location if target and table else None,
+        table=table,
     )
     return EntityRun(report, any(f["status"] == "aborted" for f in files))
