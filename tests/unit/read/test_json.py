@@ -109,6 +109,23 @@ def test_ndjson_invalid_utf8_names_the_line(tmp_path: Path) -> None:
         list(read_json(path, options, [column("a")]))
 
 
+@pytest.mark.parametrize(
+    ("content", "mode", "message"),
+    [
+        ('[{"a":"\\ud800"}]', None, "json parse error: "),
+        ('[{"a":["\\udc00"]}]', None, "json parse error: "),
+        ('{"a":1}\n{"\\ud800":1}', "ndjson", "json parse error at line 2: "),
+    ],
+)
+def test_unpaired_surrogates_are_parse_errors(
+    tmp_path: Path, content: str, mode: str | None, message: str
+) -> None:
+    with pytest.raises(FloeIoError, match=message):
+        read(tmp_path, content, column("a"), mode=mode)
+    (chunk,) = read(tmp_path, '[{"a":"\\ud83d\\ude00"}]', column("a"))
+    assert chunk.df.rows() == [("\U0001f600",)]
+
+
 def test_coerce_sorts_object_keys(tmp_path: Path) -> None:
     (chunk,) = read(
         tmp_path, '[{"a":{"z":1,"a":[{"y":1,"b":2}]}}]', column("a"), cast_mode="coerce"

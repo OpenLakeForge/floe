@@ -119,9 +119,13 @@ def _int(text: str) -> float:
 
 
 def _loads(text: str) -> Any:
-    return json.loads(
+    value = json.loads(
         text, parse_constant=_reject_constant, parse_float=_float, parse_int=_int
     )
+    # serde rejects unpaired surrogate escapes; Python keeps them and only fails later
+    # ponytail: a second pass over each value; a parse_string hook would avoid it
+    json.dumps(value, ensure_ascii=False).encode("utf-8")
+    return value
 
 
 def _rows(path: Path, mode: str) -> Iterator[tuple[str, Any]]:
