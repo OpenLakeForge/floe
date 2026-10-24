@@ -10,6 +10,7 @@ IncrementalMode = Literal["none", "archive", "file", "row"]
 PolicySeverity = Literal["warn", "reject", "abort"]
 SchemaEvolutionMode = Literal["strict", "add_columns"]
 SchemaEvolutionIncompatibleAction = Literal["fail"]
+WriteMode = Literal["overwrite", "append", "merge_scd1", "merge_scd2"]
 
 
 class _Model(BaseModel):
@@ -66,6 +67,86 @@ class SchemaConfig(_Model):
     columns: list[ColumnConfig]
 
 
+class SourceOptions(_Model):
+    header: bool | None = True
+    separator: str | None = ";"
+    encoding: str | None = "UTF8"
+    null_values: list[str] | None = [""]
+    recursive: bool | None = False
+    glob: str | None = None
+    json_mode: str | None = None
+    sheet: str | None = None
+    header_row: int | None = 1
+    data_row: int | None = None
+    row_tag: str | None = None
+    namespace: str | None = None
+    value_tag: str | None = None
+
+
+class SourceConfig(_Model):
+    format: str
+    path: str
+    storage: str | None
+    options: SourceOptions
+    cast_mode: str
+    source_ref: str | None
+    resource: str | None
+
+
+class SinkOptions(_Model):
+    compression: str | None
+    row_group_size: int | None
+    max_size_per_file: int | None
+
+
+class MergeScd2Options(_Model):
+    current_flag_column: str | None
+    valid_from_column: str | None
+    valid_to_column: str | None
+
+
+class MergeOptions(_Model):
+    ignore_columns: list[str] | None
+    compare_columns: list[str] | None
+    scd2: MergeScd2Options | None
+
+
+class IcebergSinkOptions(_Model):
+    catalog: str | None
+    namespace: str | None
+    table: str | None
+    location: str | None
+
+
+class IcebergPartitionField(_Model):
+    column: str
+    transform: str
+
+
+class SinkTarget(_Model):
+    format: str
+    path: str
+    storage: str | None
+    options: SinkOptions | None
+    merge: MergeOptions | None
+    iceberg: IcebergSinkOptions | None
+    partition_by: list[str] | None
+    partition_spec: list[IcebergPartitionField] | None
+    write_mode: WriteMode
+
+
+class ArchiveTarget(_Model):
+    path: str
+    storage: str | None
+
+
+class SinkConfig(_Model):
+    write_mode: WriteMode
+    accepted: SinkTarget
+    rejected: SinkTarget | None
+    archive: ArchiveTarget | None
+
+
 class PiiConfig(_Model):
     columns: list[PiiColumn]
 
@@ -77,8 +158,8 @@ class EntityConfig(_Model):
     domain: str | None
     incremental_mode: IncrementalMode
     state: EntityStateConfig | None
-    source: object  # ponytail: raw mapping until #710 parses it
-    sink: object  # ponytail: raw mapping until #710 parses it
+    source: SourceConfig
+    sink: SinkConfig
     policy: PolicyConfig
     # `schema` shadows a BaseModel attribute, so the field is `schema_` and the key stays `schema`.
     schema_: SchemaConfig = Field(alias="schema")
