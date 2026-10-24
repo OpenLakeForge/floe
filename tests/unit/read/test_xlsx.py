@@ -38,7 +38,7 @@ def test_data_row_skips_rows_after_the_header() -> None:
     assert df["id"].to_list() == ["2", "x3"]
 
 
-def test_dates_render_as_iso_text_unlike_rust() -> None:
+def test_dates_render_as_iso_text_d14() -> None:
     # Rust 0.7 renders the Excel serial ("45293", "45293.12783564815"); fastexcel renders ISO text.
     df = read_xlsx(BOOK, opts(sheet="dates"))
     assert df.row(0) == ("2024-01-02 00:00:00", "2024-01-02 03:04:05")
