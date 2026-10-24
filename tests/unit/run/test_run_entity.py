@@ -112,6 +112,17 @@ def test_mismatch_reject_file_skips_the_rows(tmp_path: Path) -> None:
     assert accepted(tmp_path).height == 0
 
 
+def test_unreadable_file_is_rejected_with_the_reader_rule(tmp_path: Path) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_bytes(b"")
+    (tmp_path / "config.yml").write_text(CONFIG.format(severity="reject", mismatch=""))
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    f = run_entity(entity, tmp_path, "0.3").report["files"][0]
+    assert f["status"] == "rejected"
+    assert f["mismatch"]["error"]["rule"] == "csv_read_error"
+    assert f["validation"]["errors"] == 1
+
+
 def test_incremental_file_is_refused(tmp_path: Path) -> None:
     (tmp_path / "config.yml").write_text(
         CONFIG.format(severity="warn", mismatch="").replace(

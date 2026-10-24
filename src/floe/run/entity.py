@@ -33,13 +33,14 @@ from floe.checks.rows import (
 )
 from floe.checks.unique import UniqueTracker, resolve_unique_keys
 from floe.config.types import EntityConfig
-from floe.errors import FloeConfigError, FloeRunError
+from floe.errors import FloeConfigError, FloeIoError, FloeRunError
 from floe.pii import apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.csv import RAGGED_MESSAGE, read_csv
 from floe.read.orc import read_orc
 from floe.read.parquet import read_parquet
 from floe.read.xlsx import read_xlsx
+from floe.read.xml import read_xml, xml_columns
 from floe.report.entity import build_report, file_report
 from floe.storage.inputs import ResolvedInputs, resolve_inputs
 from floe.storage.local import LocalClient
@@ -72,10 +73,64 @@ def _chunks(entity: EntityConfig, path: Path, names: list[str]) -> Chunks:
                 yield o.offset, o.df, None
         case "xlsx":
             yield 0, read_xlsx(path, src.options), None
+        case "xml":
+            for x in read_xml(path, src.options, entity.schema_.columns):
+                yield x.offset, x.df, None
         case other:
             raise FloeRunError(
                 f"entity.name={entity.name} unsupported source format: {other}"
             )
+
+
+def _read_rule(fmt: str, message: str) -> str:
+    """Rust's `FileReadError.rule`; the readers carry only the message (the XLSX ones prefix the rule)."""
+    head, _, _ = message.partition(": ")
+    if fmt == "xlsx" and head.startswith("xlsx_"):
+        return head
+    if fmt == "xml" and message.startswith(
+        ("invalid selector", "duplicate xml selector")
+    ):
+        return "xml_selector_invalid"
+    return "xml_parse_error" if fmt == "xml" else f"{fmt}_read_error"
+
+
+def _read_message(fmt: str, message: str) -> str:
+    head, _, rest = message.partition(": ")
+    return rest if fmt == "xlsx" and head.startswith("xlsx_") else message
+
+
+def _failed_file(
+    entity: EntityConfig,
+    uri: str,
+    declared: int,
+    plan: MismatchOutcome | None,
+    error: FloeIoError,
+    rejected_path: str | None,
+) -> dict[str, Any]:
+    """A file that could not be read: `rejected` (`aborted` under abort), no rows."""
+    fmt = entity.source.format
+    action = "aborted" if entity.policy.severity == "abort" else "rejected_file"
+    base = plan.report if plan else {}
+    report: dict[str, Any] = {
+        "declared_columns_count": declared,
+        "input_columns_count": base.get("input_columns_count", 0),
+        "missing_columns": base.get("missing_columns", []),
+        "extra_columns": base.get("extra_columns", []),
+        "mismatch_action": action,
+        "error": {
+            "rule": _read_rule(fmt, str(error)),
+            "message": f"entity.name={entity.name} {_read_message(fmt, str(error))}",
+        },
+    }
+    if "warning" in base:
+        report["warning"] = base["warning"]
+    outcome = MismatchOutcome(
+        report, False, False, plan.warnings if plan else 0, 1 + (plan.errors if plan else 0),
+        [], [], False, False,
+    )  # fmt: skip
+    out = file_report(entity, uri, 0, 0, [], outcome, rejected_path)
+    out["status"] = "aborted" if action == "aborted" else "rejected"
+    return out
 
 
 def _rejected_dir(entity: EntityConfig, config_dir: Path, severity: str) -> Path:
@@ -161,10 +216,24 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
     """The file's report and its accepted frames (none when it aborted the run)."""
     entity = plan.entity
     severity = entity.policy.severity
+    declared = declared_names(entity)
     chunks = _chunks(entity, path, plan.names)
-    first = next(chunks)  # its columns are the input columns the mismatch plan compares
-    probe = list(first[1].columns)
-    mismatch = plan_mismatch(entity, declared_names(entity), probe)
+
+    def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
+        # Rust skips the raw copy under PII: the file cannot be masked
+        keep = entity.pii is None and entity.sink.rejected is not None
+        raw = _copy_raw(entity, plan.config_dir, path, severity) if keep else None
+        return _failed_file(entity, uri, len(declared), mismatch, err, raw), []
+
+    try:
+        if entity.source.format == "xml":
+            first, probe = [], xml_columns(path, entity.source.options)
+        else:  # the first chunk's columns are the input columns the plan compares
+            first = [next(chunks)]
+            probe = list(first[0][1].columns)
+    except FloeIoError as err:
+        return failed(err, None)
+    mismatch = plan_mismatch(entity, declared, probe)
     if mismatch.rejected or mismatch.aborted:
         raw = _copy_raw(
             entity, plan.config_dir, path, "abort" if mismatch.aborted else "reject"
@@ -178,20 +247,23 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
     accepted: list[pl.DataFrame] = []
     rejected: list[pl.DataFrame] = []
     errors: list[tuple[int, str]] = []
-    for offset, raw_df, ragged in chain([first], chunks):
-        typed, checks = _typed(plan, raw_df, mismatch)
-        if ragged is not None and ragged.any():
-            checks.insert(0, RowCheck("csv_read_error", "", RAGGED_MESSAGE, ragged))
-        good, bad = split_rows(typed, checks, plan.formatter, plan.sources)
-        bad = bad.with_columns(pl.col(ROW_INDEX) + offset)
-        rows += typed.height
-        bad_total += bad.height
-        for c in checks:
-            masks.setdefault((c.rule, c.column, c.message), []).append(c.mask)
-        errors += zip(bad[ROW_INDEX].to_list(), bad[ERRORS].to_list(), strict=True)
-        accepted.append(good if severity == "reject" else typed)
-        if severity == "reject" and bad.height:
-            rejected.append(bad)
+    try:
+        for offset, raw_df, ragged in chain(first, chunks):
+            typed, checks = _typed(plan, raw_df, mismatch)
+            if ragged is not None and ragged.any():
+                checks.insert(0, RowCheck("csv_read_error", "", RAGGED_MESSAGE, ragged))
+            good, bad = split_rows(typed, checks, plan.formatter, plan.sources)
+            bad = bad.with_columns(pl.col(ROW_INDEX) + offset)
+            rows += typed.height
+            bad_total += bad.height
+            for c in checks:
+                masks.setdefault((c.rule, c.column, c.message), []).append(c.mask)
+            errors += zip(bad[ROW_INDEX].to_list(), bad[ERRORS].to_list(), strict=True)
+            accepted.append(good if severity == "reject" else typed)
+            if severity == "reject" and bad.height:
+                rejected.append(bad)
+    except FloeIoError as err:
+        return failed(err, mismatch)
 
     merged = [RowCheck(r, c, m, pl.concat(s)) for (r, c, m), s in masks.items()]
     rejected_path = errors_path = None
