@@ -39,6 +39,8 @@ VOLATILE_KEYS = {"run_id", "started_at", "finished_at", "duration_ms", "elapsed_
 # Recorded, but ignored on compare (G5 ruling on #594).
 WRITER_BYTES_KEYS = {"total_bytes_written", "avg_file_size_mb"}
 RUN_DIR = re.compile(r"run_[0-9T:.\-Z]+")
+# Archived file names embed the run id and a hash of the absolute source URI.
+ARCHIVE_NAME = re.compile(r"__run-.+?__src-[0-9a-f]{16}")
 UUID_PART = re.compile(
     r"part-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
@@ -123,6 +125,7 @@ def normalize(value: object, root: str) -> object:
     if isinstance(value, list):
         return [normalize(v, root) for v in value]
     if isinstance(value, str):
+        value = ARCHIVE_NAME.sub("__run-<id>__src-<hash>", value)
         return UUID_PART.sub(
             "part-<uuid>", RUN_DIR.sub("run_<id>", value.replace(root, "<ROOT>"))
         )

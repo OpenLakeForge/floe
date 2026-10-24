@@ -631,3 +631,4 @@ config/prof_storages_type_unsupported
 config/prof_storages_unknown_key
 config/val1_version_d21_floe_ok
 config/val1_version_d21_newer_minor
+archive_mode
