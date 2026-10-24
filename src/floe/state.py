@@ -169,6 +169,28 @@ def claim_inputs(
     )
 
 
+def claim_all(
+    client: StorageClient, uri: str, entity: str, run_id: str, inputs: list[InputFile]
+) -> Loaded:
+    """Full refresh: claim every input, dropping other claims (Rust `claim_all_entity_inputs`)."""
+    for attempt in range(CAS_RETRIES):
+        if attempt:
+            _backoff(attempt - 1)
+        loaded = _load(client, uri, entity)
+        acquired_at, expires_at = _now(), _now(CLAIM_TTL_SECONDS)
+        claims = {
+            f.source_uri: Claim(run_id, acquired_at, expires_at, f.source_size, f.source_mtime)
+            for f in inputs
+        }  # fmt: skip
+        fresh = Loaded(EntityState(entity, acquired_at, loaded.state.files, claims), loaded.version)  # fmt: skip
+        version = _persist(client, uri, fresh)
+        if version is not None:
+            return Loaded(fresh.state, version)
+    raise FloeConfigError(
+        f"entity.name={entity} full-refresh state write conflicted after {CAS_RETRIES} retries"
+    )
+
+
 def _mutate(
     client: StorageClient,
     uri: str,
@@ -186,17 +208,31 @@ def _mutate(
             else _load(client, uri, entity)
         )
         mutate(loaded.state, ours)
-        # ponytail: Rust deletes the file when files and claims are both empty; StorageClient has no conditional delete, so the empty state is written instead.
-        if _persist(client, uri, loaded) is not None:
+        state = loaded.state
+        if state.files or state.claims:
+            done = _persist(client, uri, loaded) is not None
+        else:  # Rust deletes an emptied state
+            done = client.delete_conditional(uri, loaded.version)
+        if done:
             return
     raise FloeConfigError(
         f"entity.name={entity} incremental state update conflicted after {CAS_RETRIES} retries"
     )
 
 
-def promote(client: StorageClient, uri: str, run_id: str, claimed: Loaded) -> None:
+def promote(
+    client: StorageClient,
+    uri: str,
+    run_id: str,
+    claimed: Loaded,
+    full_refresh: bool = False,
+) -> None:
+    """A full refresh replaces `files` with this run's (Rust `promote_full_refresh_claimed_entity_state`)."""
+
     def apply(state: EntityState, ours: set[str]) -> None:
         processed_at = _now()
+        if full_refresh:
+            state.files.clear()
         for u in [
             u for u, c in state.claims.items() if c.run_id == run_id and u in ours
         ]:
