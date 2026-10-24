@@ -66,6 +66,19 @@ def catalog(monkeypatch: pytest.MonkeyPatch) -> Iterator[Catalog]:
     yield open_catalog(catalog_definition(), STORAGE)
 
 
+def test_dotted_namespace_is_one_level(catalog: Catalog) -> None:
+    namespace = f"a.b{uuid.uuid4().hex[:6]}"
+    name = "t"
+    try:
+        ensure_table(catalog, namespace, name, SCHEMA, "e")
+        assert catalog.table_exists((namespace, name))
+    finally:
+        if catalog.table_exists((namespace, name)):
+            catalog.drop_table((namespace, name))
+        if catalog.namespace_exists((namespace,)):
+            catalog.drop_namespace((namespace,))
+
+
 def test_create_reopen_and_reject_changes(catalog: Catalog) -> None:
     name = f"it_{uuid.uuid4().hex[:8]}"
     fields = [("ts", "day")]

@@ -155,8 +155,12 @@ def ensure_table(
         if partition_fields is None
         else build_partition_spec(schema, partition_fields, entity)
     )
-    with _run_error("rest catalog namespace create failed"):
-        catalog.create_namespace_if_not_exists(namespace)
+    ident = (namespace,)
+    with _run_error("rest catalog namespace_exists check failed"):
+        namespace_exists = catalog.namespace_exists(ident)
+    if not namespace_exists:
+        with _run_error("rest catalog namespace create failed"):
+            catalog.create_namespace(ident)
     identifier = (namespace, name)
     with _run_error("rest catalog table_exists check failed"):
         exists = catalog.table_exists(identifier)
