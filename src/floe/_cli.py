@@ -9,6 +9,7 @@ from floe.config.project import RootConfig, validate_domains
 from floe.config.validate import validate_entities
 from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeError, FloeIoError
+from floe.lineage import OpenLineageObserver
 from floe.run import run
 
 
@@ -32,7 +33,19 @@ def _load(config: str, profile: str | None) -> tuple[Path, RootConfig]:
 
 def _run(config: str) -> int:
     path, root = _load(config, None)
-    outcome = run(path, root)  # `--entities` and the other flags are #657
+    lineage = (
+        OpenLineageObserver(root.lineage, root.entities, str(path))
+        if root.lineage
+        else None
+    )
+    try:
+        outcome = run(
+            path, root, observer=lineage
+        )  # `--entities` and the other flags are #657
+    except FloeError:
+        if lineage:
+            lineage.fail_run()
+        raise
     run_info = outcome.summary["run"]
     print(f"run {run_info['run_id']}: {run_info['status']}")
     return run_info["exit_code"]
