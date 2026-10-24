@@ -1,0 +1,2 @@
+id,qty,price,active,day,note,__floe_row_index,__floe_errors
+r2,,,,,x,2,"[{""rule"":""not_null"",""column"":""qty"",""message"":""required value missing""}]"
