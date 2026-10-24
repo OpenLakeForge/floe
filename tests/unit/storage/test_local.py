@@ -119,6 +119,25 @@ def test_crash_during_replace_keeps_old_content(
     assert sorted(p.name for p in tmp_path.iterdir()) == ["state.json"]
 
 
+def test_orphaned_claim_times_out_instead_of_spinning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lock = tmp_path / "state.json.lock"
+    lock.write_text("0:12345")
+    os.link(lock, f"{lock}.{lock.stat().st_ino}.742.claim")
+    monkeypatch.setattr(local, "_LOCK_TIMEOUT_S", 0.2)
+    with pytest.raises(FloeStorageError):
+        LocalClient().write_conditional(str(tmp_path / "state.json"), None, b"x")
+
+
+def test_replace_preserves_file_mode(tmp_path: Path) -> None:
+    path, client = tmp_path / "state.json", LocalClient()
+    version = client.write_conditional(str(path), None, b"a")
+    path.chmod(0o600)
+    client.write_conditional(str(path), version, b"b")
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
 def test_fresh_lock_blocks_until_released(tmp_path: Path) -> None:
     lock = tmp_path / "state.json.lock"
     lock.write_text(f"{time.time_ns() // 1_000_000}:99999")
