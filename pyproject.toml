@@ -9,6 +9,7 @@ description = "Floe: a data-contract runtime for file ingestion"
 requires-python = ">=3.11"
 dependencies = [
     "boto3>=1.43.118",
+    "duckdb==1.5.6",
     "fastexcel>=0.21.0",
     "polars>=2.0.0",
     "pyarrow>=26.0.0",

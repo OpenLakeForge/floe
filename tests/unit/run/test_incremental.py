@@ -79,7 +79,7 @@ def test_failed_run_releases_its_claims(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr(entity_module, "_run_file", boom)
     with pytest.raises(FloeRunError):
         go(entity, tmp_path, "r1")
-    assert state(tmp_path)["claims"] == {}
+    assert not (tmp_path / "in/.floe/state/d/orders/state.json").exists()
     monkeypatch.undo()
     assert go(entity, tmp_path, "r2").report["results"]["files_skipped"] == 0
 
@@ -88,7 +88,7 @@ def test_aborted_run_releases_its_claims(tmp_path: Path) -> None:
     entity = setup(tmp_path, severity="abort")
     (tmp_path / "in/orders.csv").write_text("id\nx\n")
     assert go(entity, tmp_path, "r1").aborted
-    assert state(tmp_path)["files"] == {}
+    assert not (tmp_path / "in/.floe/state/d/orders/state.json").exists()
     assert go(entity, tmp_path, "r2").report["results"]["files_skipped"] == 0
 
 
@@ -159,11 +159,18 @@ def test_state_files_are_never_inputs_on_a_repeated_recursive_run(
     assert all(".floe" not in f for f in second["source"]["resolved_inputs"]["files"])
 
 
-def test_full_refresh_refuses_incremental_file(tmp_path: Path) -> None:
+def test_full_refresh_reprocesses_and_resets_the_state(tmp_path: Path) -> None:
+    """Rust `claim_all` + `promote_full_refresh`: nothing is skipped and the state holds only this run's files."""
     setup(tmp_path)
-    root = parse_config(tmp_path / "config.yml")
-    with pytest.raises(FloeConfigError, match="#787"):
-        run(tmp_path / "config.yml", root, full_refresh=True)
+    (tmp_path / "in/old.csv").write_text("id\n9\n")
+    config = tmp_path / "config.yml"
+    run(config, parse_config(config))
+    (tmp_path / "in/old.csv").unlink()
+    out = run(config, parse_config(config), full_refresh=True).summary
+    assert out["results"]["files_total"] == 1 and out["results"]["files_skipped"] == 0
+    assert [Path(u).name for u in state(tmp_path)["files"]] == ["orders.csv"]
+    assert state(tmp_path)["claims"] == {}
+    assert run(config, parse_config(config)).summary["results"]["files_skipped"] == 1
 
 
 def test_glob_with_a_parent_directory_component_resolves(tmp_path: Path) -> None:
@@ -184,3 +191,15 @@ def test_archive_follows_rust_archive_enabled(tmp_path: Path, mode: str, moved: 
         assert Path(archived).name.startswith("orders__run-r1__src-")
     else:
         assert archived is None
+
+
+def test_bare_source_filename_roots_the_state_in_the_config_dir(tmp_path: Path) -> None:
+    """#813: `orders.csv` gets the same default state as `./orders.csv`, not one under the file."""
+    entity = setup(tmp_path, src="orders.csv")
+    (tmp_path / "orders.csv").write_text("id\n1\n")
+    go(entity, tmp_path, "r1")
+    assert (tmp_path / ".floe/state/d/orders/state.json").exists()
+    assert (
+        go(entity, tmp_path, "r2").report["files"][0]["skip_reason"]
+        == "already_ingested"
+    )

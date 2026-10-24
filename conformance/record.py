@@ -186,17 +186,18 @@ def run_in_copy(
             ["--profile", "profile.yml"] if (case / "profile.yml").exists() else []
         )
         args = ["validate", "-c", "config.yml", *profile]
-    marker = (
-        case / "runs"
-    )  # optional: number of runs; only the last run's report is kept
-    runs = int(marker.read_text()) if marker.exists() else 1
+    # optional `runs`: a run count, or one line of extra `run` args per run (`-` for none); only the last run's report is kept
+    marker = case / "runs"
+    text = marker.read_text().strip() if marker.exists() else "1"
+    runs = ["-"] * int(text) if text.isdigit() else text.splitlines()
     while True:
         shutil.rmtree(work / "report", ignore_errors=True)
+        line = runs.pop(0).strip()
+        extra = [] if line == "-" else line.split()
         proc = subprocess.run(
-            [*cmd, *args], cwd=work, check=False, capture_output=True, text=True
+            [*cmd, *args, *extra], cwd=work, check=False, capture_output=True, text=True
         )
-        runs -= 1
-        if runs <= 0:
+        if not runs:
             return work, proc
 
 
