@@ -36,9 +36,12 @@ def _load(config: str, profile: ProfileConfig | None) -> tuple[Path, RootConfig]
     root = parse_config(path, variables)
     if profile:
         root = apply_profile(root, profile)
+    return path, root
+
+
+def _check_config(root: RootConfig) -> None:
     validate_domains(root)
     validate_entities(root)
-    return path, root
 
 
 def _validate(args: argparse.Namespace) -> int:
@@ -53,6 +56,7 @@ def _validate(args: argparse.Namespace) -> int:
         print(f"Catalogs: {len(profile.catalogs.definitions) if profile.catalogs else 0}")  # fmt: skip
         return 0
     path, root = _load(args.config, profile)
+    _check_config(root)
     select_entities(root, args.entities)
     print(f"Config valid: {path}")
     print(f"Version: {root.version}")
@@ -76,13 +80,16 @@ def _run(args: argparse.Namespace) -> int:
     if args.config is None:
         raise FloeConfigError("one of --config or --manifest is required")
     profile = parse_profile(_realpath(args.profile)) if args.profile else None
-    path, root = _load(args.config, profile)
+    path, root = _load(
+        args.config, profile
+    )  # lineage observes a config that fails validation
     lineage = (
         OpenLineageObserver(root.lineage, root.entities, str(path))
         if root.lineage
         else None
     )
     try:
+        _check_config(root)
         outcome = run(
             path, root, run_id=args.run_id, entities=args.entities,
             full_refresh=args.full_refresh, observer=lineage,
