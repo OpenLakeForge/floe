@@ -26,7 +26,7 @@ MISMATCH_EXTRA = ("reject_file", "ignore")
 COLUMN_TYPES = ("string", "number", "boolean", "datetime", "date")
 SINK_FORMATS = ("parquet", "iceberg")
 PARQUET_COMPRESSIONS = ("snappy", "gzip", "zstd", "uncompressed")
-PARTITION_TRANSFORMS = ("identity", "year", "month", "day", "hour")
+PARTITION_TRANSFORMS = ("identity", "year", "month", "day", "hour", "bucket")  # D12
 # D2 (#619): Iceberg accepts the merge modes; Rust 0.7 allows them for Delta (D1) and DuckDB (D1) only.
 SINK_WRITE_MODES: dict[str, tuple[WriteMode, ...]] = {
     "parquet": ("overwrite", "append"),
@@ -255,6 +255,17 @@ def _check_partitioning(entity: EntityConfig) -> None:
                 f"{where}[{index}].transform={field.transform} is unsupported "
                 f"(allowed: {', '.join(PARTITION_TRANSFORMS)})",
             )
+        if transform == "bucket" and field.num_buckets is None:
+            raise _fail(
+                entity, f"{where}[{index}].num_buckets is required for transform=bucket"
+            )
+        if transform != "bucket" and field.num_buckets is not None:
+            raise _fail(
+                entity,
+                f"{where}[{index}].num_buckets is only supported with transform=bucket",
+            )
+        if field.num_buckets == 0:
+            raise _fail(entity, f"{where}[{index}].num_buckets must be greater than 0")
         if (column, transform) in seen:
             raise _fail(entity, f"{where} has duplicate entry ({column}, {transform})")
         seen.add((column, transform))

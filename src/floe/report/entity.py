@@ -152,10 +152,11 @@ def build_report(
     src, sink, severity = entity.source, entity.sink, entity.policy.severity
     if write.files_written:
         for f in files:
-            f["output"]["accepted_path"] = accepted_uri
+            if f["status"] != "skipped":
+                f["output"]["accepted_path"] = accepted_uri
     totals: dict[str, int] = {
         "files_total": len(files),
-        "files_skipped": 0,
+        "files_skipped": sum(f["status"] == "skipped" for f in files),
         "rows_total": sum(f["row_count"] for f in files),
         "accepted_total": sum(f["accepted_count"] for f in files),
         "rejected_total": sum(f["rejected_count"] for f in files),
@@ -212,9 +213,10 @@ def build_report(
             "files_written": write.files_written,
             "parts_written": write.files_written,
             **({"part_files": write.part_files} if write.part_files else {}),
-            "total_bytes_written": write.total_bytes_written,
-            "avg_file_size_mb": write.avg_file_size_mb,
-            "small_files_count": write.small_files_count,
+            # Rust's default output (nothing written) has no byte metrics
+            "total_bytes_written": write.total_bytes_written if write.files_written else None,
+            "avg_file_size_mb": write.avg_file_size_mb if write.files_written else None,
+            "small_files_count": write.small_files_count if write.files_written else None,
         },
         "schema_evolution": {
             "enabled": False,

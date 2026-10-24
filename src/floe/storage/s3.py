@@ -160,3 +160,18 @@ class S3Client:
             raise FloeStorageError(f"s3 put object failed: {e}") from e
         except BotoCoreError as e:
             raise FloeStorageError(f"s3 put object failed: {e}") from e
+
+    def delete_conditional(self, uri: str, expected_version: str | None) -> bool:
+        """An If-Match delete; False on a conflict. `None` deletes nothing, as Rust: an object there is a concurrent runner's."""
+        if expected_version is None:
+            return True
+        bucket, key = parse_s3_uri(uri)
+        try:
+            self._client.delete_object(Bucket=bucket, Key=key, IfMatch=expected_version)
+            return True
+        except ClientError as e:
+            if _is(e, _CONFLICT):
+                return False
+            raise FloeStorageError(f"s3 delete object failed: {e}") from e
+        except BotoCoreError as e:
+            raise FloeStorageError(f"s3 delete object failed: {e}") from e

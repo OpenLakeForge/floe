@@ -959,9 +959,27 @@ $defs:
         type:
         - string
         - 'null'
-        pattern: ^\s*(?:[iI][dD][eE][nN][tT][iI][tT][yY]|[yY][eE][aA][rR]|[mM][oO][nN][tT][hH]|[dD][aA][yY]|[hH][oO][uU][rR])\s*$
+        pattern: ^\s*(?:[iI][dD][eE][nN][tT][iI][tT][yY]|[yY][eE][aA][rR]|[mM][oO][nN][tT][hH]|[dD][aA][yY]|[hH][oO][uU][rR]|[bB][uU][cC][kK][eE][tT])\s*$
+      num_buckets:
+        description: Required with transform bucket (Iceberg bucket(n), delta D12), forbidden with any other transform.
+        type: integer
+        minimum: 1
     required:
     - column
+    if:
+      required:
+      - transform
+      properties:
+        transform:
+          type: string
+          pattern: ^\s*[bB][uU][cC][kK][eE][tT]\s*$
+    then:
+      required:
+      - num_buckets
+    else:
+      not:
+        required:
+        - num_buckets
   sink_rejected_fragment:
     type: object
     additionalProperties: false

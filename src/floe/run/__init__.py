@@ -116,8 +116,8 @@ def run(
         emit("entity_started", name=entity.id)
         try:
             return run_entity(
-                entity, config_dir, root.version, formatter, root.storages, emit
-            )
+                entity, config_dir, root.version, formatter, root.storages, emit, full_refresh
+            )  # fmt: skip
         except FloeError:
             _finished(emit, entity.id, None)
             raise
