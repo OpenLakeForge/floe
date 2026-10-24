@@ -3,7 +3,7 @@
 import shutil
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from itertools import chain
@@ -204,22 +204,26 @@ class _Plan:
 def _archive(plan: _Plan, uri: str, path: Path) -> str | None:
     """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>` (Rust `archive_input`)."""
     archive = plan.archive_dir
-    if archive is None or path.is_relative_to(
-        archive
-    ):  # D24: an archived input stays put
-        return None
+    if archive is None or path.is_relative_to(archive):
+        return None  # D24: an archived input stays put
     file = InputFile(uri, path.name, path.stem, None, None)
     return archive_input_file(LocalClient(), plan.run_id, plan.entity.name, lambda rel: str(archive / rel), file)  # fmt: skip
 
 
-def _with_archived(plan: _Plan, archive: Path, inputs: ResolvedInputs) -> ResolvedInputs:  # fmt: skip
-    """D24: a full refresh reads `<archive>/<entity>/` first (by name), then the source inputs."""
+def _with_archived(plan: _Plan, archive: Path, source: Callable[[], ResolvedInputs]) -> ResolvedInputs:  # fmt: skip
+    """D24: a full refresh reads `<archive>/<entity>/` first (by name), then the source inputs; either may be empty, not both."""
     e = plan.entity
     try:
         old = resolve_inputs(archive, e.name, e.source.format, e.name, e.source.storage or "local", LocalClient())  # fmt: skip
-    except FloeRunError:  # nothing archived yet
-        return inputs
-    return ResolvedInputs(old.files + inputs.files, old.listed + inputs.listed, inputs.mode)  # fmt: skip
+    except FloeRunError:
+        return (
+            source()
+        )  # nothing archived: the source's "no input files matched" stands
+    try:
+        new = source()
+    except FloeRunError:  # no new source file: rebuild from the archive alone
+        return old
+    return ResolvedInputs(old.files + new.files, old.listed + new.listed, new.mode)
 
 
 def _output(plan: _Plan, df: pl.DataFrame) -> pl.DataFrame:
@@ -526,8 +530,8 @@ def run_entity(
     inc = Incremental(entity, config_dir, emit.run_id, full_refresh)
     try:
         run = _run_entity(
-            entity, config_dir, spec_version, formatter, storages, emit, inc, full_refresh
-        )  # fmt: skip
+            entity, config_dir, spec_version, formatter, storages, emit, inc
+        )
     except BaseException:
         inc.release()  # a failed entity leaves no claims behind
         raise
@@ -543,7 +547,6 @@ def _run_entity(
     storages: StoragesConfig | None,
     emit: Emitter,
     inc: Incremental,
-    full_refresh: bool,
 ) -> EntityRun:
     if entity.sink.accepted.format != "parquet":
         raise FloeRunError(
@@ -585,12 +588,15 @@ def _run_entity(
     if sink.write_mode == "append":
         _seed_unique(plan, base, sorted({runtime.get(c, c) for k in keys for c in k}))
     client = LocalClient()
-    inputs: ResolvedInputs = resolve_inputs(
-        config_dir, src.path, src.format, entity.name, src.storage or "local", client,
-        recursive=bool(src.options.recursive), glob_override=src.options.glob,
-    )  # fmt: skip
-    if full_refresh and plan.archive_dir:
-        inputs = _with_archived(plan, plan.archive_dir, inputs)
+
+    def source() -> ResolvedInputs:
+        return resolve_inputs(
+            config_dir, src.path, src.format, entity.name, src.storage or "local", client,
+            recursive=bool(src.options.recursive), glob_override=src.options.glob,
+        )  # fmt: skip
+
+    archive = plan.archive_dir
+    inputs = _with_archived(plan, archive, source) if inc.full_refresh and archive else source()  # fmt: skip
     pending, files = inc.claim(inputs.files, emit)
     frames: list[pl.DataFrame] = []
     for f in pending:

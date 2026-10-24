@@ -1,6 +1,7 @@
 """`floe.run.run`: selection, dry run, full refresh, and events."""
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +9,7 @@ import polars as pl
 import pytest
 
 from floe.config.parse import parse_config
-from floe.errors import FloeConfigError
+from floe.errors import FloeConfigError, FloeRunError
 from floe.run import run
 
 ENTITY = """\
@@ -140,8 +141,8 @@ def test_a_raising_observer_does_not_abort_the_run(tmp_path: Path) -> None:
     assert [e["name"] for e in out.summary["entities"]] == ["d.a", "d.b"]
 
 
-def test_full_refresh_reingests_archived_files(tmp_path: Path) -> None:
-    """D24: archived files first (by name, not moved again), then the current sources."""
+def archived_once(tmp_path: Path) -> Path:
+    """An archive-mode entity whose first run archived `a.csv` (2 rows)."""
     (tmp_path / "in").mkdir()
     (tmp_path / "in/a.csv").write_text("id\n1\n2\n")
     text = ENTITY.format(name="o", mode="append").replace("./in/o.csv", "./in")
@@ -150,6 +151,12 @@ def test_full_refresh_reingests_archived_files(tmp_path: Path) -> None:
     path.write_text(f'version: "0.3"\ndomains:\n  - name: d\nentities:\n{text}report: {{path: ./report}}\n')  # fmt: skip
     run(path, parse_config(path, {}))
     assert not (tmp_path / "in/a.csv").exists()
+    return path
+
+
+def test_full_refresh_reingests_archived_files(tmp_path: Path) -> None:
+    """D24: archived files first (by name, not moved again), then the current sources."""
+    path = archived_once(tmp_path)
     (tmp_path / "in/b.csv").write_text("id\n3\n")
     out = run(path, parse_config(path, {}), full_refresh=True)
     assert rows(tmp_path, "o") == 3
@@ -162,3 +169,18 @@ def test_full_refresh_reingests_archived_files(tmp_path: Path) -> None:
         "a",
         "b",
     ]
+
+
+def test_full_refresh_runs_from_the_archive_alone(tmp_path: Path) -> None:
+    """D24: no new source file still rebuilds from the archived files."""
+    path = archived_once(tmp_path)
+    out = run(path, parse_config(path, {}), full_refresh=True)
+    assert out.summary["run"]["status"] == "success"
+    assert rows(tmp_path, "o") == 2
+
+
+def test_full_refresh_with_nothing_archived_and_no_source_still_fails(tmp_path: Path) -> None:  # fmt: skip
+    path = archived_once(tmp_path)
+    shutil.rmtree(tmp_path / "arch")
+    with pytest.raises(FloeRunError, match="no input files matched"):
+        run(path, parse_config(path, {}), full_refresh=True)
