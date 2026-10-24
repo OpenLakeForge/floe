@@ -12,7 +12,7 @@ from floe.config.project import RootConfig, validate_domains
 from floe.config.validate import validate_entities
 from floe.config.vars import string_map
 from floe.config.yaml import load_yaml, yaml_hash
-from floe.errors import FloeError, FloeIoError
+from floe.errors import FloeError, FloeIoError, FloeRunError
 from floe.report.summary import build_summary, id_path, write_reports
 from floe.run.entity import run_entity
 from floe.storage.paths import normalize_local_path
@@ -46,13 +46,25 @@ def _run(config: str) -> int:
     started, timer = _rfc3339(), time.monotonic()
     path, root = _load(config, None)
     config_dir = normalize_local_path(path.parent)
+    storages = root.storages
+    where = root.report.storage or (storages and storages.default) or "local"
+    kind = next((d.type for d in storages.definitions if d.name == where), "local") if storages else "local"  # fmt: skip
+    if (
+        kind != "local"
+    ):  # ponytail: only local report targets until the storage resolver lands (#722)
+        raise FloeRunError(f"report.storage={where} (type {kind}) is not supported yet: reports are written to local storage only")  # fmt: skip
     reports: list[tuple[str, dict[str, Any]]] = []
     formatter = cast(
         Formatter, root.report.formatter or "json"
     )  # validated with the config
     # config order; `--entities` and parallelism are #656/#657
+    failure: FloeError | None = None
     for entity in root.entities:
-        result = run_entity(entity, config_dir, root.version, formatter)
+        try:
+            result = run_entity(entity, config_dir, root.version, formatter)
+        except FloeError as e:  # the entities already run keep their reports
+            failure = e
+            break
         reports.append((id_path(entity), result.report))
         if result.aborted:
             break
@@ -65,6 +77,8 @@ def _run(config: str) -> int:
         metadata=root.metadata,
     )  # fmt: skip
     write_reports(summary, reports)
+    if failure:
+        raise failure
     run = summary["run"]
     print(f"run {run['run_id']}: {run['status']}")
     return run["exit_code"]
