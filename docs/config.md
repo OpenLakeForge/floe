@@ -6,7 +6,7 @@ all supported options. See `example/config.yml` for a full working example.
 ## Structure at a glance
 
 ```yaml
-version: "0.2"
+version: "0.8"
 metadata: { ... }
 report:
   path: "/abs/or/relative/report/dir"
@@ -64,9 +64,10 @@ entities:
 ## Top-level fields
 
 - `version` (required)
-  - String used to validate config compatibility.
-  - Must be a numeric `major.minor` string such as `"0.1"`, `"0.2"`, or `"0.3"`.
-  - Minimum supported version is `"0.1"`.
+  - The minimum Floe release the config targets, as a numeric `major.minor`
+    string such as `"0.8"`.
+  - Floe accepts any version from `"0.1"` up to its own release (`"0.8"`) and
+    rejects a newer one. Older versions keep their semantics.
   - `schema.schema_evolution` requires `version >= "0.2"`.
   - `version >= "0.3"` qualifies entity identity with its domain (see Entity identity).
 - `metadata` (optional)

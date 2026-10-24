@@ -180,7 +180,7 @@ Lineage emission is independent of `--log-format`. Even with
 ## Example config
 
 ```yaml
-version: "0.3"
+version: "0.8"
 lineage:
   url: "http://localhost:5000"
   namespace: "data-platform"
