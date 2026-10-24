@@ -11,7 +11,7 @@ For a small project, keep the domain, source, entity, and sinks together. This
 is the runnable config from [`example/standalone/config.yml`](../example/standalone/config.yml):
 
 ```yaml
-version: "0.3"
+version: "0.8"
 
 domains:
   - name: sales
@@ -132,7 +132,7 @@ project/
 The root config includes the shared source file and each domain definition:
 
 ```yaml
-version: "0.3"
+version: "0.8"
 
 metadata:
   project: "floe-project-example"
