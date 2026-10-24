@@ -125,3 +125,25 @@ def test_temporal_targets() -> None:
 def test_unsupported_pair_raises(values: pl.Series, column_type: str) -> None:
     with pytest.raises(pl.exceptions.InvalidOperationError):
         run(values, column_type)
+
+
+def test_typed_string_matches_rust() -> None:
+    expected = pl.read_parquet(CASE / "expected" / "accepted" / "typed_string.parquet")
+    got = run(NATIVE["f64"], "string")[0]
+    assert got == expected["f64"].to_list()
+
+
+@pytest.mark.parametrize("dtype", [pl.Float64, pl.Float32])
+def test_float_to_string_exponent(dtype: type[pl.DataType]) -> None:
+    values = pl.Series(
+        [1e20, 1e-7, 0.1, 1.0, -0.0, float("nan"), float("inf")], dtype=dtype
+    )
+    assert run(values, "string")[0] == [
+        "1e20",
+        "1e-7",
+        "0.1",
+        "1.0",
+        "-0.0",
+        "NaN",
+        "inf",
+    ]
