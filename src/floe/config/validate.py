@@ -1,7 +1,5 @@
 """Schema validation, ported from `config/validate.rs` (`validate_schema` and its helpers)."""
 
-from typing import cast
-
 from floe.config.project import RootConfig, config_version
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError
@@ -24,12 +22,6 @@ _TYPE_NAMES = {
 def _canonical(value: str) -> str:
     # D7 (#584 S1, S2): no trim, unlike Rust's `normalize_value`; the run-time paths never trimmed.
     return value.lower().replace("-", "").replace("_", "")
-
-
-def _get(value: object, key: str) -> object:
-    return (
-        cast(dict[object, object], value).get(key) if isinstance(value, dict) else None
-    )
 
 
 def _fail(entity: EntityConfig, message: str) -> FloeConfigError:
@@ -96,10 +88,7 @@ def _check_evolution(entity: EntityConfig, version: str) -> None:
     if config_version(version) < (0, 2):
         raise _fail(entity, 'schema.schema_evolution requires root.version >= "0.2"')
     # D13 (#619): add_columns is accepted on Iceberg; Rust allows only Delta, which D1 drops.
-    if (
-        evolution.mode == "add_columns"
-        and _get(_get(entity.sink, "accepted"), "format") != "iceberg"
-    ):
+    if evolution.mode == "add_columns" and entity.sink.accepted.format != "iceberg":
         raise _fail(
             entity,
             f"schema.schema_evolution.mode={evolution.mode} requires "
@@ -109,10 +98,7 @@ def _check_evolution(entity: EntityConfig, version: str) -> None:
 
 def validate_schema(entity: EntityConfig, version: str) -> None:
     schema = entity.schema_
-    if (
-        _get(entity.source, "format") == "json"
-        and len(schema.columns) > MAX_JSON_COLUMNS
-    ):
+    if entity.source.format == "json" and len(schema.columns) > MAX_JSON_COLUMNS:
         raise _fail(
             entity,
             f"schema.columns has {len(schema.columns)} entries which exceeds "
