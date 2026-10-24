@@ -19,7 +19,29 @@ from floe.config.yaml import (
     yaml_hash,
     yaml_string,
 )
-from floe.errors import FloeConfigError
+from floe.errors import FloeConfigError, FloeError
+
+
+def _fail(error: OSError) -> None:
+    # `GlobError`: Rust's `glob` stops on a directory it cannot read, Python's skips it
+    raise FloeError(
+        f"attempting to read `{error.filename}` resulted in an error: "
+        f"{error.strerror} (os error {error.errno})"
+    )
+
+
+def _check_readable(config_dir: Path, pattern: str) -> None:
+    """Read the directories `pattern` has to list, so that an unreadable one is an error."""
+    parts = Path(pattern).parts
+    literal = next((i for i, p in enumerate(parts) if glob.has_magic(p)), len(parts))
+    base, rest = Path(config_dir, *parts[:literal]), parts[literal:]
+    if not base.is_dir():
+        return
+    for dirpath, dirnames, _ in os.walk(base, onerror=_fail):
+        if "**" not in rest and len(Path(dirpath).relative_to(base).parts) + 1 >= len(
+            rest
+        ):
+            dirnames.clear()
 
 
 def assemble_includes(
@@ -69,6 +91,7 @@ def assemble_includes(
                 f"Pattern syntax error near position {wildcards.start() + 2}: "
                 "wildcards are either regular `*` or recursive `**`"
             )
+        _check_readable(config_dir, pattern)
         # ponytail: other glob syntax errors (`[` ranges, `**` inside a name) are not reported as Rust does
         matches = sorted(
             # set: consecutive `**` match a file more than once; Rust's glob collapses them

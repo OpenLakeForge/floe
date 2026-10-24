@@ -1,5 +1,6 @@
 """Expected messages come from the Rust 0.7 binary (`floe validate`)."""
 
+import os
 import sys
 from pathlib import Path
 
@@ -164,3 +165,22 @@ def test_include_errors(tmp_path: Path, files: dict[str, str], message: str) -> 
         write(tmp_path, name, text)
     base = len(str(tmp_path)) + len("/a/") + 2
     assert error(tmp_path) == message.replace("{pos}", str(base))
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="needs POSIX permissions and a non-root user",
+)
+def test_unreadable_directory_is_an_error_not_a_missing_domain(tmp_path: Path) -> None:
+    write(tmp_path, "config.yml", ROOT)
+    write(tmp_path, "domains/sales/_domain.yml", "name: sales\n")
+    locked = tmp_path / "domains/finance"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        assert error(tmp_path) == (
+            f"attempting to read `{locked}` resulted in an error: "
+            "Permission denied (os error 13)"
+        ).replace(str(tmp_path), "<ROOT>")
+    finally:
+        locked.chmod(0o755)
