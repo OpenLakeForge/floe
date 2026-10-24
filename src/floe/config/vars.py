@@ -14,7 +14,7 @@ def _resolve_local_path(config_dir: Path, raw: str) -> Path:
     return Path(os.path.normpath(config_dir / raw))
 
 
-def _string_map(value: object, ctx: str) -> dict[str, str]:
+def string_map(value: object, ctx: str) -> dict[str, str]:
     return {
         yaml_string(k, ctx): yaml_string(v, ctx)
         for k, v in yaml_hash(value, ctx).items()
@@ -55,7 +55,7 @@ def build_env_vars(
         docs = load_yaml(path)
         if not docs:
             raise FloeConfigError(f"env file {path} is empty")
-        merged |= _string_map(docs[0], "env.file")
+        merged |= string_map(docs[0], "env.file")
     return merged | dict(env_vars)
 
 
@@ -73,7 +73,7 @@ def extract_config_env_vars(path: Path) -> dict[str, str]:
                 if isinstance(k, str) and isinstance(v, str):
                     variables[k] = v
         with suppress(FloeError, KeyError):
-            variables |= _string_map(env["vars"], "env.vars")
+            variables |= string_map(env["vars"], "env.vars")
     return variables
 
 
