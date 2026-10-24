@@ -24,8 +24,8 @@ CLAIM_TTL_SECONDS = 60 * 60
 @dataclass
 class FileState:
     processed_at: str
-    size: int | None
-    mtime: str | None
+    size: int | None = None
+    mtime: str | None = None
 
 
 @dataclass
@@ -33,8 +33,8 @@ class Claim:
     run_id: str
     acquired_at: str
     expires_at: str
-    size: int | None
-    mtime: str | None
+    size: int | None = None
+    mtime: str | None = None
 
 
 @dataclass
@@ -79,7 +79,7 @@ def parse_state(entity: str, body: bytes) -> EntityState:
         schema: str = doc["schema"]
         state = EntityState(
             doc["entity"],
-            doc["updated_at"],
+            doc.get("updated_at"),
             {k: FileState(**v) for k, v in doc.get("files", {}).items()},
             {k: Claim(**v) for k, v in doc.get("claims", {}).items()}
             if schema != SCHEMA_V1

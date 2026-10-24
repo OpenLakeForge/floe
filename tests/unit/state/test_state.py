@@ -78,6 +78,21 @@ def test_v1_state_is_upgraded_and_claims_dropped(tmp_path: Path) -> None:
     assert json.loads(dump_state(expected))["schema"] == SCHEMA_V2
 
 
+def test_omitted_optional_fields_default_to_none(tmp_path: Path) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    doc = {
+        "schema": SCHEMA_V2,
+        "entity": "sales",
+        "files": {"a": {"processed_at": "t"}},
+        "claims": {"b": {"run_id": "r", "acquired_at": "a", "expires_at": "e"}},
+    }
+    client.write_conditional(uri, None, json.dumps(doc).encode())
+    expected = EntityState(
+        "sales", None, {"a": FileState("t")}, {"b": Claim("r", "a", "e")}
+    )
+    assert read_state(client, uri, "sales") == expected
+
+
 def asdict_claim() -> dict[str, object]:
     return {
         "run_id": "r",
