@@ -1,5 +1,6 @@
 """Polaris REST catalog access, ported from `io/write/iceberg/rest.rs` and `iceberg/schema.rs`."""
 
+import os
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 
@@ -11,6 +12,7 @@ from pyiceberg.transforms import parse_transform
 from pyiceberg.types import NestedField
 
 from floe.config.storage import CatalogDefinition, StorageDefinition
+from floe.config.types import SchemaEvolutionMode
 from floe.errors import FloeRunError
 
 # (column, transform) pairs, as in the entity's `sink.accepted.partition_spec`
@@ -33,6 +35,37 @@ def _run_error(context: str) -> Generator[None]:
         raise FloeRunError(f"{context}: {e}") from e
 
 
+def _expand_env_part(part: str, catalog: str) -> str:
+    if not part.startswith("${"):
+        return part
+    if not part.endswith("}"):
+        raise FloeRunError(
+            f"rest iceberg catalog {catalog} credential has unclosed env placeholder"
+        )
+    name = part[2:-1]
+    if not name or "{" in name or "}" in name:
+        raise FloeRunError(
+            f"rest iceberg catalog {catalog} credential has invalid env placeholder"
+        )
+    value = os.environ.get(name)
+    if value is None:
+        raise FloeRunError(
+            f"rest iceberg catalog {catalog} credential references env var {name} which is not set"
+        )
+    return value
+
+
+def _credential_props(catalog: str, credential: str) -> dict[str, str]:
+    """`token:<v>` is a bearer token; `client_credentials:<id>:<secret>` and a plain value are OAuth2."""
+    if "${" in credential:
+        credential = ":".join(
+            _expand_env_part(p, catalog) for p in credential.split(":")
+        )
+    if credential.startswith("token:"):
+        return {"token": credential.removeprefix("token:")}
+    return {"credential": credential.removeprefix("client_credentials:")}
+
+
 def open_catalog(
     definition: CatalogDefinition, storage: StorageDefinition | None = None
 ) -> Catalog:
@@ -45,7 +78,9 @@ def open_catalog(
     if definition.warehouse is not None:
         props["warehouse"] = definition.warehouse
     if definition.credential is not None:
-        props["credential"] = definition.credential.get_secret_value()
+        props.update(
+            _credential_props(definition.name, definition.credential.get_secret_value())
+        )
     if definition.oauth2_server_uri is not None:
         props["oauth2-server-uri"] = definition.oauth2_server_uri
     if definition.scope is not None:
@@ -116,6 +151,34 @@ def check_schema_matches(existing: Schema, expected: Schema, entity: str) -> Non
             )
 
 
+def additive_columns(
+    existing: Schema, expected: Schema, entity: str
+) -> list[NestedField]:
+    """Rust's Delta rules (`merge/shared.rs`) for `add_columns`: new columns only."""
+    incoming = {f.name: f for f in expected.fields}
+    incompatible: list[str] = []
+    for old in existing.fields:
+        new = incoming.get(old.name)
+        if new is None:
+            incompatible.append(f"missing existing column {old.name}")
+            continue
+        if new.field_type != old.field_type:
+            incompatible.append(
+                f"column {old.name} type changed from {old.field_type} to {new.field_type}"
+            )
+        if old.required and not new.required:
+            incompatible.append(
+                f"column {old.name} nullability changed from non-nullable to nullable"
+            )
+    if incompatible:
+        raise FloeRunError(
+            f"entity.name={entity} iceberg schema evolution failed: add_columns supports additive changes only; "
+            f"incompatible changes detected: {'; '.join(incompatible)}"
+        )
+    known = {f.name for f in existing.fields}
+    return [f for f in expected.fields if f.name not in known]
+
+
 def _describe_spec(spec: PartitionSpec) -> str:
     if not spec.fields:
         return "unpartitioned"
@@ -148,13 +211,12 @@ def ensure_table(
     entity: str,
     location: str | None = None,
     partition_fields: PartitionFields | None = None,
+    schema_evolution: SchemaEvolutionMode = "strict",
 ) -> Table:
-    """Create the namespace and table if missing; otherwise check the table matches (Rust's append path)."""
-    spec = (
-        None
-        if partition_fields is None
-        else build_partition_spec(schema, partition_fields, entity)
-    )
+    """Create the namespace and table if missing; otherwise check the table matches (Rust's append path).
+
+    With `add_columns`, columns new in `schema` are added as optional (D13); partition changes stay rejected.
+    """
     ident = (namespace,)
     with _run_error("rest catalog namespace_exists check failed"):
         namespace_exists = catalog.namespace_exists(ident)
@@ -167,9 +229,33 @@ def ensure_table(
     if exists:
         with _run_error("rest catalog load_table failed"):
             table = catalog.load_table(identifier)
-        check_schema_matches(table.schema(), schema, entity)
-        check_partition_spec_matches(table.spec(), spec, entity)
+        added: list[NestedField] = []
+        if schema_evolution == "add_columns":
+            added = additive_columns(table.schema(), schema, entity)
+            # field ids of `schema` may differ from the table's once columns are added
+            check_schema = table.schema()
+        else:
+            check_schema_matches(table.schema(), schema, entity)
+            check_schema = schema
+        check_partition_spec_matches(
+            table.spec(),
+            None
+            if partition_fields is None
+            else build_partition_spec(check_schema, partition_fields, entity),
+            entity,
+        )
+        if added:
+            with _run_error("rest catalog update_schema failed"):
+                with table.update_schema() as update:
+                    for field in added:
+                        update.add_column(field.name, field.field_type, required=False)
+                table.refresh()
         return table
+    spec = (
+        None
+        if partition_fields is None
+        else build_partition_spec(schema, partition_fields, entity)
+    )
     with _run_error("rest catalog create_table failed"):
         return catalog.create_table(  # pyright: ignore[reportUnknownMemberType] -- PyIceberg's `schema` is `Schema | Unknown`
             identifier,

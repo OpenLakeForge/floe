@@ -79,6 +79,35 @@ def test_dotted_namespace_is_one_level(catalog: Catalog) -> None:
             catalog.drop_namespace((namespace,))
 
 
+def test_add_columns_evolves_the_table(catalog: Catalog) -> None:
+    name = f"it_{uuid.uuid4().hex[:8]}"
+    wider = Schema(*SCHEMA.fields, NestedField(4, "extra", StringType(), required=True))
+    try:
+        ensure_table(catalog, "spike", name, SCHEMA, "e")
+        evolved = ensure_table(
+            catalog, "spike", name, wider, "e", schema_evolution="add_columns"
+        )
+        extra = evolved.schema().find_field("extra")
+        assert not extra.required
+        reopened = catalog.load_table(("spike", name))
+        assert [f.name for f in reopened.schema().fields] == [
+            "id",
+            "name",
+            "ts",
+            "extra",
+        ]
+        with pytest.raises(
+            FloeRunError,
+            match="incompatible changes detected: missing existing column extra",
+        ):
+            ensure_table(
+                catalog, "spike", name, SCHEMA, "e", schema_evolution="add_columns"
+            )
+    finally:
+        if catalog.table_exists(("spike", name)):
+            catalog.drop_table(("spike", name))
+
+
 def test_create_reopen_and_reject_changes(catalog: Catalog) -> None:
     name = f"it_{uuid.uuid4().hex[:8]}"
     fields = [("ts", "day")]
