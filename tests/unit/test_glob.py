@@ -280,3 +280,12 @@ def test_negated_class_with_dash_and_underscore(tree: Path) -> None:
     assert not m("[!_-]", "-")
     (tree / "_").write_text("x")
     assert "_" not in glob("[!_-]")
+
+
+@unix_only
+def test_non_utf8_names_are_skipped(tree: Path) -> None:
+    try:
+        (tree / os.fsdecode(b"bad\xff.csv")).write_text("x")
+    except OSError:
+        pytest.skip("filesystem rejects non-UTF-8 names")
+    assert glob("*.csv") == ["z.csv"]

@@ -200,6 +200,10 @@ def _is_dir(e: "os.DirEntry[str]") -> bool:
         return False
 
 
+def _is_utf8(name: str) -> bool:
+    return not any("\udc80" <= c <= "\udcff" for c in name)  # surrogate-escaped bytes
+
+
 def _fill_todo(
     todo: _Todo, pats: list[Pattern], idx: int, path: str, is_dir: bool, o: MatchOptions
 ) -> None:
@@ -283,7 +287,10 @@ def glob(pattern: str, options: MatchOptions = _DEFAULT) -> list[str]:
                 continue
             idx = nxt + 1
         name = PurePath(path).name
-        if name in ("", "..") or not pats[idx].matches_with(name, options):
+        # the crate skips non-UTF-8 names
+        if name in ("", "..") or not _is_utf8(name):
+            continue
+        if not pats[idx].matches_with(name, options):
             continue
         if idx == last:
             if not require_dir or is_dir:
