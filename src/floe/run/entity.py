@@ -58,7 +58,7 @@ class EntityRun:
 def _chunks(entity: EntityConfig, path: Path, names: list[str]) -> Chunks:
     src = entity.source
     match src.format:
-        case "csv":
+        case "csv" | "tsv":
             for c in read_csv(path, src.options, names):
                 yield c.offset, c.df, c.ragged
         case "parquet":
@@ -143,7 +143,9 @@ def _typed(
             for n, c in zip(plan.names, columns, strict=True)
         ]
         typed = df.with_columns(t for t, _ in casts)
-        masks = df.select(m for _, m in casts)
+        masks = df.with_columns(
+            m for _, m in casts
+        )  # unlike select, broadcasts constant masks
     except pl.exceptions.InvalidOperationError as err:
         raise FloeRunError(f"entity.name={entity.name} cast failed: {err}") from err
     cast_checks = [
@@ -169,9 +171,7 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
         raw = _copy_raw(
             entity, plan.config_dir, path, "abort" if mismatch.aborted else "reject"
         )
-        out = file_report(entity, uri, 0, 0, [], mismatch, raw)
-        out["status"] = "aborted" if mismatch.aborted else "rejected"
-        return out, []
+        return file_report(entity, uri, 0, 0, [], mismatch, raw), []
 
     rows, bad_total = 0, 0
     masks: dict[tuple[str, str, str], list[pl.Series]] = {}
@@ -208,8 +208,7 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
     if bad_total and entity.sink.rejected and severity != "reject":
         stem = path.stem
         errors_path = _error_report(plan.config_dir, entity, stem, errors)
-    out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path)
-    out["output"]["errors_path"] = errors_path
+    out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path, None, errors_path)  # fmt: skip
     return out, [] if out["status"] == "aborted" else [_output(plan, df) for df in accepted]  # fmt: skip
 
 

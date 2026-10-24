@@ -121,3 +121,31 @@ def test_incremental_file_is_refused(tmp_path: Path) -> None:
     entity = parse_config(tmp_path / "config.yml").entities[0]
     with pytest.raises(FloeRunError, match="incremental_mode file"):
         run_entity(entity, tmp_path, "0.3")
+
+
+def test_coerce_mode_runs_a_multi_row_file(tmp_path: Path) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n2,b\n")
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "    source:\n", "    source:\n      cast_mode: coerce\n"
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    run_entity(entity, tmp_path, "0.3")
+    assert accepted(tmp_path)["id"].to_list() == [1, 2]
+
+
+def test_tsv_source_uses_the_csv_reader(tmp_path: Path) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.tsv").write_text("id\tname\n1\ta\n")
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: tsv\n      path: ./in"
+    )
+    config = config.replace(
+        'options: {header: true, separator: ","}', "options: {header: true}"
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    run_entity(entity, tmp_path, "0.3")
+    assert accepted(tmp_path).to_dicts() == [{"id": 1, "name": "a"}]
