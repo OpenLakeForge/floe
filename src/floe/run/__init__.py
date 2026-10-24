@@ -30,7 +30,7 @@ from floe.storage.resolve import require_local
 class RunOutcome:
     run_id: str
     summary: dict[str, Any]
-    dry_run: dict[str, list[str]] | None  # entity name -> scanned files
+    dry_run: dict[str, list[str]] | None  # entity id -> scanned files
 
 
 def select_entities(root: RootConfig, selectors: Sequence[str]) -> list[EntityConfig]:
@@ -100,7 +100,7 @@ def run(
     if dry_run:  # Rust: no events, no reports; the inputs are only listed
         client = LocalClient()
         scanned = {
-            e.name: [f.source_uri for f in resolve_inputs(
+            e.id: [f.source_uri for f in resolve_inputs(
                 config_dir, e.source.path, e.source.format, e.name, e.source.storage or "local",
                 client, recursive=bool(e.source.options.recursive),
                 glob_override=e.source.options.glob).files]
@@ -113,13 +113,13 @@ def run(
     )  # validated with the config
 
     def one(entity: EntityConfig) -> EntityRun:
-        emit("entity_started", name=entity.name)
+        emit("entity_started", name=entity.id)
         try:
             return run_entity(
                 entity, config_dir, root.version, formatter, root.storages, emit
             )
         except FloeError:
-            _finished(emit, entity.name, None)
+            _finished(emit, entity.id, None)
             raise
 
     emit("run_started", config=str(normalize_local_path(path)), report_base=report_path)
@@ -129,7 +129,7 @@ def run(
         result = one(e)
         reports.append((id_path(e), result.report))
         write_entity_report(run_dir, id_path(e), result.report)
-        _finished(emit, e.name, result.report)
+        _finished(emit, e.id, result.report)
         if result.aborted:
             break
     summary = build_summary(

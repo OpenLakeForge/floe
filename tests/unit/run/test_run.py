@@ -61,7 +61,7 @@ def test_dry_run_lists_inputs_and_writes_nothing(tmp_path: Path) -> None:
     events: list[dict[str, Any]] = []
     out = run(path, root, dry_run=True, observer=events.append)
     assert out.dry_run is not None
-    assert out.dry_run["a"][0].endswith("in/a.csv")
+    assert out.dry_run["d.a"][0].endswith("in/a.csv")
     assert not (tmp_path / "out").exists()
     assert not (tmp_path / "report").exists()
     assert events == []
@@ -83,16 +83,57 @@ def test_event_order(tmp_path: Path) -> None:
     out = run(path, root, observer=events.append)
     assert [(e["event"], e.get("name") or e.get("entity")) for e in events] == [
         ("run_started", None),
-        ("entity_started", "a"),
+        ("entity_started", "d.a"),
         ("file_started", "a"),
         ("file_finished", "a"),
-        ("entity_finished", "a"),
-        ("entity_started", "b"),
+        ("entity_finished", "d.a"),
+        ("entity_started", "d.b"),
         ("file_started", "b"),
         ("file_finished", "b"),
-        ("entity_finished", "b"),
+        ("entity_finished", "d.b"),
         ("run_finished", None),
     ]
     assert {e["run_id"] for e in events} == {out.run_id}
     assert events[-1]["rows"] == 4 and events[-1]["exit_code"] == 0
     assert events[3]["accepted"] == 2 and events[3]["status"] == "success"
+
+
+def qualified(tmp_path: Path) -> Any:
+    (tmp_path / "in").mkdir()
+    text = 'version: "0.3"\ndomains:\n  - name: sales\n  - name: hr\nentities:\n'
+    for d in ("sales", "hr"):
+        (tmp_path / "in" / f"{d}.csv").write_text("id\n1\n")
+        text += (
+            ENTITY.format(name="users", mode="overwrite")
+            .replace("domain: d", f"domain: {d}")
+            .replace("./in/users.csv", f"./in/{d}.csv")
+            .replace("/users}", f"/{d}}}")
+        )
+    path = tmp_path / "config.yml"
+    path.write_text(text + "report: {path: ./report}\n")
+    return path, parse_config(path, {})
+
+
+def test_dry_run_keeps_same_named_entities_of_different_domains(tmp_path: Path) -> None:
+    path, root = qualified(tmp_path)
+    out = run(path, root, dry_run=True)
+    assert out.dry_run is not None
+    assert sorted(out.dry_run) == ["hr.users", "sales.users"]
+
+
+def test_lifecycle_events_use_the_qualified_id(tmp_path: Path) -> None:
+    path, root = qualified(tmp_path)
+    events: list[dict[str, Any]] = []
+    run(path, root, observer=events.append)
+    names = [e["name"] for e in events if e["event"].startswith("entity_")]
+    assert names == ["sales.users"] * 2 + ["hr.users"] * 2
+
+
+def test_a_raising_observer_does_not_abort_the_run(tmp_path: Path) -> None:
+    path, root = setup(tmp_path, ["a", "b"])
+
+    def boom(_: dict[str, Any]) -> None:
+        raise RuntimeError("telemetry down")
+
+    out = run(path, root, observer=boom)
+    assert [e["name"] for e in out.summary["entities"]] == ["d.a", "d.b"]

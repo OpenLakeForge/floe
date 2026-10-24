@@ -2,6 +2,7 @@
 
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,10 +18,13 @@ class Emitter:
 
     def __call__(self, event: str, **fields: Any) -> None:
         if self.observer:
-            self.observer(
-                {"event": event, "run_id": self.run_id, **fields}
-                | {"ts_ms": time.time_ns() // 1_000_000}
-            )
+            with suppress(
+                Exception
+            ):  # an observer must not abort ingestion (Rust ignores callback errors)
+                self.observer(
+                    {"event": event, "run_id": self.run_id, **fields}
+                    | {"ts_ms": time.time_ns() // 1_000_000}
+                )
 
 
 NO_EVENTS = Emitter()
