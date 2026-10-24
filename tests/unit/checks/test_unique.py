@@ -96,3 +96,28 @@ def test_resolve_unique_keys_matches_rust() -> None:
     assert resolve_unique_keys([["a", "b"], [" a", "b "], []], ["z"], ["a", "b"]) == [
         ["a", "b"]
     ]
+
+
+def test_key_columns_named_like_temporaries_or_selectors_stay_literal() -> None:
+    for name in ("*", "^k.*$", "__floe_count", "__floe_seen", "__floe_debug", "k0"):
+        tracker = UniqueTracker([[name]])
+        df = pl.DataFrame({name: ["a", "a"], "other": [1, 2]})
+        assert tracker.check(df)[0].mask.to_list() == [False, True]
+        assert tracker.check(df)[0].mask.to_list() == [True, True]  # next file
+        [result] = tracker.results()
+        assert [(s.values, s.count) for s in result.samples] == [({name: "a"}, 3)]
+
+
+def test_float_samples_use_rust_display() -> None:
+    nan = float("nan")
+    tracker = UniqueTracker([["f"]])
+    tracker.check(pl.DataFrame({"f": [1e-7, 1e-7, 10.0, 10.0, nan, nan]}))
+    values = [s.values["f"] for s in tracker.results()[0].samples]
+    assert values == ["0.0000001", "10", "NaN"]
+
+
+def test_string_ties_sort_on_rust_escapes() -> None:
+    tracker = UniqueTracker([["s"]])
+    keys = ["\x00", "A", "B", "C", "D", "E"]
+    tracker.check(pl.DataFrame({"s": keys + keys}))
+    assert [s.values["s"] for s in tracker.results()[0].samples] == list("ABCDE")

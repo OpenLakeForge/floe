@@ -1,8 +1,11 @@
 """Unique keys within a file and across the files of one run (Rust: `checks/unique.rs`)."""
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal
 
+import numpy as np
 import polars as pl
 
 from floe.checks.rows import RowCheck
@@ -46,12 +49,28 @@ def resolve_unique_keys(
     return resolved
 
 
+# `str` Debug; ponytail: non-ASCII non-printable characters (Rust `\\u{..}`) are left raw
+_STR_ESCAPES = {
+    "\\": "\\\\",
+    '"': '\\"',
+    "\n": "\\n",
+    "\r": "\\r",
+    "\t": "\\t",
+    "\0": "\\0",
+    **{chr(i): f"\\u{{{i:x}}}" for i in [*range(1, 32), 127] if chr(i) not in "\n\r\t"},
+}
+
+
+def _float_bits(s: pl.Series) -> pl.Series:
+    return pl.Series(s.to_numpy().astype(np.float64).view(np.uint64))
+
+
 def _debug(name: str, dtype: pl.DataType) -> pl.Expr:
     """Rust's `{:?}` of the `UniqueKey` variant: the sample tie-break sorts on these strings."""
     c = pl.col(name)
     if dtype == pl.String:
-        escaped = c.str.replace_all("\\", "\\\\", literal=True)
-        for raw, esc in (('"', '\\"'), ("\n", "\\n"), ("\r", "\\r"), ("\t", "\\t")):
+        escaped = c
+        for raw, esc in _STR_ESCAPES.items():
             escaped = escaped.str.replace_all(raw, esc, literal=True)
         return pl.format('String("{}")', escaped)
     if dtype == pl.Boolean:
@@ -61,7 +80,7 @@ def _debug(name: str, dtype: pl.DataType) -> pl.Expr:
     if dtype.is_unsigned_integer():
         return pl.format("U64({})", c.cast(pl.String))
     if dtype.is_float():
-        bits = c.cast(pl.Float64).reinterpret(signed=False)
+        bits = c.map_batches(_float_bits, return_dtype=pl.UInt64)
         return pl.format("F64({})", bits.cast(pl.String))
     # ponytail: date/datetime keys use `Other(display)`, unverified against Rust; ties may order differently
     return pl.format('Other("{}")', c.cast(pl.String))
@@ -72,7 +91,9 @@ def _text(value: object) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, float):
-        return f"{value:.0f}" if value.is_integer() else str(value)
+        if not math.isfinite(value):
+            return "NaN" if math.isnan(value) else str(value).replace("infinity", "inf")
+        return format(Decimal(repr(value)).normalize(), "f")
     return str(value)
 
 
@@ -82,6 +103,11 @@ class _Constraint:
     seen: pl.DataFrame
     dup_counts: list[pl.DataFrame] = field(default_factory=list[pl.DataFrame])
     duplicates: int = 0
+
+    @property
+    def ids(self) -> list[str]:
+        """Positional names, so key columns named like our temporaries or regexes stay literal."""
+        return [f"k{i}" for i in range(len(self.columns))]
 
 
 class UniqueTracker:
@@ -99,18 +125,20 @@ class UniqueTracker:
         return [self._apply(c, df) for c in self._constraints]
 
     def _apply(self, c: _Constraint, df: pl.DataFrame) -> RowCheck:
-        keys = df.select(c.columns)
+        keys = pl.DataFrame(
+            [df[n].alias(k) for n, k in zip(c.columns, c.ids, strict=True)]
+        )
         # ponytail: floats compare with Polars equality (-0.0 == 0.0), Rust compares bit patterns
         flags = keys.select(
             pl.all_horizontal(pl.all().is_not_null()).alias("valid"),
-            pl.struct(c.columns).is_first_distinct().alias("first"),
+            pl.struct(c.ids).is_first_distinct().alias("first"),
         )
         valid = flags["valid"]
         dup = valid & ~flags["first"]
         if c.seen.width:
             hit = keys.join(
                 c.seen.with_columns(pl.lit(True).alias(_SEEN)),
-                on=c.columns,
+                on=c.ids,
                 how="left",
                 maintain_order="left",
             )[_SEEN]
@@ -120,7 +148,7 @@ class UniqueTracker:
         dups = keys.filter(dup)
         c.duplicates += dups.height
         if dups.height:
-            c.dup_counts.append(dups.group_by(c.columns).len(_COUNT))
+            c.dup_counts.append(dups.group_by(c.ids).len(_COUNT))
         single = len(c.columns) == 1
         name = c.columns[0] if single else f"[{','.join(c.columns)}]"
         message = "duplicate value" if single else "duplicate key"
@@ -133,12 +161,10 @@ class UniqueTracker:
     def _result(self, c: _Constraint) -> UniqueResult:
         if not c.dup_counts:
             return UniqueResult(c.columns, 0, [])
-        counts = pl.concat(c.dup_counts).group_by(c.columns).agg(pl.col(_COUNT).sum())
+        counts = pl.concat(c.dup_counts).group_by(c.ids).agg(pl.col(_COUNT).sum())
         debug = pl.format(
             "CompositeKey([{}])",
-            pl.concat_str(
-                [_debug(n, counts.schema[n]) for n in c.columns], separator=", "
-            ),
+            pl.concat_str([_debug(k, counts.schema[k]) for k in c.ids], separator=", "),
         )
         top = (
             counts.with_columns(debug.alias(_DEBUG))
@@ -146,7 +172,10 @@ class UniqueTracker:
             .head(SAMPLE_LIMIT)
         )
         samples = [  # at most SAMPLE_LIMIT rows
-            UniqueSample({n: _text(row[n]) for n in c.columns}, row[_COUNT])
+            UniqueSample(
+                {n: _text(row[k]) for n, k in zip(c.columns, c.ids, strict=True)},
+                row[_COUNT],
+            )
             for row in top.iter_rows(named=True)
         ]
         return UniqueResult(c.columns, c.duplicates, samples)
