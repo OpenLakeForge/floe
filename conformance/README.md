@@ -71,7 +71,8 @@ skips them and `check.py --impl rust` prints `skip` for them.
 
 ## Normalization
 
-- Masked when recording: run ids, timestamps, durations, absolute paths (`<ROOT>`, `run_<id>`).
+- Masked when recording: run ids, timestamps, durations, absolute paths (`<ROOT>`, `run_<id>`), and the run id and
+  source hash in archived file names (`__run-<id>__src-<hash>`).
 - Compared by shape: UUID-based part file names (`part-<uuid>`), Iceberg `snapshot_id`.
 - Recorded but ignored on compare (G5 ruling, #594): `total_bytes_written`, `avg_file_size_mb`.
 - Ignored on compare: `tool.version` in `run.summary.json` (each implementation reports its own version). `expected/` keeps the recorded `0.7.0`.
