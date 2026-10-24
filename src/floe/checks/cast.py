@@ -100,9 +100,10 @@ def cast_column(
     native = dtype != pl.String
     kind = column_type.lower().replace("-", "").replace("_", "")
     if kind in ("string", "str", "text"):
-        return (raw.cast(pl.String) if native else raw), pl.lit(False).alias(
-            f"_e_cast_{name}"
-        )
+        text = raw.cast(pl.String) if native else raw
+        if native and dtype.is_float():  # Rust writes 1e20, Polars 1e+20
+            text = text.str.replace("e+", "e", literal=True)
+        return text, pl.lit(False).alias(f"_e_cast_{name}")
     fractional = None
     if kind in _DTYPES:
         typed = raw.cast(_DTYPES[kind], strict=False)
