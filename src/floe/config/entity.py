@@ -4,12 +4,19 @@ import string
 from collections.abc import Callable
 from typing import TypeVar, get_args
 
+from pydantic import BaseModel
+
 from floe.config.types import (
+    ArchiveTarget,
     ColumnConfig,
     EntityConfig,
     EntityMetadata,
     EntityStateConfig,
+    IcebergPartitionField,
+    IcebergSinkOptions,
     IncrementalMode,
+    MergeOptions,
+    MergeScd2Options,
     NormalizeColumnsConfig,
     PiiConfig,
     PolicyConfig,
@@ -19,6 +26,12 @@ from floe.config.types import (
     SchemaEvolutionIncompatibleAction,
     SchemaEvolutionMode,
     SchemaMismatchConfig,
+    SinkConfig,
+    SinkOptions,
+    SinkTarget,
+    SourceConfig,
+    SourceOptions,
+    WriteMode,
 )
 from floe.config.yaml import (
     get_array,
@@ -29,7 +42,9 @@ from floe.config.yaml import (
     opt_u64,
     opt_vec_string,
     opt_vec_vec_string,
+    rust_debug,
     validate_known_keys,
+    yaml_array,
     yaml_hash,
 )
 from floe.errors import FloeConfigError, FloeError
@@ -37,9 +52,14 @@ from floe.pii import PiiColumn, Strategy
 
 _T = TypeVar("_T", bound=str)
 _R = TypeVar("_R")
+_M = TypeVar("_M", bound=BaseModel)
 _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 # Rust's `trim()` strips Unicode White_Space only; `str.strip()` also strips U+001C to U+001F
 _WHITE_SPACE = "\t\n\v\f\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+
+
+def _or(value: _R | None, default: _R) -> _R:
+    return default if value is None else value
 
 
 def _pick(value: str, allowed: tuple[_T, ...]) -> _T | None:
@@ -221,7 +241,175 @@ def _pii(value: object) -> PiiConfig:
     )
 
 
-def parse_entity(value: object) -> EntityConfig:
+def _source_options(value: object, defaults: SourceOptions) -> SourceOptions:
+    ctx = "source.options"
+    h = yaml_hash(value, ctx)
+    validate_known_keys(h, ctx, tuple(SourceOptions.model_fields))
+    readers: dict[str, Callable[[dict[object, object], str, str], object]] = {
+        **dict.fromkeys(("header", "recursive"), opt_bool),
+        **dict.fromkeys(("header_row", "data_row"), opt_u64),
+        "null_values": opt_vec_string,
+    }
+    read = {
+        k: readers.get(k, opt_string)(h, k, ctx) for k in SourceOptions.model_fields
+    }
+    # a null or absent key keeps the format default
+    return defaults.model_copy(update={k: v for k, v in read.items() if v is not None})
+
+
+def _storage(h: dict[object, object], ctx: str) -> str | None:
+    storage = opt_string(h, "storage", ctx)
+    filesystem = opt_string(h, "filesystem", ctx)
+    if storage is not None and filesystem is not None:
+        raise FloeConfigError(f"{ctx}.storage and {ctx}.storage are mutually exclusive")
+    return _or(storage, filesystem)
+
+
+def _source(value: object, ref: str | None, resource: str | None) -> SourceConfig:
+    h = yaml_hash(value, "source")
+    validate_known_keys(
+        h,
+        "source",
+        (
+            "format",
+            "path",
+            "storage",
+            "filesystem",
+            "options",
+            "cast_mode",
+        ),
+    )
+    fmt = get_string(h, "format", "source")
+    defaults = SourceOptions(separator="\t") if fmt == "tsv" else SourceOptions()
+    options = _source_options(h["options"], defaults) if "options" in h else defaults
+    return SourceConfig(
+        format=fmt,
+        storage=_storage(h, "source"),
+        path=get_string(h, "path", "source"),
+        options=options,
+        cast_mode=_or(opt_string(h, "cast_mode", "source"), "strict"),
+        source_ref=ref,
+        resource=resource,
+    )
+
+
+def _sink_options(value: object, ctx: str) -> SinkOptions:
+    h = yaml_hash(value, ctx)
+    validate_known_keys(h, ctx, tuple(SinkOptions.model_fields))
+    return SinkOptions(
+        compression=opt_string(h, "compression", ctx),
+        row_group_size=opt_u64(h, "row_group_size", ctx),
+        max_size_per_file=opt_u64(h, "max_size_per_file", ctx),
+    )
+
+
+def _strings_only(
+    model: type[_M], parent: dict[object, object], key: str, ctx: str
+) -> _M | None:
+    if key not in parent:
+        return None
+    ctx = f"{ctx}.{key}"
+    h = yaml_hash(parent[key], ctx)
+    validate_known_keys(h, ctx, tuple(model.model_fields))
+    return model(**{key: opt_string(h, key, ctx) for key in model.model_fields})
+
+
+def _merge(value: object, ctx: str) -> MergeOptions:
+    h = yaml_hash(value, ctx)
+    validate_known_keys(h, ctx, tuple(MergeOptions.model_fields))
+    return MergeOptions(
+        ignore_columns=opt_vec_string(h, "ignore_columns", ctx),
+        compare_columns=opt_vec_string(h, "compare_columns", ctx),
+        scd2=_strings_only(MergeScd2Options, h, "scd2", ctx),
+    )
+
+
+def _partition_spec(
+    parent: dict[object, object], ctx: str
+) -> list[IcebergPartitionField] | None:
+    if "partition_spec" not in parent:
+        return None
+    ctx = f"{ctx}.partition_spec"
+    out: list[IcebergPartitionField] = []
+    for index, item in enumerate(yaml_array(parent["partition_spec"], ctx)):
+        item_ctx = f"{ctx}[{index}]"
+        h = yaml_hash(item, item_ctx)
+        validate_known_keys(h, item_ctx, ("column", "transform"))
+        out.append(
+            IcebergPartitionField(
+                column=get_string(h, "column", item_ctx),
+                transform=_or(opt_string(h, "transform", item_ctx), "identity"),
+            )
+        )
+    return out
+
+
+def _sink_target(
+    value: object, ctx: str, allow_options: bool, write_mode: WriteMode
+) -> SinkTarget:
+    h = yaml_hash(value, ctx)
+    allowed = ("format", "path", "storage", "filesystem")
+    if allow_options:
+        allowed += ("options", "merge", "iceberg", "delta", "duckdb")
+        allowed += ("partition_by", "partition_spec")
+    validate_known_keys(h, ctx, allowed)
+    storage = _storage(h, ctx)
+    options = _sink_options(h["options"], f"{ctx}.options") if "options" in h else None
+    merge = _merge(h["merge"], f"{ctx}.merge") if "merge" in h else None
+    partition_by = opt_vec_string(h, "partition_by", ctx)
+    iceberg = _strings_only(IcebergSinkOptions, h, "iceberg", ctx)
+    fmt = get_string(h, "format", ctx)
+    if "duckdb" in h and fmt != "duckdb":
+        raise FloeConfigError(
+            f'{ctx}.duckdb is only valid when format is "duckdb" (found format={rust_debug(fmt)})'
+        )
+    spec = _partition_spec(h, ctx)
+    return SinkTarget(
+        format=fmt,
+        path=get_string(h, "path", ctx),
+        storage=storage,
+        options=options,
+        merge=merge,
+        iceberg=iceberg,
+        delta=h.get("delta"),  # D1: dropped, left raw for validation (#633)
+        duckdb=h.get("duckdb"),
+        partition_by=partition_by,
+        partition_spec=spec,
+        write_mode=write_mode,
+    )
+
+
+def _archive(value: object) -> ArchiveTarget:
+    h = yaml_hash(value, "sink.archive")
+    validate_known_keys(h, "sink.archive", ("path", "storage"))
+    return ArchiveTarget(
+        path=_or(opt_string(h, "path", "sink.archive"), "archive"),
+        storage=opt_string(h, "storage", "sink.archive"),
+    )
+
+
+def _sink(value: object) -> SinkConfig:
+    h = yaml_hash(value, "sink")
+    validate_known_keys(h, "sink", ("write_mode", "accepted", "rejected", "archive"))
+    mode = _or(opt_string(h, "write_mode", "sink"), "overwrite")
+    write_mode = _choice(mode, get_args(WriteMode), "sink.write_mode")
+    rejected = (
+        _sink_target(h["rejected"], "sink.rejected", False, write_mode)
+        if "rejected" in h
+        else None
+    )
+    archive = _archive(h["archive"]) if "archive" in h else None
+    accepted = _sink_target(
+        get_value(h, "accepted", "sink"), "sink.accepted", True, write_mode
+    )
+    return SinkConfig(
+        write_mode=write_mode, accepted=accepted, rejected=rejected, archive=archive
+    )
+
+
+def parse_entity(
+    value: object, source_ref: str | None = None, resource: str | None = None
+) -> EntityConfig:
     h = yaml_hash(value, "entity")
     validate_known_keys(
         h,
@@ -249,8 +437,8 @@ def parse_entity(value: object) -> EntityConfig:
         else _choice(mode, get_args(IncrementalMode), "entity.incremental_mode")
     )
     state = _state(h["state"]) if "state" in h else None
-    source = get_value(h, "source", "entity")
-    sink = get_value(h, "sink", "entity")
+    source = _source(get_value(h, "source", "entity"), source_ref, resource)
+    sink = _sink(get_value(h, "sink", "entity"))
     policy = _policy(get_value(h, "policy", "entity"))
     schema = _schema(get_value(h, "schema", "entity"))
     pii = _pii(h["pii"]) if "pii" in h else None
