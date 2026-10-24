@@ -1,6 +1,7 @@
 """One entity run: inputs, per-file checks, split, outputs, `run.json` (Rust: `run/entity/*.rs`, local sources and sinks)."""
 
 import shutil
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from itertools import chain
@@ -42,6 +43,7 @@ from floe.read.parquet import read_parquet
 from floe.read.xlsx import read_xlsx
 from floe.read.xml import read_xml, xml_columns
 from floe.report.entity import build_report, file_report
+from floe.run.events import NO_EVENTS, Emitter
 from floe.storage.inputs import ResolvedInputs, resolve_inputs
 from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
@@ -311,6 +313,7 @@ def run_entity(
     config_dir: Path,
     spec_version: str,
     formatter: Formatter = "json",
+    emit: Emitter = NO_EVENTS,
 ) -> EntityRun:
     """Run one entity with local sources and sinks; `config_dir` is absolute and normalised."""
     if entity.sink.accepted.format != "parquet":
@@ -354,7 +357,12 @@ def run_entity(
     files: list[dict[str, Any]] = []
     frames: list[pl.DataFrame] = []
     for f in inputs.files:
+        emit("file_started", entity=entity.name, input=f.source_uri)
+        timer = time.monotonic()
         report, kept = _run_file(plan, f.source_uri, Path(f.source_uri.removeprefix("local://")))  # fmt: skip
+        emit("file_finished", entity=entity.name, input=f.source_uri, status=report["status"],
+             rows=report["row_count"], accepted=report["accepted_count"],
+             rejected=report["rejected_count"], elapsed_ms=int((time.monotonic() - timer) * 1000))  # fmt: skip
         files.append(report)
         frames += kept
         if report["status"] == "aborted":
