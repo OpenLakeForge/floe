@@ -1,6 +1,6 @@
 # Config conformance cases (`floe validate`)
 
-613 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
+615 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
 v0.7.0 release binary. See [../README.md](../README.md) for recording, checking and the delta mechanism.
 
 ## Layout
@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
+18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13, 2 D21.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -107,6 +107,8 @@ implementation exists yet; each is derived as its row says.
 | `val2_type_time` | D10 | `entity.name=orders schema.columns[0].type=time is unsupported for column id (allowed: string, number, boolean, datetime, date)` | D10: Rust 0.7 accepts `time` at validate (every value later fails to cast); Python rejects it as not supported in 0.8. py is the validate.rs:1313 message with `time` dropped from the allowed list. |
 | `val2_type_unsupported` | D10 | `entity.name=orders schema.columns[0].type=varchar is unsupported for column id (allowed: string, number, boolean, datetime, date)` | Hand-derived, not recorded: Rust's message with `time` dropped from the allowed list (D10), as for `val2_type_time`. |
 | `val2_evolution_add_columns_iceberg_ok` | D13 | ok | D13: Python accepts `schema_evolution.mode: add_columns` on Iceberg sinks. Rust 0.7 rejects it unless the sink is Delta (validate.rs:1366), which D1 drops; other formats keep Rust's rejection. |
+| `val1_version_future_major_ok` | D21 | `root.version=1.0 is unsupported (newer than Floe 0.8)` | D21 (#797): root.version is the minimum Floe release the config targets; Python rejects one newer than its own major.minor. Rust 0.7 accepts any u64 version. Wording mirrors the validate.rs:140 minimum-version message. |
+| `val1_version_d21_newer_minor` | D21 | `root.version=0.9 is unsupported (newer than Floe 0.8)` | As `val1_version_future_major_ok`, one minor ahead. Its control `val1_version_d21_floe_ok` (`0.8`) is ok on both sides. |
 
 ## #584 divergences
 

@@ -107,6 +107,13 @@ def test_evolution_old_version(tmp_path: Path) -> None:
         check(tmp_path, f"{{{COLS}, schema_evolution: {{mode: strict}}}}", "0.1")
 
 
+def test_d21_version_follows_floe(tmp_path: Path) -> None:
+    check(tmp_path, f"{{{COLS}}}", "0.8")
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", "0.9")
+    assert str(err.value) == "root.version=0.9 is unsupported (newer than Floe 0.8)"
+
+
 def test_json_column_limit(tmp_path: Path) -> None:
     columns = ", ".join(f"{{name: c{i}, type: string}}" for i in range(1025))
     with pytest.raises(FloeConfigError, match="has 1025 entries"):
