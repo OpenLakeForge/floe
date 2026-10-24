@@ -1,7 +1,7 @@
 """Entity `run.json` (Rust: `report/{entity,build,mod}.rs`). Dicts in Rust's field order, serialised like serde."""
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from floe.checks.mismatch import MismatchOutcome
@@ -147,8 +147,13 @@ def build_report(
     rejected_uri: str | None,
     unique: Sequence[UniqueResult] = (),
     write_mode: WriteMode | None = None,
+    table_root_uri: str | None = None,
+    table: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The Parquet-sink `run.json` of an entity; `files` are the `file_report`s, in input order."""
+    """The entity's `run.json`; `files` are the `file_report`s, in input order.
+
+    `table` holds a table sink's fields (Iceberg: version, snapshot, catalog), whose metrics are reported even for no files.
+    """
     src, sink, severity = entity.source, entity.sink, entity.policy.severity
     if write.files_written:
         for f in files:
@@ -207,16 +212,17 @@ def build_report(
         "policy": {"severity": severity},
         "accepted_output": {
             "path": accepted_uri,
-            "table_root_uri": accepted_uri,
+            "table_root_uri": table_root_uri or accepted_uri,
             "write_mode": write_mode or sink.write_mode,
             "accepted_rows": totals["accepted_total"],
             "files_written": write.files_written,
             "parts_written": write.files_written,
             **({"part_files": write.part_files} if write.part_files else {}),
+            **(table or {}),
             # Rust's default output (nothing written) has no byte metrics
-            "total_bytes_written": write.total_bytes_written if write.files_written else None,
-            "avg_file_size_mb": write.avg_file_size_mb if write.files_written else None,
-            "small_files_count": write.small_files_count if write.files_written else None,
+            "total_bytes_written": write.total_bytes_written if write.files_written or table else None,
+            "avg_file_size_mb": write.avg_file_size_mb if write.files_written or table else None,
+            "small_files_count": write.small_files_count if write.files_written or table else None,
         },
         "schema_evolution": {
             "enabled": False,
