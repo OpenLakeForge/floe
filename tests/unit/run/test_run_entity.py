@@ -207,3 +207,31 @@ def test_an_unreadable_file_leaves_no_unique_keys_behind(
     files = run_entity(entity, tmp_path, "0.3").report["files"]
     assert [f["status"] for f in files] == ["rejected", "success"]
     assert accepted(tmp_path)["id"].to_list() == [1]
+
+
+def test_primary_key_names_are_trimmed_before_they_become_required(
+    tmp_path: Path,
+) -> None:
+    config = CONFIG.format(severity="reject", mismatch="primary_key: [' id ']")
+    config = config.replace("type: int64, nullable: false", "type: int64")
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n,a\n")
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert report["files"][0]["status"] == "rejected"
+    assert accepted(tmp_path).height == 0
+
+
+def test_unique_samples_use_the_schema_column_names(tmp_path: Path) -> None:
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "{name: id, type: int64, nullable: false}",
+        "{name: id, source: external_id, type: int64, unique: true}",
+    )
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("external_id,name\n1,a\n1,b\n")
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    (unique,) = run_entity(entity, tmp_path, "0.3").report["unique_constraints"]
+    assert unique["columns"] == ["id"]
+    assert unique["samples"] == [{"values": {"id": "1"}, "count": 1}]
