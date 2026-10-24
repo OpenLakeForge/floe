@@ -76,5 +76,5 @@ skips them and `check.py --impl rust` prints `skip` for them.
 - Paths in `expected/` use `run_ID` and `part-UUID` (no `<`/`>`: Windows can't check them out); file contents keep `run_<id>` / `part-<uuid>`.
 - Only `out/accepted` and `out/rejected` are captured; `record.py` fails on a case that produces neither.
 - Parquet dates and timestamps are compared as Arrow-rendered text, so years outside 1..9999 (which Python's `date` cannot hold) work.
-- Exit code 2 (run aborted by `policy.severity: abort` or a mismatch precheck) is a recorded outcome; other non-zero codes fail.
+- A run's non-zero exit code is recorded in `expected/exit_code` (e.g. `2` for an aborted run) and compared; no file means 0. Codes other than 0 and 2 fail recording.
 - Key order in reports is kept: it is part of the contract.

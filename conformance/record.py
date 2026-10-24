@@ -42,7 +42,6 @@ UUID_PART = re.compile(
     r"part-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
 
-OK_EXIT = (0, 2)  # 2 = run aborted by policy: a recorded outcome, not a failure
 Snapshot = dict[str, str | Any]  # str: text file; Any: pyarrow Table
 
 
@@ -208,11 +207,13 @@ def main() -> int:
             continue
         with tempfile.TemporaryDirectory(prefix="conformance-") as tmp:
             work, proc = run_in_copy(case, [str(binary)], Path(tmp))
-            if proc.returncode not in OK_EXIT and not is_validate(case):
+            if proc.returncode not in (0, 2) and not is_validate(case):  # 2 = aborted
                 sys.stderr.write(proc.stdout + proc.stderr)
                 raise SystemExit(f"{case_name(case)}: floe exited {proc.returncode}")
             shutil.rmtree(case / "expected", ignore_errors=True)
             snap = case_snapshot(case, work, proc)
+            if proc.returncode and not is_validate(case):
+                snap["exit_code"] = f"{proc.returncode}\n"  # absent file means 0
             if not is_validate(case) and not any(
                 k.startswith(("accepted/", "rejected/")) for k in snap
             ):
