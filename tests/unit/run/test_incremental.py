@@ -10,7 +10,7 @@ import pytest
 import floe.run.entity as entity_module
 from floe.config.parse import parse_config
 from floe.errors import FloeConfigError, FloeRunError
-from floe.run import incremental
+from floe.run import run
 from floe.run.entity import EntityRun, run_entity
 from floe.run.events import Emitter
 
@@ -113,15 +113,17 @@ def test_row_mode_reprocesses_like_rust_0_7(tmp_path: Path) -> None:
 )
 def test_default_state_location(tmp_path: Path, src: str, expected: str) -> None:
     entity = setup(tmp_path, src=src)
-    assert incremental.state_uri(entity, tmp_path) == f"local://{tmp_path / expected}"
+    assert entity_module.state_uri(entity, tmp_path) == f"local://{tmp_path / expected}"
 
 
 def test_state_path_is_local_and_relative_to_the_config(tmp_path: Path) -> None:
     entity = setup(tmp_path, state="state: {path: s/x.json}")
-    assert incremental.state_uri(entity, tmp_path) == f"local://{tmp_path / 's/x.json'}"
+    assert (
+        entity_module.state_uri(entity, tmp_path) == f"local://{tmp_path / 's/x.json'}"
+    )
     remote = setup(tmp_path, state="state: {path: 's3://b/x.json'}")
     with pytest.raises(FloeConfigError, match="must be a local path"):
-        incremental.state_uri(remote, tmp_path)
+        entity_module.state_uri(remote, tmp_path)
 
 
 def test_claims_are_renewed_while_the_entity_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
@@ -131,8 +133,8 @@ def test_claims_are_renewed_while_the_entity_runs(tmp_path: Path, monkeypatch: p
     def fake_renew(_client: object, _uri: str, run_id: str, _claimed: object) -> None:
         renewed.append(run_id)
 
-    monkeypatch.setattr(incremental, "RENEW_INTERVAL_S", 0.01)
-    monkeypatch.setattr(incremental, "renew", fake_renew)
+    monkeypatch.setattr(entity_module, "RENEW_INTERVAL_S", 0.01)
+    monkeypatch.setattr(entity_module, "renew", fake_renew)
     real = entity_module._run_file  # pyright: ignore[reportPrivateUsage]
 
     def slow(*a: Any) -> Any:
@@ -142,3 +144,23 @@ def test_claims_are_renewed_while_the_entity_runs(tmp_path: Path, monkeypatch: p
     monkeypatch.setattr(entity_module, "_run_file", slow)
     go(entity, tmp_path, "r1")
     assert set(renewed) == {"r1"}
+
+
+def test_state_files_are_never_inputs_on_a_repeated_recursive_run(
+    tmp_path: Path,
+) -> None:
+    """D23: with a recursive `*` the default state under `.floe/` must not be read as an input."""
+    entity = setup(tmp_path, src="./in/**/*")
+    (tmp_path / "in/orders.csv").write_text("id\n1\n")
+    go(entity, tmp_path, "r1")
+    assert (tmp_path / "in/.floe/state/d/orders/state.json").exists()
+    second = go(entity, tmp_path, "r2").report
+    assert [f["status"] for f in second["files"]] == ["skipped"]
+    assert all(".floe" not in f for f in second["source"]["resolved_inputs"]["files"])
+
+
+def test_full_refresh_refuses_incremental_file(tmp_path: Path) -> None:
+    setup(tmp_path)
+    root = parse_config(tmp_path / "config.yml")
+    with pytest.raises(FloeConfigError, match="#787"):
+        run(tmp_path / "config.yml", root, full_refresh=True)

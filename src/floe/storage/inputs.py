@@ -68,6 +68,11 @@ def _glob_files(pattern: str) -> list[Path]:
     return [normalize_local_path(Path(p)) for p in found if Path(p).is_file()]
 
 
+def _visible(files: list[Path], root: Path) -> list[Path]:
+    """D23: drop anything under a `.floe` directory (the default state location), as the cloud listing does."""
+    return [f for f in files if ".floe" not in f.relative_to(root).parts[:-1]]
+
+
 def _local_files(
     config_dir: Path,
     raw: str,
@@ -85,7 +90,9 @@ def _local_files(
 
     if any(c in raw for c in "*?["):
         pattern = os.path.join(config_dir, raw)
-        files = sorted(set(_glob_files(pattern)), key=str)
+        prefix = pattern[: next(i for i, c in enumerate(pattern) if c in "*?[")]
+        root = Path(prefix) if prefix.endswith(os.sep) else Path(prefix).parent
+        files = _visible(sorted(set(_glob_files(pattern)), key=str), root)
         if not files:
             raise no_match(Path(pattern).parent, Path(pattern).name)
         return files, "directory"
@@ -106,7 +113,9 @@ def _local_files(
         os.path.join(base, "**", g) if recursive else os.path.join(base, g)
         for g in globs
     ]
-    files = sorted({f for p in patterns for f in _glob_files(p)}, key=str)
+    files = _visible(
+        sorted({f for p in patterns for f in _glob_files(p)}, key=str), base
+    )
     if not files:
         raise no_match(base, ",".join(globs))
     return files, "directory"
