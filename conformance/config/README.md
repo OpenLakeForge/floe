@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-28 D1, 18 D2, 9 D7, 1 D10, 1 D11.
+28 D1, 18 D2, 10 D7, 1 D10, 1 D11.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -66,6 +66,7 @@ implementation exists yet; each is derived as its row says.
 | `div_S7a` | D7 | `unknown field domains.defaults.name` | D7 (#584 S1-S7, schema wins): Python validate rejects what Rust 0.7 only catches at run time or ignores. Rust's unknown-key message (`unknown field <path>`) for a key the schema forbids in domain defaults. |
 | `div_S7b` | D7 | `unknown field domains.defaults.schema.columns` | D7 (#584 S1-S7, schema wins): Python validate rejects what Rust 0.7 only catches at run time or ignores. As S7a. |
 | `div_S7c` | D7 | `unknown field domains.defaults.schema.primary_key` | D7 (#584 S1-S7, schema wins): Python validate rejects what Rust 0.7 only catches at run time or ignores. As S7a. |
+| `parse_domains_defaults_drops_schema_columns_and_primary_key` | D7 | `unknown field domains.defaults.schema.columns` | D7 (#584 S7): Rust 0.7 silently drops domain defaults `schema.columns` and `schema.primary_key`; Python rejects them as S7b/S7c do. |
 | `div_S10` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust. Rust 0.7: `sink.accepted.partition_by has duplicate column id` (validate.rs:1180). |
 | `div_S10_ctrl` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust.  |
 | `div_S11` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust. Rust 0.7: `merge.ignore_columns has duplicate column amt` (validate.rs:977); the Iceberg side of the rule is `val2_d2_*`. |

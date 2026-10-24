@@ -1,5 +1,6 @@
 """Strict YAML decoding, ported from `crates/floe-core/src/config/yaml_decode.rs` (yaml-rust2 0.11)."""
 
+import copy
 import re
 import unicodedata
 from collections.abc import Container, Iterator
@@ -235,3 +236,17 @@ def opt_u64(hash: dict[object, object], key: str, ctx: str) -> int | None:
     if value < 0:
         raise FloeConfigError(f"expected positive integer at {ctx}.{key}")
     return value
+
+
+def merge_yaml(base: object, overlay: object) -> object:
+    """`merge_yaml`: maps merge key by key, anything else is replaced. Inputs are not modified."""
+    if not (isinstance(base, dict) and isinstance(overlay, dict)):
+        return copy.deepcopy(overlay)
+    base = cast("dict[object, object]", base)
+    merged = copy.deepcopy(base)
+    for key, value in cast("dict[object, object]", overlay).items():
+        merged.pop(key, None)  # a re-inserted key moves to the back, as in hashlink
+        merged[key] = (
+            merge_yaml(base[key], value) if key in base else copy.deepcopy(value)
+        )
+    return merged
