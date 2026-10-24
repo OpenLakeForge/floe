@@ -45,6 +45,7 @@ from floe.read.xlsx import read_xlsx
 from floe.read.xml import read_xml, xml_columns
 from floe.report.entity import build_report, file_report
 from floe.run.events import NO_EVENTS, Emitter
+from floe.run.incremental import Incremental
 from floe.storage.inputs import ResolvedInputs, resolve_inputs
 from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
@@ -319,13 +320,31 @@ def run_entity(
     emit: Emitter = NO_EVENTS,
 ) -> EntityRun:
     """Run one entity with local sources and sinks; `config_dir` is absolute and normalised."""
+    inc = Incremental(entity, config_dir, emit.run_id)
+    try:
+        run = _run_entity(
+            entity, config_dir, spec_version, formatter, storages, emit, inc
+        )
+    except BaseException:
+        inc.release()  # a failed entity leaves no claims behind
+        raise
+    inc.finish(run.report)
+    return run
+
+
+def _run_entity(
+    entity: EntityConfig,
+    config_dir: Path,
+    spec_version: str,
+    formatter: Formatter,
+    storages: StoragesConfig | None,
+    emit: Emitter,
+    inc: Incremental,
+) -> EntityRun:
     if entity.sink.accepted.format != "parquet":
         raise FloeRunError(
             f"entity.name={entity.name} unsupported sink format: {entity.sink.accepted.format}"
         )
-    if entity.incremental_mode in ("file", "row"):
-        # ponytail: incremental state lands with #648; refuse rather than re-ingest every run
-        raise FloeRunError(f"entity.name={entity.name} incremental_mode {entity.incremental_mode} is not supported yet")  # fmt: skip
     src, sink = entity.source, entity.sink
     who = f"entity.name={entity.name}"
     require_local(storages, src.storage, f"{who} source.storage")
@@ -363,9 +382,9 @@ def run_entity(
         config_dir, src.path, src.format, entity.name, src.storage or "local", client,
         recursive=bool(src.options.recursive), glob_override=src.options.glob,
     )  # fmt: skip
-    files: list[dict[str, Any]] = []
+    pending, files = inc.claim(inputs.files, emit)
     frames: list[pl.DataFrame] = []
-    for f in inputs.files:
+    for f in pending:
         emit("file_started", entity=entity.name, input=f.source_uri)
         timer = time.monotonic()
         report, kept = _run_file(plan, f.source_uri, Path(f.source_uri.removeprefix("local://")))  # fmt: skip
@@ -377,7 +396,9 @@ def run_entity(
         if report["status"] == "aborted":
             break
 
-    if frames or sink.write_mode == "overwrite":
+    if pending and (
+        frames or sink.write_mode == "overwrite"
+    ):  # Rust writes nothing when every input was skipped
         empty = pl.DataFrame(schema=dict.fromkeys(names, pl.String)).select(
             cast_column(n, c.column_type)[0]
             for n, c in zip(names, columns, strict=True)

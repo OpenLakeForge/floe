@@ -10,6 +10,7 @@ casts_date
 casts_datetime
 casts_typed
 example/standalone
+incremental_file
 mismatch
 mismatch_abort
 mismatch_reject_file
