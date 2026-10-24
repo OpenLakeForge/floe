@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
+from pyiceberg.table import Table
 
 from floe.checks.cast import CAST_ERROR_MESSAGE, cast_column
 from floe.checks.mismatch import (
@@ -38,7 +39,13 @@ from floe.checks.unique import UniqueResult, UniqueTracker, resolve_unique_keys
 from floe.config.storage import CatalogsConfig, StoragesConfig
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
-from floe.iceberg.sink import input_hash, resolve_target, write_iceberg
+from floe.iceberg.sink import (
+    existing_table,
+    input_hash,
+    resolve_target,
+    write_iceberg,
+)
+from floe.iceberg.unique import seed_from_table
 from floe.pii import apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.csv import RAGGED_MESSAGE, read_csv
@@ -200,6 +207,9 @@ class _Plan:
     rejected_writes: int = 0
     archive_dir: Path | None = None  # Rust `archive_enabled()`
     run_id: str = ""
+    table: Table | None = (
+        None  # the Iceberg target whose keys seed the tracker (append)
+    )
 
 
 def _archive(plan: _Plan, uri: str, path: Path) -> str | None:
@@ -247,6 +257,9 @@ def _typed(
     if entity.policy.severity == "abort" and any(c.mask.any() for c in cast_checks):
         return typed, cast_checks  # fmt: skip  # Rust: abort-mode cast errors skip not_null and unique
     required = [not_null_check(typed, n) for n in plan.required]
+    if plan.table is not None:
+        # ponytail: one key scan of the table per chunk; a DuckDB anti-join (ADR) if large histories make it slow
+        seed_from_table(plan.tracker, plan.table, typed, plan.out_map)
     return typed, [*required, *cast_checks, *plan.tracker.check(typed)]
 
 
@@ -577,6 +590,10 @@ def _run_entity(
     base = normalize_local_path(config_dir / sink.accepted.path)
     if sink.write_mode == "append" and target is None:
         _seed_unique(plan, base, sorted({runtime.get(c, c) for k in keys for c in k}))
+    elif sink.write_mode == "append" and target is not None and keys:
+        plan.table = existing_table(
+            target
+        )  # Rust `seed_unique_tracker`; no table, nothing to seed
     client = LocalClient()
     inputs: ResolvedInputs = resolve_inputs(
         config_dir, src.path, src.format, entity.name, src.storage or "local", client,
