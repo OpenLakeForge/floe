@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import sys
 import time
@@ -12,7 +13,8 @@ from floe.config.project import RootConfig, validate_domains
 from floe.config.validate import validate_entities
 from floe.config.vars import string_map
 from floe.config.yaml import load_yaml, yaml_hash
-from floe.errors import FloeError, FloeIoError
+from floe.errors import FloeConfigError, FloeError, FloeIoError
+from floe.manifest import build_manifest
 from floe.report.summary import build_summary, id_path, write_reports
 from floe.run.entity import run_entity
 from floe.storage.paths import normalize_local_path
@@ -83,6 +85,23 @@ def _run(config: str) -> int:
     return run["exit_code"]
 
 
+def _manifest(args: argparse.Namespace) -> None:
+    if "://" in args.output:  # ponytail: remote `-o` needs the storage clients
+        raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}")  # fmt: skip
+    path, root = _load(args.config, None)
+    manifest = build_manifest(root, path, args.deterministic, args.manifest_name)
+    text = json.dumps(manifest, indent=2, ensure_ascii=False)
+    if args.output == "-":
+        print(text)
+        return
+    out = Path(args.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f".{out.name}.tmp")
+    tmp.write_text(text)
+    tmp.replace(out)
+    print(f"Manifest written: {args.output}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="floe")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -90,10 +109,22 @@ def main() -> int:
     validate.add_argument("-c", "--config", required=True)
     validate.add_argument("-p", "--profile")  # ponytail: profiles land with #635
     commands.add_parser("run").add_argument("-c", "--config", required=True)
+    generate = (
+        commands.add_parser("manifest")
+        .add_subparsers(dest="manifest_command", required=True)
+        .add_parser("generate")
+    )
+    generate.add_argument("-c", "--config", required=True)
+    generate.add_argument("-o", "--output", required=True)
+    generate.add_argument("--deterministic", action="store_true")
+    generate.add_argument("--manifest-name")
     try:
         args = parser.parse_args()
         if args.command == "run":
             return _run(args.config)
+        if args.command == "manifest":
+            _manifest(args)
+            return 0
         _load(args.config, args.profile)
     except FloeError as e:
         print(f"Error: {e}", file=sys.stderr)

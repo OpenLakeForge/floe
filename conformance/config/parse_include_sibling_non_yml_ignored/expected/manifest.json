@@ -1,0 +1,151 @@
+{
+  "schema": "floe.manifest.v1",
+  "generated_at_ts_ms": 0,
+  "floe_version": "<volatile>",
+  "spec_version": "0.3",
+  "manifest_id": "<volatile>",
+  "manifest_revision": "<volatile>",
+  "runtime_env": "cli",
+  "config_uri": "local://<ROOT>/work/config.yml",
+  "config_checksum": "sha256:51c6bc89ec059bcc0af838e0b8486f796fa2659dd569da625b7c55932f33901f",
+  "config_files": [
+    {
+      "path": "config.yml",
+      "sha256": "ed7c8ac4a1645643f9f8e786d009593cfa93393be1830fb7d05addf05a24a006"
+    },
+    {
+      "path": "domains/sales/_domain.yml",
+      "sha256": "4c2a256d2394c5c2ec0a062e1d2d8dee0ace66dd1e82a9c84bf782d1c0f6710b"
+    },
+    {
+      "path": "domains/sales/orders.yml",
+      "sha256": "8b0b875df2a5e40e201d6d72fe7f442765b4feefce79165d89dbbd4a848d28df"
+    }
+  ],
+  "report_base_uri": "local://<ROOT>/work/report",
+  "domains": [
+    {
+      "name": "sales"
+    }
+  ],
+  "execution": {
+    "entrypoint": "floe",
+    "base_args": [
+      "run",
+      "--manifest",
+      "{manifest_uri}",
+      "--log-format",
+      "json",
+      "--quiet"
+    ],
+    "per_entity_args": [
+      "--entities",
+      "{entity_name}"
+    ],
+    "log_format": "json",
+    "result_contract": {
+      "run_finished_event": true,
+      "summary_uri_field": "summary_uri",
+      "exit_codes": {
+        "0": "success_or_rejected",
+        "1": "technical_failure",
+        "2": "aborted"
+      }
+    },
+    "defaults": {
+      "env": {},
+      "workdir": null
+    }
+  },
+  "runners": {
+    "default": "local",
+    "definitions": {
+      "local": {
+        "type": "local_process",
+        "command": null,
+        "args": null,
+        "timeout_seconds": null,
+        "ttl_seconds_after_finished": null,
+        "poll_interval_seconds": null,
+        "secrets": null,
+        "image": null,
+        "namespace": null,
+        "service_account": null,
+        "resources": null,
+        "env": null,
+        "workspace_url": null,
+        "existing_cluster_id": null,
+        "config_uri": null,
+        "python_file_uri": null,
+        "job_name": null,
+        "auth": null,
+        "env_parameters": null
+      }
+    }
+  },
+  "entities": [
+    {
+      "name": "sales.orders",
+      "domain": "sales",
+      "group_name": "sales",
+      "asset_key": [
+        "sales",
+        "orders"
+      ],
+      "source_format": "csv",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted",
+      "rejected_sink_uri": null,
+      "tags": null,
+      "source": {
+        "format": "csv",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/orders.csv",
+        "path": "in/orders.csv",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted",
+          "path": "out/accepted",
+          "resolved": true
+        },
+        "rejected": null,
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "warn",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    }
+  ]
+}
