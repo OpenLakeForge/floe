@@ -1,5 +1,6 @@
 """Ported from `crates/floe-core/tests/unit/io/storage/{inputs,local}.rs` (resolve cases)."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -284,3 +285,33 @@ def test_local_empty_directory_and_empty_glob_messages(tmp_path: Path) -> None:
     assert str(err.value) == (
         f"{NO_FILES} (base_path={tmp_path}, glob=*.csv, recursive=false)"
     )
+
+
+def test_s3_trailing_double_star_is_recursive() -> None:
+    keys = ["data/a.csv", "data/nested/b.csv", "other/c.csv"]
+    _, _, listed = s3("data/**", keys, list_only=True)
+    assert listed == ["s3://bucket/data/a.csv", "s3://bucket/data/nested/b.csv"]
+
+
+def test_s3_double_star_segment_matches_zero_or_more_directories() -> None:
+    keys = ["data/a.csv", "data/x/y/b.csv"]
+    _, _, listed = s3("data/**/*.csv", keys, list_only=True)
+    assert listed == ["s3://bucket/data/a.csv", "s3://bucket/data/x/y/b.csv"]
+
+
+def test_s3_negated_character_class() -> None:
+    _, _, listed = s3("data/*[!a].csv", ["data/a.csv", "data/b.csv"], list_only=True)
+    assert listed == ["s3://bucket/data/b.csv"]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read any directory")
+def test_local_recursive_unreadable_directory_is_an_error(tmp_path: Path) -> None:
+    touch(tmp_path / "a.csv")
+    touch(tmp_path / "restricted" / "b.csv")
+    (tmp_path / "restricted").chmod(0)
+    try:
+        with pytest.raises(FloeConfigError) as err:
+            local(tmp_path, tmp_path, recursive=True)
+    finally:
+        (tmp_path / "restricted").chmod(0o700)
+    assert str(err.value).startswith("glob match failed for ")

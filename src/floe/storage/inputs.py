@@ -1,5 +1,6 @@
 """Input resolution, ported from `io/storage/ops/inputs.rs` (`resolve_inputs`)."""
 
+import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -47,7 +48,19 @@ def _rfc3339(ns: int) -> str:
     return f"{text}.{nanos:09d}".rstrip("0") + "Z" if nanos else f"{text}Z"
 
 
+def _raise(error: OSError) -> None:
+    raise error
+
+
 def _glob_files(pattern: str) -> list[Path]:
+    if "**" in pattern:
+        parts = Path(pattern).parts
+        literal = [i for i, p in enumerate(parts) if any(c in p for c in "*?[")]
+        try:
+            for _ in os.walk(Path(*parts[: literal[0]]), onerror=_raise):
+                pass
+        except OSError as e:
+            raise FloeConfigError(f'glob match failed for "{pattern}": {e}') from e
     found = glob(pattern, recursive=True, include_hidden=True)
     return [normalize_local_path(Path(p)) for p in found if Path(p).is_file()]
 
@@ -97,15 +110,20 @@ def _cloud_matcher(source: str) -> re.Pattern[str]:
     out = ""
     i = 0
     while i < len(source):
-        if source.startswith("**/", i):
+        star = source.startswith("**", i) and source[i - 1 : i] in ("", "/")
+        if star and source[i + 2 : i + 3] == "/":
             out, i = out + "(?:.*/)?", i + 3
+        elif star and i + 2 == len(source):
+            out, i = out + ".*", i + 2
         elif source[i] in "*?":
             out, i = out + ("[^/]*" if source[i] == "*" else "[^/]"), i + 1
         elif source[i] == "[":
             end = source.find("]", i + 2)
             if end == -1:
                 raise FloeRunError("invalid cloud glob pattern: unclosed '['")
-            out, i = out + source[i : end + 1], end + 1
+            negated = source[i + 1] == "!"
+            body = re.sub(r"([\\\[^])", r"\\\1", source[i + 1 + negated : end])
+            out, i = out + f"[{'^' * negated}{body}]", end + 1
         else:
             out, i = out + re.escape(source[i]), i + 1
     return re.compile(out)
