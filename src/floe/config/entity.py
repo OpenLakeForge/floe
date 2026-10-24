@@ -245,21 +245,16 @@ def _source_options(value: object, defaults: SourceOptions) -> SourceOptions:
     ctx = "source.options"
     h = yaml_hash(value, ctx)
     validate_known_keys(h, ctx, tuple(SourceOptions.model_fields))
-    return SourceOptions(
-        header=_or(opt_bool(h, "header", ctx), defaults.header),
-        separator=_or(opt_string(h, "separator", ctx), defaults.separator),
-        encoding=_or(opt_string(h, "encoding", ctx), defaults.encoding),
-        null_values=_or(opt_vec_string(h, "null_values", ctx), defaults.null_values),
-        recursive=_or(opt_bool(h, "recursive", ctx), defaults.recursive),
-        glob=_or(opt_string(h, "glob", ctx), defaults.glob),
-        json_mode=_or(opt_string(h, "json_mode", ctx), defaults.json_mode),
-        sheet=_or(opt_string(h, "sheet", ctx), defaults.sheet),
-        header_row=_or(opt_u64(h, "header_row", ctx), defaults.header_row),
-        data_row=_or(opt_u64(h, "data_row", ctx), defaults.data_row),
-        row_tag=_or(opt_string(h, "row_tag", ctx), defaults.row_tag),
-        namespace=_or(opt_string(h, "namespace", ctx), defaults.namespace),
-        value_tag=_or(opt_string(h, "value_tag", ctx), defaults.value_tag),
-    )
+    readers: dict[str, Callable[[dict[object, object], str, str], object]] = {
+        **dict.fromkeys(("header", "recursive"), opt_bool),
+        **dict.fromkeys(("header_row", "data_row"), opt_u64),
+        "null_values": opt_vec_string,
+    }
+    read = {
+        k: readers.get(k, opt_string)(h, k, ctx) for k in SourceOptions.model_fields
+    }
+    # a null or absent key keeps the format default
+    return defaults.model_copy(update={k: v for k, v in read.items() if v is not None})
 
 
 def _storage(h: dict[object, object], ctx: str) -> str | None:
@@ -287,11 +282,10 @@ def _source(value: object, ref: str | None, resource: str | None) -> SourceConfi
     fmt = get_string(h, "format", "source")
     defaults = SourceOptions(separator="\t") if fmt == "tsv" else SourceOptions()
     options = _source_options(h["options"], defaults) if "options" in h else defaults
-    storage = _storage(h, "source")
     return SourceConfig(
         format=fmt,
+        storage=_storage(h, "source"),
         path=get_string(h, "path", "source"),
-        storage=storage,
         options=options,
         cast_mode=_or(opt_string(h, "cast_mode", "source"), "strict"),
         source_ref=ref,
@@ -309,8 +303,13 @@ def _sink_options(value: object, ctx: str) -> SinkOptions:
     )
 
 
-def _strings_only(model: type[_M], value: object, ctx: str) -> _M:
-    h = yaml_hash(value, ctx)
+def _strings_only(
+    model: type[_M], parent: dict[object, object], key: str, ctx: str
+) -> _M | None:
+    if key not in parent:
+        return None
+    ctx = f"{ctx}.{key}"
+    h = yaml_hash(parent[key], ctx)
     validate_known_keys(h, ctx, tuple(model.model_fields))
     return model(**{key: opt_string(h, key, ctx) for key in model.model_fields})
 
@@ -321,15 +320,18 @@ def _merge(value: object, ctx: str) -> MergeOptions:
     return MergeOptions(
         ignore_columns=opt_vec_string(h, "ignore_columns", ctx),
         compare_columns=opt_vec_string(h, "compare_columns", ctx),
-        scd2=_strings_only(MergeScd2Options, h["scd2"], f"{ctx}.scd2")
-        if "scd2" in h
-        else None,
+        scd2=_strings_only(MergeScd2Options, h, "scd2", ctx),
     )
 
 
-def _partition_spec(value: object, ctx: str) -> list[IcebergPartitionField]:
+def _partition_spec(
+    parent: dict[object, object], ctx: str
+) -> list[IcebergPartitionField] | None:
+    if "partition_spec" not in parent:
+        return None
+    ctx = f"{ctx}.partition_spec"
     out: list[IcebergPartitionField] = []
-    for index, item in enumerate(yaml_array(value, ctx)):
+    for index, item in enumerate(yaml_array(parent["partition_spec"], ctx)):
         item_ctx = f"{ctx}[{index}]"
         h = yaml_hash(item, item_ctx)
         validate_known_keys(h, item_ctx, ("column", "transform"))
@@ -355,21 +357,13 @@ def _sink_target(
     options = _sink_options(h["options"], f"{ctx}.options") if "options" in h else None
     merge = _merge(h["merge"], f"{ctx}.merge") if "merge" in h else None
     partition_by = opt_vec_string(h, "partition_by", ctx)
-    iceberg = (
-        _strings_only(IcebergSinkOptions, h["iceberg"], f"{ctx}.iceberg")
-        if "iceberg" in h
-        else None
-    )
+    iceberg = _strings_only(IcebergSinkOptions, h, "iceberg", ctx)
     fmt = get_string(h, "format", ctx)
     if "duckdb" in h and fmt != "duckdb":
         raise FloeConfigError(
             f'{ctx}.duckdb is only valid when format is "duckdb" (found format={rust_debug(fmt)})'
         )
-    spec = (
-        _partition_spec(h["partition_spec"], f"{ctx}.partition_spec")
-        if "partition_spec" in h
-        else None
-    )
+    spec = _partition_spec(h, ctx)
     return SinkTarget(
         format=fmt,
         path=get_string(h, "path", ctx),

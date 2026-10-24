@@ -1,4 +1,8 @@
 """Schema validation, ported from `config/validate.rs` (`validate_schema` and its helpers)."""
+# `_get` is unused since #733; removed in #735
+# pyright: reportUnusedFunction=false
+
+from typing import cast
 
 from floe.config.project import RootConfig, config_version
 from floe.config.types import EntityConfig
@@ -22,6 +26,12 @@ _TYPE_NAMES = {
 def _canonical(value: str) -> str:
     # D7 (#584 S1, S2): no trim, unlike Rust's `normalize_value`; the run-time paths never trimmed.
     return value.lower().replace("-", "").replace("_", "")
+
+
+def _get(value: object, key: str) -> object:
+    return (
+        cast(dict[object, object], value).get(key) if isinstance(value, dict) else None
+    )
 
 
 def _fail(entity: EntityConfig, message: str) -> FloeConfigError:
