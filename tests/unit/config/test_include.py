@@ -42,6 +42,14 @@ def test_domains_and_entities_are_spliced_in_sorted_order(tmp_path: Path) -> Non
     assert len(config.config_files) == 1 + 2 * 3
 
 
+def test_consecutive_recursive_wildcards_match_each_file_once(tmp_path: Path) -> None:
+    write(tmp_path, "config.yml", ROOT.replace("domains/*/", "domains/**/**/"))
+    write(tmp_path, "domains/sales/_domain.yml", "name: sales\n")
+    write(tmp_path, "domains/sales/orders.yml", f"name: orders\n{ENTITY}")
+    config = parse_config(tmp_path / "config.yml")
+    assert [e.id for e in config.entities] == ["sales.orders"]
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows cannot create `con.yml`")
 def test_d4_entity_name_comes_from_the_yaml_not_the_file_name(tmp_path: Path) -> None:
     write(tmp_path, "config.yml", ROOT)

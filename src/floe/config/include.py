@@ -71,7 +71,8 @@ def assemble_includes(
             )
         # ponytail: other glob syntax errors (`[` ranges, `**` inside a name) are not reported as Rust does
         matches = sorted(
-            glob.glob(full, recursive=True, include_hidden=True),
+            # set: consecutive `**` match a file more than once; Rust's glob collapses them
+            set(glob.glob(full, recursive=True, include_hidden=True)),
             key=lambda m: Path(m).parts,  # like Rust, component by component
         )
         if not matches:
