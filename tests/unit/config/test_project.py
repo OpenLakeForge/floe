@@ -186,8 +186,16 @@ def test_source_ref_overlays_the_named_source_and_substitutes_the_resource(
             "format": "csv",
             "path": "in/orders.csv",
             "options": {"header": True, "sep": ";"},
+            "source_ref": "lake",
+            "resource": "orders",
         },
-        {"format": "csv", "path": "items/{{other}}", "options": {"header": True}},
+        {
+            "format": "csv",
+            "path": "items/{{other}}",
+            "options": {"header": True},
+            "source_ref": "lake",
+            "resource": "items",
+        },
     ]
 
 

@@ -130,7 +130,7 @@ def parse_sources(value: object, version: str) -> dict[str, Hash]:
 
 def resolve_source_ref(
     entity: object, sources: dict[str, Hash]
-) -> tuple[Hash, str] | None:
+) -> tuple[Hash, str, str] | None:
     source = _field(entity, "source")
     if not isinstance(source, dict) or "ref" not in source:
         return None
@@ -149,27 +149,29 @@ def resolve_source_ref(
     resolved = dict(cast(Hash, entity))
     resolved.pop("source")  # a re-inserted key moves to the back, as in hashlink
     resolved["source"] = merge_yaml(sources[name], overlay)
-    return resolved, resource
+    return resolved, name, resource
 
 
 def _merge_entity(
     entity: object, sources: dict[str, Hash], defaults: dict[str, Hash]
 ) -> object:
-    resource = None
+    ref = resource = None
     if resolved := resolve_source_ref(entity, sources):
-        entity, resource = resolved
+        entity, ref, resource = resolved
     domain = _hint(entity, "domain")
     merged = merge_yaml(defaults[domain], entity) if domain in defaults else entity
     source = _field(merged, "source") if resource is not None else None
-    if isinstance(source, dict) and isinstance(cast(Hash, source).get("path"), str):
-        # `{{resource}}` is entity-specific; every other placeholder is left for the template pass
+    if isinstance(source, dict):
         source = cast(Hash, source)
-        source["path"] = re.sub(
-            r"\{\{(.*?)\}\}",
-            lambda m: str(resource) if m[1].strip() == "resource" else m[0],
-            cast(str, source["path"]),
-            flags=re.DOTALL,
-        )
+        if isinstance(source.get("path"), str):
+            # `{{resource}}` is entity-specific; the template pass leaves it alone
+            source["path"] = re.sub(
+                r"\{\{(.*?)\}\}",
+                lambda m: str(resource) if m[1].strip() == "resource" else m[0],
+                cast(str, source["path"]),
+                flags=re.DOTALL,
+            )
+        source.update(source_ref=ref, resource=resource)  # for #710's source parser
     return merged
 
 
