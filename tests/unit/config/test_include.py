@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from floe.config.include import glob_base
 from floe.config.parse import parse_config
 from floe.errors import FloeError
 
@@ -184,3 +185,10 @@ def test_unreadable_directory_is_an_error_not_a_missing_domain(tmp_path: Path) -
         ).replace(str(tmp_path), "<ROOT>")
     finally:
         locked.chmod(0o755)
+
+
+def test_glob_base_strips_windows_verbatim_prefix_and_escapes() -> None:
+    # Rust `parse.rs` test of the same name
+    assert glob_base(Path(r"\\?\C:\project")) == r"C:\project"
+    assert glob_base(Path(r"\\?\UNC\server\share\project")) == r"\\server\share\project"
+    assert glob_base(Path("/data/[x]")) == "/data/[[]x[]]"
