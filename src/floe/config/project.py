@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from floe.config.entity import parse_entity
 from floe.config.storage import (
@@ -23,6 +23,8 @@ from floe.config.yaml import (
     get_string,
     merge_yaml,
     opt_string,
+    opt_u32,
+    opt_u64,
     opt_vec_string,
     validate_known_keys,
     yaml_array,
@@ -52,22 +54,40 @@ class EnvConfig(BaseModel):
     vars: dict[str, str]
 
 
+class ReportConfig(BaseModel):
+    path: str
+    formatter: str | None
+    storage: str | None
+
+
+class LineageConfig(BaseModel):
+    url: str
+    endpoint: str | None
+    api_key: SecretStr | None
+    timeout_secs: int | None
+    namespace: str
+    dataset_namespace: str | None
+    producer: str | None
+    max_failures: int | None
+    job_name: str | None
+
+
 class DomainConfig(BaseModel):
     name: str
     incoming_dir: str | None
     defaults: Hash | None  # raw; `validate_domains` rejects the keys D7 forbids
+    resolved_incoming_dir: str | None = None  # set by the template pass
 
 
 class RootConfig(BaseModel):
-    # report and lineage stay raw until their parsers are wired in
     version: str
     metadata: ProjectMetadata | None
     storages: StoragesConfig | None
     catalogs: CatalogsConfig | None
     env: EnvConfig | None
     domains: list[DomainConfig]
-    report: object
-    lineage: object
+    report: ReportConfig
+    lineage: LineageConfig | None
     entities: list[EntityConfig]
     config_files: list[Path]
 
@@ -260,6 +280,42 @@ def _entity_error(
     return FloeConfigError(f"{prefix}: {who}: {error}" if prefix else f"{who}: {error}")
 
 
+def parse_report(value: object) -> ReportConfig:
+    hash = yaml_hash(value, "report")
+    validate_known_keys(hash, "report", ("path", "formatter", "storage"))
+    path = opt_string(hash, "path", "report")
+    return ReportConfig(
+        path="report" if path is None else path,
+        formatter=opt_string(hash, "formatter", "report"),
+        storage=opt_string(hash, "storage", "report"),
+    )
+
+
+def parse_lineage(value: object) -> LineageConfig:
+    hash = yaml_hash(value, "lineage")
+    ctx = "lineage"
+    validate_known_keys(
+        hash,
+        ctx,
+        (
+            *("url", "endpoint", "api_key", "timeout_secs", "namespace"),
+            *("dataset_namespace", "producer", "max_failures", "job_name"),
+        ),
+    )
+    api_key = opt_string(hash, "api_key", ctx)
+    return LineageConfig(
+        url=get_string(hash, "url", ctx),
+        endpoint=opt_string(hash, "endpoint", ctx),
+        api_key=None if api_key is None else SecretStr(api_key),
+        timeout_secs=opt_u64(hash, "timeout_secs", ctx),
+        namespace=get_string(hash, "namespace", ctx),
+        dataset_namespace=opt_string(hash, "dataset_namespace", ctx),
+        producer=opt_string(hash, "producer", ctx),
+        max_failures=opt_u32(hash, "max_failures", ctx),
+        job_name=opt_string(hash, "job_name", ctx),
+    )
+
+
 def parse_root(doc: object, origins: IncludeOrigins) -> RootConfig:
     root = yaml_hash(doc, "root")
     validate_known_keys(root, "root", ROOT_KEYS)
@@ -299,6 +355,8 @@ def parse_root(doc: object, origins: IncludeOrigins) -> RootConfig:
         if "sources" in root
         else {}
     )
+    report = parse_report(root.get("report", {}))
+    lineage = parse_lineage(root["lineage"]) if "lineage" in root else None
     entities = parse_entities(
         get_array(root, "entities", "root"),
         origins,
@@ -314,8 +372,8 @@ def parse_root(doc: object, origins: IncludeOrigins) -> RootConfig:
         catalogs=catalogs,
         env=env,
         domains=domains,
-        report=root.get("report"),
-        lineage=root.get("lineage"),
+        report=report,
+        lineage=lineage,
         entities=entities,
         config_files=[],
     )
@@ -324,8 +382,10 @@ def parse_root(doc: object, origins: IncludeOrigins) -> RootConfig:
 def validate_domains(config: RootConfig) -> None:
     """D7 (#584 S6, S7): Rust 0.7 accepts these at validate time; Python rejects them."""
     qualified = config_version(config.version) >= V0_3
+    used = {e.domain for e in config.entities}  # the entity check reports a used domain
     for domain in config.domains:
-        if qualified and (not domain.name or any(c in domain.name for c in "./\\")):
+        bad = not domain.name or any(c in domain.name for c in "./\\")
+        if qualified and bad and domain.name not in used:
             raise FloeConfigError(
                 f"domain.name={domain.name} must be non-empty without '.', '/' or '\\' "
                 'when root.version >= "0.3"'

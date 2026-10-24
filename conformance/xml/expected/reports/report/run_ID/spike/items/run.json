@@ -1,0 +1,117 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "spike.items"
+  },
+  "source": {
+    "format": "xml",
+    "path": "local://<ROOT>/in/items.xml",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "namespace": "urn:x",
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "row_tag": "item",
+      "separator": ";",
+      "value_tag": "value"
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "file",
+      "file_count": 1,
+      "files": [
+        "local://<ROOT>/in/items.xml"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/items"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/items"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/items",
+    "table_root_uri": "local://<ROOT>/out/accepted/items",
+    "write_mode": "overwrite",
+    "accepted_rows": 2,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 1327,
+    "avg_file_size_mb": 0.0012655258178710938,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 3,
+    "accepted_total": 2,
+    "rejected_total": 1,
+    "warnings_total": 0,
+    "errors_total": 1
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/items.xml",
+      "status": "rejected",
+      "row_count": 3,
+      "accepted_count": 2,
+      "rejected_count": 1,
+      "mismatch": {
+        "declared_columns_count": 2,
+        "input_columns_count": 3,
+        "missing_columns": [],
+        "extra_columns": [
+          "addr"
+        ],
+        "mismatch_action": "ignored_extras"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/items",
+        "rejected_path": "<ROOT>/out/rejected/items/part-00000.csv",
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 1,
+        "warnings": 0,
+        "rules": [
+          {
+            "rule": "not_null",
+            "severity": "reject",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "name",
+                "violations": 1
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

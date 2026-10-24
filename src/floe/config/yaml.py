@@ -238,6 +238,13 @@ def opt_u64(hash: dict[object, object], key: str, ctx: str) -> int | None:
     return value
 
 
+def opt_u32(hash: dict[object, object], key: str, ctx: str) -> int | None:
+    value = opt_u64(hash, key, ctx)
+    if value is not None and value > 0xFFFFFFFF:
+        raise FloeConfigError(f"value at {ctx}.{key} exceeds maximum allowed value")
+    return value
+
+
 def merge_yaml(base: object, overlay: object) -> object:
     """`merge_yaml`: maps merge key by key, anything else is replaced. Inputs are not modified."""
     if not (isinstance(base, dict) and isinstance(overlay, dict)):

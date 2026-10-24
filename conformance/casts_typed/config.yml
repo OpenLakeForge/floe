@@ -1,0 +1,383 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: typed_int8
+    domain: spike
+    source:
+      format: parquet
+      path: "./in/casts_typed.parquet"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/typed_int8"
+      rejected:
+        format: csv
+        path: "./out/rejected/typed_int8"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: i64
+          type: int8
+        - name: u64
+          type: int8
+        - name: f64
+          type: int8
+        - name: b
+          type: int8
+        - name: d
+          type: int8
+        - name: ts
+          type: int8
+        - name: tstz
+          type: int8
+        - name: tzp
+          type: int8
+  - name: typed_int32
+    domain: spike
+    source:
+      format: parquet
+      path: "./in/casts_typed.parquet"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/typed_int32"
+      rejected:
+        format: csv
+        path: "./out/rejected/typed_int32"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: i64
+          type: int32
+        - name: u64
+          type: int32
+        - name: f64
+          type: int32
+        - name: b
+          type: int32
+        - name: d
+          type: int32
+        - name: ts
+          type: int32
+        - name: tstz
+          type: int32
+        - name: tzp
+          type: int32
+  - name: typed_int64
+    domain: spike
+    source:
+      format: parquet
+      path: "./in/casts_typed.parquet"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/typed_int64"
+      rejected:
+        format: csv
+        path: "./out/rejected/typed_int64"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: i64
+          type: int64
+        - name: u64
+          type: int64
+        - name: f64
+          type: int64
+        - name: b
+          type: int64
+        - name: d
+          type: int64
+        - name: ts
+          type: int64
+        - name: tstz
+          type: int64
+        - name: tzp
+          type: int64
+  - name: typed_uint32
+    domain: spike
+    source:
+      format: parquet
+      path: "./in/casts_typed.parquet"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/typed_uint32"
+      rejected:
+        format: csv
+        path: "./out/rejected/typed_uint32"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: i64
+          type: uint32
+        - name: u64
+          type: uint32
+        - name: f64
+          type: uint32
+        - name: b
+          type: uint32
+        - name: d
+          type: uint32
+        - name: ts
+          type: uint32
+        - name: tstz
+          type: uint32
+        - name: tzp
+          type: uint32
+  - name: typed_uint64
+    domain: spike
+    source:
+      format: parquet
+      path: "./in/casts_typed.parquet"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/typed_uint64"
+      rejected:
+        format: csv
+        path: "./out/rejected/typed_uint64"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: i64
+          type: uint64
+        - name: u64
+          type: uint64
+        - name: f64
+          type: uint64
+        - name: b
+          type: uint64
+        - name: d
+          type: uint64
+        - name: ts
+          type: uint64
+        - name: tstz
+          type: uint64
+        - name: tzp
+          type: uint64
+  - name: typed_float32
+    domain: spike
+    source:
+      format: parquet
+      path: "./in/casts_typed.parquet"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/typed_float32"
+      rejected:
+        format: csv
+        path: "./out/rejected/typed_float32"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: i64
+          type: float32
+        - name: u64
+          type: float32
+        - name: f64
+          type: float32
+        - name: b
+          type: float32
+        - name: d
+          type: float32
+        - name: ts
+          type: float32
+        - name: tstz
+          type: float32
+        - name: tzp
+          type: float32
+  - name: typed_float64
+    domain: spike
+    source:
+      format: parquet
+      path: "./in/casts_typed.parquet"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/typed_float64"
+      rejected:
+        format: csv
+        path: "./out/rejected/typed_float64"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: i64
+          type: float64
+        - name: u64
+          type: float64
+        - name: f64
+          type: float64
+        - name: b
+          type: float64
+        - name: d
+          type: float64
+        - name: ts
+          type: float64
+        - name: tstz
+          type: float64
+        - name: tzp
+          type: float64
+  - name: typed_boolean
+    domain: spike
+    source:
+      format: parquet
+      path: "./in/casts_typed.parquet"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/typed_boolean"
+      rejected:
+        format: csv
+        path: "./out/rejected/typed_boolean"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: i64
+          type: boolean
+        - name: u64
+          type: boolean
+        - name: f64
+          type: boolean
+        - name: b
+          type: boolean
+  - name: typed_string
+    domain: spike
+    source:
+      format: parquet
+      path: "./in/casts_typed.parquet"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/typed_string"
+      rejected:
+        format: csv
+        path: "./out/rejected/typed_string"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: i64
+          type: string
+        - name: u64
+          type: string
+        - name: f64
+          type: string
+        - name: b
+          type: string
+        - name: d
+          type: string
+        - name: ts
+          type: string
+        - name: tstz
+          type: string
+        - name: tzp
+          type: string
+  - name: typed_date
+    domain: spike
+    source:
+      format: parquet
+      path: "./in/casts_typed.parquet"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/typed_date"
+      rejected:
+        format: csv
+        path: "./out/rejected/typed_date"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: i64
+          type: date
+        - name: u64
+          type: date
+        - name: f64
+          type: date
+        - name: b
+          type: date
+        - name: d
+          type: date
+        - name: ts
+          type: date
+        - name: tstz
+          type: date
+        - name: tzp
+          type: date
+  - name: typed_datetime
+    domain: spike
+    source:
+      format: parquet
+      path: "./in/casts_typed.parquet"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/typed_datetime"
+      rejected:
+        format: csv
+        path: "./out/rejected/typed_datetime"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: i64
+          type: datetime
+        - name: u64
+          type: datetime
+        - name: f64
+          type: datetime
+        - name: b
+          type: datetime
+        - name: d
+          type: datetime
+        - name: ts
+          type: datetime
+        - name: tstz
+          type: datetime
+        - name: tzp
+          type: datetime
+report:
+  path: "./report"

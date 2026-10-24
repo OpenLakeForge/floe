@@ -1,14 +1,21 @@
 """Entity validation, ported from `config/validate.rs` (`validate_sink`, `validate_schema` and their helpers)."""
-# `_get` is unused since #733; removed in #735
-# pyright: reportUnusedFunction=false
 
-from typing import cast
-
+from floe.checks.normalize import output_names
 from floe.config.project import RootConfig, config_version
 from floe.config.types import EntityConfig, WriteMode
+from floe.config.yaml import rust_debug
 from floe.errors import FloeConfigError
+from floe.pii import token_n
+from floe.read.json import parse_selector as parse_json_selector
+from floe.read.xml import parse_selector
 
+MIN_VERSION = (0, 1)
+QUALIFIED_VERSION = (0, 3)
 MAX_JSON_COLUMNS = 1024
+CAST_MODES = ("strict", "coerce")
+SOURCE_FORMATS = ("csv", "tsv", "parquet", "json", "orc", "avro", "xlsx", "xml")
+REMOTE_URIS = tuple(f"{s}://" for s in ("s3", "gs", "gcs", "abfs", "abfss", "az"))
+STORAGE_TYPES = ("local", "s3", "adls", "gcs")
 NORMALIZE_STRATEGIES = ("snake_case", "lower", "camel_case", "none")
 MISMATCH_MISSING = ("reject_file", "fill_nulls")
 MISMATCH_EXTRA = ("reject_file", "ignore")
@@ -39,12 +46,6 @@ _TYPE_NAMES = {
 def _canonical(value: str) -> str:
     # D7 (#584 S1, S2): no trim, unlike Rust's `normalize_value`; the run-time paths never trimmed.
     return value.lower().replace("-", "").replace("_", "")
-
-
-def _get(value: object, key: str) -> object:
-    return (
-        cast(dict[object, object], value).get(key) if isinstance(value, dict) else None
-    )
 
 
 def _fail(entity: EntityConfig, message: str) -> FloeConfigError:
@@ -171,9 +172,11 @@ def _check_merge(entity: EntityConfig) -> None:
             entity,
             "sink.accepted.merge.scd2 is only supported with sink.write_mode=merge_scd2",
         )
-    # ponytail: schema names are not normalised (`normalize_columns` lands with #640), so a
-    # collision with a normalised output name is missed.
-    names = {c.name for c in entity.schema_.columns}
+    nc = (
+        entity.schema_.normalize_columns
+    )  # raw strategy: an unsupported one is validate_schema's error
+    strategy = (nc.strategy or "snake_case") if nc and nc.enabled else None
+    names = set(output_names(entity.schema_.columns, strategy))
     resolved = {
         field: (default if (v := getattr(merge.scd2, field)) is None else v).strip()
         for field, default in SCD2_DEFAULTS.items()
@@ -254,11 +257,26 @@ def _check_partitioning(entity: EntityConfig) -> None:
         seen.add((column, transform))
 
 
-def _storage_name(config: RootConfig, name: str | None) -> str:
-    # ponytail: no unknown-storage errors here; the storage registry lands with its own task.
-    if name is not None:
-        return name
-    return (config.storages and config.storages.default) or "local"
+def _storage_ref(
+    config: RootConfig,
+    name: str | None,
+    field: str,
+    who: str,
+    profiled: bool = False,
+) -> str:
+    """`resolve_name` then `validate_reference`; `who` is the `entity.name=X ` prefix, empty for the report."""
+    storages = config.storages
+    if name is None:
+        name = (storages and storages.default) or "local"
+    # ponytail: a profile can replace the storages (#635); skip the reference check until it lands.
+    if not profiled:
+        if storages is None and name != "local":
+            raise FloeConfigError(
+                f"{who}{field} references unknown storage {name} (no storages block)"
+            )
+        if storages and name not in {d.name for d in storages.definitions}:
+            raise FloeConfigError(f"{who}{field} references unknown storage {name}")
+    return name
 
 
 def _storage_type(config: RootConfig, name: str) -> str:
@@ -266,7 +284,9 @@ def _storage_type(config: RootConfig, name: str) -> str:
     return next((d.type for d in definitions if d.name == name), "local")
 
 
-def _check_iceberg(entity: EntityConfig, config: RootConfig) -> None:
+def _check_iceberg(
+    entity: EntityConfig, config: RootConfig, accepted_storage: str
+) -> None:
     accepted = entity.sink.accepted
     iceberg = accepted.iceberg
     if iceberg is None:
@@ -293,20 +313,13 @@ def _check_iceberg(entity: EntityConfig, config: RootConfig) -> None:
         raise _fail(
             entity, f"sink.accepted.iceberg.catalog references unknown catalog {name}"
         )
-    # Unity and Glue are rejected at parse (D1), so only REST catalogs get here.
+    # Unity and Glue are rejected at parse (D1); the registry checked `warehouse_storage`.
     if definition.warehouse_storage is None:
-        kind = _storage_type(config, _storage_name(config, accepted.storage))
+        kind = _storage_type(config, accepted_storage)
         if kind not in ("s3", "gcs"):
             raise _fail(
                 entity,
                 f"sink.accepted.iceberg.catalog requires sink.accepted storage type s3 or gcs (got {kind})",
-            )
-    else:
-        kind = _storage_type(config, definition.warehouse_storage)
-        if kind not in ("s3", "gcs"):
-            raise FloeConfigError(
-                f"catalogs.definitions name={definition.name} warehouse_storage must "
-                f"reference s3 or gcs storage for rest catalog (got {kind})"
             )
 
 
@@ -337,13 +350,23 @@ def _check_sink(entity: EntityConfig, config: RootConfig, profiled: bool) -> Non
         raise _fail(
             entity, f"sink.rejected.format={sink.rejected.format} is unsupported"
         )
+    who = f"entity.name={entity.name} "
+    accepted_storage = _storage_ref(
+        config, accepted.storage, "sink.accepted.storage", who, profiled
+    )
     # ponytail: a profile can add catalogs and storages, which land with #635; skip the binding.
     if not profiled:
-        _check_iceberg(entity, config)
+        _check_iceberg(entity, config, accepted_storage)
     _check_partitioning(entity)
     _check_write_mode(entity)
+    if sink.rejected is not None:
+        _storage_ref(
+            config, sink.rejected.storage, "sink.rejected.storage", who, profiled
+        )
     archive = sink.archive
-    source = _storage_name(config, entity.source.storage)
+    source = _storage_ref(
+        config, entity.source.storage, "source.storage", who, profiled
+    )
     if archive is not None and archive.storage not in (None, source):
         raise _fail(
             entity, f"sink.archive.storage must match source.storage ({source})"
@@ -386,12 +409,315 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
                 f"schema.columns[{index}].type={column.column_type} is unsupported "
                 f"for column {column.name} (allowed: {', '.join(COLUMN_TYPES)})",
             )
+        parse = {"xml": parse_selector, "json": parse_json_selector}.get(
+            entity.source.format
+        )
+        if parse:
+            selector = column.source if column.source is not None else column.name
+            try:
+                parse(selector)
+            except ValueError as err:
+                raise _fail(
+                    entity,
+                    f"schema.columns[{index}].source={selector} is invalid: {err}",
+                ) from err
     _check_primary_key(entity)
     _check_unique_keys(entity)
     _check_evolution(entity, version)
 
 
+def _check_source(entity: EntityConfig, config: RootConfig, profiled: bool) -> None:
+    source = entity.source
+    if source.format == "fixed":  # D1 (#619): fixed-width is dropped
+        raise _fail(entity, f"source.format={source.format} is not supported in 0.8")
+    if source.format not in SOURCE_FORMATS:
+        raise _fail(entity, f"source.format={source.format} is unsupported")
+    if source.cast_mode not in CAST_MODES:
+        raise _fail(
+            entity,
+            f"source.cast_mode={source.cast_mode} is unsupported "
+            f"(allowed: {', '.join(CAST_MODES)})",
+        )
+    who = f"entity.name={entity.name} "
+    _storage_ref(config, source.storage, "source.storage", who, profiled)
+    options = source.options
+    mode = options.json_mode or "array"
+    if source.format == "json" and mode not in ("array", "ndjson"):
+        raise _fail(
+            entity,
+            f"source.options.json_mode={mode} is unsupported (allowed: array, ndjson)",
+        )
+    if source.format == "xlsx":
+        sheet, header_row = options.sheet, options.header_row
+        if sheet is not None and not sheet.strip():
+            raise _fail(entity, "source.options.sheet must not be empty")
+        header_row = 1 if header_row is None else header_row
+        if header_row == 0:
+            raise _fail(entity, "source.options.header_row must be greater than 0")
+        data_row = header_row + 1 if options.data_row is None else options.data_row
+        if data_row <= header_row:
+            raise _fail(
+                entity,
+                "source.options.data_row must be greater than source.options.header_row",
+            )
+    if source.format == "xml":
+        if not (options.row_tag or "").strip():
+            raise _fail(entity, "source.options.row_tag is required for xml input")
+        for field in ("namespace", "value_tag"):
+            value = getattr(options, field)
+            if value is not None and not value.strip():
+                raise _fail(entity, f"source.options.{field} must not be empty")
+    # D7 (#584 S3, S4): Rust 0.7 only rejects these when the reader opens the file.
+    if source.format in ("csv", "tsv"):
+        separator, encoding = options.separator or "", options.encoding or "utf8"
+        if len(separator.encode()) != 1:
+            raise _fail(
+                entity, f"separator must be a single byte, got {rust_debug(separator)}"
+            )
+        if _canonical(encoding) not in ("utf8", "lossyutf8"):
+            raise _fail(entity, f"unsupported encoding: {encoding}")
+
+
+def _check_state(entity: EntityConfig) -> None:
+    state, archive = entity.state, entity.sink.archive
+    if state and state.path is not None and not state.path.strip():
+        raise _fail(entity, "entity.state.path must not be empty")
+    mode = entity.incremental_mode
+    if mode == "archive" and archive is None:
+        raise _fail(entity, "incremental_mode=archive requires sink.archive")
+    # ponytail: Rust's deprecation warning for `sink.archive` without a mode is not ported.
+    if archive is not None and mode in ("file", "row"):
+        raise _fail(
+            entity,
+            f"sink.archive conflicts with incremental_mode={mode}; "
+            "use incremental_mode=archive or remove sink.archive",
+        )
+
+
+def _pii_error(entity: EntityConfig, name: str, message: str) -> FloeConfigError:
+    return _fail(entity, f"pii.columns[name={name}]{message}")
+
+
+def _check_pii(entity: EntityConfig) -> None:
+    pii = entity.pii
+    if pii is None:
+        return
+    if entity.policy.severity == "abort":
+        raise _fail(
+            entity,
+            "pii: masking is not applied when policy.severity=abort because the raw "
+            "file is written to sink.rejected without DataFrame processing",
+        )
+    if entity.sink.archive is not None:
+        raise _fail(
+            entity,
+            "pii: sink.archive copies the original unmasked source file to the archive "
+            "sink; remove sink.archive or disable pii masking",
+        )
+    schema = entity.schema_
+    mismatch = schema.mismatch
+    for field, policy, fix in (
+        ("missing_columns", mismatch and mismatch.missing_columns, "fill_nulls"),
+        ("extra_columns", mismatch and mismatch.extra_columns, "ignore"),
+    ):
+        if policy == "reject_file":
+            raise _fail(
+                entity,
+                f"pii: schema.mismatch.{field}=reject_file writes the raw unmasked file "
+                "to sink.rejected before PII masking can be applied; "
+                f"use {field}={fix} instead",
+            )
+    columns = {c.name: c for c in schema.columns}
+    primary_key = set(schema.primary_key or [])
+    mode = entity.sink.write_mode
+    unique = primary_key | {c for key in schema.unique_keys or [] for c in key}
+    if (
+        schema.unique_keys is None
+    ):  # legacy `unique: true` is ignored once `unique_keys` is set
+        unique |= {c.name for c in schema.columns if c.unique is True}
+    seen: set[str] = set()
+    for col in pii.columns:
+        name, strategy = col.name, col.strategy
+        label = strategy.capitalize()  # Rust's `{:?}` of the enum
+        if name in seen:
+            raise _fail(entity, f"pii.columns: column name {name} is duplicated")
+        seen.add(name)
+        if name not in columns:
+            raise _fail(entity, f"pii.columns: {name} is not an unknown schema column")
+        if strategy == "tokenize":
+            raise _pii_error(entity, name, ".strategy=tokenize is not yet supported")
+        declared = columns[name]
+        if strategy in ("hash", "redact", "mask") and _canonical(
+            declared.column_type
+        ) not in ("string", "str", "text"):
+            raise _pii_error(
+                entity,
+                name,
+                f".strategy={label} can only be applied to string columns "
+                f"(declared type={declared.column_type}); "
+                "use strategy=nullify or strategy=drop instead",
+            )
+        if strategy == "nullify" and declared.nullable is False:
+            raise _pii_error(
+                entity,
+                name,
+                ".strategy=nullify cannot be applied to a nullable=false column",
+            )
+        if strategy == "drop" and name in primary_key:
+            raise _pii_error(
+                entity, name, ".strategy=drop cannot be applied to a primary_key column"
+            )
+        if name in primary_key and mode in ("merge_scd1", "merge_scd2"):
+            raise _pii_error(
+                entity,
+                name,
+                f": PII strategy cannot be applied to a primary_key column with write_mode={mode}: "
+                "masking the merge key corrupts the merge predicate",
+            )
+        if name in unique and strategy in ("drop", "nullify", "redact", "mask"):
+            raise _pii_error(
+                entity,
+                name,
+                f".strategy={label} cannot be applied to a unique-key column: the strategy "
+                "collapses or removes values, violating uniqueness constraints",
+            )
+        if name in unique and strategy == "hash":
+            raise _pii_error(
+                entity,
+                name,
+                ".strategy=hash cannot be applied to a unique-key column: uniqueness checks "
+                "record raw values in the run report before masking, leaking unmasked PII",
+            )
+        # ponytail: Rust's warning for an unkeyed `hash` is not ported.
+        fmt = entity.sink.accepted.format
+        if strategy == "drop" and fmt in ("iceberg", "delta"):
+            raise _pii_error(
+                entity,
+                name,
+                f".strategy=drop is not supported with format={fmt} "
+                "because the sink enforces the full declared schema",
+            )
+        if strategy == "mask":
+            pattern = col.mask_pattern
+            if pattern is None:
+                raise _pii_error(entity, name, ".strategy=mask requires mask_pattern")
+            if not (token_n(pattern, "{last") or token_n(pattern, "{first")):
+                raise _pii_error(
+                    entity,
+                    name,
+                    ".mask_pattern must contain at least one token ({firstN} or {lastN})",
+                )
+
+
+def _check_storages(config: RootConfig) -> None:
+    storages, catalogs = config.storages, config.catalogs
+    names: set[str] = set()
+    if storages is not None:
+        if not storages.definitions:
+            raise FloeConfigError("storages.definitions must not be empty")
+        for d in storages.definitions:
+            if d.type not in STORAGE_TYPES:
+                raise FloeConfigError(
+                    f"storages.definitions name={d.name} type={d.type} is unsupported "
+                    f"(allowed: {', '.join(STORAGE_TYPES)})"
+                )
+            if d.type == "s3" and (d.bucket is None or d.region is None):
+                missing = "bucket" if d.bucket is None else "region"
+                raise FloeConfigError(
+                    f"storages.definitions name={d.name} requires {missing} for type s3"
+                )
+            if d.name in names:
+                raise FloeConfigError(
+                    f"storages.definitions name={d.name} is duplicated"
+                )
+            names.add(d.name)
+        if storages.default is None:
+            raise FloeConfigError("storages.default is required when storages is set")
+        if storages.default not in names:
+            raise FloeConfigError(
+                f"storages.default={storages.default} does not match any definition"
+            )
+    if catalogs is None:
+        return
+    if not catalogs.definitions:
+        raise FloeConfigError("catalogs.definitions must not be empty")
+    seen: set[str] = set()
+    for c in catalogs.definitions:
+        wh = c.warehouse_storage
+        if wh is not None:
+            if wh not in names:
+                raise FloeConfigError(
+                    f"catalogs.definitions name={c.name} warehouse_storage "
+                    f"references unknown storage {wh}"
+                )
+            if (kind := _storage_type(config, wh)) not in ("s3", "gcs"):
+                raise FloeConfigError(
+                    f"catalogs.definitions name={c.name} warehouse_storage must "
+                    f"reference s3 or gcs storage for rest catalog (got {kind})"
+                )
+        if c.name in seen:
+            raise FloeConfigError(f"catalogs.definitions name={c.name} is duplicated")
+        seen.add(c.name)
+    if catalogs.default is not None and catalogs.default not in seen:
+        raise FloeConfigError(
+            f"catalogs.default={catalogs.default} does not match any definition"
+        )
+
+
+def _check_report_lineage(config: RootConfig, profiled: bool) -> None:
+    report, lineage = config.report, config.lineage
+    name = _storage_ref(config, report.storage, "report.storage", "", profiled)
+    if _storage_type(config, name) == "local" and report.path.startswith(REMOTE_URIS):
+        raise FloeConfigError(f"report.path must be a local path (got {report.path})")
+    # D7 (#584 S5): Rust 0.7 only rejects an unknown formatter when a run starts.
+    if report.formatter not in (None, "json", "csv", "text"):
+        raise FloeConfigError(f"unsupported report.formatter: {report.formatter}")
+    # ponytail: a profile can replace `lineage` (#635); skip its checks until it lands.
+    if lineage is None or profiled:
+        return
+    if not lineage.url.strip():
+        raise FloeConfigError("lineage.url must not be empty")
+    if not lineage.namespace.strip():
+        raise FloeConfigError("lineage.namespace must not be empty")
+    if lineage.max_failures == 0:
+        raise FloeConfigError("lineage.max_failures must be at least 1")
+
+
 def validate_entities(config: RootConfig, profiled: bool = False) -> None:
-    for entity in config.entities:
+    version = config_version(config.version)
+    if version < MIN_VERSION:
+        raise FloeConfigError(
+            f"root.version={config.version} is unsupported "
+            f"(minimum supported version: {MIN_VERSION[0]}.{MIN_VERSION[1]})"
+        )
+    if not config.entities:
+        raise FloeConfigError(
+            "entities list is empty (at least one entity is required)"
+        )
+    if not profiled:
+        _check_storages(config)
+    _check_report_lineage(config, profiled)
+    ids: dict[str, int] = {}
+    for index, entity in enumerate(config.entities):
+        _check_source(entity, config, profiled)
+        _check_state(entity)
         _check_sink(entity, config, profiled)
         validate_schema(entity, config.version)
+        _check_pii(entity)
+        for field, value in (("name", entity.name), ("domain", entity.domain)):
+            if (
+                version >= QUALIFIED_VERSION
+                and value is not None
+                and (not value or any(c in value for c in "./\\"))
+            ):
+                raise _fail(
+                    entity,
+                    f"entity.{field} must be non-empty without '.', '/' or '\\' "
+                    'when root.version >= "0.3"',
+                )
+        if entity.id in ids:
+            raise FloeConfigError(
+                f"entity.name={entity.id} is duplicated in config "
+                f"(entities[{ids[entity.id]}] and entities[{index}])"
+            )
+        ids[entity.id] = index

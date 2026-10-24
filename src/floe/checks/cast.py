@@ -77,31 +77,53 @@ def _boolean(raw: pl.Expr) -> pl.Expr:
 
 
 def cast_column(
-    name: str, column_type: str, cast_mode: str = "strict"
+    name: str,
+    column_type: str,
+    cast_mode: str = "strict",
+    dtype: pl.DataType | type[pl.DataType] = pl.String,
 ) -> tuple[pl.Expr, pl.Expr]:
-    """Return `(typed, cast_error_mask)` expressions over the string column `name`.
+    """Return `(typed, cast_error_mask)` expressions over the column `name`, read as `dtype`.
 
     A value that is present but does not parse becomes null; the mask (named `_e_cast_<name>`)
     flags it, except in `cast_mode: coerce` and for string columns.
+
+    `dtype` is the input column's dtype. Parquet, ORC and Avro keep native types (D15): anything
+    but `pl.String` is cast natively, as Rust's `cast_df_to_schema` does. That is Polars'
+    non-strict cast, so overflow, a float outside the integer range or NaN, and a date that does
+    not fit become null (a `cast_error`), while 2.5 into an int truncates to 2 and an int into a
+    bool is `!= 0`. A pair Polars cannot cast (date or datetime into bool, a list) raises, and
+    aborts the run as in Rust. D17: unlike Rust, a float with a fraction into an integer type is a
+    `cast_error` in strict mode (2.0 is accepted); in coerce mode it truncates as in Rust.
+    Timezone-aware datetimes lose the zone and keep their UTC value.
     """
     raw = pl.col(name)
+    native = dtype != pl.String
     kind = column_type.lower().replace("-", "").replace("_", "")
     if kind in ("string", "str", "text"):
-        return raw, pl.lit(False).alias(f"_e_cast_{name}")
+        text = raw.cast(pl.String) if native else raw
+        if native and dtype.is_float():  # Rust writes 1e20, Polars 1e+20
+            text = text.str.replace("e+", "e", literal=True)
+        return text, pl.lit(False).alias(f"_e_cast_{name}")
+    fractional = None
     if kind in _DTYPES:
         typed = raw.cast(_DTYPES[kind], strict=False)
+        if native and dtype.is_float() and _DTYPES[kind].is_integer():
+            # D17; NaN and inf are null already
+            fractional = (raw != raw.floor()).fill_null(False)
     elif kind in ("boolean", "bool"):
-        typed = _boolean(raw)
+        typed = raw.cast(pl.Boolean, strict=False) if native else _boolean(raw)
     elif kind == "date":
-        typed = _date(raw)
+        typed = raw.cast(pl.Date, strict=False) if native else _date(raw)
     elif kind in ("datetime", "timestamp"):
-        typed = _datetime(raw)
+        typed = raw.cast(pl.Datetime("ms"), strict=False) if native else _datetime(raw)
     else:
         raise ValueError(f"unsupported column type: {column_type}")
     typed = typed.alias(name)
-    mask = (
-        pl.lit(False) if cast_mode == "coerce" else raw.is_not_null() & typed.is_null()
-    )
+    mask = pl.lit(False)
+    if cast_mode != "coerce":
+        mask = raw.is_not_null() & typed.is_null()
+        if fractional is not None:
+            mask = mask | fractional
     return typed, mask.alias(f"_e_cast_{name}")
 
 

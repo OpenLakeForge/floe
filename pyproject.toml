@@ -9,8 +9,12 @@ description = "Floe: a data-contract runtime for file ingestion"
 requires-python = ">=3.11"
 dependencies = [
     "boto3>=1.43.118",
+    "fastexcel>=0.21.0",
     "polars>=2.0.0",
+    "pyarrow>=26.0.0",
     "pydantic>=2.14.1",
+    "pyiceberg>=0.12.0",
+    "pyiceberg-core>=0.10.1",
     "pyyaml>=6.0.3",
 ]
 
@@ -42,4 +46,7 @@ pythonVersion = "3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["s3: needs an S3-compatible service (set FLOE_S3_ENDPOINT)"]
+markers = [
+    "polaris: needs a running Polaris, enabled by FLOE_POLARIS_URI",
+    "s3: needs an S3-compatible service (set FLOE_S3_ENDPOINT)",
+]

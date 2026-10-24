@@ -203,8 +203,10 @@ def test_unsupported_scheme_and_format() -> None:
         resolve_inputs(Path("."), "gs://b/k", "csv", "orders", "gcs", None)
     assert str(err.value) == "unsupported storage uri: gs://b/k"
     with pytest.raises(FloeConfigError) as err:
-        resolve_inputs(Path("."), "s3://b/k", "xml", "orders", "s3_raw", FakeClient([]))
-    assert str(err.value) == "unsupported source format for input resolution: xml"
+        resolve_inputs(
+            Path("."), "s3://b/k", "fixed", "orders", "s3_raw", FakeClient([])
+        )
+    assert str(err.value) == "unsupported source format for input resolution: fixed"
 
 
 def test_local_normalizes_resolved_file_paths(tmp_path: Path) -> None:
@@ -388,3 +390,15 @@ def test_local_empty_glob_override_matches_nothing(tmp_path: Path) -> None:
     touch(tmp_path / "a.csv")
     with pytest.raises(FloeRunError):
         local(tmp_path, tmp_path, glob_override="")
+
+
+@pytest.mark.parametrize(
+    ("fmt", "name"),
+    [("avro", "a.avro"), ("orc", "a.orc"), ("xlsx", "a.xlsx"), ("xml", "a.xml")],
+)
+def test_directory_inputs_of_the_binary_and_xml_formats(
+    tmp_path: Path, fmt: str, name: str
+) -> None:
+    touch(tmp_path / "in" / name)
+    got = resolve_inputs(tmp_path, "in", fmt, "orders", "local", None)
+    assert [f.source_name for f in got.files] == [name]

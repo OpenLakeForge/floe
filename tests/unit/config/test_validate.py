@@ -190,3 +190,10 @@ def test_sink_errors(tmp_path: Path, sink: str, message: str) -> None:
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, f"{{{COLS}, primary_key: [id]}}", sink=sink)
     assert str(err.value) == f"entity.name=orders {message}"
+
+
+def test_scd2_column_collides_with_normalised_schema_name(tmp_path: Path) -> None:
+    sink = "{write_mode: merge_scd2, accepted: {format: iceberg, path: out, merge: {scd2: {valid_to_column: valid_to}}}}"
+    schema = "{columns: [{name: Valid To, type: string}], normalize_columns: {enabled: true}, primary_key: [Valid To]}"
+    with pytest.raises(FloeConfigError, match="valid_to_column=valid_to collides"):
+        check(tmp_path, schema, sink=sink)

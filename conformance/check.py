@@ -42,6 +42,10 @@ def comparable(name: str, value: Any) -> str:
     if isinstance(value, str):
         if name.endswith(".json"):
             doc = json.loads(value)
+            if isinstance(doc, dict) and isinstance(doc.get("tool"), dict):
+                doc["tool"]["version"] = (
+                    "<volatile>"  # the implementation's own version
+                )
             return json.dumps(mask_bytes(doc), indent=2) + "\n"
         return value
     # parquet: schema, then one line per row
@@ -91,11 +95,9 @@ def check_case(case: Path, cmd: list[str], impl: str) -> list[str]:
     problems: list[str] = []
     with tempfile.TemporaryDirectory(prefix="conformance-") as tmp:
         work, proc = run_in_copy(case, cmd, Path(tmp))
-        if proc.returncode != 0 and not is_validate(case):
-            problems.append(
-                f"`{' '.join(cmd)} run -c config.yml` exited {proc.returncode}: {proc.stderr.strip()}"
-            )
         actual = case_snapshot(case, work, proc)
+        if proc.returncode and not is_validate(case):
+            actual["exit_code"] = f"{proc.returncode}\n"
     expected = load_expected(case, impl)
     for name in sorted(set(expected) | set(actual)):
         if name not in actual:

@@ -7,6 +7,7 @@ the run pipeline (#655) lands.
 """
 
 import json
+import struct
 from pathlib import Path
 
 import polars as pl
@@ -116,6 +117,18 @@ def test_float_samples_use_rust_display() -> None:
     assert values == ["0.0000001", "10", "NaN"]
 
 
+def test_float_keys_compare_by_bits() -> None:
+    # Rust `UniqueKey::F64` compares `to_bits()`: 0.0 and -0.0 differ, as do NaN payloads
+    quiet, payload = (
+        struct.unpack("<d", struct.pack("<Q", bits))[0]
+        for bits in (0x7FF8 << 48, 0x7FF8 << 48 | 1)
+    )
+    tracker = UniqueTracker([["f"]])
+    df = pl.DataFrame({"f": [0.0, -0.0, quiet, payload, 0.0, quiet]})
+    assert tracker.check(df)[0].mask.to_list() == [False] * 4 + [True] * 2
+    assert tracker.results()[0].duplicates_count == 2
+
+
 def test_string_ties_sort_on_rust_escapes() -> None:
     tracker = UniqueTracker([["s"]])
     keys = ["\x00", "A", "B", "C", "D", "E"]
@@ -148,3 +161,23 @@ def test_all_null_files_neither_fail_nor_remember_keys() -> None:
         tracker.check(pl.DataFrame({"k": [None, None]}))[0].mask.to_list()
         == [False] * 2
     )
+
+
+def test_seeded_keys_count_as_target_duplicates() -> None:
+    tracker = UniqueTracker([["id"]])
+    tracker.seed(pl.DataFrame({"id": [1, 2, None]}))
+    (check,) = tracker.check(pl.DataFrame({"id": [2, 3, 3, 4]}))
+    assert check.mask.to_list() == [True, False, True, False]
+    (result,) = tracker.results()
+    assert (result.duplicates_count, result.target_duplicates_count) == (2, 1)
+
+
+def test_restore_forgets_the_keys_added_since_the_snapshot() -> None:
+    tracker = UniqueTracker([["id"]])
+    tracker.check(pl.DataFrame({"id": [1]}))
+    snapshot = tracker.snapshot()
+    tracker.check(pl.DataFrame({"id": [1, 2]}))
+    tracker.restore(snapshot)
+    (check,) = tracker.check(pl.DataFrame({"id": [2]}))
+    assert check.mask.to_list() == [False]
+    assert tracker.results()[0].duplicates_count == 0
