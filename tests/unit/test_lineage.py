@@ -4,7 +4,9 @@ import json
 import re
 import sys
 import threading
+import time
 from collections.abc import Iterator
+from contextlib import suppress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -26,14 +28,36 @@ class Server:
     def __init__(self) -> None:
         self.requests: list[tuple[str, dict[str, str], dict[str, Any]]] = []
         self.statuses: list[int] = []
+        self.redirect: str | None = None  # 302 Location for POSTs
+        self.trickle = False  # dribble the response headers out byte by byte
         server = self
 
         class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                server.requests.append((self.path, dict(self.headers), {}))
+                self.send_response(200)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
             def do_POST(self) -> None:
                 body = self.rfile.read(int(self.headers["Content-Length"]))
                 server.requests.append(
                     (self.path, dict(self.headers), json.loads(body))
                 )
+                if server.trickle:
+                    with suppress(OSError):
+                        self.wfile.write(b"HTTP/1.1 200 OK\r\nX-Slow: ")
+                        for _ in range(40):
+                            self.wfile.write(b"x")
+                            self.wfile.flush()
+                            time.sleep(0.1)
+                    return
+                if server.redirect:
+                    self.send_response(302)
+                    self.send_header("Location", server.redirect)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
                 self.send_response(server.statuses.pop(0) if server.statuses else 200)
                 self.send_header("Content-Length", "0")
                 self.end_headers()
@@ -49,17 +73,26 @@ class Server:
         return [b for _, _, b in self.requests]
 
 
-@pytest.fixture
-def server(monkeypatch: pytest.MonkeyPatch) -> Iterator[Server]:
-    monkeypatch.setattr(lineage, "RETRY_DELAYS_S", (0.0, 0.0, 0.0))
-    for var in ("OPENLINEAGE_API_KEY", "AIRFLOW_CTX_DAG_RUN_ID", "DAGSTER_RUN_ID"):
-        monkeypatch.delenv(var, raising=False)
+def serve() -> Iterator[Server]:
     s = Server()
     thread = threading.Thread(target=s.httpd.serve_forever, args=(0.01,), daemon=True)
     thread.start()
     yield s
     s.httpd.shutdown()
     s.httpd.server_close()
+
+
+@pytest.fixture
+def server(monkeypatch: pytest.MonkeyPatch) -> Iterator[Server]:
+    monkeypatch.setattr(lineage, "RETRY_DELAYS_S", (0.0, 0.0, 0.0))
+    for var in ("OPENLINEAGE_API_KEY", "AIRFLOW_CTX_DAG_RUN_ID", "DAGSTER_RUN_ID"):
+        monkeypatch.delenv(var, raising=False)
+    yield from serve()
+
+
+@pytest.fixture
+def other_server() -> Iterator[Server]:
+    yield from serve()
 
 
 def config(url: str, max_failures: int | None = None, **kw: Any) -> LineageConfig:
@@ -375,6 +408,38 @@ def test_api_key_resolution_over_the_wire(
     assert auth == [None, "Bearer env-token", "Bearer cfg-token"]
 
 
+def test_bearer_token_is_dropped_on_cross_origin_redirect_only(
+    server: Server, other_server: Server
+) -> None:
+    cfg = config(server.url, api_key=SecretStr("cfg-token"))
+    server.redirect = f"{other_server.url}/elsewhere"
+    OpenLineageObserver(cfg, [], "")(RUN_STARTED)
+    server.redirect = f"{server.url}/landed"
+    OpenLineageObserver(cfg, [], "")(RUN_STARTED)
+    assert [(p, h.get("Authorization")) for p, h, _ in other_server.requests] == [
+        ("/elsewhere", None)
+    ]
+    assert [(p, h.get("Authorization")) for p, h, _ in server.requests][-1] == (
+        "/landed",
+        "Bearer cfg-token",
+    )
+
+
+def test_timeout_bounds_the_whole_request(
+    server: Server, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(lineage, "RETRY_DELAYS_S", (0.0, 0.0))
+    server.trickle = (
+        True  # each byte beats the socket timeout; the whole response does not
+    )
+    obs = OpenLineageObserver(config(server.url, 2, timeout_secs=1), [], "")
+    started = time.monotonic()
+    obs(RUN_STARTED)
+    assert time.monotonic() - started < 3
+    assert len(server.requests) == 2  # a timeout is retried
+    assert obs.consecutive_failures == 1
+
+
 @pytest.mark.parametrize(
     ("configured", "ambient", "expected"),
     [
@@ -438,3 +503,19 @@ def test_lineage_endpoint_down_never_fails_the_run(
     server: Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert cli_run(tmp_path, monkeypatch, "http://127.0.0.1:1", "orders.csv") == 0
+
+
+def test_lineage_error_on_the_failure_path_does_not_mask_the_run_error(
+    server: Server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def boom(self: OpenLineageObserver) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(OpenLineageObserver, "fail_run", boom)
+    assert cli_run(tmp_path, monkeypatch, server.url, "missing.csv") == 1
+    err = capsys.readouterr().err
+    assert "warn: lineage: boom" in err
+    assert "Error: " in err

@@ -44,7 +44,10 @@ def _run(config: str) -> int:
         )  # `--entities` and the other flags are #657
     except FloeError:
         if lineage:
-            lineage.fail_run()
+            try:
+                lineage.fail_run()
+            except Exception as e:  # noqa: BLE001 -- lineage must not mask the run error
+                print(f"warn: lineage: {e}", file=sys.stderr)
         raise
     run_info = outcome.summary["run"]
     print(f"run {run_info['run_id']}: {run_info['status']}")

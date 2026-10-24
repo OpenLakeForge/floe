@@ -3,14 +3,17 @@
 import json
 import os
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from http.client import HTTPMessage
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
+from urllib.parse import urlsplit
 
 from floe import __version__
 from floe.config.project import LineageConfig
@@ -21,6 +24,32 @@ RUN_EVENT_SCHEMA = "https://openlineage.io/spec/1-0-5/OpenLineage.json#/$defs/Ru
 DQ_SCHEMA = "https://openlineage.io/spec/facets/1-0-2/DataQualityMetricsOutputDatasetFacet.json"  # fmt: skip
 RETRY_DELAYS_S = (0.0, 0.1, 0.5)
 CLOUD_PREFIXES = ("s3://", "gs://", "gcs://", "az://", "abfss://", "abfs://")
+
+
+def _origin(url: str) -> tuple[str, str | None, int | None]:
+    u = urlsplit(url)
+    return u.scheme, u.hostname, u.port or {"http": 80, "https": 443}.get(u.scheme)
+
+
+class _Redirect(urllib.request.HTTPRedirectHandler):
+    """Drops `Authorization` on a cross-origin redirect, as reqwest does."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new and _origin(newurl) != _origin(req.full_url):
+            new.remove_header("Authorization")
+        return new
+
+
+_OPENER = urllib.request.build_opener(_Redirect)
 
 
 def split_storage_uri(uri: str) -> tuple[str, str]:
@@ -220,14 +249,26 @@ class OpenLineageObserver:
             )
 
     def _attempt(self, data: bytes) -> bool | None:
-        """None on success, else whether the failure is retryable (transport, 5xx, 429)."""
+        """None on success, else whether the failure is retryable (transport, timeout, 5xx, 429).
+
+        The timeout bounds the whole request, as reqwest's does; urllib's alone bounds each socket read.
+        """
         timeout = 5 if self.config.timeout_secs is None else self.config.timeout_secs
+        result: list[bool | None] = []
+        thread = threading.Thread(
+            target=lambda: result.append(self._send(data, timeout)), daemon=True
+        )
+        thread.start()
+        thread.join(timeout)
+        return result[0] if result else True
+
+    def _send(self, data: bytes, timeout: float) -> bool | None:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         request = urllib.request.Request(self.url, data, headers, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=timeout):
+            with _OPENER.open(request, timeout=timeout):
                 return None
         except urllib.error.HTTPError as e:
             return e.code == 429 or e.code >= 500
