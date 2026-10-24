@@ -9,7 +9,7 @@ from floe.config.project import RootConfig, validate_domains
 from floe.config.validate import validate_entities
 from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeError, FloeIoError
-from floe.lineage import OpenLineageObserver
+from floe.lineage.observer import OpenLineageObserver
 from floe.run import run
 
 

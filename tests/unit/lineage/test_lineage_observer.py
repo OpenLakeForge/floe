@@ -1,4 +1,4 @@
-"""OpenLineage observer: events, datasets, facets, auth and the circuit breaker (Rust: `tests/unit/run/lineage.rs`)."""
+"""OpenLineage observer: transport, auth, redirects, deadline, circuit breaker and CLI wiring (Rust: `tests/unit/run/lineage.rs`)."""
 
 import json
 import re
@@ -14,12 +14,10 @@ from typing import Any
 import pytest
 from pydantic import SecretStr
 
-from floe import lineage
 from floe._cli import main
-from floe.config.parse import parse_config
 from floe.config.project import LineageConfig
-from floe.config.types import EntityConfig
-from floe.lineage import OpenLineageObserver, resolve_api_key
+from floe.lineage import events, observer
+from floe.lineage.observer import OpenLineageObserver
 
 UUID4 = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")  # fmt: skip
 
@@ -28,7 +26,8 @@ class Server:
     def __init__(self) -> None:
         self.requests: list[tuple[str, dict[str, str], dict[str, Any]]] = []
         self.statuses: list[int] = []
-        self.redirect: str | None = None  # 302 Location for POSTs
+        self.redirect: str | None = None  # Location for POSTs to the default endpoint
+        self.redirect_code = 302
         self.trickle = False  # dribble the response headers out byte by byte
         server = self
 
@@ -52,8 +51,8 @@ class Server:
                             self.wfile.flush()
                             time.sleep(0.1)
                     return
-                if server.redirect:
-                    self.send_response(302)
+                if server.redirect and self.path == "/api/v1/lineage":
+                    self.send_response(server.redirect_code)
                     self.send_header("Location", server.redirect)
                     self.send_header("Content-Length", "0")
                     self.end_headers()
@@ -84,7 +83,7 @@ def serve() -> Iterator[Server]:
 
 @pytest.fixture
 def server(monkeypatch: pytest.MonkeyPatch) -> Iterator[Server]:
-    monkeypatch.setattr(lineage, "RETRY_DELAYS_S", (0.0, 0.0, 0.0))
+    monkeypatch.setattr(observer, "RETRY_DELAYS_S", (0.0, 0.0, 0.0))
     for var in ("OPENLINEAGE_API_KEY", "AIRFLOW_CTX_DAG_RUN_ID", "DAGSTER_RUN_ID"):
         monkeypatch.delenv(var, raising=False)
     yield from serve()
@@ -103,45 +102,6 @@ def config(url: str, max_failures: int | None = None, **kw: Any) -> LineageConfi
     return LineageConfig(**(fields | kw))
 
 
-ENTITY = """\
-  - name: {name}
-    {domain}
-    source: {{format: csv, path: "{source}"}}
-    sink:
-      accepted: {{format: {fmt}, path: "{accepted}"{iceberg}}}
-      {rejected}
-    policy: {{severity: warn}}
-    schema:
-      columns: [{columns}]
-"""
-
-
-def entity(
-    tmp_path: Path,
-    source: str = "/data/in/",
-    accepted: str = "/data/out/",
-    rejected: str | None = None,
-    *,
-    name: str = "orders",
-    domain: str | None = None,
-    iceberg: str = "",
-    columns: str = "",
-) -> EntityConfig:
-    text = ENTITY.format(
-        name=name, source=source, accepted=accepted, columns=columns,
-        domain=f"domain: {domain}" if domain else "",
-        fmt="iceberg" if iceberg else "parquet",
-        iceberg=f", iceberg: {iceberg}" if iceberg else "",
-        rejected=f'rejected: {{format: csv, path: "{rejected}"}}' if rejected else "",
-    )  # fmt: skip
-    domains = f"domains:\n  - name: {domain}\n" if domain else ""
-    path = tmp_path / f"{name}-{domain}.yml"
-    path.write_text(
-        f'version: "0.3"\n{domains}entities:\n{text}report: {{path: ./r}}\n'
-    )
-    return parse_config(path, {}).entities[0]
-
-
 RUN_STARTED = {"event": "run_started", "run_id": "test-run-1", "ts_ms": 1_000_000}
 ENTITY_STARTED = {"event": "entity_started", "run_id": "test-run-1", "name": "orders", "ts_ms": 1_001_000}  # fmt: skip
 
@@ -150,14 +110,6 @@ def finished(name: str = "orders", status: str = "success") -> dict[str, Any]:
     counts = {"files": 2, "rows": 100, "accepted": 90, "rejected": 10, "warnings": 1, "errors": 0}  # fmt: skip
     return {"event": "entity_finished", "run_id": "test-run-1", "name": name,
             "status": status, "ts_ms": 1_002_000, **counts}  # fmt: skip
-
-
-def complete(server: Server, obs: OpenLineageObserver) -> dict[str, Any]:
-    obs(ENTITY_STARTED)
-    obs(finished())
-    start, done = server.bodies
-    assert (start["eventType"], done["eventType"]) == ("START", "COMPLETE")
-    return done
 
 
 def test_custom_endpoint_is_used_for_posts(server: Server) -> None:
@@ -238,89 +190,6 @@ def test_circuit_resets_on_new_run_started(server: Server) -> None:
     assert len(server.requests) == 4
 
 
-def test_entity_complete_event_has_source_input_and_accepted_output(
-    server: Server, tmp_path: Path
-) -> None:
-    obs = OpenLineageObserver(config(server.url), [entity(tmp_path)], "config.yml")
-    done = complete(server, obs)
-    assert done["inputs"] == [{"namespace": "file", "name": "/data/in/"}]
-    assert [(o["namespace"], o["name"]) for o in done["outputs"]] == [("file", "/data/out/")]  # fmt: skip
-    assert done["job"] == {"namespace": "test-ns", "name": "orders", "facets": {}}
-
-
-def test_rejected_output_and_data_quality_metrics(
-    server: Server, tmp_path: Path
-) -> None:
-    e = entity(tmp_path, rejected="/data/rejected/")
-    done = complete(server, OpenLineageObserver(config(server.url), [e], "config.yml"))
-    accepted, rejected = done["outputs"]
-    assert accepted["facets"]["dataQualityMetrics"] | {"_producer": ""} == {
-        "rowCount": 90, "validCount": 90, "invalidCount": 0, "_producer": "",
-        "_schemaURL": lineage.DQ_SCHEMA,
-    }  # fmt: skip
-    assert rejected == {
-        "namespace": "file",
-        "name": "/data/rejected/",
-        "facets": {"dataQualityMetrics": {
-            "rowCount": 10, "validCount": 0, "invalidCount": 10,
-            "_producer": lineage.DEFAULT_PRODUCER, "_schemaURL": lineage.DQ_SCHEMA,
-        }},
-    }  # fmt: skip
-
-
-def test_accepted_dataset_has_schema_and_floe_quality_run_facets(
-    server: Server, tmp_path: Path
-) -> None:
-    done = complete(server, OpenLineageObserver(config(server.url), [entity(tmp_path)], ""))  # fmt: skip
-    facets = done["outputs"][0]["facets"]
-    assert facets["schema"]["fields"] == []
-    assert "columnLineage" not in facets  # no columns, no column lineage
-    assert {k: v for k, v in facets["floeQualityRun"].items() if k[0] != "_"} == {
-        "entity": "orders", "rejectionRate": 0.1, "files": 2, "rows": 100,
-        "warnings": 1, "errors": 0,
-    }  # fmt: skip
-
-
-@pytest.mark.parametrize(
-    ("source", "namespace", "name"),
-    [
-        ("s3://my-bucket/data/raw/", "s3://my-bucket", "data/raw/"),
-        ("abfss://container@acct.dfs.core.windows.net/raw/", "abfss://container@acct.dfs.core.windows.net", "raw/"),
-        ("abfs://container@acct.dfs.core.windows.net/raw/", "abfs://container@acct.dfs.core.windows.net", "raw/"),
-    ],
-)  # fmt: skip
-def test_cloud_uris_split_into_namespace_and_name(
-    server: Server, tmp_path: Path, source: str, namespace: str, name: str
-) -> None:
-    e = entity(tmp_path, source, "s3://my-bucket/data/out/")
-    done = complete(server, OpenLineageObserver(config(server.url), [e], "config.yml"))
-    assert done["inputs"] == [{"namespace": namespace, "name": name}]
-    assert done["outputs"][0]["namespace"] == "s3://my-bucket"
-    assert done["outputs"][0]["name"] == "data/out/"
-
-
-def test_run_job_name_is_config_stem_or_job_name(server: Server) -> None:
-    OpenLineageObserver(config(server.url), [], "pipelines/orders.yml")(RUN_STARTED)
-    OpenLineageObserver(config(server.url, job_name="my-pipeline"), [], "orders.yml")(RUN_STARTED)  # fmt: skip
-    OpenLineageObserver(config(server.url), [], "")(RUN_STARTED)
-    names = [b["job"]["name"] for b in server.bodies]
-    assert names == ["orders", "my-pipeline", "floe-run"]
-
-
-def test_column_lineage_maps_to_source_field(server: Server, tmp_path: Path) -> None:
-    cols = "{name: order_id, type: string}, {name: amount, type: float64, source: raw_amt}"  # fmt: skip
-    e = entity(tmp_path, columns=cols)
-    facets = complete(server, OpenLineageObserver(config(server.url), [e], ""))["outputs"][0]["facets"]  # fmt: skip
-    assert facets["schema"]["fields"] == [
-        {"name": "order_id", "type": "string"}, {"name": "amount", "type": "float64"},
-    ]  # fmt: skip
-    src = {"namespace": "file", "name": "/data/in/"}
-    assert facets["columnLineage"]["fields"] == {
-        "order_id": {"inputFields": [src | {"field": "order_id"}]},
-        "amount": {"inputFields": [src | {"field": "raw_amt"}]},
-    }
-
-
 def test_run_and_entity_events_carry_uuid_run_ids(server: Server) -> None:
     obs = OpenLineageObserver(config(server.url), [], "config.yml")
     obs(RUN_STARTED)
@@ -336,64 +205,14 @@ def test_run_and_entity_events_carry_uuid_run_ids(server: Server) -> None:
     assert [b["eventType"] for b in server.bodies] == ["START", "START", "FAIL", "FAIL"]
     assert ent_end["inputs"] == [] and ent_end["outputs"] == []  # unknown entity
     assert run_start["eventTime"] == "1970-01-01T00:16:40Z"
-    assert run_start["schemaURL"] == lineage.RUN_EVENT_SCHEMA
-    assert run_start["producer"] == lineage.DEFAULT_PRODUCER
+    assert run_start["schemaURL"] == events.RUN_EVENT_SCHEMA
+    assert run_start["producer"] == events.DEFAULT_PRODUCER
     assert run_start["run"]["facets"] == {}
 
 
 def test_entity_finished_without_start_derives_run_id(server: Server) -> None:
     OpenLineageObserver(config(server.url), [], "")(finished())
     assert server.bodies[0]["run"]["runId"] == "test-run-1.entity.orders"
-
-
-@pytest.mark.parametrize(("dataset_namespace", "expected"), [("iceberg.prod", "iceberg.prod"), (None, "test-ns")])  # fmt: skip
-def test_iceberg_accepted_uses_dataset_namespace_and_table_name(
-    server: Server, tmp_path: Path, dataset_namespace: str | None, expected: str
-) -> None:
-    e = entity(
-        tmp_path, "s3://iceberg-data/bronze/sales/customers", "s3://warehouse/silver/customers",
-        name="customers", iceberg="{namespace: sales_dev, table: customers}",
-    )  # fmt: skip
-    obs = OpenLineageObserver(config(server.url, dataset_namespace=dataset_namespace), [e], "")  # fmt: skip
-    obs(finished("customers"))
-    (done,) = server.bodies
-    assert done["inputs"] == [{"namespace": "s3://iceberg-data", "name": "bronze/sales/customers"}]  # fmt: skip
-    out = done["outputs"][0]
-    assert (out["namespace"], out["name"]) == (expected, "sales_dev.customers")
-
-
-def test_qualified_and_bare_entity_ids_resolve_their_own_datasets(
-    server: Server, tmp_path: Path
-) -> None:
-    bare = entity(tmp_path)
-    qualified = entity(tmp_path, "/data/sales/in/", "/data/sales/out/", domain="sales")
-    obs = OpenLineageObserver(config(server.url), [bare, qualified], "config.yml")
-    obs(finished("orders"))
-    obs(finished("sales.orders"))
-    assert [(b["job"]["name"], b["inputs"][0]["name"]) for b in server.bodies] == [
-        ("orders", "/data/in/"), ("sales.orders", "/data/sales/in/"),
-    ]  # fmt: skip
-
-
-def test_parent_run_facet_from_airflow_then_dagster(
-    server: Server, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    obs = OpenLineageObserver(config(server.url, producer="p"), [], "")
-    monkeypatch.setenv("DAGSTER_RUN_ID", "dg-1")
-    monkeypatch.setenv("DAGSTER_JOB_NAME", "job")
-    obs(RUN_STARTED)
-    monkeypatch.setenv("AIRFLOW_CTX_DAG_RUN_ID", "af-1")
-    monkeypatch.setenv("AIRFLOW_CTX_DAG_ID", "dag")
-    monkeypatch.setenv("AIRFLOW_CTX_TASK_ID", "task")
-    obs(ENTITY_STARTED)
-    schema = "https://openlineage.io/spec/facets/1-0-0/ParentRunFacet.json"
-    assert [b["run"]["facets"]["parent"] for b in server.bodies] == [
-        {"run": {"runId": "dg-1"}, "job": {"namespace": "test-ns", "name": "job"},
-         "_producer": "p", "_schemaURL": schema},
-        {"run": {"runId": "af-1"}, "job": {"namespace": "test-ns", "name": "dag.task"},
-         "_producer": "p", "_schemaURL": schema},
-    ]  # fmt: skip
-    assert server.bodies[0]["producer"] == "p"
 
 
 def test_api_key_resolution_over_the_wire(
@@ -425,36 +244,69 @@ def test_bearer_token_is_dropped_on_cross_origin_redirect_only(
     )
 
 
+@pytest.mark.parametrize("code", [307, 308])
+def test_307_and_308_keep_the_post_and_drop_the_token_cross_origin(
+    server: Server, other_server: Server, code: int
+) -> None:
+    cfg = config(server.url, api_key=SecretStr("cfg-token"))
+    server.redirect_code = code
+    server.redirect = f"{other_server.url}/elsewhere"
+    OpenLineageObserver(cfg, [], "")(RUN_STARTED)
+    server.redirect = f"{server.url}/landed"
+    OpenLineageObserver(cfg, [], "")(RUN_STARTED)
+    ((cross_path, cross_headers, cross_body),) = other_server.requests
+    assert cross_path == "/elsewhere" and "Authorization" not in cross_headers
+    assert cross_headers["Content-Type"] == "application/json"
+    assert cross_body == server.bodies[0] and cross_body["eventType"] == "START"
+    same_path, same_headers, same_body = server.requests[-1]
+    assert same_path == "/landed" and same_body["eventType"] == "START"
+    assert same_headers["Authorization"] == "Bearer cfg-token"
+
+
+def test_api_key_with_a_line_break_is_never_sent_or_printed(
+    server: Server, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    hooked: list[threading.ExceptHookArgs] = []
+    monkeypatch.setattr(threading, "excepthook", hooked.append)
+    obs = OpenLineageObserver(
+        config(server.url, api_key=SecretStr("tok\nsecret-xyz")), [], ""
+    )
+    obs(RUN_STARTED)
+    obs.fail_run()
+    assert server.requests == [] and hooked == []
+    err = capsys.readouterr().err
+    assert "warn: lineage: api_key contains a line break" in err
+    assert "secret-xyz" not in err
+
+
+def test_a_worker_exception_never_reaches_the_thread_hook(
+    server: Server, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def leak(*args: Any, **kwargs: Any) -> None:
+        raise ValueError("Bearer secret-xyz is not a valid header")
+
+    hooked: list[threading.ExceptHookArgs] = []
+    monkeypatch.setattr(threading, "excepthook", hooked.append)
+    monkeypatch.setattr(observer._OPENER, "open", leak)  # pyright: ignore[reportPrivateUsage] -- the opener is the seam
+    obs = OpenLineageObserver(
+        config(server.url, api_key=SecretStr("secret-xyz")), [], ""
+    )
+    obs(RUN_STARTED)
+    assert hooked == [] and obs.consecutive_failures == 1
+    assert "secret-xyz" not in capsys.readouterr().err
+
+
 def test_timeout_bounds_the_whole_request(
     server: Server, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(lineage, "RETRY_DELAYS_S", (0.0, 0.0))
-    server.trickle = (
-        True  # each byte beats the socket timeout; the whole response does not
-    )
+    monkeypatch.setattr(observer, "RETRY_DELAYS_S", (0.0, 0.0))
+    server.trickle = True  # each byte beats the socket timeout, the response does not
     obs = OpenLineageObserver(config(server.url, 2, timeout_secs=1), [], "")
     started = time.monotonic()
     obs(RUN_STARTED)
     assert time.monotonic() - started < 3
     assert len(server.requests) == 2  # a timeout is retried
     assert obs.consecutive_failures == 1
-
-
-@pytest.mark.parametrize(
-    ("configured", "ambient", "expected"),
-    [
-        ("cfg-token", "env-token", "cfg-token"),
-        (None, "env-token", "env-token"),
-        ("{{OPENLINEAGE_API_KEY}}", "env-token", "env-token"),
-        ("{{OPENLINEAGE_API_KEY}}", None, None),
-        (None, None, None),
-        ("   ", "   ", None),
-    ],
-)
-def test_resolve_api_key(
-    configured: str | None, ambient: str | None, expected: str | None
-) -> None:
-    assert resolve_api_key(configured, ambient) == expected
 
 
 CLI_CONFIG = """\
