@@ -1,0 +1,11 @@
+before {'data_files': 665, 'pos_delete_files': 34, 'eq_delete_files': 0, 'data_bytes': 5504173364, 'records_in_data': 535600000, 'records_in_pos_deletes': 25000000}
+after {'data_files': 665, 'pos_delete_files': 34, 'eq_delete_files': 0, 'data_bytes': 5504173364, 'records_in_data': 535600000, 'records_in_pos_deletes': 25000000}
+compaction done {'wall_s': 0.0, 'vmhwm_mb': 191.9, 'commits': 0}
+{'label': 'fail-first-noop-500m', 'table': 's5_main_500m', 'sort': None, 'cols': '', 'stub_noop': True, 'memory_limit': '4GB', 'before': {'data_files': 665, 'pos_delete_files': 34, 'eq_delete_files': 0, 'data_bytes': 5504173364, 'records_in_data': 535600000, 'records_in_pos_deletes': 25000000}, 'snapshots_before': 90, 'wall_s': 0.0, 'vmhwm_mb': 191.9, 'after': {'data_files': 665, 'pos_delete_files': 34, 'eq_delete_files': 0, 'data_bytes': 5504173364, 'records_in_data': 535600000, 'records_in_pos_deletes': 25000000}, 'commits': 0, 'snapshots_added': 0, 'new_snapshot_op': 'append', 'parity': {'duckdb': (510600000, 4709498806290573828268121653, 130356179744700000), 'pyiceberg': (510600000, 4709498806290573828268121653, 130356179744700000), 'equal': True, 'equal_to_before': True, 'verify_s': 407.7, 'verify_vmhwm_mb': 5767.6}, 'fp_before': (510600000, 4709498806290573828268121653, 130356179744700000)}
+Traceback (most recent call last):
+  File "/home/user/floe/spikes/python/s5-maintenance/run_compact.py", line 81, in <module>
+    main()
+  File "/home/user/floe/spikes/python/s5-maintenance/run_compact.py", line 73, in main
+    assert after["pos_delete_files"] == 0, f"delete-file count after compaction is {after['pos_delete_files']}, expected 0"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: delete-file count after compaction is 34, expected 0

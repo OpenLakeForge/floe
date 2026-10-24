@@ -1,0 +1,9 @@
+seeded 50000000 rows in 27s
+merge 1: 4s {'data_files': 62, 'pos_delete_files': 60, 'eq_delete_files': 0, 'data_bytes': 534286618, 'records_in_data': 50700000, 'records_in_pos_deletes': 500000}
+merge 2: 2s {'data_files': 64, 'pos_delete_files': 120, 'eq_delete_files': 0, 'data_bytes': 538472100, 'records_in_data': 51400000, 'records_in_pos_deletes': 1000000}
+merge 3: 2s {'data_files': 66, 'pos_delete_files': 180, 'eq_delete_files': 0, 'data_bytes': 542625746, 'records_in_data': 52100000, 'records_in_pos_deletes': 1500000}
+merge 4: 2s {'data_files': 68, 'pos_delete_files': 240, 'eq_delete_files': 0, 'data_bytes': 546759022, 'records_in_data': 52800000, 'records_in_pos_deletes': 2000000}
+merge 5: 2s {'data_files': 70, 'pos_delete_files': 300, 'eq_delete_files': 0, 'data_bytes': 550908042, 'records_in_data': 53500000, 'records_in_pos_deletes': 2500000}
+/home/user/floe/spikes/python/s5-maintenance/seed.py:84: DeprecationWarning: fetch_arrow_table() is deprecated, use to_arrow_table() instead.
+  batch = con.execute(f"SELECT {ROW} FROM range({lo},{lo+20000}) t(i)").fetch_arrow_table()
+final {'data_files': 100, 'pos_delete_files': 300, 'eq_delete_files': 0, 'data_bytes': 560353996, 'records_in_data': 54100000, 'records_in_pos_deletes': 2500000} VmHWM=887MB
