@@ -72,6 +72,7 @@ skips them and `check.py --impl rust` prints `skip` for them.
 - Masked when recording: run ids, timestamps, durations, absolute paths (`<ROOT>`, `run_<id>`).
 - Compared by shape: UUID-based part file names (`part-<uuid>`), Iceberg `snapshot_id`.
 - Recorded but ignored on compare (G5 ruling, #594): `total_bytes_written`, `avg_file_size_mb`.
+- Ignored on compare: `tool.version` in `run.summary.json` (each implementation reports its own version). `expected/` keeps the recorded `0.7.0`.
 - Paths in `expected/` use `run_ID` and `part-UUID` (no `<`/`>`: Windows can't check them out); file contents keep `run_<id>` / `part-<uuid>`.
 - Only `out/accepted` and `out/rejected` are captured; `record.py` fails on a case that produces neither.
 - Parquet dates and timestamps are compared as Arrow-rendered text, so years outside 1..9999 (which Python's `date` cannot hold) work.
