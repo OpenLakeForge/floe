@@ -2,7 +2,8 @@
 
 import shutil
 from collections.abc import Iterator
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
+from itertools import chain
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,14 @@ from floe.checks.normalize import (
     resolve_strategy,
     source_names,
 )
-from floe.checks.rows import ROW_INDEX, Formatter, RowCheck, not_null_check, split_rows
+from floe.checks.rows import (
+    ERRORS,
+    ROW_INDEX,
+    Formatter,
+    RowCheck,
+    not_null_check,
+    split_rows,
+)
 from floe.checks.unique import UniqueTracker, resolve_unique_keys
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
@@ -39,24 +47,13 @@ from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
 from floe.write.outputs import AcceptedWrite, write_accepted, write_rejected
 
-Chunks = Iterator[
-    tuple[int, pl.DataFrame, pl.Series | None]
-]  # offset, frame, ragged rows
+Chunks = Iterator[tuple[int, pl.DataFrame, pl.Series | None]]  # fmt: skip  # offset, frame, ragged rows
 
 
 @dataclass(frozen=True)
 class EntityRun:
     report: dict[str, Any]
     aborted: bool
-
-
-@dataclass
-class _File:
-    """What one input file leaves behind."""
-
-    report: dict[str, Any]
-    accepted: list[pl.DataFrame] = field(default_factory=list[pl.DataFrame])
-    aborted: bool = False
 
 
 def _chunks(entity: EntityConfig, path: Path, names: list[str]) -> Chunks:
@@ -109,7 +106,7 @@ def _failed_file(
     plan: MismatchOutcome | None,
     error: FloeIoError,
     rejected_path: str | None,
-) -> _File:
+) -> dict[str, Any]:
     """A file that could not be read: `rejected` (`aborted` under abort), no rows."""
     fmt = entity.source.format
     action = "aborted" if entity.policy.severity == "abort" else "rejected_file"
@@ -133,7 +130,7 @@ def _failed_file(
     )  # fmt: skip
     out = file_report(entity, uri, 0, 0, [], outcome, rejected_path)
     out["status"] = "aborted" if action == "aborted" else "rejected"
-    return _File(out, aborted=action == "aborted")
+    return out
 
 
 def _rejected_dir(entity: EntityConfig, config_dir: Path, severity: str) -> Path:
@@ -142,9 +139,7 @@ def _rejected_dir(entity: EntityConfig, config_dir: Path, severity: str) -> Path
     return normalize_local_path(config_dir / entity.sink.rejected.path)
 
 
-def _copy_raw(
-    entity: EntityConfig, config_dir: Path, source: Path, severity: str
-) -> str:
+def _copy_raw(entity: EntityConfig, config_dir: Path, source: Path, severity: str) -> str:  # fmt: skip
     target = _rejected_dir(entity, config_dir, severity) / source.name
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, target)
@@ -212,33 +207,32 @@ def _typed(
         if c.column_type != "string"
     ]  # fmt: skip
     if entity.policy.severity == "abort" and any(c.mask.any() for c in cast_checks):
-        return (
-            typed,
-            cast_checks,
-        )  # Rust: abort-mode cast errors skip not_null and unique
+        return typed, cast_checks  # fmt: skip  # Rust: abort-mode cast errors skip not_null and unique
     required = [not_null_check(typed, n) for n in plan.required]
     return typed, [*required, *cast_checks, *plan.tracker.check(typed)]
 
 
-def _run_file(plan: _Plan, uri: str, path: Path) -> _File:
-    entity, src = plan.entity, plan.entity.source
+def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
+    """The file's report and its accepted frames (none when it aborted the run)."""
+    entity = plan.entity
     severity = entity.policy.severity
     declared = declared_names(entity)
-    pii = entity.pii is not None
     chunks = _chunks(entity, path, plan.names)
+
+    def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
+        # Rust skips the raw copy under PII: the file cannot be masked
+        keep = entity.pii is None and entity.sink.rejected is not None
+        raw = _copy_raw(entity, plan.config_dir, path, severity) if keep else None
+        return _failed_file(entity, uri, len(declared), mismatch, err, raw), []
+
     try:
-        if src.format == "xml":
-            probe, head = xml_columns(path, src.options), None
-        else:
-            head = next(chunks)
-            probe = list(head[1].columns)
+        if entity.source.format == "xml":
+            first, probe = [], xml_columns(path, entity.source.options)
+        else:  # the first chunk's columns are the input columns the plan compares
+            first = [next(chunks)]
+            probe = list(first[0][1].columns)
     except FloeIoError as err:
-        raw = (
-            None
-            if pii or entity.sink.rejected is None
-            else _copy_raw(entity, plan.config_dir, path, severity)
-        )
-        return _failed_file(entity, uri, len(declared), None, err, raw)  # fmt: skip
+        return failed(err, None)
     mismatch = plan_mismatch(entity, declared, probe)
     if mismatch.rejected or mismatch.aborted:
         raw = _copy_raw(
@@ -246,7 +240,7 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> _File:
         )
         out = file_report(entity, uri, 0, 0, [], mismatch, raw)
         out["status"] = "aborted" if mismatch.aborted else "rejected"
-        return _File(out, aborted=mismatch.aborted)
+        return out, []
 
     rows, bad_total = 0, 0
     masks: dict[tuple[str, str, str], list[pl.Series]] = {}
@@ -254,13 +248,7 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> _File:
     rejected: list[pl.DataFrame] = []
     errors: list[tuple[int, str]] = []
     try:
-        while True:
-            if head is None:
-                head = next(chunks, None)
-                if head is None:
-                    break
-            offset, raw_df, ragged = head
-            head = None
+        for offset, raw_df, ragged in chain(first, chunks):
             typed, checks = _typed(plan, raw_df, mismatch)
             if ragged is not None and ragged.any():
                 checks.insert(0, RowCheck("csv_read_error", "", RAGGED_MESSAGE, ragged))
@@ -270,19 +258,12 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> _File:
             bad_total += bad.height
             for c in checks:
                 masks.setdefault((c.rule, c.column, c.message), []).append(c.mask)
-            errors += zip(
-                bad[ROW_INDEX].to_list(), bad["__floe_errors"].to_list(), strict=True
-            )
+            errors += zip(bad[ROW_INDEX].to_list(), bad[ERRORS].to_list(), strict=True)
             accepted.append(good if severity == "reject" else typed)
             if severity == "reject" and bad.height:
                 rejected.append(bad)
     except FloeIoError as err:
-        raw = (
-            None
-            if pii or entity.sink.rejected is None
-            else _copy_raw(entity, plan.config_dir, path, severity)
-        )
-        return _failed_file(entity, uri, len(declared), mismatch, err, raw)  # fmt: skip
+        return failed(err, mismatch)
 
     merged = [RowCheck(r, c, m, pl.concat(s)) for (r, c, m), s in masks.items()]
     rejected_path = errors_path = None
@@ -301,9 +282,7 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> _File:
         errors_path = _error_report(plan.config_dir, entity, stem, errors)
     out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path)
     out["output"]["errors_path"] = errors_path
-    aborted = out["status"] == "aborted"
-    kept = [] if aborted else [_output(plan, df) for df in accepted]
-    return _File(out, kept, aborted)
+    return out, [] if out["status"] == "aborted" else [_output(plan, df) for df in accepted]  # fmt: skip
 
 
 def run_entity(
@@ -350,15 +329,11 @@ def run_entity(
     )  # fmt: skip
     files: list[dict[str, Any]] = []
     frames: list[pl.DataFrame] = []
-    aborted = False
     for f in inputs.files:
-        done = _run_file(
-            plan, f.source_uri, Path(f.source_uri.removeprefix("local://"))
-        )
-        files.append(done.report)
-        frames += done.accepted
-        if done.aborted:
-            aborted = True
+        report, kept = _run_file(plan, f.source_uri, Path(f.source_uri.removeprefix("local://")))  # fmt: skip
+        files.append(report)
+        frames += kept
+        if report["status"] == "aborted":
             break
 
     base = normalize_local_path(config_dir / sink.accepted.path)
@@ -387,4 +362,4 @@ def run_entity(
         rejected_uri=f"local://{rejected}" if rejected else None,
         unique=unique,
     )
-    return EntityRun(report, aborted)
+    return EntityRun(report, any(f["status"] == "aborted" for f in files))
