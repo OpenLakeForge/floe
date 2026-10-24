@@ -159,8 +159,10 @@ def main() -> int:
             print(f"skip {case_name(case)} (D1: not recorded)")
             skipped += 1
             continue
-        with_manifest = (
-            args.impl == "rust" or bool(args.case) or case_name(case) in manifest_cases
+        # Rust 0.7 rejects some configs Python accepts (D2): no manifest was recorded, nothing to compare
+        with_manifest = args.impl == "rust" or (
+            (args.case or case_name(case) in manifest_cases)
+            and (case / "expected" / "manifest.json").exists()
         )
         problems = check_case(case, cmd, args.impl, with_manifest)
         if problems and args.impl == "python" and (ids := delta_ids(case)):

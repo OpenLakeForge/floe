@@ -1,6 +1,6 @@
 # Config conformance cases (`floe validate`)
 
-614 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
+615 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
 v0.7.0 release binary. See [../README.md](../README.md) for recording, checking and the delta mechanism.
 
 ## Layout
