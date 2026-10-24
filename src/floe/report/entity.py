@@ -8,7 +8,7 @@ from floe.checks.mismatch import MismatchOutcome
 from floe.checks.normalize import resolve_strategy, source_names
 from floe.checks.rows import RowCheck
 from floe.checks.unique import UniqueResult
-from floe.config.types import EntityConfig, SchemaEvolutionConfig
+from floe.config.types import EntityConfig, SchemaEvolutionConfig, WriteMode
 from floe.storage.inputs import ResolvedInputs
 from floe.write.outputs import AcceptedWrite
 
@@ -69,6 +69,8 @@ def file_report(
     checks: Sequence[RowCheck],
     mismatch: MismatchOutcome,
     rejected_path: str | None = None,
+    archived_path: str | None = None,
+    errors_path: str | None = None,
 ) -> dict[str, Any]:
     """One `files[]` entry. `rejected_count` is the split's; severity decides status and counts (Rust `validate_split`)."""
     rules = summarize_rules(checks, entity)
@@ -95,8 +97,8 @@ def file_report(
         "output": {
             "accepted_path": None,
             "rejected_path": rejected_path,
-            "errors_path": None,
-            "archived_path": None,
+            "errors_path": errors_path,
+            "archived_path": archived_path,
         },
         "validation": {
             "errors": violations - warnings + mismatch.errors,
@@ -137,13 +139,15 @@ def build_report(
     accepted_uri: str,
     rejected_uri: str | None,
     unique: Sequence[UniqueResult] = (),
+    write_mode: WriteMode | None = None,
 ) -> dict[str, Any]:
     """The Parquet-sink `run.json` of an entity; `files` are the `file_report`s, in input order."""
     src, sink, severity = entity.source, entity.sink, entity.policy.severity
-    for f in files:
-        f["output"]["accepted_path"] = accepted_uri
+    if write.files_written:
+        for f in files:
+            f["output"]["accepted_path"] = accepted_uri
     totals: dict[str, int] = {
-        "files_total": len(inputs.listed),
+        "files_total": len(files),
         "files_skipped": 0,
         "rows_total": sum(f["row_count"] for f in files),
         "accepted_total": sum(f["accepted_count"] for f in files),
@@ -167,7 +171,8 @@ def build_report(
             "path": rejected_uri or sink.rejected.path,
         }
     archive: dict[str, Any] = {
-        "enabled": entity.incremental_mode == "archive" and sink.archive is not None
+        "enabled": (entity.incremental_mode in ("none", "archive"))
+        and sink.archive is not None
     }
     if sink.archive:
         archive["path"] = sink.archive.path
@@ -195,7 +200,7 @@ def build_report(
         "accepted_output": {
             "path": accepted_uri,
             "table_root_uri": accepted_uri,
-            "write_mode": sink.write_mode,
+            "write_mode": write_mode or sink.write_mode,
             "accepted_rows": totals["accepted_total"],
             "files_written": write.files_written,
             "parts_written": write.files_written,
