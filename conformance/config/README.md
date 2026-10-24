@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-23 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
+20 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -73,8 +73,6 @@ implementation exists yet; each is derived as its row says.
 | `div_S11_ctrl` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust.  |
 | `div_S12` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust. Rust 0.7: `merge.compare_columns has duplicate column amt` (validate.rs:977); the Iceberg side of the rule is `val2_d2_*`. |
 | `div_S12_ctrl` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust.  |
-| `div_S15` | D1 | `entity.name=orders source.format=xlsx is not supported in 0.8` | D1 (dropped feature): the repro needs an XLSX source. Not recorded from Rust. Rust 0.7: `source.options.data_row must be greater than source.options.header_row` (validate.rs:517). |
-| `div_S15_ctrl` | D1 | `entity.name=orders source.format=xlsx is not supported in 0.8` | D1 (dropped feature): the repro needs an XLSX source. Not recorded from Rust.  |
 | `div_S17` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust. Rust 0.7: `merge.scd2 column names must be unique` (validate.rs:942); the Iceberg side of the rule is `val2_d2_*`. |
 | `div_S17_ctrl` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust.  |
 | `d1_sink_delta` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
@@ -86,7 +84,6 @@ implementation exists yet; each is derived as its row says.
 | `d1_storage_adls` | D1 | `storages.definitions name=a type=adls is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_storage_gcs` | D1 | `storages.definitions name=g type=gcs is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_fixed` | D1 | `entity.name=orders source.format=fixed is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
-| `d1_source_xlsx` | D1 | `entity.name=orders source.format=xlsx is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_orc` | D1 | `entity.name=orders source.format=orc is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_avro` | D1 | `entity.name=orders source.format=avro is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `example_config_yml` | D1 | `entity.name=customer sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): example/config.yml writes the `customer` entity to a Delta table and `customer_warehouse` to DuckDB. Not recorded from Rust. |
