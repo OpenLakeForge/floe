@@ -4,6 +4,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from floe.config.project import LineageConfig, RootConfig, parse_lineage
+from floe.config.storage import (
+    CatalogsConfig,
+    StoragesConfig,
+    parse_catalogs,
+    parse_storages,
+)
+from floe.config.validate import check_lineage
 from floe.config.vars import string_map
 from floe.config.yaml import (
     load_yaml,
@@ -35,6 +43,9 @@ class ProfileConfig:
     name: str
     runner: dict[str, str]  # only the fields the runner contract checks
     variables: dict[str, str]
+    catalogs: CatalogsConfig | None
+    storages: StoragesConfig | None
+    lineage: LineageConfig | None
 
 
 def _string(hash: Hash, key: str, ctx: str, required: bool = False) -> str | None:
@@ -164,7 +175,6 @@ def _validation(value: object) -> None:
 
 def _parse_doc(doc: object) -> ProfileConfig:
     root = yaml_hash(doc, "profile")
-    # ponytail: catalogs, storages and lineage are accepted but not read until #635b
     validate_known_keys(
         root,
         "profile",
@@ -195,9 +205,16 @@ def _parse_doc(doc: object) -> ProfileConfig:
         if "variables" in root
         else {}
     )
+    catalogs = (
+        parse_catalogs(root["catalogs"], "profile.catalogs")
+        if "catalogs" in root
+        else None
+    )
+    storages = parse_storages(root["storages"]) if "storages" in root else None
+    lineage = parse_lineage(root["lineage"]) if "lineage" in root else None
     if "validation" in root:
         _validation(root["validation"])
-    return ProfileConfig(name, runner, variables)
+    return ProfileConfig(name, runner, variables, catalogs, storages, lineage)
 
 
 def _malformed(value: str) -> str | None:
@@ -212,6 +229,53 @@ def _malformed(value: str) -> str | None:
             return "${} (empty placeholder)"
         rest = rest[end + 1 :]
     return None
+
+
+def _check_catalogs(catalogs: CatalogsConfig) -> None:
+    ctx = "profile.catalogs"
+    if not catalogs.definitions:
+        raise FloeConfigError(f"{ctx}.definitions must not be empty")
+    seen: set[str] = set()
+    for d in catalogs.definitions:
+        if not d.name.strip():
+            raise FloeConfigError(f"{ctx}.definitions.name must not be empty")
+        if d.name in seen:
+            raise FloeConfigError(f"{ctx}.definitions name={d.name} is duplicated")
+        seen.add(d.name)
+    if catalogs.default is not None and catalogs.default not in seen:
+        raise FloeConfigError(
+            f"{ctx}.default={catalogs.default} does not match any definition"
+        )
+
+
+def _check_storages(storages: StoragesConfig) -> None:
+    ctx = "profile.storages"
+    if not storages.definitions:
+        raise FloeConfigError(f"{ctx}.definitions must not be empty")
+    seen: set[str] = set()
+    for d in storages.definitions:
+        # ponytail: Rust's adls/gcs requirements are unreachable here; both types are rejected at parse (D1)
+        if not d.name.strip():
+            raise FloeConfigError(f"{ctx}.definitions.name must not be empty")
+        if d.name in seen:
+            raise FloeConfigError(f"{ctx}.definitions name={d.name} is duplicated")
+        seen.add(d.name)
+        if d.type not in ("local", "s3", "adls", "gcs"):
+            raise FloeConfigError(
+                f"{ctx}.definitions name={d.name} type={d.type} is unsupported "
+                "(allowed: local, s3, adls, gcs)"
+            )
+        for field in ("bucket", "region") if d.type == "s3" else ():
+            if getattr(d, field) is None:
+                raise FloeConfigError(
+                    f"{ctx}.definitions name={d.name} requires {field} for type s3"
+                )
+    if storages.default is None:
+        raise FloeConfigError(f"{ctx}.default is required when storages is set")
+    if storages.default not in seen:
+        raise FloeConfigError(
+            f"{ctx}.default={storages.default} does not match any definition"
+        )
 
 
 def validate_profile(profile: ProfileConfig) -> None:
@@ -232,6 +296,22 @@ def validate_profile(profile: ProfileConfig) -> None:
             raise FloeConfigError(
                 f'profile variable "{key}" contains malformed placeholder: {placeholder}'
             )
+    if profile.catalogs is not None:
+        _check_catalogs(profile.catalogs)
+    if profile.storages is not None:
+        _check_storages(profile.storages)
+    if profile.lineage is not None:
+        check_lineage(profile.lineage, "profile.lineage")
+
+
+def apply_profile(config: RootConfig, profile: ProfileConfig) -> RootConfig:
+    """The profile's blocks replace the config's, as `apply_profile_catalogs`, `_storages` and `_lineage` do."""
+    blocks = {
+        "catalogs": profile.catalogs,
+        "storages": profile.storages,
+        "lineage": profile.lineage,
+    }
+    return config.model_copy(update={k: v for k, v in blocks.items() if v is not None})
 
 
 def parse_profile(path: Path) -> ProfileConfig:
