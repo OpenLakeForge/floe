@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-25 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
+24 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
