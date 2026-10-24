@@ -92,7 +92,6 @@ implementation exists yet; each is derived as its row says.
 | `d1_source_xml` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_fixed` | D1 | `entity.name=orders source.format=fixed is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_xlsx` | D1 | `entity.name=orders source.format=xlsx is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
-| `d1_source_orc` | D1 | `entity.name=orders source.format=orc is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_avro` | D1 | `entity.name=orders source.format=avro is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `example_config_yml` | D1 | `entity.name=customer sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): example/config.yml writes the `customer` entity to a Delta table and `customer_warehouse` to DuckDB. Not recorded from Rust. |
 | `parse_yaml_tab_indent` | D11 | `while scanning for the next token, found character '\t' that cannot start any token at byte 25 line 3 column 1` | PyYAML scanner wording and byte offset; derived by running floe.config.yaml.load_yaml (#684) on this file |
