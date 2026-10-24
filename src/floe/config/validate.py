@@ -256,7 +256,9 @@ def _check_partitioning(entity: EntityConfig) -> None:
 
 def _storage_name(config: RootConfig, name: str | None) -> str:
     # ponytail: no unknown-storage errors here; the storage registry lands with its own task.
-    return name or (config.storages and config.storages.default) or "local"
+    if name is not None:
+        return name
+    return (config.storages and config.storages.default) or "local"
 
 
 def _storage_type(config: RootConfig, name: str) -> str:
@@ -275,8 +277,12 @@ def _check_iceberg(entity: EntityConfig, config: RootConfig) -> None:
             "sink.accepted.iceberg is only supported for sink.accepted.format=iceberg",
         )
     catalogs = config.catalogs
-    name = iceberg.catalog or (catalogs and catalogs.default)
-    if not name:
+    name = (
+        iceberg.catalog
+        if iceberg.catalog is not None
+        else catalogs and catalogs.default
+    )
+    if name is None:
         raise _fail(
             entity,
             "sink.accepted.iceberg.catalog is required (or set catalogs.default)",

@@ -144,6 +144,24 @@ def test_scd2_empty_column_is_not_defaulted(tmp_path: Path) -> None:
         check(tmp_path, f"{{{COLS}, primary_key: [id]}}", sink=sink)
 
 
+def test_empty_iceberg_catalog_is_not_defaulted(tmp_path: Path) -> None:
+    path = tmp_path / "config.yml"
+    path.write_text(
+        textwrap.dedent(f"""
+        version: "0.2"
+        catalogs: {{default: c, definitions: [{{name: c, type: rest, uri: u}}]}}
+        entities:
+        - name: orders
+          source: {{format: csv, path: in.csv}}
+          sink: {{accepted: {{format: iceberg, path: out, iceberg: {{catalog: ''}}}}}}
+          policy: {{severity: warn}}
+          schema: {{{COLS}}}
+        """)
+    )
+    with pytest.raises(FloeConfigError, match="references unknown catalog $"):
+        validate_entities(parse_config(path))
+
+
 @pytest.mark.parametrize(
     ("sink", "message"),
     [
