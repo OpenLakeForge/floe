@@ -1,0 +1,36 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: orc_read
+    domain: spike
+    source:
+      format: orc
+      path: "./in/orc_read.orc"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/orc_read"
+      rejected:
+        format: csv
+        path: "./out/rejected/orc_read"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: qty
+          type: int64
+          nullable: false
+        - name: price
+          type: number
+        - name: active
+          type: boolean
+        - name: day
+          type: date
+        - name: note
+          type: string
+report:
+  path: "./report"

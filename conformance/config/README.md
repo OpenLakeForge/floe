@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-20 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
+18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -84,8 +84,6 @@ implementation exists yet; each is derived as its row says.
 | `d1_storage_adls` | D1 | `storages.definitions name=a type=adls is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_storage_gcs` | D1 | `storages.definitions name=g type=gcs is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_fixed` | D1 | `entity.name=orders source.format=fixed is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
-| `d1_source_orc` | D1 | `entity.name=orders source.format=orc is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
-| `d1_source_avro` | D1 | `entity.name=orders source.format=avro is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `example_config_yml` | D1 | `entity.name=customer sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): example/config.yml writes the `customer` entity to a Delta table and `customer_warehouse` to DuckDB. Not recorded from Rust. |
 | `parse_yaml_tab_indent` | D11 | `while scanning for the next token, found character '\t' that cannot start any token at byte 25 line 3 column 1` | PyYAML scanner wording and byte offset; derived by running floe.config.yaml.load_yaml (#684) on this file |
 | `val1_d2_pii_on_primary_key_with_merge` | D2 | `entity.name=orders pii.columns[name=id]: PII strategy cannot be applied to a primary_key column with write_mode=merge_scd1: masking the merge key corrupts the merge predicate` | D2: Iceberg accepts merge_scd1/merge_scd2 in Python. The Rust error is the write-mode capability check (validate.rs:657), which Python drops; the rule that Rust's PII-on-merge-key check (validate.rs:327) then reports is applied by Python in its place, with Rust's wording for that rule. |
