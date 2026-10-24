@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from floe._cli import main
+from floe.manifest import detect_runtime
 
 CONFIG = """\
 version: "0.3"
@@ -124,3 +125,79 @@ def test_config_files_are_relative_to_the_root_and_hashed_into_the_checksum(
     lines = "".join(f"{f['path']}\0{f['sha256']}\n" for f in files)
     digest = hashlib.sha256(lines.encode()).hexdigest()
     assert manifest["config_checksum"] == f"sha256:{digest}"
+
+
+ENTITY = """\
+  - name: {name}
+    domain: {domain}
+    source: {{format: csv, path: ./in/{name}.csv}}
+    sink: {{accepted: {{format: parquet, path: ./out/{domain}/{name}}}}}
+    policy: {{severity: warn}}
+    schema: {{columns: [{{name: id, type: string}}]}}
+"""
+TWO_DOMAINS = (
+    'version: "0.3"\ndomains: [{name: d1}, {name: d2}]\nentities:\n'
+    + "".join(
+        ENTITY.format(name=n, domain=d)
+        for n, d in (("a", "d1"), ("a", "d2"), ("b", "d1"))
+    )
+    + "report: {path: ./report}\n"
+)
+
+
+def names(manifest: dict[str, Any]) -> list[str]:
+    return [e["name"] for e in manifest["entities"]]
+
+
+def test_entities_select_by_id_then_name_and_fail_like_rust(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    out = tmp_path / "m.json"
+    args = ("-o", str(out), "--entities")
+    assert generate(tmp_path, monkeypatch, *args, "d1.a,b", config=TWO_DOMAINS) == 0
+    assert names(json.loads(out.read_text())) == ["d1.a", "d1.b"]
+    assert generate(tmp_path, monkeypatch, *args, "a", config=TWO_DOMAINS) == 1
+    assert "entity a is ambiguous; use one of: d1.a, d2.a" in capsys.readouterr().err
+    assert generate(tmp_path, monkeypatch, *args, "x,b,y", config=TWO_DOMAINS) == 1
+    assert "entities not found: x, y" in capsys.readouterr().err
+
+
+def test_default_domain_and_resolved_uri_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    extra = ("--default-domain", "dd", "--manifest-path-mode", "resolved-uri")
+    out = tmp_path / "m.json"
+    config = CONFIG.replace("    domain: d\n", "")
+    assert generate(tmp_path, monkeypatch, "-o", str(out), *extra, config=config) == 0
+    entity = json.loads(out.read_text())["entities"][0]
+    assert (entity["domain"], entity["asset_key"]) == ("dd", ["dd", "a"])
+    assert entity["source"]["path"] == f"{tmp_path}/in/a.csv"
+
+
+def test_image_runtime_rebases_the_config_uri_under_the_work_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FLOE_WORK_ROOT", "/data/")
+    out = tmp_path / "m.json"
+    argv = ("-o", str(out), "--runtime", "image")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yml").write_text(CONFIG)
+    monkeypatch.setattr(
+        sys, "argv", ["floe", "manifest", "generate", "-c", "./config.yml", *argv]
+    )
+    assert main() == 0
+    manifest = json.loads(out.read_text())
+    assert manifest["runtime_env"] == "image"
+    assert manifest["work_root"] == "/data/"
+    assert manifest["config_uri"] == "local:///data/config.yml"
+
+
+def test_floe_runtime_overrides_container_detection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FLOE_RUNTIME", " Image ")
+    assert detect_runtime() == "image"
+    monkeypatch.setenv("FLOE_RUNTIME", "cli")
+    assert detect_runtime() == "cli"
