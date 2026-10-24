@@ -526,6 +526,10 @@ config/val2_normalize_strategy_spelling_ok
 config/val2_normalize_strategy_unsupported
 config/val2_part_both
 config/val2_part_by_on_parquet
+config/val2_part_spec_bucket_not_integer
+config/val2_part_spec_bucket_ok
+config/val2_part_spec_bucket_on_day
+config/val2_part_spec_bucket_zero
 config/val2_part_spec_column_empty
 config/val2_part_spec_column_unknown
 config/val2_part_spec_duplicate

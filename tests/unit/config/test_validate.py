@@ -1,4 +1,4 @@
-"""Expected messages come from Rust 0.7 `floe validate`, except D7 (#584 S1, S2) and D10 (`time`)."""
+"""Expected messages come from Rust 0.7 `floe validate`, except D7 (#584 S1, S2), D10 (`time`) and D12 (`bucket`)."""
 
 import textwrap
 from pathlib import Path
@@ -178,11 +178,27 @@ def test_empty_iceberg_catalog_is_not_defaulted(tmp_path: Path) -> None:
             "sink.write_mode=merge_scd1 is not supported by sink.accepted.format=parquet",
         ),
         (
-            "{accepted: {format: iceberg, path: out, partition_spec: [{column: id, transform: bucket}]}}",
+            "{accepted: {format: iceberg, path: out, partition_spec: [{column: id, transform: 'bucket(16)'}]}}",
             (
-                "sink.accepted.partition_spec[0].transform=bucket is unsupported "
-                "(allowed: identity, year, month, day, hour)"
+                "sink.accepted.partition_spec[0].transform=bucket(16) is unsupported "
+                "(allowed: identity, year, month, day, hour, bucket)"
             ),
+        ),
+        (
+            "{accepted: {format: iceberg, path: out, partition_spec: [{column: id, transform: bucket}]}}",
+            "sink.accepted.partition_spec[0].num_buckets is required for transform=bucket",
+        ),
+        (
+            "{accepted: {format: iceberg, path: out, partition_spec: [{column: id, transform: Bucket, num_buckets: 0}]}}",
+            "sink.accepted.partition_spec[0].num_buckets must be greater than 0",
+        ),
+        (
+            "{accepted: {format: iceberg, path: out, partition_spec: [{column: id, transform: day, num_buckets: 4}]}}",
+            "sink.accepted.partition_spec[0].num_buckets is only supported with transform=bucket",
+        ),
+        (
+            "{accepted: {format: iceberg, path: out, partition_spec: [{column: id, num_buckets: 4}]}}",
+            "sink.accepted.partition_spec[0].num_buckets is only supported with transform=bucket",
         ),
     ],
 )
@@ -197,3 +213,8 @@ def test_scd2_column_collides_with_normalised_schema_name(tmp_path: Path) -> Non
     schema = "{columns: [{name: Valid To, type: string}], normalize_columns: {enabled: true}, primary_key: [Valid To]}"
     with pytest.raises(FloeConfigError, match="valid_to_column=valid_to collides"):
         check(tmp_path, schema, sink=sink)
+
+
+def test_bucket_transform_ok(tmp_path: Path) -> None:
+    sink = "{accepted: {format: iceberg, path: out, partition_spec: [{column: id, transform: bucket, num_buckets: 16}]}}"
+    check(tmp_path, f"{{{COLS}}}", sink=sink)
