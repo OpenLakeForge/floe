@@ -2,6 +2,23 @@
 # CI runs `check.py --impl python --cases-file conformance/python_passing.txt`.
 # Ratchet: each port task adds the cases it makes pass; a listed case that fails breaks the build.
 # Never remove a case to turn CI green.
+avro_read
+cast_error_with_source
+casts
+casts_coerce
+casts_date
+casts_datetime
+casts_typed
+example/standalone
+mismatch
+mismatch_abort
+mismatch_reject_file
+orc_read
+severity_abort
+severity_warn
+unique_pii
+xlsx
+xml
 config/d1_catalog_glue
 config/d1_catalog_unity
 config/d1_sink_delta
