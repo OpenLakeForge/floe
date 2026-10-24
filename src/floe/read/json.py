@@ -9,6 +9,7 @@ from typing import Any, NoReturn
 
 import polars as pl
 
+from floe.config.entity import WHITE_SPACE
 from floe.config.types import ColumnConfig, SourceOptions
 from floe.errors import FloeIoError
 
@@ -134,10 +135,11 @@ def _rows(path: Path, mode: str) -> Iterator[tuple[str, Any]]:
         if mode == "ndjson":
             with path.open("rb") as handle:
                 for number, raw in enumerate(handle, 1):
-                    if not raw.strip():
-                        continue
                     try:
-                        value = _loads(raw.decode("utf-8"))
+                        line = raw.decode("utf-8").strip(WHITE_SPACE)  # Rust str::trim
+                        if not line:
+                            continue
+                        value = _loads(line)
                     except ValueError as err:  # includes UnicodeDecodeError
                         raise FloeIoError(
                             f"json parse error at line {number}: {err}"
