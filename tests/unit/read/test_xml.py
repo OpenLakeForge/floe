@@ -7,7 +7,7 @@ import pytest
 
 from floe.config.types import ColumnConfig, SourceOptions
 from floe.errors import FloeIoError
-from floe.read.xml import XmlChunk, parse_selector, read_xml
+from floe.read.xml import XmlChunk, parse_selector, read_xml, xml_columns
 
 CASE = Path(__file__).parents[3] / "conformance" / "xml"
 
@@ -114,3 +114,13 @@ def test_dtd_and_entities_are_refused(tmp_path: Path) -> None:
         FloeIoError, match="DTDs and external entities are not supported"
     ):
         read(write(tmp_path, external), opts(), column("n"))
+
+
+def test_probe_lists_the_first_rows_child_elements() -> None:
+    path = CASE / "in" / "items.xml"
+    assert xml_columns(path, opts(namespace="urn:x")) == ["addr", "name", "price"]
+
+
+def test_probe_fails_without_the_row_tag() -> None:
+    with pytest.raises(FloeIoError, match="row_tag=nope not found in xml"):
+        xml_columns(CASE / "in" / "items.xml", opts(row_tag="nope"))

@@ -143,7 +143,9 @@ def build_report(
     for f in files:
         f["output"]["accepted_path"] = accepted_uri
     totals: dict[str, int] = {
-        "files_total": len(inputs.listed),
+        "files_total": len(
+            files
+        ),  # Rust counts the file reports: an abort leaves later files out
         "files_skipped": 0,
         "rows_total": sum(f["row_count"] for f in files),
         "accepted_total": sum(f["accepted_count"] for f in files),
