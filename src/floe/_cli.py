@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from floe.config.parse import parse_config
-from floe.config.profile import parse_profile
+from floe.config.profile import apply_profile, parse_profile
 from floe.config.project import RootConfig, validate_domains
 from floe.config.validate import validate_entities
 from floe.config.vars import extract_config_env_vars, resolve_vars
@@ -18,19 +18,21 @@ def _load(config: str, profile: str | None) -> tuple[Path, RootConfig]:
         path = Path(os.path.realpath(config, strict=True))
     except OSError as e:
         raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
+    parsed = parse_profile(Path(profile)) if profile else None
     variables = (
-        resolve_vars(
-            parse_profile(Path(profile)).variables, {}, extract_config_env_vars(path)
-        )
-        if profile
+        resolve_vars(parsed.variables, {}, extract_config_env_vars(path))
+        if parsed
         else {}
     )
-    return path, parse_config(path, variables)
+    root = parse_config(path, variables)
+    if parsed:
+        root = apply_profile(root, parsed)
+    return path, root
 
 
-def _validate(root: RootConfig, profiled: bool) -> None:
+def _validate(root: RootConfig) -> None:
     validate_domains(root)
-    validate_entities(root, profiled)
+    validate_entities(root)
 
 
 def _run(config: str) -> int:
@@ -41,7 +43,7 @@ def _run(config: str) -> int:
         else None
     )
     try:
-        _validate(root, False)
+        _validate(root)
         outcome = run(
             path, root, observer=lineage
         )  # `--entities` and the other flags are #657
@@ -68,7 +70,7 @@ def main() -> int:
         args = parser.parse_args()
         if args.command == "run":
             return _run(args.config)
-        _validate(_load(args.config, args.profile)[1], args.profile is not None)
+        _validate(_load(args.config, args.profile)[1])
     except FloeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
