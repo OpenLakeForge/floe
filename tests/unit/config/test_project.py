@@ -12,7 +12,9 @@ from floe.config.project import RootConfig, config_version, validate_domains
 from floe.config.yaml import merge_yaml
 from floe.errors import FloeConfigError
 
-REST = "sink: {}, policy: {severity: warn}, schema: {}"
+REST = (
+    "sink: {}, policy: {severity: warn}, schema: {columns: [{name: id, type: string}]}"
+)
 ENTITY = f"{{name: orders, source: {{format: csv, path: in/orders.csv}}, {REST}}}"
 
 
@@ -127,11 +129,11 @@ def test_domain_defaults_are_merged_under_the_entity(tmp_path: Path) -> None:
         version: "0.3"
         domains:
         - name: sales
-          defaults: {policy: {severity: warn}, sink: {accepted: {format: parquet}}, source: {format: csv, path: p}, schema: {}}
+          defaults: {policy: {severity: warn}, sink: {accepted: {format: parquet}}, source: {format: csv, path: p}}
         entities:
-        - {name: a, domain: sales, policy: {severity: reject}}
-        - {name: b, domain: finance, policy: {severity: abort}, sink: {}, source: {format: csv, path: p}, schema: {}}
-        - {name: c, domain: sales}
+        - {name: a, domain: sales, policy: {severity: reject}, schema: {columns: [{name: id, type: string}]}}
+        - {name: b, domain: finance, policy: {severity: abort}, sink: {}, source: {format: csv, path: p}, schema: {columns: [{name: id, type: string}]}}
+        - {name: c, domain: sales, schema: {columns: [{name: id, type: string}]}}
         """,
     )
     a, b, c = config.entities
@@ -146,7 +148,6 @@ def test_domain_defaults_are_merged_under_the_entity(tmp_path: Path) -> None:
         "policy": {"severity": "warn"},
         "sink": {"accepted": {"format": "parquet"}},
         "source": {"format": "csv", "path": "p"},
-        "schema": {},
     }
 
 
