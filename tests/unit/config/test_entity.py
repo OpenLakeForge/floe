@@ -365,64 +365,64 @@ def test_sink_target_blocks_and_defaults() -> None:
 _ACCEPTED = {"format": "parquet", "path": "p"}
 
 
-@pytest.mark.parametrize(
-    ("overrides", "expected"),
-    [
-        (
-            {"source": {"format": "csv", "path": "p", "bogus": 1}},
-            "unknown field source.bogus",
-        ),
-        (
-            {
-                "source": {
-                    "format": "csv",
-                    "path": "p",
-                    "storage": "a",
-                    "filesystem": "b",
-                }
-            },
-            "source.storage and source.storage are mutually exclusive",
-        ),
-        (
-            {"source": {"format": "csv", "path": "p", "options": {"header_row": -1}}},
-            "expected positive integer at source.options.header_row",
-        ),
-        ({"source": {"format": "csv"}}, "missing required field source.path"),
-        (
-            {"sink": {"accepted": _ACCEPTED, "write_mode": "upsert"}},
-            "unsupported value at sink.write_mode: upsert (allowed: overwrite, append, merge_scd1, merge_scd2)",
-        ),
-        (
-            {"sink": {"accepted": _ACCEPTED, "rejected": {**_ACCEPTED, "options": {}}}},
-            "unknown field sink.rejected.options",
-        ),
-        (
-            {
-                "sink": {
-                    "accepted": _ACCEPTED,
-                    "rejected": {**_ACCEPTED, "storage": "a", "filesystem": "b"},
-                }
-            },
-            "sink.rejected.storage and sink.rejected.storage are mutually exclusive",
-        ),
-        (
-            {"sink": {"accepted": {**_ACCEPTED, "duckdb": {"table": "t"}}}},
-            'sink.accepted.duckdb is only valid when format is "duckdb" (found format="parquet")',
-        ),
-        (
-            {"sink": {"accepted": {**_ACCEPTED, "delta": {}}}},
-            "sink.accepted.delta is not supported in 0.8",
-        ),
-        (
-            {"sink": {"accepted": {**_ACCEPTED, "partition_spec": [{}]}}},
-            "missing required field sink.accepted.partition_spec[0].column",
-        ),
-        (
-            {"sink": {"accepted": _ACCEPTED, "archive": {"bogus": 1}}},
-            "unknown field sink.archive.bogus",
-        ),
-        ({"sink": {}}, "missing required field sink.accepted"),
-    ],
-)
+_ERRORS: list[tuple[dict[str, object], str]] = [
+    (
+        {"source": {"format": "csv", "path": "p", "bogus": 1}},
+        "unknown field source.bogus",
+    ),
+    (
+        {
+            "source": {
+                "format": "csv",
+                "path": "p",
+                "storage": "a",
+                "filesystem": "b",
+            }
+        },
+        "source.storage and source.storage are mutually exclusive",
+    ),
+    (
+        {"source": {"format": "csv", "path": "p", "options": {"header_row": -1}}},
+        "expected positive integer at source.options.header_row",
+    ),
+    ({"source": {"format": "csv"}}, "missing required field source.path"),
+    (
+        {"sink": {"accepted": _ACCEPTED, "write_mode": "upsert"}},
+        "unsupported value at sink.write_mode: upsert (allowed: overwrite, append, merge_scd1, merge_scd2)",
+    ),
+    (
+        {"sink": {"accepted": _ACCEPTED, "rejected": {**_ACCEPTED, "options": {}}}},
+        "unknown field sink.rejected.options",
+    ),
+    (
+        {
+            "sink": {
+                "accepted": _ACCEPTED,
+                "rejected": {**_ACCEPTED, "storage": "a", "filesystem": "b"},
+            }
+        },
+        "sink.rejected.storage and sink.rejected.storage are mutually exclusive",
+    ),
+    (
+        {"sink": {"accepted": {**_ACCEPTED, "duckdb": {"table": "t"}}}},
+        'sink.accepted.duckdb is only valid when format is "duckdb" (found format="parquet")',
+    ),
+    (
+        {"sink": {"accepted": {**_ACCEPTED, "delta": {}}}},
+        "sink.accepted.delta is not supported in 0.8",
+    ),
+    (
+        {"sink": {"accepted": {**_ACCEPTED, "partition_spec": [{}]}}},
+        "missing required field sink.accepted.partition_spec[0].column",
+    ),
+    (
+        {"sink": {"accepted": _ACCEPTED, "archive": {"bogus": 1}}},
+        "unknown field sink.archive.bogus",
+    ),
+    ({"sink": {}}, "missing required field sink.accepted"),
+]
+
+
+@pytest.mark.parametrize(("overrides", "expected"), _ERRORS)
 def test_source_and_sink_errors(overrides: dict[str, object], expected: str) -> None:
     assert message(entity(**overrides)) == expected
