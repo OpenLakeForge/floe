@@ -5,18 +5,18 @@ from pathlib import Path
 
 from floe.config.parse import parse_config
 from floe.config.project import validate_domains
-from floe.config.validate import validate_schemas
+from floe.config.validate import validate_entities
 from floe.errors import FloeError, FloeIoError
 
 
-def _validate(config: str) -> None:
+def _validate(config: str, profile: str | None) -> None:
     try:
         path = Path(os.path.realpath(config, strict=True))
     except OSError as e:
         raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
     root = parse_config(path)
     validate_domains(root)
-    validate_schemas(root)
+    validate_entities(root, profile is not None)
 
 
 def main() -> int:
@@ -27,7 +27,8 @@ def main() -> int:
     validate.add_argument("-c", "--config", required=True)
     validate.add_argument("-p", "--profile")  # ponytail: profiles land with #635
     try:
-        _validate(parser.parse_args().config)
+        args = parser.parse_args()
+        _validate(args.config, args.profile)
     except FloeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
