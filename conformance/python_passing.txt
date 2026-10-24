@@ -45,6 +45,7 @@ config/div_S14b
 config/div_S14b_ctrl
 config/div_S15
 config/div_S15_ctrl
+config/div_S16a
 config/div_S16a_ctrl
 config/div_S16b
 config/div_S16b_ctrl
@@ -392,6 +393,17 @@ config/val2_iceberg_local_storage_with_warehouse_storage_ok
 config/val2_iceberg_no_catalog
 config/val2_iceberg_unknown_catalog
 config/val2_iceberg_valid
+config/val2_jsel_blank
+config/val2_jsel_empty
+config/val2_jsel_empty_field
+config/val2_jsel_index_empty
+config/val2_jsel_index_negative
+config/val2_jsel_index_not_numeric
+config/val2_jsel_index_overflow
+config/val2_jsel_index_unclosed
+config/val2_jsel_leading_dot
+config/val2_jsel_name_used_when_no_source
+config/val2_jsel_unexpected_bracket
 config/val2_jsel_valid_ok
 config/val2_json_columns_limit
 config/val2_json_columns_limit_ok
