@@ -1,6 +1,5 @@
-"""`floe.run.run`: selection, dry run, full refresh, events, parallel order."""
+"""`floe.run.run`: selection, dry run, full refresh, and events."""
 
-import threading
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +9,6 @@ import pytest
 from floe.config.parse import parse_config
 from floe.errors import FloeConfigError
 from floe.run import run
-from floe.run.entity import run_entity as real_run_entity
 
 ENTITY = """\
   - name: {name}
@@ -98,19 +96,3 @@ def test_event_order(tmp_path: Path) -> None:
     assert {e["run_id"] for e in events} == {out.run_id}
     assert events[-1]["rows"] == 4 and events[-1]["exit_code"] == 0
     assert events[3]["accepted"] == 2 and events[3]["status"] == "success"
-
-
-def test_parallel_runs_concurrently_and_reports_in_config_order(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    path, root = setup(tmp_path, ["a", "b", "c"])
-    both = threading.Barrier(2, timeout=10)  # a and b must be in flight together
-
-    def run_entity(entity: Any, *args: Any) -> Any:
-        if entity.name != "c":
-            both.wait()
-        return real_run_entity(entity, *args)
-
-    monkeypatch.setattr("floe.run.run_entity", run_entity)
-    out = run(path, root, max_workers=2)
-    assert [e["name"] for e in out.summary["entities"]] == ["d.a", "d.b", "d.c"]

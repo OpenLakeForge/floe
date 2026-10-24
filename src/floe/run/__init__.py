@@ -2,7 +2,6 @@
 
 import time
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +11,13 @@ from floe.checks.rows import Formatter
 from floe.config.project import RootConfig
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeError, FloeRunError
-from floe.report.summary import build_summary, id_path, run_outcome, write_reports
+from floe.report.summary import (
+    build_summary,
+    id_path,
+    run_outcome,
+    write_entity_report,
+    write_reports,
+)
 from floe.run.entity import EntityRun, run_entity
 from floe.run.events import Emitter, Observer
 from floe.storage.inputs import resolve_inputs
@@ -80,10 +85,9 @@ def run(
     entities: Sequence[str] = (),
     dry_run: bool = False,
     full_refresh: bool = False,
-    max_workers: int = 1,  # > 1 is the profile's `parallel` strategy
     observer: Observer | None = None,
 ) -> RunOutcome:
-    """Run the selected entities and write the reports. A failing entity still gets a failed summary, then its error is raised."""
+    """Run the selected entities in config order, writing each entity's report as it finishes. A failing entity raises: no summary, as Rust."""
     started, timer = _rfc3339(), time.monotonic()
     selected = select_entities(root, entities)
     if full_refresh:
@@ -123,18 +127,14 @@ def run(
 
     emit("run_started", config=str(normalize_local_path(path)), report_base=report_path)
     reports: list[tuple[str, dict[str, Any]]] = []
-    failure: FloeError | None = None
-    # config order; stops at the first abort or failure (parallel entities already running finish unreported)
-    with ThreadPoolExecutor(max(1, max_workers)) as pool:
-        results = pool.map(one, selected) if max_workers > 1 else map(one, selected)
-        try:
-            for e, result in zip(selected, results, strict=False):
-                reports.append((id_path(e), result.report))
-                _finished(emit, e.name, result.report)
-                if result.aborted:
-                    break
-        except FloeError as err:  # the entities already run keep their reports
-            failure = err
+    run_dir = f"{report_path.rstrip('/')}/run_{run_id}"
+    for e in selected:  # stops at the first abort
+        result = one(e)
+        reports.append((id_path(e), result.report))
+        write_entity_report(run_dir, id_path(e), result.report)
+        _finished(emit, e.name, result.report)
+        if result.aborted:
+            break
     summary = build_summary(
         root.version, reports,
         run_id=run_id, started_at=started, finished_at=_rfc3339(),
@@ -142,11 +142,7 @@ def run(
         config_path=str(normalize_local_path(path)), report_path=report_path,
         metadata=root.metadata,
     )  # fmt: skip
-    if failure:  # Rust: failed -> exit code 1
-        summary["run"] |= {"status": "failed", "exit_code": 1}
-    write_reports(summary, reports)
-    if failure:
-        raise failure
+    write_reports(summary, [])
     r, t = summary["run"], summary["results"]
     emit("run_finished", status=r["status"], exit_code=r["exit_code"], files=t["files_total"],
          rows=t["rows_total"], accepted=t["accepted_total"], rejected=t["rejected_total"],

@@ -60,7 +60,7 @@ def test_abort_exits_two_and_skips_the_later_entities(
     assert not (tmp_path / "out" / "accepted" / "b").exists()
 
 
-def test_a_failing_entity_keeps_the_reports_of_the_ones_before_it(
+def test_a_failing_entity_keeps_the_reports_of_the_ones_before_it_and_writes_no_summary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "in").mkdir()
@@ -72,9 +72,10 @@ def test_a_failing_entity_keeps_the_reports_of_the_ones_before_it(
         sys, "argv", ["floe", "run", "-c", str(tmp_path / "config.yml")]
     )
     assert main() == 1
-    assert summary(tmp_path)["run"]["status"] == "failed"
-    assert summary(tmp_path)["run"]["exit_code"] == 1
-    assert [e["name"] for e in summary(tmp_path)["entities"]] == ["d.a"]
+    assert not list(
+        (tmp_path / "report").glob("run_*/run.summary.json")
+    )  # Rust: no summary
+    assert len(list((tmp_path / "report").glob("run_*/d/a/run.json"))) == 1
     assert (tmp_path / "out" / "accepted" / "a").exists()
 
 
