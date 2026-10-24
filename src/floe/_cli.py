@@ -27,19 +27,23 @@ def _load(config: str, profile: str | None) -> tuple[Path, RootConfig]:
     root = parse_config(path, variables)
     if parsed:
         root = apply_profile(root, parsed)
-    validate_domains(root)
-    validate_entities(root)
     return path, root
 
 
+def _validate(root: RootConfig) -> None:
+    validate_domains(root)
+    validate_entities(root)
+
+
 def _run(config: str) -> int:
-    path, root = _load(config, None)
+    path, root = _load(config, None)  # lineage observes a config that fails validation
     lineage = (
         OpenLineageObserver(root.lineage, root.entities, str(path))
         if root.lineage
         else None
     )
     try:
+        _validate(root)
         outcome = run(
             path, root, observer=lineage
         )  # `--entities` and the other flags are #657
@@ -66,7 +70,7 @@ def main() -> int:
         args = parser.parse_args()
         if args.command == "run":
             return _run(args.config)
-        _load(args.config, args.profile)
+        _validate(_load(args.config, args.profile)[1])
     except FloeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
