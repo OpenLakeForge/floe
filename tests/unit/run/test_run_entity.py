@@ -235,3 +235,25 @@ def test_unique_samples_use_the_schema_column_names(tmp_path: Path) -> None:
     (unique,) = run_entity(entity, tmp_path, "0.3").report["unique_constraints"]
     assert unique["columns"] == ["id"]
     assert unique["samples"] == [{"values": {"id": "1"}, "count": 1}]
+
+
+def test_a_prefixed_xml_selector_keeps_its_value(tmp_path: Path) -> None:
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: xml\n      path: ./in"
+    )
+    config = config.replace(
+        'options: {header: true, separator: ","}',
+        "options: {row_tag: row, namespace: 'urn:a'}",
+    )
+    config = config.replace(
+        "{name: id, type: int64, nullable: false}",
+        "{name: id, source: 'a:id', type: int64}",
+    )
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    xml = '<rows xmlns:a="urn:a"><a:row><a:id>1</a:id></a:row></rows>'
+    (tmp_path / "in" / "a.xml").write_text(xml)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    run_entity(entity, tmp_path, "0.3")
+    assert accepted(tmp_path)["id"].to_list() == [1]

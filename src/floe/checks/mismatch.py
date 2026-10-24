@@ -107,7 +107,12 @@ def plan_mismatch(
 def apply_mismatch(df: pl.DataFrame, plan: MismatchOutcome) -> pl.DataFrame:
     """Add the missing columns as nulls and drop the extra ones, as the plan says."""
     if plan.fill_missing:
-        df = df.with_columns(pl.lit(None, pl.String).alias(n) for n in plan.missing)
+        # a column the reader already produced (an XML `a:id` selector the probe names `id`) stays
+        df = df.with_columns(
+            pl.lit(None, pl.String).alias(n)
+            for n in plan.missing
+            if n not in df.columns
+        )
     if plan.ignore_extra:
         df = df.drop(plan.extra, strict=False)
     return df
