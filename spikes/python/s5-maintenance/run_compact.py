@@ -33,6 +33,10 @@ def main():
     con = duck(a.memory_limit)
     tbl = cat.load_table(name)
     rec = {"label": a.label, "table": a.table, "sort": a.sort, "cols": a.cols, "stub_noop": a.stub_noop, "memory_limit": a.memory_limit}
+    if a.target_file_mb:
+        with tbl.transaction() as tx:
+            tx.set_properties({"write.target-file-size-bytes": str(a.target_file_mb << 20)})
+        tbl = cat.load_table(name)
     before = file_counts(tbl)
     commits_before = n_metadata_json(tbl)
     base_snap = tbl.current_snapshot().snapshot_id
@@ -42,9 +46,6 @@ def main():
 
     wall = time.time()
     if not a.stub_noop:
-        if a.target_file_mb:
-            with tbl.transaction() as tx:
-                tx.set_properties({"write.target-file-size-bytes": str(a.target_file_mb << 20)})
         res = maintain.compact(cat, name, con, sort=a.sort, sort_cols=a.cols.split(",") if a.cols else None,
                                partition_col=a.partition_col)
         rec["compact"] = vars(res)

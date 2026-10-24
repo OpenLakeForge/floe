@@ -250,7 +250,7 @@ def select_sql(src: str, kind: str | None, cols: list[str], types: dict[str, str
         scaled = ", ".join(
             f"LEAST({mx}, GREATEST(0, ((({_num(c, types[c])} - {stats[c][0]}) / {max(stats[c][1] - stats[c][0], 1e-9)}) * {mx})::BIGINT))::BIGINT AS _z{i}"
             for i, c in enumerate(cols))
-        z = " | ".join(f"((_z{i} >> {b}) & 1) << {b * n + i}" for b in range(bits) for i in range(n))
+        z = " | ".join(f"((((_z{i} >> {b}) & 1)) << {b * n + i})" for b in range(bits) for i in range(n))
         return (f"SELECT {out} FROM (SELECT *, {z} AS _zk FROM (SELECT *, {scaled} FROM {src} {where})) "
                 f"ORDER BY {', '.join(lead_sql + ['_zk'])}")
     keys = lead_sql + (cols if kind == "linear" else [])
