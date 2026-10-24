@@ -245,7 +245,6 @@ def _source_options(value: object, defaults: SourceOptions) -> SourceOptions:
     ctx = "source.options"
     h = yaml_hash(value, ctx)
     validate_known_keys(h, ctx, tuple(SourceOptions.model_fields))
-    # an absent or null key keeps the format default
     return SourceOptions(
         header=_or(opt_bool(h, "header", ctx), defaults.header),
         separator=_or(opt_string(h, "separator", ctx), defaults.separator),
@@ -292,7 +291,7 @@ def _source(value: object) -> SourceConfig:
     fmt = get_string(h, "format", "source")
     defaults = SourceOptions(separator="\t") if fmt == "tsv" else SourceOptions()
     options = _source_options(h["options"], defaults) if "options" in h else defaults
-    storage = _storage(h, "source")
+    storage = _storage(h, "source")  # checked before `path`, as in Rust
     return SourceConfig(
         format=fmt,
         path=get_string(h, "path", "source"),
