@@ -1,6 +1,6 @@
 # Config conformance cases (`floe validate`)
 
-612 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
+613 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
 v0.7.0 release binary. See [../README.md](../README.md) for recording, checking and the delta mechanism.
 
 ## Layout
@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-28 D1, 18 D2, 10 D7, 1 D10, 1 D11.
+28 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -115,6 +115,8 @@ implementation exists yet; each is derived as its row says.
 | `val2_d2_merge_list_unknown_column` | D2 | `entity.name=orders sink.accepted.merge.compare_columns[0]=zz references unknown schema column` | Rust 0.7 rejects every Iceberg merge at the write-mode check; D2 makes Iceberg accept merge_scd1/merge_scd2. py is the message of the validate.rs:970 rule for the same config (a format-agnostic rule in Rust, recordable from Rust only for delta/duckdb, which are dropped). |
 | `val2_d2_merge_list_duplicate` | D2 | `entity.name=orders sink.accepted.merge.ignore_columns has duplicate column amt` | Rust 0.7 rejects every Iceberg merge at the write-mode check; D2 makes Iceberg accept merge_scd1/merge_scd2. py is the message of the validate.rs:977 rule for the same config (a format-agnostic rule in Rust, recordable from Rust only for delta/duckdb, which are dropped). |
 | `val2_type_time` | D10 | `entity.name=orders schema.columns[0].type=time is unsupported for column id (allowed: string, number, boolean, datetime, date)` | D10: Rust 0.7 accepts `time` at validate (every value later fails to cast); Python rejects it as not supported in 0.8. py is the validate.rs:1313 message with `time` dropped from the allowed list. |
+| `val2_type_unsupported` | D10 | `entity.name=orders schema.columns[0].type=varchar is unsupported for column id (allowed: string, number, boolean, datetime, date)` | Hand-derived, not recorded: Rust's message with `time` dropped from the allowed list (D10), as for `val2_type_time`. |
+| `val2_evolution_add_columns_iceberg_ok` | D13 | ok | D13: Python accepts `schema_evolution.mode: add_columns` on Iceberg sinks. Rust 0.7 rejects it unless the sink is Delta (validate.rs:1366), which D1 drops; other formats keep Rust's rejection. |
 
 ## #584 divergences
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from floe.config.parse import parse_config
 from floe.config.project import validate_domains
+from floe.config.validate import validate_schemas
 from floe.errors import FloeError, FloeIoError
 
 
@@ -13,7 +14,9 @@ def _validate(config: str) -> None:
         path = Path(os.path.realpath(config, strict=True))
     except OSError as e:
         raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
-    validate_domains(parse_config(path))
+    root = parse_config(path)
+    validate_domains(root)
+    validate_schemas(root)
 
 
 def main() -> int:
