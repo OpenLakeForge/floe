@@ -63,6 +63,12 @@ def test_ndjson_skips_blank_lines(tmp_path: Path) -> None:
     assert chunk.df.rows() == [("1", None), ("2", "3")]
 
 
+def test_ndjson_trims_unicode_whitespace(tmp_path: Path) -> None:
+    content = ' \n　{"a":1} \n\x85\n'
+    (chunk,) = read(tmp_path, content, column("a"), mode="ndjson")
+    assert chunk.df.rows() == [("1",)]
+
+
 def test_non_scalar_strict_errors_coerce_stringifies(tmp_path: Path) -> None:
     content = '[{"a":{"x":[1,"é"]}},{"a":[]}]'
     with pytest.raises(FloeIoError, match="non-scalar value for selector a at index 0"):

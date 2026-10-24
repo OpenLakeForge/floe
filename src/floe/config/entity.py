@@ -55,7 +55,7 @@ _R = TypeVar("_R")
 _M = TypeVar("_M", bound=BaseModel)
 _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 # Rust's `trim()` strips Unicode White_Space only; `str.strip()` also strips U+001C to U+001F
-_WHITE_SPACE = "\t\n\v\f\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+WHITE_SPACE = "\t\n\v\f\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
 
 
 def _or(value: _R | None, default: _R) -> _R:
@@ -67,7 +67,7 @@ def _pick(value: str, allowed: tuple[_T, ...]) -> _T | None:
 
 
 def _norm(value: str) -> str:
-    return value.strip(_WHITE_SPACE).translate(_ASCII_LOWER)
+    return value.strip(WHITE_SPACE).translate(_ASCII_LOWER)
 
 
 def _choice(value: str, allowed: tuple[_T, ...], ctx: str) -> _T:
