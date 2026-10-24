@@ -17,7 +17,7 @@ def check(
     schema: str,
     version: str = "0.2",
     fmt: str = "csv",
-    sink: str = "{}",
+    sink: str = "{accepted: {format: parquet, path: out}}",
 ) -> None:
     path = tmp_path / "config.yml"
     path.write_text(
@@ -126,5 +126,5 @@ def test_add_columns_on_iceberg(tmp_path: Path) -> None:
     check(
         tmp_path,
         f"{{{COLS}, schema_evolution: {{mode: add_columns}}}}",
-        sink="{accepted: {format: iceberg}}",
+        sink="{accepted: {format: iceberg, path: out}}",
     )

@@ -38,15 +38,15 @@ def message(value: object) -> str:
     return str(err.value)
 
 
-def test_minimal_entity_keeps_source_and_sink_raw() -> None:
+def test_minimal_entity() -> None:
     parsed = parse_entity(entity())
     assert (parsed.name, parsed.id, parsed.incremental_mode) == (
         "orders",
         "orders",
         "none",
     )
-    assert parsed.source == BASE["source"]
-    assert parsed.sink == BASE["sink"]
+    assert (parsed.source.format, parsed.source.path) == ("csv", "in/orders.csv")
+    assert parsed.sink.accepted.path == "out/accepted"
     assert parsed.policy.severity == "warn"
     assert [c.column_type for c in parsed.schema_.columns] == ["string", "number"]
     assert (
@@ -300,3 +300,137 @@ def test_schema_evolution_defaults() -> None:  # parse_schema_evolution_strict_f
         ).schema_.schema_evolution
         is not None
     )
+
+
+def test_source_defaults_and_options_overlay() -> None:
+    source = parse_entity(entity()).source
+    assert (source.cast_mode, source.options.separator, source.options.header_row) == (
+        "strict",
+        ";",
+        1,
+    )
+    assert (source.options.header, source.options.null_values) == (True, [""])
+    tsv = parse_entity(
+        entity(source={"format": "tsv", "path": "p", "options": {"header": False}})
+    ).source
+    assert (tsv.options.separator, tsv.options.header, tsv.options.encoding) == (
+        "\t",
+        False,
+        "UTF8",
+    )
+    named = parse_entity(
+        entity(
+            source={
+                "format": "csv",
+                "path": "p",
+                "filesystem": "lake",
+            }
+        ),
+        "lake",
+        "orders",
+    ).source
+    assert (named.storage, named.source_ref, named.resource) == (
+        "lake",
+        "lake",
+        "orders",
+    )
+
+
+def test_sink_target_blocks_and_defaults() -> None:
+    accepted: dict[str, object] = {
+        "format": "iceberg",
+        "path": "p",
+        "options": {"compression": "zstd"},
+        "merge": {"scd2": {"valid_to_column": "v"}, "ignore_columns": ["a"]},
+        "iceberg": {"table": "t"},
+        "partition_by": ["id"],
+        "partition_spec": [{"column": "id"}, {"column": "d", "transform": "day"}],
+    }
+    sink = parse_entity(
+        entity(sink={"write_mode": " Merge_SCD2 ", "accepted": accepted, "archive": {}})
+    ).sink
+    target = sink.accepted
+    assert (sink.write_mode, target.write_mode) == ("merge_scd2", "merge_scd2")
+    assert target.options is not None and target.options.compression == "zstd"
+    assert target.merge is not None and target.merge.scd2 is not None
+    assert target.merge.scd2.valid_to_column == "v"
+    assert target.iceberg is not None and target.iceberg.table == "t"
+    assert target.partition_spec is not None
+    assert [f.transform for f in target.partition_spec] == ["identity", "day"]
+    assert sink.archive is not None and sink.archive.path == "archive"
+    assert sink.rejected is None
+    assert parse_entity(entity()).sink.write_mode == "overwrite"
+    raw = parse_entity(
+        entity(sink={"accepted": {**_ACCEPTED, "delta": {"table": "t"}}})
+    ).sink.accepted
+    assert raw.delta == {"table": "t"}
+
+
+_ACCEPTED = {"format": "parquet", "path": "p"}
+
+
+_ERRORS: list[tuple[dict[str, object], str]] = [
+    (
+        {"source": {"format": "csv", "path": "p", "bogus": 1}},
+        "unknown field source.bogus",
+    ),
+    (
+        {
+            "source": {
+                "format": "csv",
+                "path": "p",
+                "storage": "a",
+                "filesystem": "b",
+            }
+        },
+        "source.storage and source.storage are mutually exclusive",
+    ),
+    (
+        {"source": {"format": "csv", "path": "p", "options": {"header_row": -1}}},
+        "expected positive integer at source.options.header_row",
+    ),
+    ({"source": {"format": "csv"}}, "missing required field source.path"),
+    (
+        {"sink": {"accepted": _ACCEPTED, "write_mode": "upsert"}},
+        "unsupported value at sink.write_mode: upsert (allowed: overwrite, append, merge_scd1, merge_scd2)",
+    ),
+    (
+        {"sink": {"accepted": _ACCEPTED, "rejected": {**_ACCEPTED, "options": {}}}},
+        "unknown field sink.rejected.options",
+    ),
+    (
+        {
+            "sink": {
+                "accepted": _ACCEPTED,
+                "rejected": {**_ACCEPTED, "storage": "a", "filesystem": "b"},
+            }
+        },
+        "sink.rejected.storage and sink.rejected.storage are mutually exclusive",
+    ),
+    (
+        {"sink": {"accepted": {**_ACCEPTED, "duckdb": {"table": "t"}}}},
+        'sink.accepted.duckdb is only valid when format is "duckdb" (found format="parquet")',
+    ),
+    (
+        {"source": {"format": "csv", "path": "p", "source_ref": "x"}},
+        "unknown field source.source_ref",
+    ),
+    (
+        {"source": {"format": "csv", "path": "p", "resource": "x"}},
+        "unknown field source.resource",
+    ),
+    (
+        {"sink": {"accepted": {**_ACCEPTED, "partition_spec": [{}]}}},
+        "missing required field sink.accepted.partition_spec[0].column",
+    ),
+    (
+        {"sink": {"accepted": _ACCEPTED, "archive": {"bogus": 1}}},
+        "unknown field sink.archive.bogus",
+    ),
+    ({"sink": {}}, "missing required field sink.accepted"),
+]
+
+
+@pytest.mark.parametrize(("overrides", "expected"), _ERRORS)
+def test_source_and_sink_errors(overrides: dict[str, object], expected: str) -> None:
+    assert message(entity(**overrides)) == expected

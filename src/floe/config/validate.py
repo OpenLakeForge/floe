@@ -1,4 +1,6 @@
 """Schema validation, ported from `config/validate.rs` (`validate_schema` and its helpers)."""
+# `_get` is unused since #733; removed in #735
+# pyright: reportUnusedFunction=false
 
 from typing import cast
 
@@ -96,10 +98,7 @@ def _check_evolution(entity: EntityConfig, version: str) -> None:
     if config_version(version) < (0, 2):
         raise _fail(entity, 'schema.schema_evolution requires root.version >= "0.2"')
     # D13 (#619): add_columns is accepted on Iceberg; Rust allows only Delta, which D1 drops.
-    if (
-        evolution.mode == "add_columns"
-        and _get(_get(entity.sink, "accepted"), "format") != "iceberg"
-    ):
+    if evolution.mode == "add_columns" and entity.sink.accepted.format != "iceberg":
         raise _fail(
             entity,
             f"schema.schema_evolution.mode={evolution.mode} requires "
@@ -109,10 +108,7 @@ def _check_evolution(entity: EntityConfig, version: str) -> None:
 
 def validate_schema(entity: EntityConfig, version: str) -> None:
     schema = entity.schema_
-    if (
-        _get(entity.source, "format") == "json"
-        and len(schema.columns) > MAX_JSON_COLUMNS
-    ):
+    if entity.source.format == "json" and len(schema.columns) > MAX_JSON_COLUMNS:
         raise _fail(
             entity,
             f"schema.columns has {len(schema.columns)} entries which exceeds "
