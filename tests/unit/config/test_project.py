@@ -67,7 +67,8 @@ def test_root_fields(tmp_path: Path) -> None:
     )
     assert config.env is not None
     assert (config.env.file, config.env.vars) == ("e.yml", {"A": "b"})
-    assert config.storages is not None && config.storages.definitions == []
+    assert config.storages is not None
+    assert config.storages.definitions == []
     assert [d.name for d in config.domains] == ["sales"]
     assert config.config_files == [tmp_path / "config.yml"]
 
