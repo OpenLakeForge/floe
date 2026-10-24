@@ -348,15 +348,8 @@ def _sink_target(
     h = yaml_hash(value, ctx)
     allowed = ("format", "path", "storage", "filesystem")
     if allow_options:
-        allowed += (
-            "options",
-            "merge",
-            "iceberg",
-            "delta",
-            "duckdb",
-            "partition_by",
-            "partition_spec",
-        )
+        allowed += ("options", "merge", "iceberg", "delta", "duckdb")
+        allowed += ("partition_by", "partition_spec")
     validate_known_keys(h, ctx, allowed)
     storage = _storage(h, ctx)
     options = _sink_options(h["options"], f"{ctx}.options") if "options" in h else None
