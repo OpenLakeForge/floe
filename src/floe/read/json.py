@@ -1,6 +1,7 @@
 """JSON reader: every selected column as a raw string (Rust: `io/read/json.rs`, `json_selector.rs`)."""
 
 import json
+import math
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,7 +73,9 @@ def _is(value: Any, kind: type) -> bool:
 
 
 def _compact(value: Any) -> str:
-    return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+    return json.dumps(
+        value, separators=(",", ":"), ensure_ascii=False, sort_keys=True
+    )  # serde_json sorts keys
 
 
 def _cell(
@@ -102,21 +105,36 @@ def _reject_constant(name: str) -> NoReturn:
     raise ValueError(f"invalid number: {name}")
 
 
+def _float(text: str) -> float:
+    value = float(text)
+    if math.isinf(value):
+        raise ValueError("number out of range")
+    return value
+
+
+def _int(text: str) -> float:
+    """serde reads integers beyond i64/u64 as f64."""
+    value = int(text)
+    return value if -(1 << 63) <= value < 1 << 64 else _float(text)
+
+
 def _loads(text: str) -> Any:
-    return json.loads(text, parse_constant=_reject_constant)
+    return json.loads(
+        text, parse_constant=_reject_constant, parse_float=_float, parse_int=_int
+    )
 
 
 def _rows(path: Path, mode: str) -> Iterator[tuple[str, Any]]:
     """Yield (location, object) per row; `where` is `line N` for ndjson, `index N` for arrays."""
     try:
         if mode == "ndjson":
-            with path.open(encoding="utf-8") as handle:
-                for number, line in enumerate(handle, 1):
-                    if not line.strip():
+            with path.open("rb") as handle:
+                for number, raw in enumerate(handle, 1):
+                    if not raw.strip():
                         continue
                     try:
-                        value = _loads(line)
-                    except ValueError as err:
+                        value = _loads(raw.decode("utf-8"))
+                    except ValueError as err:  # includes UnicodeDecodeError
                         raise FloeIoError(
                             f"json parse error at line {number}: {err}"
                         ) from err

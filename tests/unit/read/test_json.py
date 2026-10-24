@@ -80,6 +80,8 @@ def test_non_scalar_strict_errors_coerce_stringifies(tmp_path: Path) -> None:
         ('{"a":1}\n[2]', "ndjson", "expected json object at line 2"),
         ('{"a":1}\n{', "ndjson", "json parse error at line 2: "),
         ('[{"a":NaN}]', None, "json parse error: "),
+        ('[{"a":1e400}]', None, "json parse error: number out of range"),
+        ('[{"a":1' + "0" * 400 + "}]", None, "json parse error: number out of range"),
         ("[]", "yaml", "unsupported source.options.json_mode=yaml"),
     ],
 )
@@ -97,6 +99,21 @@ def test_selector_errors(tmp_path: Path) -> None:
         FloeIoError, match=r"invalid selector a\.\.b: selector contains"
     ):
         read(tmp_path, "[]", column("a..b"))
+
+
+def test_ndjson_invalid_utf8_names_the_line(tmp_path: Path) -> None:
+    path = tmp_path / "in.json"
+    path.write_bytes(b'{"a":1}\n{"a":"\xff"}\n')
+    options = SourceOptions.model_validate({"json_mode": "ndjson"})
+    with pytest.raises(FloeIoError, match="json parse error at line 2: "):
+        list(read_json(path, options, [column("a")]))
+
+
+def test_coerce_sorts_object_keys(tmp_path: Path) -> None:
+    (chunk,) = read(
+        tmp_path, '[{"a":{"z":1,"a":[{"y":1,"b":2}]}}]', column("a"), cast_mode="coerce"
+    )
+    assert chunk.df.rows() == [('{"a":[{"b":2,"y":1}],"z":1}',)]
 
 
 def test_empty_array_yields_empty_frame(tmp_path: Path) -> None:
