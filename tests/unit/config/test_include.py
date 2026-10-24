@@ -9,7 +9,7 @@ import pytest
 from floe.config.parse import parse_config
 from floe.errors import FloeError
 
-ENTITY = "source: {format: csv, path: in}\nsink: {}\npolicy: {severity: warn}\nschema: {columns: [{name: id, type: string}]}\n"
+ENTITY = "source: {format: csv, path: in}\nsink: {accepted: {format: parquet, path: out}}\npolicy: {severity: warn}\nschema: {columns: [{name: id, type: string}]}\n"
 ROOT = 'version: "0.3"\ninclude:\n  domains: ["domains/*/_domain.yml"]\n'
 
 
@@ -172,7 +172,7 @@ def test_include_errors(tmp_path: Path, files: dict[str, str], message: str) -> 
     reason="needs POSIX permissions and a non-root user",
 )
 def test_unreadable_directory_is_an_error_not_a_missing_domain(tmp_path: Path) -> None:
-    write(tmp_path, "config.yml", ROOT)
+    write(tmp_path, "config.yml", ROOT.replace("_domain.yml", "_dom*.yml"))
     write(tmp_path, "domains/sales/_domain.yml", "name: sales\n")
     locked = tmp_path / "domains/finance"
     locked.mkdir()

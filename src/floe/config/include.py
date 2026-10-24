@@ -1,8 +1,6 @@
 """Include assembly, ported from `config/parse.rs` (`assemble_includes`)."""
 
-import glob
 import os
-import re
 from pathlib import Path
 from typing import cast
 
@@ -19,29 +17,8 @@ from floe.config.yaml import (
     yaml_hash,
     yaml_string,
 )
-from floe.errors import FloeConfigError, FloeError
-
-
-def _fail(error: OSError) -> None:
-    # `GlobError`: Rust's `glob` stops on a directory it cannot read, Python's skips it
-    raise FloeError(
-        f"attempting to read `{error.filename}` resulted in an error: "
-        f"{error.strerror} (os error {error.errno})"
-    )
-
-
-def _check_readable(config_dir: Path, pattern: str) -> None:
-    """Read the directories `pattern` has to list, so that an unreadable one is an error."""
-    parts = Path(pattern).parts
-    literal = next((i for i, p in enumerate(parts) if glob.has_magic(p)), len(parts))
-    base, rest = Path(config_dir, *parts[:literal]), parts[literal:]
-    if not base.is_dir():
-        return
-    for dirpath, dirnames, _ in os.walk(base, onerror=_fail):
-        if "**" not in rest and len(Path(dirpath).relative_to(base).parts) + 1 >= len(
-            rest
-        ):
-            dirnames.clear()
+from floe.errors import FloeConfigError
+from floe.glob import Pattern, glob
 
 
 def assemble_includes(
@@ -85,19 +62,7 @@ def assemble_includes(
     entities: list[tuple[object, Path]] = []
     for raw in patterns:
         pattern = yaml_string(raw, "include.domains")
-        full = os.path.join(glob.escape(str(config_dir)), pattern)
-        if wildcards := re.search(r"\*{3,}", full):
-            raise FloeConfigError(
-                f"Pattern syntax error near position {wildcards.start() + 2}: "
-                "wildcards are either regular `*` or recursive `**`"
-            )
-        _check_readable(config_dir, pattern)
-        # ponytail: other glob syntax errors (`[` ranges, `**` inside a name) are not reported as Rust does
-        matches = sorted(
-            # set: consecutive `**` match a file more than once; Rust's glob collapses them
-            set(glob.glob(full, recursive=True, include_hidden=True)),
-            key=lambda m: Path(m).parts,  # like Rust, component by component
-        )
+        matches = glob(os.path.join(Pattern.escape(str(config_dir)), pattern))
         if not matches:
             raise FloeConfigError(
                 f"include.domains pattern {rust_debug(pattern)} matched no file "
