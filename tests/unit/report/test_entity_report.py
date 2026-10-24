@@ -218,6 +218,12 @@ def test_archived_path_is_reported() -> None:
     assert f["output"]["archived_path"] == "arch/a.csv"
 
 
+def test_errors_path_is_reported() -> None:
+    # warn and abort write an error report (reject writes none); the pipeline passes its URI
+    f, _ = _build(_entity(), [], file={"errors_path": "rej/errors.json"})
+    assert f["output"]["errors_path"] == "rej/errors.json"
+
+
 def test_files_total_counts_reported_files() -> None:
     assert _build(_entity(), [])[1]["results"]["files_total"] == 1
 

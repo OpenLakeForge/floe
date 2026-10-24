@@ -70,6 +70,7 @@ def file_report(
     mismatch: MismatchOutcome,
     rejected_path: str | None = None,
     archived_path: str | None = None,
+    errors_path: str | None = None,
 ) -> dict[str, Any]:
     """One `files[]` entry. `rejected_count` is the split's; severity decides status and counts (Rust `validate_split`)."""
     rules = summarize_rules(checks, entity)
@@ -96,7 +97,7 @@ def file_report(
         "output": {
             "accepted_path": None,
             "rejected_path": rejected_path,
-            "errors_path": None,
+            "errors_path": errors_path,
             "archived_path": archived_path,
         },
         "validation": {
