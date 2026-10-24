@@ -25,11 +25,15 @@ def con(tmp_path: Path) -> duckdb.DuckDBPyConnection:
     return con
 
 
-def merge(con: duckdb.DuckDBPyConnection, tmp_path: Path, **kw: Any) -> int:
-    sql = scd1_sql('"t"', COLUMNS, ["id"], kw.get("ignore", ()))
-    row = con.execute(sql, [str(tmp_path / "batch.parquet")]).fetchone()
-    assert row is not None
-    return row[0]
+def merge(con: duckdb.DuckDBPyConnection, tmp_path: Path, **kw: Any) -> tuple[int, int]:
+    """(inserted, updated) from the count, checked against the rows the MERGE touched."""
+    count, merge = scd1_sql('"t"', COLUMNS, ["id"], kw.get("ignore", ()))
+    source = [str(tmp_path / "batch.parquet")]
+    counts = con.execute(count, source).fetchone()
+    affected = con.execute(merge, source).fetchone()
+    assert counts is not None and affected is not None
+    assert counts[0] + counts[1] == affected[0]
+    return counts[0], counts[1]
 
 
 def rows(con: duckdb.DuckDBPyConnection) -> list[tuple[Any, ...]]:
@@ -39,21 +43,21 @@ def rows(con: duckdb.DuckDBPyConnection) -> list[tuple[Any, ...]]:
 def test_golden_then_rerun_changes_nothing(
     con: duckdb.DuckDBPyConnection, tmp_path: Path
 ) -> None:
-    assert merge(con, tmp_path) == 4  # 3 updates (2, 4, 7) and 1 insert (5)
+    assert merge(con, tmp_path) == (1, 3)  # insert 5; update 2, 4, 7
     assert rows(con) == EXPECTED
-    assert merge(con, tmp_path) == 0
+    assert merge(con, tmp_path) == (0, 0)
     assert rows(con) == EXPECTED
 
 
 def test_ignored_columns_keep_target_values(
     con: duckdb.DuckDBPyConnection, tmp_path: Path
 ) -> None:
-    merge(con, tmp_path, ignore={"name", "amount", "tier"})
+    assert merge(con, tmp_path, ignore={"name", "amount", "tier"}) == (1, 0)
     assert rows(con) == [*TARGET[:4], (5, "e", 50.0, "silver"), *TARGET[4:]]
 
 
 def test_null_keys_never_match(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     con.execute("INSERT INTO t VALUES (NULL, 'x', 1.0, NULL)")
     con.execute(f"COPY (SELECT * FROM t WHERE id IS NULL) TO '{tmp_path / 'batch.parquet'}'")  # fmt: skip
-    assert merge(con, tmp_path) == 1
+    assert merge(con, tmp_path) == (1, 0)
     assert len(rows(con)) == len(TARGET) + 2

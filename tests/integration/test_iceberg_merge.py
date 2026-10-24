@@ -181,8 +181,9 @@ def test_scd1_golden_then_rerun_changes_nothing(catalog: Catalog, table: Table) 
     assert read(table) == EXPECTED
     assert len(table.metadata.metadata_log) == commits + 1  # one catalog commit
     current = table.current_snapshot()
-    assert current is not None and result.snapshot_id == current.snapshot_id
-    assert result.files_written >= 1
+    assert current is not None and result.write.snapshot_id == current.snapshot_id
+    assert result.write.files_written >= 1
+    assert (result.inserted_count, result.updated_count) == (1, 3)
     assert_files_hold_their_partition(table)
 
     snapshots = len(table.snapshots())
@@ -190,7 +191,8 @@ def test_scd1_golden_then_rerun_changes_nothing(catalog: Catalog, table: Table) 
 
     assert read(table) == EXPECTED
     assert len(table.snapshots()) == snapshots
-    assert rerun.files_written == 0
+    assert rerun.write.files_written == 0
+    assert (rerun.inserted_count, rerun.updated_count) == (0, 0)
 
 
 def test_ignored_columns_keep_target_values(catalog: Catalog, table: Table) -> None:
