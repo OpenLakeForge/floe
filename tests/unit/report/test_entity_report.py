@@ -50,13 +50,7 @@ def read(entity: EntityConfig, path: Path) -> pl.DataFrame:
     src, fmt = entity.source.options, entity.source.format
     declared = entity.schema_.columns
     if fmt == "csv":
-        frame = pl.concat(c.df for c in read_csv(path, src))
-        # D9: Rust ignores a trailing "garbage" or " +02:00" on a datetime, Python rejects or shifts it
-        if "ts" in frame.columns and path.name == "casts.csv":
-            frame = frame.with_columns(
-                pl.col("ts").str.replace(r"(garbage| ?\+02:00)$", "")
-            )
-        return frame
+        return pl.concat(c.df for c in read_csv(path, src))
     chunks: Iterator[Any] = {
         "avro": lambda: read_avro(path),
         "orc": lambda: read_orc(path),

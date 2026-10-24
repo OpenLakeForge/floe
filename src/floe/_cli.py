@@ -15,7 +15,6 @@ from floe.config.yaml import load_yaml, yaml_hash
 from floe.errors import FloeError, FloeIoError
 from floe.report.summary import build_summary, id_path, write_reports
 from floe.run.entity import run_entity
-from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
 
 
@@ -63,8 +62,9 @@ def _run(config: str) -> int:
         duration_ms=int((time.monotonic() - timer) * 1000),
         config_path=str(normalize_local_path(path)),
         report_path=str(normalize_local_path(config_dir / root.report.path)),
+        metadata=root.metadata,
     )  # fmt: skip
-    write_reports(LocalClient(), summary, reports)
+    write_reports(summary, reports)
     run = summary["run"]
     print(f"run {run['run_id']}: {run['status']}")
     return run["exit_code"]

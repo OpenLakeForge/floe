@@ -105,8 +105,6 @@ def test_casts(tmp_path: Path) -> None:
     columns = [("id", "string"), ("qty", "int64"), ("price", "number"), ("active", "boolean"),
                ("day", "date"), ("ts", "datetime"), ("small", "int32"), ("note", "string")]  # fmt: skip
     raw = pl.read_csv(CONFORMANCE / "casts/in/casts.csv", infer_schema=False)
-    # D9: Rust ignores a trailing "garbage" or " +02:00" on a datetime (r8, r12, r21), Python rejects or shifts it
-    raw = raw.with_columns(pl.col("ts").str.replace(r"(garbage| ?\+02:00)$", ""))
     emit(tmp_path, "casts", process(raw, columns, ["id", "qty"]))
     check("casts", tmp_path, ["casts"])
 

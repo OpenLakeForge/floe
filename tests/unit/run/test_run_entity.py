@@ -80,16 +80,22 @@ def test_warn_keeps_every_row_and_writes_an_error_report(tmp_path: Path) -> None
     assert errors.read_text().startswith('[{"row_index":1,"errors":[')
 
 
-def test_abort_copies_the_raw_file_and_writes_the_accepted_schema(tmp_path: Path) -> None:
+def test_abort_copies_the_raw_file_and_writes_the_accepted_schema(
+    tmp_path: Path,
+) -> None:
     report, aborted = run(tmp_path, "abort", "id,name\n1,a\nx,b\n")
     assert aborted
     assert report["files"][0]["status"] == "aborted"
-    assert (tmp_path / "out" / "rejected" / "orders.csv").read_text() == "id,name\n1,a\nx,b\n"
+    assert (
+        tmp_path / "out" / "rejected" / "orders.csv"
+    ).read_text() == "id,name\n1,a\nx,b\n"
     frame = accepted(tmp_path)
     assert frame.height == 0 and frame.columns == ["id", "name"]
 
 
-def test_abort_with_a_cast_error_leaves_not_null_out_of_the_errors(tmp_path: Path) -> None:
+def test_abort_with_a_cast_error_leaves_not_null_out_of_the_errors(
+    tmp_path: Path,
+) -> None:
     report, _ = run(tmp_path, "abort", "id,name\nx,a\n,b\n")
     rules = [r["rule"] for r in report["files"][0]["validation"]["rules"]]
     assert rules == ["cast_error"]
