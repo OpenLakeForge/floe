@@ -6,6 +6,7 @@ from floe.config.types import EntityConfig, WriteMode
 from floe.config.yaml import rust_debug
 from floe.errors import FloeConfigError
 from floe.pii import token_n
+from floe.read.json import parse_selector as parse_json_selector
 from floe.read.xml import parse_selector
 
 MIN_VERSION = (0, 1)
@@ -408,10 +409,13 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
                 f"schema.columns[{index}].type={column.column_type} is unsupported "
                 f"for column {column.name} (allowed: {', '.join(COLUMN_TYPES)})",
             )
-        if entity.source.format == "xml":
+        parse = {"xml": parse_selector, "json": parse_json_selector}.get(
+            entity.source.format
+        )
+        if parse:
             selector = column.source if column.source is not None else column.name
             try:
-                parse_selector(selector)
+                parse(selector)
             except ValueError as err:
                 raise _fail(
                     entity,
