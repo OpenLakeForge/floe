@@ -11,6 +11,7 @@ casts_datetime
 casts_typed
 example/standalone
 incremental_file
+incremental_file_full_refresh
 mismatch
 mismatch_abort
 mismatch_reject_file
