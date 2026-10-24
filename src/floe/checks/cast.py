@@ -92,7 +92,9 @@ def cast_column(
     non-strict cast, so overflow, a float outside the integer range or NaN, and a date that does
     not fit become null (a `cast_error`), while 2.5 into an int truncates to 2 and an int into a
     bool is `!= 0`. A pair Polars cannot cast (date or datetime into bool, a list) raises, and
-    aborts the run as in Rust. Timezone-aware datetimes lose the zone and keep their UTC value.
+    aborts the run as in Rust. D17: unlike Rust, a float with a fraction into an integer type is a
+    `cast_error` in strict mode (2.0 is accepted); in coerce mode it truncates as in Rust.
+    Timezone-aware datetimes lose the zone and keep their UTC value.
     """
     raw = pl.col(name)
     native = dtype != pl.String
@@ -101,8 +103,12 @@ def cast_column(
         return (raw.cast(pl.String) if native else raw), pl.lit(False).alias(
             f"_e_cast_{name}"
         )
+    fractional = None
     if kind in _DTYPES:
         typed = raw.cast(_DTYPES[kind], strict=False)
+        if native and dtype.is_float() and _DTYPES[kind].is_integer():
+            # D17; NaN and inf are null already
+            fractional = (raw != raw.floor()).fill_null(False)
     elif kind in ("boolean", "bool"):
         typed = raw.cast(pl.Boolean, strict=False) if native else _boolean(raw)
     elif kind == "date":
@@ -112,9 +118,11 @@ def cast_column(
     else:
         raise ValueError(f"unsupported column type: {column_type}")
     typed = typed.alias(name)
-    mask = (
-        pl.lit(False) if cast_mode == "coerce" else raw.is_not_null() & typed.is_null()
-    )
+    mask = pl.lit(False)
+    if cast_mode != "coerce":
+        mask = raw.is_not_null() & typed.is_null()
+        if fractional is not None:
+            mask = mask | fractional
     return typed, mask.alias(f"_e_cast_{name}")
 
 

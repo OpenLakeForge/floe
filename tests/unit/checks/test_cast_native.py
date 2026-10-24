@@ -1,4 +1,5 @@
 """Native-typed cast path (D15, #758): Parquet, ORC and Avro columns keep their types.
+Exception to Rust parity: D17, a fractional float into an integer type is rejected in strict mode.
 
 `test_matches_rust` compares every native-column/declared-type pair of the `casts_typed`
 conformance case with the cast_error rows Rust 0.7 recorded. Not in the matrix, because Rust
@@ -25,8 +26,13 @@ NATIVE = pl.read_parquet(CASE / "in" / "casts_typed.parquet")
 
 def rust_rejected(declared: str) -> set[tuple[str, str]]:
     """`(row id, column)` of every cast_error in the recorded rejected rows."""
-    path = CASE / "expected" / "rejected" / f"typed_{declared}" / "part-00000.csv"
-    if not path.exists():
+    # D17 changes the integer targets: expected_python/ replaces the Rust recording where present
+    rel = Path("rejected") / f"typed_{declared}" / "part-00000.csv"
+    path = next(
+        (p for d in ("expected_python", "expected") if (p := CASE / d / rel).exists()),
+        None,
+    )
+    if path is None:
         return set()
     with path.open(newline="") as f:
         return {
@@ -57,13 +63,17 @@ def test_matches_rust(declared: str) -> None:
     assert rejected == rust_rejected(declared)
 
 
-def test_float_fraction_truncates_and_overflow_rejects() -> None:
-    # Rust 0.7 does not reject 2.5 into an int: its non-strict cast truncates (casts_typed r1)
+@pytest.mark.parametrize("column_type", ["int8", "int64", "uint32", "uint64"])
+def test_float_fraction_rejected_in_strict_only(column_type: str) -> None:
+    # D17: Rust 0.7 truncates 2.5 to 2 (casts_typed r1); Floe rejects it in strict mode
     values = pl.Series([2.0, 2.5, -2.5, 1e20, float("nan"), None])
-    assert run(values, "int64") == (
-        [2, 2, -2, None, None, None],
-        [False, False, False, True, True, False],
-    )
+    mask = [False, True, True, True, True, False]
+    if column_type.startswith("u"):
+        mask[2] = True  # negative anyway
+    assert run(values, column_type)[1] == mask
+    typed, errors = run(values, column_type, "coerce")
+    assert errors == [False] * 6
+    assert typed[:2] == [2, 2]  # truncated, as in Rust
 
 
 def test_int_overflow() -> None:
