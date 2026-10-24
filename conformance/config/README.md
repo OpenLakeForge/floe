@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-26 D1, 18 D2, 10 D7, 1 D10, 1 D11.
+28 D1, 18 D2, 10 D7, 1 D10, 1 D11.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -85,6 +85,8 @@ implementation exists yet; each is derived as its row says.
 | `d1_sink_duckdb` | D1 | `entity.name=orders sink.accepted.format=duckdb is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_catalog_unity` | D1 | `catalogs.definitions name=u type=unity is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_catalog_glue` | D1 | `catalogs.definitions name=g type=glue is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
+| `parse_catalogs_type_unsupported` | D1 | `catalogs.definitions[0]: catalogs.definitions name=c has unsupported type=hive (supported: rest)` | Hand-derived, not recorded: Rust's message with the supported list reduced to `rest`, since Glue and Unity are dropped features (D1). |
+| `prof_catalogs_definition_type_unsupported` | D1 | `profile.catalogs.definitions[0]: profile.catalogs.definitions name=r has unsupported type=hive (supported: rest)` | Hand-derived, not recorded: Rust's message with the supported list reduced to `rest`, since Glue and Unity are dropped features (D1). |
 | `d1_storage_adls` | D1 | `storages.definitions name=a type=adls is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_storage_gcs` | D1 | `storages.definitions name=g type=gcs is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_xml` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |

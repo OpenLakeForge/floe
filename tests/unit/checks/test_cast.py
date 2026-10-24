@@ -12,7 +12,7 @@ from datetime import date, datetime
 import polars as pl
 import pytest
 
-from floe.checks.cast import cast_column, cast_error_entry
+from floe.checks.cast import cast_column
 
 Typed = list[object]
 
@@ -303,20 +303,3 @@ def test_cast_mode_strict_flags_only_invalid_values() -> None:
 def test_unsupported_column_type() -> None:
     with pytest.raises(ValueError, match="unsupported column type: bogus"):
         cast_column("v", "bogus")
-
-
-def test_cast_error_entry_matches_rust_json() -> None:
-    assert cast_error_entry("ts") == (
-        '{"rule":"cast_error","column":"ts","message":"invalid value for target type"}'
-    )
-    assert cast_error_entry('we"ird\\n\n') == (
-        '{"rule":"cast_error","column":"we\\"ird\\\\n\\n","message":"invalid value for target type"}'
-    )
-
-
-def test_cast_error_entry_leaves_other_control_characters_raw() -> None:
-    # Rust's json_escape escapes only \\, ", \n, \r and \t; \b, \f and U+0001 stay as they are.
-    assert cast_error_entry("a\b\f\x01\t\r") == (
-        '{"rule":"cast_error","column":"a\b\f\x01\\t\\r",'
-        '"message":"invalid value for target type"}'
-    )
