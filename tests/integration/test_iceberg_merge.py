@@ -27,16 +27,18 @@ from pyiceberg.transforms import (
     Transform,
 )
 from pyiceberg.types import (
+    BooleanType,
     DateType,
     DoubleType,
     LongType,
     NestedField,
     StringType,
+    TimestampType,
 )
 
 from floe.config.storage import CatalogDefinition, StorageDefinition
 from floe.iceberg.catalog import ensure_table, open_catalog, open_duckdb
-from floe.iceberg.merge import merge_scd1
+from floe.iceberg.merge import merge_scd1, merge_scd2
 
 URI = os.environ.get("FLOE_POLARIS_URI")
 
@@ -151,21 +153,27 @@ def catalog(monkeypatch: pytest.MonkeyPatch) -> Catalog:
     return open_catalog(CATALOG, STORAGE)
 
 
-@pytest.fixture(params=list(LAYOUTS))
-def table(request: pytest.FixtureRequest, catalog: Catalog) -> Iterator[Table]:
+def create(
+    catalog: Catalog, layout: str, schema: Schema, data: pa.Table
+) -> Iterator[Table]:
     if not catalog.namespace_exists(NAMESPACE):
         catalog.create_namespace(NAMESPACE)
     name = f"m{uuid.uuid4().hex[:8]}"
     spec = PartitionSpec(
         *(
             PartitionField(source, 1000 + i, transform, f"p{i}")
-            for i, (source, transform) in enumerate(LAYOUTS[request.param])
+            for i, (source, transform) in enumerate(LAYOUTS[layout])
         )
     )
-    created = catalog.create_table((NAMESPACE, name), SCHEMA, partition_spec=spec)
-    created.append(arrow(ARROW, TARGET))
+    created = catalog.create_table((NAMESPACE, name), schema, partition_spec=spec)
+    created.append(data)
     yield created
     catalog.drop_table((NAMESPACE, name))
+
+
+@pytest.fixture(params=list(LAYOUTS))
+def table(request: pytest.FixtureRequest, catalog: Catalog) -> Iterator[Table]:
+    yield from create(catalog, request.param, SCHEMA, arrow(ARROW, TARGET))
 
 
 def test_scd1_golden_then_rerun_changes_nothing(catalog: Catalog, table: Table) -> None:
@@ -202,3 +210,91 @@ def test_ignored_columns_keep_target_values(catalog: Catalog, table: Table) -> N
     merge_scd1(con, table, batch.to_reader(), ["id"], ignore_columns={"amount"})
 
     assert read(table)[0] == (1, "a2", 10.0, D(2026, 1, 1), "eu")
+
+
+# SCD2: #598's golden fixture; the target also holds a closed historical version of key 1
+SYSTEM = [
+    NestedField(6, "__floe_is_current", BooleanType(), required=True),
+    NestedField(7, "__floe_valid_from", TimestampType(), required=True),
+    NestedField(8, "__floe_valid_to", TimestampType(), required=False),
+]
+SCD2_SCHEMA = Schema(*SCHEMA.fields, *SYSTEM)
+SCD2_WIDER = Schema(*SCD2_SCHEMA.fields, NestedField(9, "tier", StringType(), required=False))  # fmt: skip
+SCD2_ARROW = ARROW.append(pa.field("__floe_is_current", pa.bool_(), nullable=False)).append(pa.field("__floe_valid_from", pa.timestamp("us"), nullable=False)).append(pa.field("__floe_valid_to", pa.timestamp("us")))  # fmt: skip
+T0, T_HIST, T = dt.datetime(2026, 1, 1), dt.datetime(2025, 12, 1), "T"
+SCD2_TARGET = [(*r, True, T0, None) for r in TARGET] + [(1, "a-old", 1.0, D(2025, 12, 1), "eu", False, T_HIST, T0)]  # fmt: skip
+SCD2_EXPECTED = sorted([
+    (1, "a-old", 1.0, D(2025, 12, 1), "eu", False, T_HIST, T0, None),
+    (1, "a", 10.0, D(2026, 1, 1), "eu", True, T0, None, None),
+    (3, "c", 30.0, D(2026, 1, 3), "us", True, T0, None, None),
+    (6, "f", None, D(2026, 1, 6), "eu", True, T0, None, None),
+    (2, "b", 20.0, D(2026, 1, 2), "eu", False, T0, T, None),
+    (4, "d", 40.0, D(2026, 1, 4), "us", False, T0, T, None),
+    (7, "g", None, D(2026, 1, 7), "us", False, T0, T, None),
+    (2, "b2", 20.0, D(2026, 1, 2), "us", True, T, None, None),
+    (4, "d", 40.0, D(2026, 1, 4), "us", True, T, None, "gold"),
+    (5, "e", 50.0, D(2026, 1, 5), "eu", True, T, None, "silver"),
+    (7, "g", 70.0, D(2026, 1, 7), "us", True, T, None, None),
+], key=repr)  # fmt: skip
+
+
+@pytest.fixture(params=list(LAYOUTS))
+def scd2_table(request: pytest.FixtureRequest, catalog: Catalog) -> Iterator[Table]:
+    yield from create(
+        catalog, request.param, SCD2_SCHEMA, arrow(SCD2_ARROW, SCD2_TARGET)
+    )
+
+
+def read_scd2(table: Table) -> list[tuple[Any, ...]]:
+    """Rows with the merge timestamp shown as `T`: one value, after every earlier one."""
+    rows = [tuple(r.values()) for r in table.scan().to_arrow().to_pylist()]
+    stamps = {v for r in rows for v in r[6:8] if v not in (None, T0, T_HIST)}
+    assert len(stamps) <= 1 and all(s > T0 for s in stamps)
+    return sorted(
+        (
+            tuple(T if i in (6, 7) and v in stamps else v for i, v in enumerate(r))
+            for r in rows
+        ),
+        key=repr,
+    )
+
+
+def test_scd2_golden_then_rerun_changes_nothing(
+    catalog: Catalog, scd2_table: Table
+) -> None:
+    con = open_duckdb(CATALOG, STORAGE)
+    table = ensure_table(
+        catalog,
+        NAMESPACE,
+        scd2_table.name()[1],
+        SCD2_WIDER,
+        "e",
+        schema_evolution="add_columns",
+    )
+    commits = len(table.metadata.metadata_log)
+    batch = arrow(BATCH_ARROW, BATCH)
+
+    result = merge_scd2(con, table, batch.to_reader(), ["id"])
+
+    assert read_scd2(table) == SCD2_EXPECTED
+    assert (
+        len(table.metadata.metadata_log) == commits + 1
+    )  # one catalog commit, per-bucket too
+    current = table.current_snapshot()
+    assert current is not None and result.write.snapshot_id == current.snapshot_id
+    assert result.write.files_written >= 1
+    counts = (result.inserted_count, result.updated_count, result.closed_count, result.unchanged_count)  # fmt: skip
+    assert counts == (4, 3, 3, 2)
+    assert_files_hold_their_partition(table)
+
+    snapshots = len(table.snapshots())
+    rerun = merge_scd2(con, table, batch.to_reader(), ["id"])
+
+    assert read_scd2(table) == SCD2_EXPECTED
+    assert len(table.snapshots()) == snapshots  # no new versions, no snapshot
+    assert rerun.write.files_written == 0
+    assert (rerun.inserted_count, rerun.closed_count, rerun.unchanged_count) == (
+        0,
+        0,
+        6,
+    )
