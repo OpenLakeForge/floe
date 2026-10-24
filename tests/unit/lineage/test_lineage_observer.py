@@ -5,6 +5,7 @@ import re
 import sys
 import threading
 import time
+import urllib.request
 from collections.abc import Iterator
 from contextlib import suppress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -29,6 +30,9 @@ class Server:
         self.redirect: str | None = None  # Location for POSTs to the default endpoint
         self.redirect_code = 302
         self.trickle = False  # dribble the response headers out byte by byte
+        self.trickle_to: str | None = (
+            None  # trickle a 307 to here, slower than the deadline
+        )
         server = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -43,6 +47,17 @@ class Server:
                 server.requests.append(
                     (self.path, dict(self.headers), json.loads(body))
                 )
+                if server.trickle_to:
+                    with suppress(OSError):
+                        self.wfile.write(b"HTTP/1.1 307 Temporary Redirect\r\n")
+                        self.wfile.write(f"Location: {server.trickle_to}\r\n".encode())
+                        self.wfile.write(b"Content-Length: 0\r\nX-Slow: ")
+                        for _ in range(15):
+                            self.wfile.write(b"x")
+                            self.wfile.flush()
+                            time.sleep(0.1)
+                        self.wfile.write(b"\r\n\r\n")
+                    return
                 if server.trickle:
                     with suppress(OSError):
                         self.wfile.write(b"HTTP/1.1 200 OK\r\nX-Slow: ")
@@ -138,6 +153,15 @@ def test_circuit_opens_after_threshold(
         f"warn: lineage: POST {server.url}/api/v1/lineage failed — event dropped" in err
     )
     assert err.count("disabled for this run after 1 consecutive failures") == 1
+
+
+def test_zero_max_failures_opens_the_circuit_on_the_first_failure(
+    server: Server,
+) -> None:
+    server.statuses = [500] * 3
+    obs = OpenLineageObserver(config(server.url, 0), [], "config.yml")
+    obs(RUN_STARTED)
+    assert obs.circuit_open
 
 
 def test_success_resets_failure_counter(server: Server) -> None:
@@ -287,7 +311,7 @@ def test_a_worker_exception_never_reaches_the_thread_hook(
 
     hooked: list[threading.ExceptHookArgs] = []
     monkeypatch.setattr(threading, "excepthook", hooked.append)
-    monkeypatch.setattr(observer._OPENER, "open", leak)  # pyright: ignore[reportPrivateUsage] -- the opener is the seam
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", leak)
     obs = OpenLineageObserver(
         config(server.url, api_key=SecretStr("secret-xyz")), [], ""
     )
@@ -309,6 +333,17 @@ def test_timeout_bounds_the_whole_request(
     assert obs.consecutive_failures == 1
 
 
+def test_an_expired_attempt_never_follows_its_redirect(
+    server: Server, other_server: Server
+) -> None:
+    server.trickle_to = f"{other_server.url}/elsewhere"
+    obs = OpenLineageObserver(config(server.url, 1, timeout_secs=1), [], "")
+    obs(RUN_STARTED)
+    assert obs.circuit_open
+    time.sleep(3)  # an abandoned worker would get the 307 1.5 s in and POST
+    assert other_server.requests == []
+
+
 CLI_CONFIG = """\
 version: "0.3"
 lineage: {{url: "{url}", namespace: ns, max_failures: 1}}
@@ -325,11 +360,15 @@ report: {{path: ./report}}
 
 
 def cli_run(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, url: str, file: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    url: str,
+    file: str,
+    template: str = CLI_CONFIG,
 ) -> int:
     (tmp_path / "in").mkdir()
     (tmp_path / "in/orders.csv").write_text("id\n1\n")
-    (tmp_path / "orders.yml").write_text(CLI_CONFIG.format(url=url, file=file))
+    (tmp_path / "orders.yml").write_text(template.format(url=url, file=file))
     monkeypatch.setattr(sys, "argv", ["floe", "run", "-c", str(tmp_path / "orders.yml")])  # fmt: skip
     return main()
 
@@ -349,6 +388,15 @@ def test_cli_failed_run_emits_fail(
     assert cli_run(tmp_path, monkeypatch, server.url, "missing.csv") == 1
     types = [b["eventType"] for b in server.bodies]
     assert types == ["START", "START", "FAIL", "FAIL"]
+
+
+def test_cli_config_failing_validation_emits_start_then_fail(
+    server: Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    columns = "      columns: [{{name: id, type: int64}}]\n"
+    template = CLI_CONFIG.replace(columns, columns + "      primary_key: [missing]\n")
+    assert cli_run(tmp_path, monkeypatch, server.url, "orders.csv", template) == 1
+    assert [b["eventType"] for b in server.bodies] == ["START", "FAIL"]
 
 
 def test_lineage_endpoint_down_never_fails_the_run(
