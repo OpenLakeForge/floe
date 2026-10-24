@@ -28,7 +28,7 @@ from floe.checks.normalize import (
 from floe.checks.rows import RowCheck, not_null_check, split_rows
 from floe.checks.unique import UniqueTracker, resolve_unique_keys
 from floe.config.parse import parse_config
-from floe.config.types import EntityConfig
+from floe.config.types import ArchiveTarget, EntityConfig
 from floe.read.avro import read_avro
 from floe.read.csv import read_csv
 from floe.read.orc import read_orc
@@ -37,7 +37,7 @@ from floe.read.xlsx import read_xlsx
 from floe.read.xml import read_xml
 from floe.report.entity import build_report, file_report, serialize
 from floe.storage.inputs import ResolvedInputs
-from floe.write.outputs import write_accepted, write_rejected
+from floe.write.outputs import AcceptedWrite, write_accepted, write_rejected
 
 CONFORMANCE = Path(__file__).parents[3] / "conformance"
 sys.path.insert(0, str(CONFORMANCE))
@@ -86,6 +86,14 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
             ["name", "addr", "price"] if entity.source.format == "xml" else df.columns
         )
         plan = plan_mismatch(entity, declared_names(entity), inputs)
+        uri = root.format(path.relative_to(base).as_posix())
+        if (
+            plan.rejected or plan.aborted
+        ):  # the raw file goes to the rejected dir, no row is read
+            accepted.append(pl.DataFrame())
+            raw = f"<ROOT>/out/rejected/{entity.name}/{path.name}"
+            files.append(file_report(entity, uri, 0, 0, [], plan, raw))
+            continue
         df = apply_mismatch(df, plan)
         df = df.select(
             pl.col(n) if n in df.columns else pl.lit(None, pl.String).alias(n)
@@ -116,7 +124,6 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
             written = write_rejected(bad, out / "rejected" / entity.name, mode)
             rejected_path = str(written).replace(str(tmp), "<ROOT>")
             rejected_path = UUID_PART.sub("part-<uuid>", rejected_path)
-        uri = root.format(path.relative_to(base).as_posix())
         files.append(file_report(entity, uri, df.height, bad.height, checks, plan, rejected_path))  # fmt: skip
     write = write_accepted(pl.concat(accepted), out / "accepted" / entity.name)
     rel = Path(entity.source.path).as_posix().removeprefix("./")
@@ -140,6 +147,8 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
 CASES = [
     ("casts", "spike.casts"),
     ("mismatch", "spike.customers"),
+    ("mismatch_abort", "spike.orders"),
+    ("mismatch_reject_file", "spike.orders"),
     ("unique_pii", "spike.orders"),
     ("example/standalone", "sales.orders"),
     ("avro_read", "spike.avro_read"),
@@ -164,3 +173,65 @@ def test_report_matches_recorded(case: str, entity_id: str, tmp_path: Path) -> N
     assert comparable(name, text) == comparable(name, expected[name])
     # the raw text is serde's pretty print: Python's re-dump of it changes nothing
     assert json.dumps(json.loads(text), indent=2, ensure_ascii=False) + "\n" == text
+
+
+def _build(
+    entity: EntityConfig, parts: list[str], **kw: Any
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    outcome = plan_mismatch(entity, ["id"], ["id"])
+    f = file_report(entity, "a.csv", 2, 0, [], outcome, **kw.pop("file", {}))
+    write = AcceptedWrite(len(parts), parts, 0, 0.0, 0)
+    inputs = ResolvedInputs([], ["a.csv", "b.csv"], "directory")
+    return f, build_report(
+        entity, "0.3", inputs, [f], write,
+        source_uri="s", accepted_uri="acc", rejected_uri=None, **kw,
+    )  # fmt: skip
+
+
+def _entity() -> EntityConfig:
+    path = CONFORMANCE / "example/standalone/config.yml"
+    return parse_config(path).entities[0]
+
+
+def test_accepted_path_only_when_parts_were_written() -> None:
+    f, _ = _build(_entity(), [])
+    assert f["output"]["accepted_path"] is None
+    f, _ = _build(_entity(), ["part-00000.parquet"])
+    assert f["output"]["accepted_path"] == "acc"
+
+
+def test_archive_echo_uses_the_resolved_incremental_mode() -> None:
+    entity = _entity()
+    archive = ArchiveTarget(path="arch", storage=None)
+    sink = entity.sink.model_copy(update={"archive": archive})
+    implicit = entity.model_copy(update={"sink": sink})
+    assert _build(implicit, [])[1]["sink"]["archive"] == {
+        "enabled": True,
+        "path": "arch",
+    }
+    explicit = implicit.model_copy(update={"incremental_mode": "file"})
+    assert _build(explicit, [])[1]["sink"]["archive"] == {
+        "enabled": False,
+        "path": "arch",
+    }
+
+
+def test_archived_path_is_reported() -> None:
+    f, _ = _build(_entity(), [], file={"archived_path": "arch/a.csv"})
+    assert f["output"]["archived_path"] == "arch/a.csv"
+
+
+def test_errors_path_is_reported() -> None:
+    # warn and abort write an error report (reject writes none); the pipeline passes its URI
+    f, _ = _build(_entity(), [], file={"errors_path": "rej/errors.json"})
+    assert f["output"]["errors_path"] == "rej/errors.json"
+
+
+def test_files_total_counts_reported_files() -> None:
+    assert _build(_entity(), [])[1]["results"]["files_total"] == 1
+
+
+def test_write_mode_argument_overrides_the_configured_one() -> None:
+    assert _build(_entity(), [])[1]["accepted_output"]["write_mode"] == "overwrite"
+    report = _build(_entity(), [], write_mode="append")[1]
+    assert report["accepted_output"]["write_mode"] == "append"

@@ -59,7 +59,7 @@ class EntityRun:
 def _chunks(entity: EntityConfig, path: Path, names: list[str]) -> Chunks:
     src = entity.source
     match src.format:
-        case "csv":
+        case "csv" | "tsv":
             for c in read_csv(path, src.options, names):
                 yield c.offset, c.df, c.ragged
         case "parquet":
@@ -198,7 +198,9 @@ def _typed(
             for n, c in zip(plan.names, columns, strict=True)
         ]
         typed = df.with_columns(t for t, _ in casts)
-        masks = df.select(m for _, m in casts)
+        masks = df.with_columns(
+            m for _, m in casts
+        )  # unlike select, broadcasts constant masks
     except pl.exceptions.InvalidOperationError as err:
         raise FloeRunError(f"entity.name={entity.name} cast failed: {err}") from err
     cast_checks = [
@@ -218,9 +220,11 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
     severity = entity.policy.severity
     declared = declared_names(entity)
     chunks = _chunks(entity, path, plan.names)
+    keys = plan.tracker.snapshot()
 
     def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
         # Rust skips the raw copy under PII: the file cannot be masked
+        plan.tracker.restore(keys)  # the unreadable file leaves no keys behind
         keep = entity.pii is None and entity.sink.rejected is not None
         raw = _copy_raw(entity, plan.config_dir, path, severity) if keep else None
         return _failed_file(entity, uri, len(declared), mismatch, err, raw), []
@@ -238,9 +242,7 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
         raw = _copy_raw(
             entity, plan.config_dir, path, "abort" if mismatch.aborted else "reject"
         )
-        out = file_report(entity, uri, 0, 0, [], mismatch, raw)
-        out["status"] = "aborted" if mismatch.aborted else "rejected"
-        return out, []
+        return file_report(entity, uri, 0, 0, [], mismatch, raw), []
 
     rows, bad_total = 0, 0
     masks: dict[tuple[str, str, str], list[pl.Series]] = {}
@@ -280,9 +282,19 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
     if bad_total and entity.sink.rejected and severity != "reject":
         stem = path.stem
         errors_path = _error_report(plan.config_dir, entity, stem, errors)
-    out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path)
-    out["output"]["errors_path"] = errors_path
+    out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path, None, errors_path)  # fmt: skip
     return out, [] if out["status"] == "aborted" else [_output(plan, df) for df in accepted]  # fmt: skip
+
+
+def _seed_unique(plan: _Plan, base: Path, columns: list[str]) -> None:
+    """Append mode: the keys already in the sink's parts count as seen (Rust `seed_unique_tracker_for_append`)."""
+    stored = {n: plan.out_map.get(n, n) for n in columns}  # the sink holds output names
+    for part in sorted(base.glob("part-*.parquet")):
+        try:  # only the key columns are read
+            keys = pl.read_parquet(part, columns=list(stored.values()))
+        except pl.exceptions.PolarsError as err:
+            raise FloeRunError(f"entity.name={plan.entity.name} cannot seed unique keys from {part}: {err}") from err  # fmt: skip
+        plan.tracker.seed(keys.rename({v: k for k, v in stored.items()}))
 
 
 def run_entity(
@@ -322,6 +334,9 @@ def run_entity(
             if (n := c.name if c.source else normalize_name(c.name, strategy)) != c.name
         },
     )  # fmt: skip
+    base = normalize_local_path(config_dir / sink.accepted.path)
+    if sink.write_mode == "append":
+        _seed_unique(plan, base, sorted({runtime.get(c, c) for k in keys for c in k}))
     client = LocalClient()
     inputs: ResolvedInputs = resolve_inputs(
         config_dir, src.path, src.format, entity.name, src.storage or "local", client,
@@ -336,7 +351,6 @@ def run_entity(
         if report["status"] == "aborted":
             break
 
-    base = normalize_local_path(config_dir / sink.accepted.path)
     if frames or sink.write_mode == "overwrite":
         empty = pl.DataFrame(schema=dict.fromkeys(names, pl.String)).select(
             cast_column(n, c.column_type)[0]

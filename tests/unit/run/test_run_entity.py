@@ -1,13 +1,16 @@
 """`run_entity`: statuses, outputs and file-level rejections for a local CSV entity."""
 
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 import pytest
 
+import floe.run.entity as entity_module
 from floe.config.parse import parse_config
 from floe.errors import FloeRunError
+from floe.read.xml import read_xml
 from floe.run.entity import run_entity
 
 CONFIG = """\
@@ -132,3 +135,75 @@ def test_incremental_file_is_refused(tmp_path: Path) -> None:
     entity = parse_config(tmp_path / "config.yml").entities[0]
     with pytest.raises(FloeRunError, match="incremental_mode file"):
         run_entity(entity, tmp_path, "0.3")
+
+
+def test_coerce_mode_runs_a_multi_row_file(tmp_path: Path) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n2,b\n")
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "    source:\n", "    source:\n      cast_mode: coerce\n"
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    run_entity(entity, tmp_path, "0.3")
+    assert accepted(tmp_path)["id"].to_list() == [1, 2]
+
+
+def test_tsv_source_uses_the_csv_reader(tmp_path: Path) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.tsv").write_text("id\tname\n1\ta\n")
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: tsv\n      path: ./in"
+    )
+    config = config.replace(
+        'options: {header: true, separator: ","}', "options: {header: true}"
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    run_entity(entity, tmp_path, "0.3")
+    assert accepted(tmp_path).to_dicts() == [{"id": 1, "name": "a"}]
+
+
+def test_append_runs_reject_keys_already_in_the_sink(tmp_path: Path) -> None:
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "    sink:\n", "    sink:\n      write_mode: append\n"
+    )
+    config = config.replace("type: int64, nullable: false", "type: int64, unique: true")
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
+    run_entity(entity, tmp_path, "0.3")
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,b\n2,c\n")
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert sorted(accepted(tmp_path)["id"].to_list()) == [1, 2]
+    (unique,) = report["unique_constraints"]
+    assert unique["target_duplicates_count"] == 1
+    assert "batch_duplicates_count" not in unique
+
+
+def test_an_unreadable_file_leaves_no_unique_keys_behind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(entity_module, "read_xml", partial(read_xml, chunk_rows=1))
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: xml\n      path: ./in"
+    )
+    config = config.replace(
+        'options: {header: true, separator: ","}', "options: {row_tag: item}"
+    )
+    config = config.replace("type: int64, nullable: false", "type: int64, unique: true")
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    # the parser sees the rows of the first 64 KiB block before it meets the damage after them
+    rows = "".join(
+        f"<item><id>{i}</id><pad>{'x' * 200}</pad></item>" for i in range(1, 400)
+    )
+    (tmp_path / "in" / "a.xml").write_text(f"<r>{rows}<item><id>")
+    (tmp_path / "in" / "b.xml").write_text("<r><item><id>1</id></item></r>")
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    files = run_entity(entity, tmp_path, "0.3").report["files"]
+    assert [f["status"] for f in files] == ["rejected", "success"]
+    assert accepted(tmp_path)["id"].to_list() == [1]

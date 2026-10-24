@@ -161,3 +161,23 @@ def test_all_null_files_neither_fail_nor_remember_keys() -> None:
         tracker.check(pl.DataFrame({"k": [None, None]}))[0].mask.to_list()
         == [False] * 2
     )
+
+
+def test_seeded_keys_count_as_target_duplicates() -> None:
+    tracker = UniqueTracker([["id"]])
+    tracker.seed(pl.DataFrame({"id": [1, 2, None]}))
+    (check,) = tracker.check(pl.DataFrame({"id": [2, 3, 3, 4]}))
+    assert check.mask.to_list() == [True, False, True, False]
+    (result,) = tracker.results()
+    assert (result.duplicates_count, result.target_duplicates_count) == (2, 1)
+
+
+def test_restore_forgets_the_keys_added_since_the_snapshot() -> None:
+    tracker = UniqueTracker([["id"]])
+    tracker.check(pl.DataFrame({"id": [1]}))
+    snapshot = tracker.snapshot()
+    tracker.check(pl.DataFrame({"id": [1, 2]}))
+    tracker.restore(snapshot)
+    (check,) = tracker.check(pl.DataFrame({"id": [2]}))
+    assert check.mask.to_list() == [False]
+    assert tracker.results()[0].duplicates_count == 0
