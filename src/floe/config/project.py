@@ -6,12 +6,14 @@ from typing import cast
 
 from pydantic import BaseModel
 
+from floe.config.entity import parse_entity
 from floe.config.storage import (
     CatalogsConfig,
     StoragesConfig,
     parse_catalogs,
     parse_storages,
 )
+from floe.config.types import EntityConfig
 from floe.config.vars import string_map
 from floe.config.yaml import (
     get_array,
@@ -54,7 +56,7 @@ class DomainConfig(BaseModel):
 
 
 class RootConfig(BaseModel):
-    # report, lineage and entities stay raw until their parsers are wired in
+    # report and lineage stay raw until their parsers are wired in
     version: str
     metadata: ProjectMetadata | None
     storages: StoragesConfig | None
@@ -63,7 +65,7 @@ class RootConfig(BaseModel):
     domains: list[DomainConfig]
     report: object
     lineage: object
-    entities: list[object]
+    entities: list[EntityConfig]
     config_files: list[Path]
 
 
@@ -166,11 +168,11 @@ def _merge_entity(
 
 def parse_entities(
     entities: list[object], defaults: dict[str, Hash], sources: dict[str, Hash]
-) -> list[object]:
-    result: list[object] = []
+) -> list[EntityConfig]:
+    result: list[EntityConfig] = []
     for index, entity in enumerate(entities):
         try:
-            result.append(_merge_entity(entity, sources, defaults))
+            result.append(parse_entity(_merge_entity(entity, sources, defaults)))
         except FloeError as error:
             name = _hint(entity, "name")
             who = f"entities[{index}]" + (
@@ -213,6 +215,16 @@ def parse_root(doc: object) -> RootConfig:
     defaults = {d.name: d.defaults for d in domains if d.defaults is not None}
     sources = parse_sources(root["sources"], version) if "sources" in root else {}
     entities = parse_entities(get_array(root, "entities", "root"), defaults, sources)
+    try:
+        qualified = config_version(version) >= V0_3
+    except FloeConfigError:
+        qualified = False
+    entities = [
+        e.model_copy(update={"id": f"{e.domain}.{e.name}"})
+        if qualified and e.domain is not None
+        else e
+        for e in entities
+    ]
     return RootConfig(
         version=version,
         metadata=metadata,
