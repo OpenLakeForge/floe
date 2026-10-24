@@ -76,6 +76,7 @@ class DomainConfig(BaseModel):
     name: str
     incoming_dir: str | None
     defaults: Hash | None  # raw; `validate_domains` rejects the keys D7 forbids
+    resolved_incoming_dir: str | None = None  # set by the template pass
 
 
 class RootConfig(BaseModel):

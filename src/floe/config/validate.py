@@ -1,9 +1,6 @@
 """Entity validation, ported from `config/validate.rs` (`validate_sink`, `validate_schema` and their helpers)."""
-# `_get` is unused since #733; removed in #735
-# pyright: reportUnusedFunction=false
 
-from typing import cast
-
+from floe.checks.normalize import output_names
 from floe.config.project import RootConfig, config_version
 from floe.config.types import EntityConfig, WriteMode
 from floe.config.yaml import rust_debug
@@ -49,12 +46,6 @@ _TYPE_NAMES = {
 def _canonical(value: str) -> str:
     # D7 (#584 S1, S2): no trim, unlike Rust's `normalize_value`; the run-time paths never trimmed.
     return value.lower().replace("-", "").replace("_", "")
-
-
-def _get(value: object, key: str) -> object:
-    return (
-        cast(dict[object, object], value).get(key) if isinstance(value, dict) else None
-    )
 
 
 def _fail(entity: EntityConfig, message: str) -> FloeConfigError:
@@ -181,9 +172,11 @@ def _check_merge(entity: EntityConfig) -> None:
             entity,
             "sink.accepted.merge.scd2 is only supported with sink.write_mode=merge_scd2",
         )
-    # ponytail: schema names are not normalised (`normalize_columns` lands with #640), so a
-    # collision with a normalised output name is missed.
-    names = {c.name for c in entity.schema_.columns}
+    nc = (
+        entity.schema_.normalize_columns
+    )  # raw strategy: an unsupported one is validate_schema's error
+    strategy = (nc.strategy or "snake_case") if nc and nc.enabled else None
+    names = set(output_names(entity.schema_.columns, strategy))
     resolved = {
         field: (default if (v := getattr(merge.scd2, field)) is None else v).strip()
         for field, default in SCD2_DEFAULTS.items()

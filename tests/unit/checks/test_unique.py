@@ -7,6 +7,7 @@ the run pipeline (#655) lands.
 """
 
 import json
+import struct
 from pathlib import Path
 
 import polars as pl
@@ -114,6 +115,18 @@ def test_float_samples_use_rust_display() -> None:
     tracker.check(pl.DataFrame({"f": [1e-7, 1e-7, 10.0, 10.0, nan, nan]}))
     values = [s.values["f"] for s in tracker.results()[0].samples]
     assert values == ["0.0000001", "10", "NaN"]
+
+
+def test_float_keys_compare_by_bits() -> None:
+    # Rust `UniqueKey::F64` compares `to_bits()`: 0.0 and -0.0 differ, as do NaN payloads
+    quiet, payload = (
+        struct.unpack("<d", struct.pack("<Q", bits))[0]
+        for bits in (0x7FF8 << 48, 0x7FF8 << 48 | 1)
+    )
+    tracker = UniqueTracker([["f"]])
+    df = pl.DataFrame({"f": [0.0, -0.0, quiet, payload, 0.0, quiet]})
+    assert tracker.check(df)[0].mask.to_list() == [False] * 4 + [True] * 2
+    assert tracker.results()[0].duplicates_count == 2
 
 
 def test_string_ties_sort_on_rust_escapes() -> None:
