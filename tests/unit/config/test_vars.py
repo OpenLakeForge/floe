@@ -244,3 +244,13 @@ def test_extract_config_env_vars_survives_a_recursive_alias(tmp_path: Path) -> N
 
 def test_extract_config_env_vars_missing_config(tmp_path: Path) -> None:
     assert extract_config_env_vars(tmp_path / "nope.yml") == {}
+
+
+def test_env_file_path_keeps_parent_dir_after_a_symlink(tmp_path: Path) -> None:
+    (tmp_path / "actual" / "sub").mkdir(parents=True)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "link").symlink_to(tmp_path / "actual" / "sub")
+    (tmp_path / "actual" / "e.yml").write_text("A: from-actual\n")
+    assert build_env_vars(tmp_path / "config", "link/../e.yml", {}, {}) == {
+        "A": "from-actual"
+    }

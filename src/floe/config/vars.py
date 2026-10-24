@@ -1,17 +1,16 @@
 """Variable resolution, ported from `config/template.rs`, `config/parse.rs` (`extract_raw_env_vars`) and `vars/resolve.rs`."""
 
-import os
 from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 
 from floe.config.yaml import load_yaml, rust_debug, yaml_hash, yaml_string
 from floe.errors import FloeConfigError, FloeError
+from floe.storage.paths import normalize_local_path
 
 
 def resolve_local_path(config_dir: Path, raw: str) -> Path:
-    # ponytail: lexical `..` collapse only; Rust keeps `..` after a symlink. Fix with the storage port.
-    return Path(os.path.normpath(config_dir / raw))
+    return normalize_local_path(config_dir / raw)
 
 
 def string_map(value: object, ctx: str) -> dict[str, str]:
