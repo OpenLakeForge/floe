@@ -142,10 +142,9 @@ def build_report(
     src, sink, severity = entity.source, entity.sink, entity.policy.severity
     for f in files:
         f["output"]["accepted_path"] = accepted_uri
+    # files_total counts the file reports, as Rust: an abort leaves the later files out
     totals: dict[str, int] = {
-        "files_total": len(
-            files
-        ),  # Rust counts the file reports: an abort leaves later files out
+        "files_total": len(files),
         "files_skipped": 0,
         "rows_total": sum(f["row_count"] for f in files),
         "accepted_total": sum(f["accepted_count"] for f in files),

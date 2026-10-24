@@ -194,27 +194,3 @@ def read_xml(
         yield XmlChunk(done, frame())
     elif done == 0:
         raise FloeIoError(f"row_tag={row_tag} produced no rows")
-
-
-def _in_namespace(tag: str, namespace: str | None) -> bool:
-    return namespace is None or tag[1:].partition("}")[0] == namespace
-
-
-def xml_columns(path: Path, options: SourceOptions) -> list[str]:
-    """Sorted child element names of the first row: the probe Rust's `read_input_columns` runs."""
-    row_tag, namespace, _ = _options(options)
-    try:
-        for _, element in ET.iterparse(path):
-            if _matches(element, row_tag, namespace):
-                return sorted(
-                    {
-                        c.tag.rpartition("}")[2]
-                        for c in element
-                        if _in_namespace(c.tag, namespace)
-                    }
-                )
-    except ET.ParseError as err:
-        raise FloeIoError(f"xml parse error: {err}") from err
-    except OSError as err:
-        raise FloeIoError(f"failed to read xml at {path}: {err}") from err
-    raise FloeIoError(f"row_tag={row_tag} not found in xml")
