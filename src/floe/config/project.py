@@ -1,6 +1,9 @@
 """Project root, domains and named sources, ported from `config/parse.rs` (`parse_root`, `parse_domains`, `parse_sources`)."""
 
 import re
+from collections.abc import Generator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
@@ -26,7 +29,7 @@ from floe.config.yaml import (
     yaml_hash,
     yaml_string,
 )
-from floe.errors import FloeConfigError, FloeError
+from floe.errors import FloeConfigError, FloeError, FloeIoError
 
 Hash = dict[object, object]
 V0_3 = (0, 3)
@@ -67,6 +70,29 @@ class RootConfig(BaseModel):
     lineage: object
     entities: list[EntityConfig]
     config_files: list[Path]
+
+
+@dataclass
+class IncludeOrigins:
+    """Originating file of each `domains` and `entities` item by index; `None` for inline items."""
+
+    root: Path | None = None
+    sources: Path | None = None
+    domains: list[Path | None] = field(default_factory=list[Path | None])
+    entities: list[Path | None] = field(default_factory=list[Path | None])
+
+
+@contextmanager
+def at_file(path: Path | None) -> Generator[None]:
+    """`with_source_path` / `with_origin`: name the file an error came from."""
+    try:
+        yield
+    except FloeError as e:
+        if path is None:
+            raise
+        raise (FloeIoError if isinstance(e, FloeIoError) else FloeConfigError)(
+            f"{path}: {e}"
+        ) from e
 
 
 _VERSION = re.compile(r"\+?0*([0-9]{1,20})\.\+?0*([0-9]{1,20})")
@@ -113,7 +139,12 @@ def parse_domain(item: object, version: str) -> DomainConfig:
     return DomainConfig(name=name, incoming_dir=incoming_dir, defaults=defaults)
 
 
-def parse_sources(value: object, version: str) -> dict[str, Hash]:
+def parse_sources(value: object, version: str, origin: Path | None) -> dict[str, Hash]:
+    with at_file(origin):
+        return _parse_sources(value, version)
+
+
+def _parse_sources(value: object, version: str) -> dict[str, Hash]:
     if config_version(version) < V0_3:
         raise FloeConfigError('root.sources requires root.version >= "0.3"')
     sources: dict[str, Hash] = {}
@@ -177,6 +208,8 @@ def _merge_entity(
 
 def parse_entities(
     entities: list[object],
+    origins: IncludeOrigins,
+    domains: list[DomainConfig],
     defaults: dict[str, Hash],
     sources: dict[str, Hash],
     qualified: bool,
@@ -191,15 +224,44 @@ def parse_entities(
                 )
             result.append(parsed)
         except FloeError as error:
-            name = _hint(entity, "name")
-            who = f"entities[{index}]" + (
-                "" if name is None else f" (entity.name={name})"
-            )
-            raise FloeConfigError(f"{who}: {error}") from error
+            raise _entity_error(
+                index, entity, error, origins, domains, defaults, sources
+            ) from error
     return result
 
 
-def parse_root(doc: object) -> RootConfig:
+def _entity_error(
+    index: int,
+    entity: object,
+    error: FloeError,
+    origins: IncludeOrigins,
+    domains: list[DomainConfig],
+    defaults: dict[str, Hash],
+    sources: dict[str, Hash],
+) -> FloeConfigError:
+    """Name the entity, its file and the files its domain defaults and source came from."""
+    name = _hint(entity, "name")
+    who = f"entities[{index}]" + ("" if name is None else f" (entity.name={name})")
+    origin = origins.entities[index] if index < len(origins.entities) else None
+    contributors: list[Path | None] = []
+    if (domain := _hint(entity, "domain")) in defaults:
+        files = [o for d, o in zip(domains, origins.domains) if d.name == domain]
+        contributors.append(files[-1] if files else None)
+    ref = _field(_field(entity, "source"), "ref")
+    if isinstance(ref, str) and ref in sources:
+        contributors.append(origins.sources)
+    prefix = str(origin) if origin else ""
+    if any(c is not None for c in contributors):
+        inherits = ", ".join(str(c or origins.root) for c in contributors)
+        prefix = (
+            f"{prefix} (inherits from {inherits})"
+            if origin
+            else f"inherits from {inherits}"
+        )
+    return FloeConfigError(f"{prefix}: {who}: {error}" if prefix else f"{who}: {error}")
+
+
+def parse_root(doc: object, origins: IncludeOrigins) -> RootConfig:
     root = yaml_hash(doc, "root")
     validate_known_keys(root, "root", ROOT_KEYS)
     version = get_string(root, "version", "root")
@@ -228,11 +290,23 @@ def parse_root(doc: object) -> RootConfig:
         env = EnvConfig(file=opt_string(env_hash, "file", "env"), vars=env_vars)
     catalogs = parse_catalogs(root["catalogs"]) if "catalogs" in root else None
     items = yaml_array(root["domains"], "domains") if "domains" in root else []
-    domains = [parse_domain(item, version) for item in items]
+    domains: list[DomainConfig] = []
+    for index, item in enumerate(items):
+        with at_file(origins.domains[index] if index < len(origins.domains) else None):
+            domains.append(parse_domain(item, version))
     defaults = {d.name: d.defaults for d in domains if d.defaults is not None}
-    sources = parse_sources(root["sources"], version) if "sources" in root else {}
+    sources = (
+        parse_sources(root["sources"], version, origins.sources)
+        if "sources" in root
+        else {}
+    )
     entities = parse_entities(
-        get_array(root, "entities", "root"), defaults, sources, supports_v0_3(version)
+        get_array(root, "entities", "root"),
+        origins,
+        domains,
+        defaults,
+        sources,
+        supports_v0_3(version),
     )
     return RootConfig(
         version=version,

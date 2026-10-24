@@ -9,7 +9,7 @@ from floe.config.yaml import load_yaml, rust_debug, yaml_hash, yaml_string
 from floe.errors import FloeConfigError, FloeError
 
 
-def _resolve_local_path(config_dir: Path, raw: str) -> Path:
+def resolve_local_path(config_dir: Path, raw: str) -> Path:
     # ponytail: lexical `..` collapse only; Rust keeps `..` after a symlink. Fix with the storage port.
     return Path(os.path.normpath(config_dir / raw))
 
@@ -51,7 +51,7 @@ def build_env_vars(
 ) -> dict[str, str]:
     merged = dict(profile_vars)
     if env_file is not None:
-        path = _resolve_local_path(config_dir, env_file)
+        path = resolve_local_path(config_dir, env_file)
         docs = load_yaml(path)
         if not docs:
             raise FloeConfigError(f"env file {path} is empty")
@@ -66,7 +66,7 @@ def extract_config_env_vars(path: Path) -> dict[str, str]:
         root = yaml_hash(docs[0], "root") if docs else {}
         env = yaml_hash(root.get("env"), "env")
         with suppress(FloeError, IndexError):
-            file = _resolve_local_path(
+            file = resolve_local_path(
                 path.parent, yaml_string(env.get("file"), "env.file")
             )
             for k, v in yaml_hash(load_yaml(file)[0], "env.file").items():
