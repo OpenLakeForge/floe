@@ -1,0 +1,158 @@
+"""OpenLineage observer for `floe run` over plain HTTP (Rust: `lineage/mod.rs`). Lineage failures never fail the run."""
+
+import json
+import os
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+import uuid
+from collections.abc import Sequence
+from http.client import HTTPMessage
+from typing import IO, Any
+from urllib.parse import urlsplit
+
+from floe.config.project import LineageConfig
+from floe.config.types import EntityConfig
+from floe.lineage.events import Datasets, EventBuilder, event_type, resolve_api_key
+
+RETRY_DELAYS_S = (0.0, 0.1, 0.5)
+
+
+def _origin(url: str) -> tuple[str, str | None, int | None]:
+    u = urlsplit(url)
+    return u.scheme, u.hostname, u.port or {"http": 80, "https": 443}.get(u.scheme)
+
+
+class _Redirect(urllib.request.HTTPRedirectHandler):
+    """Redirects as reqwest follows them: 307/308 keep the POST; `Authorization` never crosses origins."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        if code in (307, 308) and req.get_method() == "POST":
+            new = urllib.request.Request(
+                newurl, req.data, dict(req.headers), method="POST"
+            )
+        else:
+            new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new and _origin(newurl) != _origin(req.full_url):
+            new.remove_header("Authorization")
+        return new
+
+
+_OPENER = urllib.request.build_opener(_Redirect)
+
+
+def _warn(message: str) -> None:
+    print(f"warn: lineage: {message}", file=sys.stderr)
+
+
+class OpenLineageObserver:
+    """A run observer (`floe.run.events.Observer`) posting OpenLineage `RunEvent`s."""
+
+    # ponytail: unsynchronised breaker counters; add a lock when entities run in parallel.
+    def __init__(
+        self, config: LineageConfig, entities: Sequence[EntityConfig], config_path: str
+    ) -> None:
+        self.config = config
+        self.events = EventBuilder(config, entities, config_path)
+        path = (config.endpoint or "").strip() or "api/v1/lineage"
+        self.url = f"{config.url.rstrip('/')}/{path.lstrip('/')}"
+        secret = config.api_key.get_secret_value() if config.api_key else None
+        self.api_key = resolve_api_key(secret, os.environ.get("OPENLINEAGE_API_KEY"))
+        self.disabled = bool(self.api_key and ("\r" in self.api_key or "\n" in self.api_key))  # fmt: skip
+        if self.disabled:
+            _warn("api_key contains a line break; events are not sent")
+        self.entity_run_ids: dict[str, str] = {}
+        self.run_uuid: str | None = None
+        self.consecutive_failures = 0
+        self.circuit_open = False
+
+    def __call__(self, event: dict[str, Any]) -> None:
+        kind, ts = event["event"], event["ts_ms"]
+        job = self.events.run_job_name
+        if kind == "run_started":
+            self.consecutive_failures, self.circuit_open = 0, False
+            self.run_uuid = str(uuid.uuid4())
+            self._post("START", ts, self.run_uuid, job)
+        elif kind == "entity_started":
+            run_id = self.entity_run_ids[event["name"]] = str(uuid.uuid4())
+            self._post("START", ts, run_id, event["name"])
+        elif kind == "entity_finished":
+            name = event["name"]
+            run_id = self.entity_run_ids.get(name, f"{event['run_id']}.entity.{name}")
+            inputs, outputs = self.events.datasets(name, event)
+            self._post(event_type(event["status"]), ts, run_id, name, inputs, outputs)
+        elif kind == "run_finished":
+            run_id = self.run_uuid or str(uuid.uuid4())
+            self._post(event_type(event["status"]), ts, run_id, job)
+
+    def fail_run(self) -> None:
+        """A run that raised: `START` if it never started, then `FAIL` (Rust: the CLI failure path)."""
+        ts = time.time_ns() // 1_000_000
+        if self.run_uuid is None:
+            self({"event": "run_started", "ts_ms": ts})
+        self({"event": "run_finished", "status": "failed", "ts_ms": ts})
+
+    def _post(
+        self,
+        event_type: str,
+        ts_ms: int,
+        run_id: str,
+        job: str,
+        inputs: Datasets | None = None,
+        outputs: Datasets | None = None,
+    ) -> None:
+        if self.circuit_open or self.disabled:
+            return
+        body = self.events.body(event_type, ts_ms, run_id, job, inputs, outputs)
+        data = json.dumps(body).encode()
+        for delay in RETRY_DELAYS_S:
+            time.sleep(delay)
+            retryable = self._attempt(data)
+            if retryable is None:
+                self.consecutive_failures = 0
+                return
+            if not retryable:
+                break
+        _warn(f"POST {self.url} failed — event dropped")
+        self.consecutive_failures += 1
+        failures = self.consecutive_failures
+        if failures >= (self.config.max_failures or 3) and not self.circuit_open:
+            self.circuit_open = True
+            _warn(f"disabled for this run after {failures} consecutive failures — check endpoint {self.url}")  # fmt: skip
+
+    def _attempt(self, data: bytes) -> bool | None:
+        """None on success, else whether the failure is retryable (transport, timeout, 5xx, 429).
+
+        The timeout bounds the whole request, as reqwest's does; urllib's alone bounds each socket read.
+        """
+        timeout = 5 if self.config.timeout_secs is None else self.config.timeout_secs
+        result: list[bool | None] = []
+        thread = threading.Thread(
+            target=lambda: result.append(self._send(data, timeout)), daemon=True
+        )
+        thread.start()
+        thread.join(timeout)
+        return result[0] if result else True
+
+    def _send(self, data: bytes, timeout: float) -> bool | None:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        request = urllib.request.Request(self.url, data, headers, method="POST")
+        try:
+            with _OPENER.open(request, timeout=timeout):
+                return None
+        except urllib.error.HTTPError as e:
+            return e.code == 429 or e.code >= 500
+        except Exception:  # noqa: BLE001 -- the text may carry the token; never let it reach a thread hook
+            return True
