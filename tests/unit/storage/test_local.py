@@ -1,5 +1,6 @@
 """Ported from `crates/floe-core/tests/unit/io/storage/local.rs` (client cases)."""
 
+import os
 import threading
 import time
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from floe.errors import FloeRunError, FloeStorageError
+from floe.storage import local
 from floe.storage.archive import archive_input_file
 from floe.storage.inputs import InputFile
 from floe.storage.local import LocalClient
@@ -48,6 +50,73 @@ def test_stale_lock_is_broken(tmp_path: Path) -> None:
     lock.write_text("0:12345")
     assert LocalClient().write_conditional(str(tmp_path / "state.json"), None, b"x")
     assert not lock.exists()
+
+
+def test_same_size_writes_in_one_tick_get_distinct_versions(tmp_path: Path) -> None:
+    path, client = tmp_path / "state.json", LocalClient()
+    first = client.write_conditional(str(path), None, b"aa")
+    assert first is not None
+    st = path.stat()
+    second = client.write_conditional(str(path), first, b"bb")
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns))  # same size, same mtime
+    assert second is not None
+    assert client.write_conditional(str(path), first, b"cc") is None
+    assert path.read_bytes() == b"bb"
+
+
+def test_concurrent_stale_lock_breakers_have_one_winner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = tmp_path / "state.json"
+    Path(f"{base}.lock").write_text("0:12345")
+    seen = threading.local()
+    both_saw_stale = threading.Barrier(2)
+    real = local._lock_is_stale  # pyright: ignore[reportPrivateUsage]
+
+    def stale(lock: Path) -> bool:
+        result = real(lock)
+        if not getattr(seen, "done", False):
+            seen.done = True
+            both_saw_stale.wait(5)  # both decide to break before either does
+        return result
+
+    monkeypatch.setattr(local, "_lock_is_stale", stale)
+    inside = 0
+    peak = 0
+    guard = threading.Lock()
+
+    def worker() -> None:
+        nonlocal inside, peak
+        with local._file_lock(base):  # pyright: ignore[reportPrivateUsage]
+            with guard:
+                inside += 1
+                peak = max(peak, inside)
+            time.sleep(0.3)
+            with guard:
+                inside -= 1
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert peak == 1
+
+
+def test_crash_during_replace_keeps_old_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, client = tmp_path / "state.json", LocalClient()
+    version = client.write_conditional(str(path), None, b"old")
+
+    def boom(*_: object) -> None:
+        raise OSError("crash")
+
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(FloeStorageError):
+        client.write_conditional(str(path), version, b"new")
+    assert path.read_bytes() == b"old"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["state.json"]
 
 
 def test_fresh_lock_blocks_until_released(tmp_path: Path) -> None:
