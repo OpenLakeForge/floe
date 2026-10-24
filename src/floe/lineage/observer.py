@@ -2,6 +2,7 @@
 
 import json
 import os
+import socket
 import sys
 import threading
 import time
@@ -9,7 +10,8 @@ import urllib.error
 import urllib.request
 import uuid
 from collections.abc import Sequence
-from http.client import HTTPMessage
+from contextlib import suppress
+from http.client import HTTPConnection, HTTPMessage, HTTPResponse, HTTPSConnection
 from typing import IO, Any
 from urllib.parse import urlsplit
 
@@ -25,8 +27,55 @@ def _origin(url: str) -> tuple[str, str | None, int | None]:
     return u.scheme, u.hostname, u.port or {"http": 80, "https": 443}.get(u.scheme)
 
 
+class _Attempt:
+    """One POST and its redirects. On the deadline the caller cancels it: the live socket is shut down and nothing is sent afterwards."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.cancelled = False
+        self.sock: socket.socket | None = None
+
+    def hooked(self, base: type[HTTPConnection]) -> type[HTTPConnection]:
+        attempt = self
+
+        class Conn(base):
+            def connect(self) -> None:
+                super().connect()
+                with attempt.lock:
+                    if attempt.cancelled:
+                        self.close()
+                        raise OSError("lineage attempt cancelled")
+                    attempt.sock = self.sock
+
+        return Conn
+
+    def cancel(self) -> None:
+        with self.lock:
+            self.cancelled = True
+            if self.sock:
+                with suppress(OSError):
+                    self.sock.shutdown(socket.SHUT_RDWR)
+
+
+class _Handler(urllib.request.HTTPHandler, urllib.request.HTTPSHandler):
+    """urllib's HTTP(S) handlers, but every connection reports its socket to the attempt."""
+
+    def __init__(self, attempt: _Attempt) -> None:
+        super().__init__()
+        self.attempt = attempt
+
+    def http_open(self, req: urllib.request.Request) -> HTTPResponse:
+        return self.do_open(self.attempt.hooked(HTTPConnection), req)
+
+    def https_open(self, req: urllib.request.Request) -> HTTPResponse:
+        return self.do_open(self.attempt.hooked(HTTPSConnection), req)
+
+
 class _Redirect(urllib.request.HTTPRedirectHandler):
     """Redirects as reqwest follows them: 307/308 keep the POST; `Authorization` never crosses origins."""
+
+    def __init__(self, attempt: _Attempt) -> None:
+        self.attempt = attempt
 
     def redirect_request(
         self,
@@ -37,6 +86,8 @@ class _Redirect(urllib.request.HTTPRedirectHandler):
         headers: HTTPMessage,
         newurl: str,
     ) -> urllib.request.Request | None:
+        if self.attempt.cancelled:
+            return None
         if code in (307, 308) and req.get_method() == "POST":
             new = urllib.request.Request(
                 newurl, req.data, dict(req.headers), method="POST"
@@ -46,9 +97,6 @@ class _Redirect(urllib.request.HTTPRedirectHandler):
         if new and _origin(newurl) != _origin(req.full_url):
             new.remove_header("Authorization")
         return new
-
-
-_OPENER = urllib.request.build_opener(_Redirect)
 
 
 def _warn(message: str) -> None:
@@ -126,7 +174,11 @@ class OpenLineageObserver:
         _warn(f"POST {self.url} failed — event dropped")
         self.consecutive_failures += 1
         failures = self.consecutive_failures
-        if failures >= (self.config.max_failures or 3) and not self.circuit_open:
+        if (
+            failures
+            >= (3 if self.config.max_failures is None else self.config.max_failures)
+            and not self.circuit_open
+        ):
             self.circuit_open = True
             _warn(f"disabled for this run after {failures} consecutive failures — check endpoint {self.url}")  # fmt: skip
 
@@ -134,23 +186,29 @@ class OpenLineageObserver:
         """None on success, else whether the failure is retryable (transport, timeout, 5xx, 429).
 
         The timeout bounds the whole request, as reqwest's does; urllib's alone bounds each socket read.
+        An expired attempt is cancelled, so it never sends later (a redirect, a stale event).
         """
         timeout = 5 if self.config.timeout_secs is None else self.config.timeout_secs
+        attempt = _Attempt()
         result: list[bool | None] = []
         thread = threading.Thread(
-            target=lambda: result.append(self._send(data, timeout)), daemon=True
+            target=lambda: result.append(self._send(data, timeout, attempt)),
+            daemon=True,
         )
         thread.start()
         thread.join(timeout)
+        if thread.is_alive():
+            attempt.cancel()
         return result[0] if result else True
 
-    def _send(self, data: bytes, timeout: float) -> bool | None:
+    def _send(self, data: bytes, timeout: float, attempt: _Attempt) -> bool | None:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         request = urllib.request.Request(self.url, data, headers, method="POST")
+        opener = urllib.request.build_opener(_Handler(attempt), _Redirect(attempt))
         try:
-            with _OPENER.open(request, timeout=timeout):
+            with opener.open(request, timeout=timeout):
                 return None
         except urllib.error.HTTPError as e:
             return e.code == 429 or e.code >= 500
