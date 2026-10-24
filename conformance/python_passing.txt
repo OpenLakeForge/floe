@@ -6,11 +6,7 @@ config/d1_catalog_glue
 config/d1_catalog_unity
 config/d1_sink_delta
 config/d1_sink_duckdb
-config/d1_source_avro
 config/d1_source_fixed
-config/d1_source_orc
-config/d1_source_xlsx
-config/d1_source_xml
 config/d1_storage_adls
 config/d1_storage_gcs
 config/div_S1
@@ -24,13 +20,7 @@ config/div_S13
 config/div_S13_ctrl
 config/div_S14a_ctrl_csv
 config/div_S14a_ctrl_json
-config/div_S14b
-config/div_S14b_ctrl
-config/div_S15
-config/div_S15_ctrl
 config/div_S16a_ctrl
-config/div_S16b
-config/div_S16b_ctrl
 config/div_S17
 config/div_S17_ctrl
 config/div_S18

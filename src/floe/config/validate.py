@@ -13,9 +13,7 @@ MIN_VERSION = (0, 1)
 QUALIFIED_VERSION = (0, 3)
 MAX_JSON_COLUMNS = 1024
 CAST_MODES = ("strict", "coerce")
-# D1 (#619): formats Rust 0.7 reads that 0.8 drops.
-DROPPED_SOURCE_FORMATS = ("fixed", "orc", "xlsx", "avro", "xml")
-SOURCE_FORMATS = ("csv", "tsv", "parquet", "json")
+SOURCE_FORMATS = ("csv", "tsv", "parquet", "json", "orc", "avro", "xlsx", "xml")
 REMOTE_URIS = tuple(f"{s}://" for s in ("s3", "gs", "gcs", "abfs", "abfss", "az"))
 NORMALIZE_STRATEGIES = ("snake_case", "lower", "camel_case", "none")
 MISMATCH_MISSING = ("reject_file", "fill_nulls")
@@ -428,7 +426,7 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
 
 def _check_source(entity: EntityConfig, config: RootConfig, profiled: bool) -> None:
     source = entity.source
-    if source.format in DROPPED_SOURCE_FORMATS:  # D1 (#619)
+    if source.format == "fixed":  # D1 (#619): fixed-width is dropped
         raise _fail(entity, f"source.format={source.format} is not supported in 0.8")
     if source.format not in SOURCE_FORMATS:
         raise _fail(entity, f"source.format={source.format} is unsupported")
@@ -447,6 +445,26 @@ def _check_source(entity: EntityConfig, config: RootConfig, profiled: bool) -> N
             entity,
             f"source.options.json_mode={mode} is unsupported (allowed: array, ndjson)",
         )
+    if source.format == "xlsx":
+        sheet, header_row = options.sheet, options.header_row
+        if sheet is not None and not sheet.strip():
+            raise _fail(entity, "source.options.sheet must not be empty")
+        header_row = 1 if header_row is None else header_row
+        if header_row == 0:
+            raise _fail(entity, "source.options.header_row must be greater than 0")
+        data_row = header_row + 1 if options.data_row is None else options.data_row
+        if data_row <= header_row:
+            raise _fail(
+                entity,
+                "source.options.data_row must be greater than source.options.header_row",
+            )
+    if source.format == "xml":
+        if not (options.row_tag or "").strip():
+            raise _fail(entity, "source.options.row_tag is required for xml input")
+        for field in ("namespace", "value_tag"):
+            value = getattr(options, field)
+            if value is not None and not value.strip():
+                raise _fail(entity, f"source.options.{field} must not be empty")
     # D7 (#584 S3, S4): Rust 0.7 only rejects these when the reader opens the file.
     if source.format in ("csv", "tsv"):
         separator, encoding = options.separator or "", options.encoding or "utf8"
