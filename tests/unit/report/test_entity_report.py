@@ -28,7 +28,7 @@ from floe.checks.normalize import (
 from floe.checks.rows import RowCheck, not_null_check, split_rows
 from floe.checks.unique import UniqueTracker, resolve_unique_keys
 from floe.config.parse import parse_config
-from floe.config.types import EntityConfig
+from floe.config.types import ArchiveTarget, EntityConfig
 from floe.read.avro import read_avro
 from floe.read.csv import read_csv
 from floe.read.orc import read_orc
@@ -37,7 +37,7 @@ from floe.read.xlsx import read_xlsx
 from floe.read.xml import read_xml
 from floe.report.entity import build_report, file_report, serialize
 from floe.storage.inputs import ResolvedInputs
-from floe.write.outputs import write_accepted, write_rejected
+from floe.write.outputs import AcceptedWrite, write_accepted, write_rejected
 
 CONFORMANCE = Path(__file__).parents[3] / "conformance"
 sys.path.insert(0, str(CONFORMANCE))
@@ -170,3 +170,59 @@ def test_report_matches_recorded(case: str, entity_id: str, tmp_path: Path) -> N
     assert comparable(name, text) == comparable(name, expected[name])
     # the raw text is serde's pretty print: Python's re-dump of it changes nothing
     assert json.dumps(json.loads(text), indent=2, ensure_ascii=False) + "\n" == text
+
+
+def _build(
+    entity: EntityConfig, parts: list[str], **kw: Any
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    outcome = plan_mismatch(entity, ["id"], ["id"])
+    f = file_report(entity, "a.csv", 2, 0, [], outcome, **kw.pop("file", {}))
+    write = AcceptedWrite(len(parts), parts, 0, 0.0, 0)
+    inputs = ResolvedInputs([], ["a.csv", "b.csv"], "directory")
+    return f, build_report(
+        entity, "0.3", inputs, [f], write,
+        source_uri="s", accepted_uri="acc", rejected_uri=None, **kw,
+    )  # fmt: skip
+
+
+def _entity() -> EntityConfig:
+    path = CONFORMANCE / "example/standalone/config.yml"
+    return parse_config(path).entities[0]
+
+
+def test_accepted_path_only_when_parts_were_written() -> None:
+    f, _ = _build(_entity(), [])
+    assert f["output"]["accepted_path"] is None
+    f, _ = _build(_entity(), ["part-00000.parquet"])
+    assert f["output"]["accepted_path"] == "acc"
+
+
+def test_archive_echo_uses_the_resolved_incremental_mode() -> None:
+    entity = _entity()
+    archive = ArchiveTarget(path="arch", storage=None)
+    sink = entity.sink.model_copy(update={"archive": archive})
+    implicit = entity.model_copy(update={"sink": sink})
+    assert _build(implicit, [])[1]["sink"]["archive"] == {
+        "enabled": True,
+        "path": "arch",
+    }
+    explicit = implicit.model_copy(update={"incremental_mode": "file"})
+    assert _build(explicit, [])[1]["sink"]["archive"] == {
+        "enabled": False,
+        "path": "arch",
+    }
+
+
+def test_archived_path_is_reported() -> None:
+    f, _ = _build(_entity(), [], file={"archived_path": "arch/a.csv"})
+    assert f["output"]["archived_path"] == "arch/a.csv"
+
+
+def test_files_total_counts_reported_files() -> None:
+    assert _build(_entity(), [])[1]["results"]["files_total"] == 1
+
+
+def test_write_mode_argument_overrides_the_configured_one() -> None:
+    assert _build(_entity(), [])[1]["accepted_output"]["write_mode"] == "overwrite"
+    report = _build(_entity(), [], write_mode="append")[1]
+    assert report["accepted_output"]["write_mode"] == "append"
