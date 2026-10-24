@@ -1,13 +1,16 @@
 """`run_entity`: statuses, outputs and file-level rejections for a local CSV entity."""
 
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 import pytest
 
+import floe.run.entity as entity_module
 from floe.config.parse import parse_config
 from floe.errors import FloeRunError
+from floe.read.xml import read_xml
 from floe.run.entity import run_entity
 
 CONFIG = """\
@@ -112,6 +115,17 @@ def test_mismatch_reject_file_skips_the_rows(tmp_path: Path) -> None:
     assert accepted(tmp_path).height == 0
 
 
+def test_unreadable_file_is_rejected_with_the_reader_rule(tmp_path: Path) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_bytes(b"")
+    (tmp_path / "config.yml").write_text(CONFIG.format(severity="reject", mismatch=""))
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    f = run_entity(entity, tmp_path, "0.3").report["files"][0]
+    assert f["status"] == "rejected"
+    assert f["mismatch"]["error"]["rule"] == "csv_read_error"
+    assert f["validation"]["errors"] == 1
+
+
 def test_incremental_file_is_refused(tmp_path: Path) -> None:
     (tmp_path / "config.yml").write_text(
         CONFIG.format(severity="warn", mismatch="").replace(
@@ -151,6 +165,50 @@ def test_tsv_source_uses_the_csv_reader(tmp_path: Path) -> None:
     assert accepted(tmp_path).to_dicts() == [{"id": 1, "name": "a"}]
 
 
+def test_append_runs_reject_keys_already_in_the_sink(tmp_path: Path) -> None:
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "    sink:\n", "    sink:\n      write_mode: append\n"
+    )
+    config = config.replace("type: int64, nullable: false", "type: int64, unique: true")
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
+    run_entity(entity, tmp_path, "0.3")
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,b\n2,c\n")
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert sorted(accepted(tmp_path)["id"].to_list()) == [1, 2]
+    (unique,) = report["unique_constraints"]
+    assert unique["target_duplicates_count"] == 1
+    assert "batch_duplicates_count" not in unique
+
+
+def test_an_unreadable_file_leaves_no_unique_keys_behind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(entity_module, "read_xml", partial(read_xml, chunk_rows=1))
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: xml\n      path: ./in"
+    )
+    config = config.replace(
+        'options: {header: true, separator: ","}', "options: {row_tag: item}"
+    )
+    config = config.replace("type: int64, nullable: false", "type: int64, unique: true")
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    # the parser sees the rows of the first 64 KiB block before it meets the damage after them
+    rows = "".join(
+        f"<item><id>{i}</id><pad>{'x' * 200}</pad></item>" for i in range(1, 400)
+    )
+    (tmp_path / "in" / "a.xml").write_text(f"<r>{rows}<item><id>")
+    (tmp_path / "in" / "b.xml").write_text("<r><item><id>1</id></item></r>")
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    files = run_entity(entity, tmp_path, "0.3").report["files"]
+    assert [f["status"] for f in files] == ["rejected", "success"]
+    assert accepted(tmp_path)["id"].to_list() == [1]
+
+
 def test_primary_key_names_are_trimmed_before_they_become_required(
     tmp_path: Path,
 ) -> None:
@@ -177,3 +235,25 @@ def test_unique_samples_use_the_schema_column_names(tmp_path: Path) -> None:
     (unique,) = run_entity(entity, tmp_path, "0.3").report["unique_constraints"]
     assert unique["columns"] == ["id"]
     assert unique["samples"] == [{"values": {"id": "1"}, "count": 1}]
+
+
+def test_a_prefixed_xml_selector_keeps_its_value(tmp_path: Path) -> None:
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: xml\n      path: ./in"
+    )
+    config = config.replace(
+        'options: {header: true, separator: ","}',
+        "options: {row_tag: row, namespace: 'urn:a'}",
+    )
+    config = config.replace(
+        "{name: id, type: int64, nullable: false}",
+        "{name: id, source: 'a:id', type: int64}",
+    )
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    xml = '<rows xmlns:a="urn:a"><a:row><a:id>1</a:id></a:row></rows>'
+    (tmp_path / "in" / "a.xml").write_text(xml)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    run_entity(entity, tmp_path, "0.3")
+    assert accepted(tmp_path)["id"].to_list() == [1]

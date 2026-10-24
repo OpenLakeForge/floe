@@ -16,6 +16,10 @@ _SUFFIXES = {
     "tsv": [".tsv"],
     "parquet": [".parquet"],
     "json": [".json", ".jsonl", ".ndjson", ".djson"],
+    "avro": [".avro"],
+    "orc": [".orc"],
+    "xlsx": [".xlsx"],
+    "xml": [".xml"],
 }
 
 

@@ -34,6 +34,7 @@ class UniqueResult:
     columns: list[str]
     duplicates_count: int
     samples: list[UniqueSample]
+    target_duplicates_count: int = 0  # duplicates of keys seeded from the existing sink
 
 
 def resolve_unique_keys(
@@ -116,6 +117,8 @@ class _Constraint:
     seen: pl.DataFrame
     dup_counts: list[pl.DataFrame] = field(default_factory=list[pl.DataFrame])
     duplicates: int = 0
+    target: int = 0
+    seeded: pl.DataFrame = field(default_factory=pl.DataFrame)
 
     @property
     def ids(self) -> list[str]:
@@ -137,16 +140,50 @@ class UniqueTracker:
         """
         return [self._apply(c, df) for c in self._constraints]
 
-    def _apply(self, c: _Constraint, df: pl.DataFrame) -> RowCheck:
+    def snapshot(self) -> list[tuple[pl.DataFrame, list[pl.DataFrame], int, int]]:
+        """The state `restore` goes back to: a file that is rejected as unreadable leaves no keys."""
+        return [
+            (c.seen, list(c.dup_counts), c.duplicates, c.target)
+            for c in self._constraints
+        ]
+
+    def restore(
+        self, snapshot: list[tuple[pl.DataFrame, list[pl.DataFrame], int, int]]
+    ) -> None:
+        for c, (seen, counts, dups, target) in zip(
+            self._constraints, snapshot, strict=True
+        ):
+            c.seen, c.dup_counts, c.duplicates, c.target = (
+                seen,
+                list(counts),
+                dups,
+                target,
+            )
+
+    def seed(self, df: pl.DataFrame) -> None:
+        """Remember the keys of rows already in the sink (append mode); a later hit is a target duplicate."""
+        for c in self._constraints:
+            if all(n in df.columns for n in c.columns):
+                keys = self._keys(c, df)
+                valid = keys.select(pl.all_horizontal(pl.all().is_not_null()))[c.ids[0]]
+                fresh = keys.filter(valid).unique()
+                c.seen = pl.concat([c.seen, fresh]).unique() if c.seen.width else fresh
+                c.seeded = c.seen
+
+    @staticmethod
+    def _keys(c: _Constraint, df: pl.DataFrame) -> pl.DataFrame:
         keys = pl.DataFrame(
             [df[n].alias(k) for n, k in zip(c.columns, c.ids, strict=True)]
         )
         # Rust compares `to_bits()`: -0.0 differs from 0.0, NaN payloads differ; key on the bits too
-        keys = keys.with_columns(
+        return keys.with_columns(
             pl.col(k).map_batches(_float_bits, return_dtype=pl.UInt64).alias(k + _BITS)
             for k in c.ids
             if keys.schema[k].is_float()
         )
+
+    def _apply(self, c: _Constraint, df: pl.DataFrame) -> RowCheck:
+        keys = self._keys(c, df)
         valid = keys.select(pl.all_horizontal(pl.all().is_not_null()))[c.ids[0]]
         dup = pl.Series([False] * df.height)
         if (
@@ -166,6 +203,8 @@ class UniqueTracker:
             c.seen = pl.concat([c.seen, fresh]) if c.seen.width else fresh
             dups = keys.filter(dup)
             c.duplicates += dups.height
+            if c.seeded.width:
+                c.target += dups.join(c.seeded, on=keys.columns, how="semi").height
             if dups.height:
                 c.dup_counts.append(dups.group_by(keys.columns).len(_COUNT))
         single = len(c.columns) == 1
@@ -198,4 +237,4 @@ class UniqueTracker:
             )
             for row in top.iter_rows(named=True)
         ]
-        return UniqueResult(c.columns, c.duplicates, samples)
+        return UniqueResult(c.columns, c.duplicates, samples, c.target)

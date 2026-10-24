@@ -118,8 +118,10 @@ def _unique_report(severity: str, r: UniqueResult) -> dict[str, Any]:
         _UNIQUE_EFFECT[severity] if r.duplicates_count else ("none", "none")
     )
     out: dict[str, Any] = {"columns": r.columns, "duplicates_count": r.duplicates_count}
-    if r.duplicates_count:  # no target history: every duplicate is a batch one
-        out["batch_duplicates_count"] = r.duplicates_count
+    if batch := r.duplicates_count - r.target_duplicates_count:
+        out["batch_duplicates_count"] = batch
+    if r.target_duplicates_count:
+        out["target_duplicates_count"] = r.target_duplicates_count
     out |= {
         "affected_rows_count": r.duplicates_count,
         "action": action,
