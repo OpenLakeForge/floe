@@ -176,3 +176,15 @@ def test_full_refresh_reprocesses_and_resets_the_state(tmp_path: Path) -> None:
 def test_glob_with_a_parent_directory_component_resolves(tmp_path: Path) -> None:
     entity = setup(tmp_path, src="./in/../in/*.csv")
     assert go(entity, tmp_path, "r1").report["results"]["files_total"] == 1
+
+
+def test_bare_source_filename_roots_the_state_in_the_config_dir(tmp_path: Path) -> None:
+    """#813: `orders.csv` gets the same default state as `./orders.csv`, not one under the file."""
+    entity = setup(tmp_path, src="orders.csv")
+    (tmp_path / "orders.csv").write_text("id\n1\n")
+    go(entity, tmp_path, "r1")
+    assert (tmp_path / ".floe/state/d/orders/state.json").exists()
+    assert (
+        go(entity, tmp_path, "r2").report["files"][0]["skip_reason"]
+        == "already_ingested"
+    )
