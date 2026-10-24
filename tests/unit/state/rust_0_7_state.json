@@ -1,0 +1,13 @@
+{
+  "schema": "floe.state.file-ingest.v2",
+  "entity": "orders",
+  "updated_at": "2026-10-24T16:55:59.76282827Z",
+  "files": {
+    "local:///work/in/orders.csv": {
+      "processed_at": "2026-10-24T16:55:59.76282827Z",
+      "size": 16,
+      "mtime": "2026-10-24T16:55:59.744124967Z"
+    }
+  },
+  "claims": {}
+}
