@@ -70,6 +70,9 @@ def _glob_files(pattern: str) -> list[Path]:
 
 def _visible(files: list[Path], root: Path) -> list[Path]:
     """D23: drop anything under a `.floe` directory (the default state location), as the cloud listing does."""
+    root = normalize_local_path(
+        root
+    )  # the matches are normalised, so `..` in the root must be too
     return [f for f in files if ".floe" not in f.relative_to(root).parts[:-1]]
 
 

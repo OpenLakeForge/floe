@@ -164,3 +164,8 @@ def test_full_refresh_refuses_incremental_file(tmp_path: Path) -> None:
     root = parse_config(tmp_path / "config.yml")
     with pytest.raises(FloeConfigError, match="#787"):
         run(tmp_path / "config.yml", root, full_refresh=True)
+
+
+def test_glob_with_a_parent_directory_component_resolves(tmp_path: Path) -> None:
+    entity = setup(tmp_path, src="./in/../in/*.csv")
+    assert go(entity, tmp_path, "r1").report["results"]["files_total"] == 1
