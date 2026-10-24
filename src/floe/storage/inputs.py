@@ -1,5 +1,6 @@
 """Input resolution, ported from `io/storage/ops/inputs.rs` (`resolve_inputs`)."""
 
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePath
@@ -72,17 +73,17 @@ def _local_files(
         )
 
     if any(c in raw for c in "*?["):
-        pattern = Path(raw) if Path(raw).is_absolute() else config_dir / raw
-        files = sorted(set(_glob_files(str(pattern))), key=str)
+        pattern = os.path.join(config_dir, raw)
+        files = sorted(set(_glob_files(pattern)), key=str)
         if not files:
-            raise no_match(pattern.parent, pattern.name)
+            raise no_match(Path(pattern).parent, Path(pattern).name)
         return files, "directory"
     base = normalize_local_path(config_dir / raw)
     if base.is_file():
         return [base], "file"
     globs = (
         [glob_override]
-        if glob_override
+        if glob_override is not None
         else [
             "*" + "".join(f"[{c.lower()}{c.upper()}]" if c.isalpha() else c for c in s)
             for s in suffixes_for_format(fmt)
@@ -90,7 +91,10 @@ def _local_files(
     )
     if not base.is_dir():
         raise no_match(base, ",".join(globs))
-    patterns = [str(base / "**" / g if recursive else base / g) for g in globs]
+    patterns = [
+        os.path.join(base, "**", g) if recursive else os.path.join(base, g)
+        for g in globs
+    ]
     files = sorted({f for p in patterns for f in _glob_files(p)}, key=str)
     if not files:
         raise no_match(base, ",".join(globs))
