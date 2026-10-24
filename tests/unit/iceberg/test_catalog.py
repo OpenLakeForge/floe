@@ -61,11 +61,14 @@ def test_schema_match_rejects_any_difference(incoming: Schema, message: str) -> 
 
 def test_partition_spec_names_and_transforms() -> None:
     spec = build_partition_spec(
-        schema(ID, NAME, TS), [(" id ", "Identity"), ("ts", " DAY")], "e"
+        schema(ID, NAME, TS),
+        [(" id ", "Identity"), ("ts", " DAY"), ("name", " Bucket[16]")],
+        "e",
     )
     assert [(f.source_id, f.name, transform_name(f)) for f in spec.fields] == [
         (1, "id", "identity"),
         (3, "ts_day", "day"),
+        (2, "name_bucket", "bucket[16]"),
     ]
 
 
@@ -79,6 +82,10 @@ def test_partition_spec_names_and_transforms() -> None:
         (
             [("id", "bucket")],
             "entity.name=e iceberg partition_spec column id has unsupported runtime transform bucket",
+        ),
+        (
+            [("id", "bucket[0]")],
+            "entity.name=e iceberg partition_spec column id has unsupported runtime transform bucket[0]",
         ),
     ],
 )
