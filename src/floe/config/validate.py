@@ -175,7 +175,7 @@ def _check_merge(entity: EntityConfig) -> None:
     # collision with a normalised output name is missed.
     names = {c.name for c in entity.schema_.columns}
     resolved = {
-        field: (getattr(merge.scd2, field) or default).strip()
+        field: (default if (v := getattr(merge.scd2, field)) is None else v).strip()
         for field, default in SCD2_DEFAULTS.items()
     }
     for field, value in resolved.items():

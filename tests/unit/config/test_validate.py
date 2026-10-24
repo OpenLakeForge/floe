@@ -138,6 +138,12 @@ def test_d2_iceberg_accepts_merge(tmp_path: Path) -> None:
     )
 
 
+def test_scd2_empty_column_is_not_defaulted(tmp_path: Path) -> None:
+    sink = "{write_mode: merge_scd2, accepted: {format: iceberg, path: out, merge: {scd2: {valid_to_column: ''}}}}"
+    with pytest.raises(FloeConfigError, match="scd2.valid_to_column must not be empty"):
+        check(tmp_path, f"{{{COLS}, primary_key: [id]}}", sink=sink)
+
+
 @pytest.mark.parametrize(
     ("sink", "message"),
     [
