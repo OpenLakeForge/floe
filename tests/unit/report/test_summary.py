@@ -13,8 +13,8 @@ from record import normalize  # pyright: ignore[reportMissingImports]
 from test_entity_report import CASES, CONFORMANCE, run_entity
 
 from floe.config.parse import parse_config
+from floe.config.project import ProjectMetadata
 from floe.report.summary import build_summary, id_path, run_outcome, write_reports
-from floe.storage.local import LocalClient
 
 RUN_ID = "2026-01-01T00-00-00Z"
 SUMMARY_CASES = list(dict.fromkeys(case for case, _ in CASES))
@@ -40,7 +40,7 @@ def test_summary_matches_recorded(case: str, tmp_path: Path) -> None:
         config_path=str(tmp_path / "config.yml"),
         report_path=str(tmp_path / "report"),
     )
-    write_reports(LocalClient(), summary, reports)
+    write_reports(summary, reports)
 
     expected = load_expected(CONFORMANCE / case, "python")
     prefix = "reports/report/run_ID/"
@@ -141,3 +141,25 @@ def test_summary_status(
     )
     assert (s["run"]["status"], s["run"]["exit_code"]) == (status, code)
     assert [e["status"] for e in s["entities"]] == entity_statuses
+
+
+def test_summary_config_metadata_and_overwrite(tmp_path: Path) -> None:
+    meta = ProjectMetadata(project="p", description=None, owner="o", tags=["a"])
+    kw: dict[str, Any] = {
+        "run_id": "r",
+        "started_at": "t",
+        "finished_at": "t",
+        "duration_ms": 0,
+        "config_path": "c",
+        "report_path": str(tmp_path),
+    }
+    s = build_summary("0.3", [], metadata=meta, **kw)
+    assert s["config"] == {
+        "path": "c",
+        "version": "0.3",
+        "metadata": {"project": "p", "owner": "o", "tags": ["a"]},
+    }
+    assert "metadata" not in build_summary("0.3", [], **kw)["config"]
+    write_reports(s, [])
+    write_reports(s, [])  # Rust overwrites
+    assert (tmp_path / "run_r" / "run.summary.json").read_text().startswith("{")
