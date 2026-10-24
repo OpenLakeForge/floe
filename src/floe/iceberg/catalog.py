@@ -3,7 +3,9 @@
 import os
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
+from urllib.parse import urlsplit
 
+import duckdb
 from pyiceberg.catalog import Catalog, load_catalog
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.schema import Schema
@@ -21,6 +23,7 @@ PartitionFields = Sequence[tuple[str, str]]
 _TRANSFORMS = frozenset({"identity", "year", "month", "day", "hour"})
 # first id of a partition field, as in the Iceberg spec
 _PARTITION_FIELD_ID_START = 1000
+DUCKDB_CATALOG = "floe_catalog"
 
 
 def transform_name(field: PartitionField) -> str:
@@ -96,6 +99,61 @@ def open_catalog(
             ).lower()
     with run_error("rest catalog init failed"):
         return load_catalog(definition.name, **props)
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _sql_options(options: dict[str, str]) -> str:
+    return ", ".join(f"{k} {_sql_literal(v)}" for k, v in options.items())
+
+
+def open_duckdb(
+    definition: CatalogDefinition, storage: StorageDefinition | None = None
+) -> duckdb.DuckDBPyConnection:
+    """DuckDB with the catalog attached as `DUCKDB_CATALOG`; S3 credentials come from the AWS chain, as for PyIceberg."""
+    auth: dict[str, str] = {}
+    if definition.credential is not None:
+        props = _credential_props(
+            definition.name, definition.credential.get_secret_value()
+        )
+        if "token" in props:
+            auth["TOKEN"] = props["token"]
+        else:
+            client_id, _, secret = props["credential"].partition(":")
+            auth |= {
+                "CLIENT_ID": client_id,
+                "CLIENT_SECRET": secret,
+                "OAUTH2_SERVER_URI": definition.oauth2_server_uri
+                or f"{definition.uri.rstrip('/')}/v1/oauth/tokens",
+            }
+            if definition.scope is not None:
+                auth["OAUTH2_SCOPE"] = definition.scope
+    s3 = {"PROVIDER": "credential_chain"}
+    if storage is not None:
+        if storage.region is not None:
+            s3["REGION"] = storage.region
+        if storage.endpoint is not None:
+            endpoint = urlsplit(storage.endpoint)
+            s3["ENDPOINT"] = endpoint.netloc or endpoint.path
+            s3["USE_SSL"] = str(endpoint.scheme != "http").lower()
+        if storage.path_style_access:
+            s3["URL_STYLE"] = "path"
+    # no access delegation, as in `open_catalog`
+    attach = {"TYPE": "iceberg", "ENDPOINT": definition.uri, "ACCESS_DELEGATION_MODE": "none"}  # fmt: skip
+    with run_error("duckdb catalog attach failed"):
+        # ponytail: DuckDB's default memory_limit and spill dir; set the ADR's limits when the run wires merges
+        con = duckdb.connect()
+        con.execute(f"CREATE SECRET (TYPE s3, {_sql_options(s3)})")
+        if auth:
+            con.execute(f"CREATE SECRET floe_auth (TYPE iceberg, {_sql_options(auth)})")  # fmt: skip
+            attach["SECRET"] = "floe_auth"
+        else:
+            attach["AUTHORIZATION_TYPE"] = "none"
+        warehouse = _sql_literal(definition.warehouse or "")
+        con.execute(f"ATTACH {warehouse} AS {DUCKDB_CATALOG} ({_sql_options(attach)})")  # fmt: skip
+    return con
 
 
 def build_partition_spec(
