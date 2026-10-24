@@ -72,16 +72,23 @@ def test_a_failing_entity_keeps_the_reports_of_the_ones_before_it(
         sys, "argv", ["floe", "run", "-c", str(tmp_path / "config.yml")]
     )
     assert main() == 1
+    assert summary(tmp_path)["run"]["status"] == "failed"
+    assert summary(tmp_path)["run"]["exit_code"] == 1
     assert [e["name"] for e in summary(tmp_path)["entities"]] == ["d.a"]
     assert (tmp_path / "out" / "accepted" / "a").exists()
 
 
 def test_a_remote_report_storage_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     (tmp_path / "in").mkdir()
     (tmp_path / "in" / "a.csv").write_text("id\n1\n")
-    storages = "storages:\n  definitions:\n    - {name: audit, type: s3, bucket: b, region: eu-west-1}\n"
+    storages = (
+        "storages:\n  default: local\n  definitions:\n    - {name: local, type: local}\n"
+        "    - {name: audit, type: s3, bucket: b, region: eu-west-1}\n"
+    )
     config = (
         f'version: "0.3"\n{storages}domains:\n  - name: d\nentities:\n'
         + ENTITY.format(name="a")
@@ -93,5 +100,8 @@ def test_a_remote_report_storage_is_refused(
         sys, "argv", ["floe", "run", "-c", str(tmp_path / "config.yml")]
     )
     assert main() == 1
+    assert (
+        "report.storage=audit (type s3) is not supported yet" in capsys.readouterr().err
+    )
     assert not (tmp_path / "runs").exists()
     assert not (tmp_path / "out").exists()

@@ -76,6 +76,8 @@ def _run(config: str) -> int:
         report_path=str(normalize_local_path(config_dir / root.report.path)),
         metadata=root.metadata,
     )  # fmt: skip
+    if failure:  # Rust: failed -> exit code 1
+        summary["run"] |= {"status": "failed", "exit_code": 1}
     write_reports(summary, reports)
     if failure:
         raise failure
