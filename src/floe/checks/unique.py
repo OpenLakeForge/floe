@@ -1,11 +1,12 @@
 """Unique keys within a file and across the files of one run (Rust: `checks/unique.rs`)."""
 
 import math
+import struct
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
 
-import numpy as np
 import polars as pl
 
 from floe.checks.rows import RowCheck
@@ -62,7 +63,10 @@ _STR_ESCAPES = {
 
 
 def _float_bits(s: pl.Series) -> pl.Series:
-    return pl.Series(s.to_numpy().astype(np.float64).view(np.uint64))
+    # ponytail: loops over the distinct duplicated float keys; vectorise if that set gets large
+    return pl.Series(
+        [struct.unpack("<Q", struct.pack("<d", x))[0] for x in s], dtype=pl.UInt64
+    )
 
 
 def _debug(name: str, dtype: pl.DataType) -> pl.Expr:
@@ -82,7 +86,9 @@ def _debug(name: str, dtype: pl.DataType) -> pl.Expr:
     if dtype.is_float():
         bits = c.map_batches(_float_bits, return_dtype=pl.UInt64)
         return pl.format("F64({})", bits.cast(pl.String))
-    # ponytail: date/datetime keys use `Other(display)`, unverified against Rust; ties may order differently
+    if isinstance(dtype, pl.Datetime):  # chrono prints the fraction only when not zero
+        return pl.format('Other("{}")', c.dt.to_string("%Y-%m-%d %H:%M:%S%.f"))
+    # ponytail: date keys use `Other(display)`, unverified against Rust; ties may order differently
     return pl.format('Other("{}")', c.cast(pl.String))
 
 
@@ -94,6 +100,12 @@ def _text(value: object) -> str:
         if not math.isfinite(value):
             return "NaN" if math.isnan(value) else str(value).replace("infinity", "inf")
         return format(Decimal(repr(value)).normalize(), "f")
+    if isinstance(value, datetime):
+        if not value.microsecond:
+            spec = "seconds"
+        else:
+            spec = "milliseconds" if value.microsecond % 1000 == 0 else "microseconds"
+        return value.replace(tzinfo=None).isoformat(sep=" ", timespec=spec)
     return str(value)
 
 
@@ -128,27 +140,28 @@ class UniqueTracker:
         keys = pl.DataFrame(
             [df[n].alias(k) for n, k in zip(c.columns, c.ids, strict=True)]
         )
-        # ponytail: floats compare with Polars equality (-0.0 == 0.0), Rust compares bit patterns
-        flags = keys.select(
-            pl.all_horizontal(pl.all().is_not_null()).alias("valid"),
-            pl.struct(c.ids).is_first_distinct().alias("first"),
-        )
-        valid = flags["valid"]
-        dup = valid & ~flags["first"]
-        if c.seen.width:
-            hit = keys.join(
-                c.seen.with_columns(pl.lit(True).alias(_SEEN)),
-                on=c.ids,
-                how="left",
-                maintain_order="left",
-            )[_SEEN]
-            dup = dup | (valid & hit.fill_null(False))
-        fresh = keys.filter(valid & ~dup)
-        c.seen = pl.concat([c.seen, fresh]) if c.seen.width else fresh
-        dups = keys.filter(dup)
-        c.duplicates += dups.height
-        if dups.height:
-            c.dup_counts.append(dups.group_by(c.ids).len(_COUNT))
+        valid = keys.select(pl.all_horizontal(pl.all().is_not_null()))[c.ids[0]]
+        dup = pl.Series([False] * df.height)
+        if (
+            valid.any()
+        ):  # skips all-null (Null dtype) frames, which cannot join the seen keys
+            # ponytail: floats compare with Polars equality (-0.0 == 0.0), Rust compares bit patterns
+            first = keys.select(pl.struct(c.ids).is_first_distinct())[c.ids[0]]
+            dup = valid & ~first
+            if c.seen.width:
+                hit = keys.join(
+                    c.seen.with_columns(pl.lit(True).alias(_SEEN)),
+                    on=c.ids,
+                    how="left",
+                    maintain_order="left",
+                )[_SEEN]
+                dup = dup | (valid & hit.fill_null(False))
+            fresh = keys.filter(valid & ~dup)
+            c.seen = pl.concat([c.seen, fresh]) if c.seen.width else fresh
+            dups = keys.filter(dup)
+            c.duplicates += dups.height
+            if dups.height:
+                c.dup_counts.append(dups.group_by(c.ids).len(_COUNT))
         single = len(c.columns) == 1
         name = c.columns[0] if single else f"[{','.join(c.columns)}]"
         message = "duplicate value" if single else "duplicate key"

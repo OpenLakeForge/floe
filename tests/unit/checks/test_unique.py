@@ -121,3 +121,30 @@ def test_string_ties_sort_on_rust_escapes() -> None:
     keys = ["\x00", "A", "B", "C", "D", "E"]
     tracker.check(pl.DataFrame({"s": keys + keys}))
     assert [s.values["s"] for s in tracker.results()[0].samples] == list("ABCDE")
+
+
+def test_datetime_samples_print_the_fraction_only_when_not_zero() -> None:
+    raw = pl.DataFrame(
+        {"t": ["2024-01-01T12:34:56.123"] * 2 + ["2024-01-02T00:00:00"] * 2}
+    )
+    typed, _ = cast_column("t", "datetime")
+    tracker = UniqueTracker([["t"]])
+    tracker.check(raw.with_columns(typed))
+    values = [s.values["t"] for s in tracker.results()[0].samples]
+    assert values == ["2024-01-01 12:34:56.123", "2024-01-02 00:00:00"]
+
+
+def test_all_null_files_neither_fail_nor_remember_keys() -> None:
+    tracker = UniqueTracker([["k"]])
+    assert (
+        tracker.check(pl.DataFrame({"k": [None, None]}))[0].mask.to_list()
+        == [False] * 2
+    )
+    assert tracker.check(pl.DataFrame({"k": ["a", "a"]}))[0].mask.to_list() == [
+        False,
+        True,
+    ]
+    assert (
+        tracker.check(pl.DataFrame({"k": [None, None]}))[0].mask.to_list()
+        == [False] * 2
+    )
