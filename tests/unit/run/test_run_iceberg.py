@@ -207,9 +207,12 @@ def test_add_columns_evolves_the_table(tmp_path: Path, catalog: LocalCatalog) ->
 
 
 def test_partition_spec_is_applied(tmp_path: Path, catalog: LocalCatalog) -> None:
-    run(tmp_path, "id,name\n1,a\n", partition="partition_spec: [{column: name, transform: identity}]")  # fmt: skip
-    (field,) = catalog.tables["sales.orders"].spec().fields
-    assert field.name == "name"
+    spec = "partition_spec: [{column: id, transform: bucket, num_buckets: 4}, {column: name, transform: identity}]"  # fmt: skip
+    run(tmp_path, "id,name\n1,a\n2,b\n", partition=spec)
+    run(tmp_path, "id,name\n3,c\n", mode="append", partition=spec)
+    fields = catalog.tables["sales.orders"].spec().fields
+    assert [(f.name, str(f.transform)) for f in fields] == [("id_bucket", "bucket[4]"), ("name", "identity")]  # fmt: skip
+    assert rows(catalog) == [(1, "a"), (2, "b"), (3, "c")]
 
 
 def test_bucket_maps_to_pyiceberg_notation(tmp_path: Path) -> None:
