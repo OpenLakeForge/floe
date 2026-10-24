@@ -1,0 +1,19 @@
+domain: sales
+name: orders
+source:
+  format: csv
+  path: s3://my-bucket/raw/orders/
+sink:
+  accepted:
+    format: parquet
+    path: out/orders/
+  rejected:
+    format: csv
+    path: /rejected/orders
+    storage: scratch
+policy:
+  severity: warn
+schema:
+  columns:
+    - name: id
+      type: string

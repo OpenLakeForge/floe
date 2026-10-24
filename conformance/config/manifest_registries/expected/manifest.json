@@ -1,0 +1,288 @@
+{
+  "schema": "floe.manifest.v1",
+  "generated_at_ts_ms": 0,
+  "floe_version": "<volatile>",
+  "spec_version": "0.3",
+  "manifest_id": "<volatile>",
+  "manifest_revision": "<volatile>",
+  "runtime_env": "cli",
+  "config_uri": "local://<ROOT>/work/config.yml",
+  "config_checksum": "sha256:27cb058e895731e4611f0e8697409164fadcf306a4074ef606bcdc4585f077fb",
+  "config_files": [
+    {
+      "path": "config.yml",
+      "sha256": "256c62472536d401b5ed50e3d57ff64ff93fadb3a6ab9c069252b96d47b652b4"
+    },
+    {
+      "path": "domains/hr/_domain.yml",
+      "sha256": "a03708b5c877be45fd16d081da8feda500293ba97f23cae0a60bdcd54a8b0879"
+    },
+    {
+      "path": "domains/hr/people.yml",
+      "sha256": "025bdf5f63d10f5019d6560e780fea141e838498f02de13fe3a63cf5bcac2d26"
+    },
+    {
+      "path": "domains/sales/_domain.yml",
+      "sha256": "0236d834644858632b0a7ba9f383fa0d7dbb70fb5602b13c33b900dd3984730e"
+    },
+    {
+      "path": "domains/sales/orders.yml",
+      "sha256": "9d9de9951aabf98cbed508e547a2765e9ec0fb98053251c55b2d3c4b92f88b07"
+    }
+  ],
+  "report_base_uri": "s3://my-bucket/base/reports",
+  "domains": [
+    {
+      "name": "hr"
+    },
+    {
+      "name": "sales",
+      "incoming_dir": "incoming"
+    }
+  ],
+  "execution": {
+    "entrypoint": "floe",
+    "base_args": [
+      "run",
+      "--manifest",
+      "{manifest_uri}",
+      "--log-format",
+      "json",
+      "--quiet"
+    ],
+    "per_entity_args": [
+      "--entities",
+      "{entity_name}"
+    ],
+    "log_format": "json",
+    "result_contract": {
+      "run_finished_event": true,
+      "summary_uri_field": "summary_uri",
+      "exit_codes": {
+        "0": "success_or_rejected",
+        "1": "technical_failure",
+        "2": "aborted"
+      }
+    },
+    "defaults": {
+      "env": {},
+      "workdir": null
+    }
+  },
+  "runners": {
+    "default": "local",
+    "definitions": {
+      "local": {
+        "type": "local_process",
+        "command": null,
+        "args": null,
+        "timeout_seconds": null,
+        "ttl_seconds_after_finished": null,
+        "poll_interval_seconds": null,
+        "secrets": null,
+        "image": null,
+        "namespace": null,
+        "service_account": null,
+        "resources": null,
+        "env": null,
+        "workspace_url": null,
+        "existing_cluster_id": null,
+        "config_uri": null,
+        "python_file_uri": null,
+        "job_name": null,
+        "auth": null,
+        "env_parameters": null
+      }
+    }
+  },
+  "entities": [
+    {
+      "name": "hr.people",
+      "domain": "hr",
+      "group_name": "hr",
+      "asset_key": [
+        "hr",
+        "people"
+      ],
+      "source_format": "csv",
+      "accepted_sink_uri": "local://<ROOT>/work",
+      "rejected_sink_uri": null,
+      "tags": null,
+      "source": {
+        "format": "csv",
+        "storage": "scratch",
+        "uri": "local://<ROOT>/work/in/people.csv",
+        "path": "./in/people.csv",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "scratch",
+          "uri": "local://<ROOT>/work",
+          "path": "",
+          "resolved": true
+        },
+        "rejected": null,
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "warn",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "sales.orders",
+      "domain": "sales",
+      "group_name": "sales",
+      "asset_key": [
+        "sales",
+        "orders"
+      ],
+      "source_format": "csv",
+      "accepted_sink_uri": "s3://my-bucket/base/out/orders/",
+      "rejected_sink_uri": "local:///rejected/orders",
+      "tags": null,
+      "source": {
+        "format": "csv",
+        "storage": "lake",
+        "uri": "s3://my-bucket/raw/orders/",
+        "path": "s3://my-bucket/raw/orders/",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "lake",
+          "uri": "s3://my-bucket/base/out/orders/",
+          "path": "out/orders/",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "scratch",
+          "uri": "local:///rejected/orders",
+          "path": "/rejected/orders",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "warn",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    }
+  ],
+  "storages": {
+    "default": "lake",
+    "definitions": [
+      {
+        "account": null,
+        "bucket": "my-bucket",
+        "container": null,
+        "endpoint": "http://minio:9000",
+        "fs_type": "s3",
+        "name": "lake",
+        "path_style_access": true,
+        "prefix": "/base/",
+        "region": "eu-west-1"
+      },
+      {
+        "account": null,
+        "bucket": null,
+        "container": null,
+        "endpoint": null,
+        "fs_type": "local",
+        "name": "scratch",
+        "path_style_access": null,
+        "prefix": null,
+        "region": null
+      }
+    ]
+  },
+  "catalogs": {
+    "default": "rest",
+    "definitions": [
+      {
+        "name": "rest",
+        "type_config": {
+          "credential": "token:abc",
+          "oauth2_server_uri": "http://auth",
+          "scope": "ALL",
+          "type": "rest",
+          "uri": "http://catalog",
+          "warehouse": "wh"
+        },
+        "warehouse_prefix": "wh/",
+        "warehouse_storage": "lake"
+      }
+    ]
+  },
+  "lineage": {
+    "api_key": "lineage-key",
+    "dataset_namespace": null,
+    "endpoint": null,
+    "job_name": null,
+    "max_failures": 3,
+    "namespace": "floe",
+    "producer": null,
+    "timeout_secs": 5,
+    "url": "http://lineage"
+  }
+}

@@ -1,0 +1,37 @@
+version: "0.3"
+include:
+  domains:
+    - domains/*/_domain.yml
+storages:
+  default: lake
+  definitions:
+    - name: lake
+      type: s3
+      bucket: my-bucket
+      region: eu-west-1
+      prefix: /base/
+      endpoint: http://minio:9000
+      path_style_access: true
+    - name: scratch
+      type: local
+catalogs:
+  default: rest
+  definitions:
+    - name: rest
+      type: rest
+      uri: http://catalog
+      credential: "token:abc"
+      warehouse: wh
+      oauth2_server_uri: http://auth
+      scope: ALL
+      warehouse_storage: lake
+      warehouse_prefix: wh/
+lineage:
+  url: http://lineage
+  namespace: floe
+  api_key: lineage-key
+  timeout_secs: 5
+  max_failures: 3
+report:
+  path: reports
+  storage: lake
