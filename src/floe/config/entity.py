@@ -39,6 +39,7 @@ from floe.config.yaml import (
     get_value,
     opt_bool,
     opt_string,
+    opt_u32,
     opt_u64,
     opt_vec_string,
     opt_vec_vec_string,
@@ -334,11 +335,12 @@ def _partition_spec(
     for index, item in enumerate(yaml_array(parent["partition_spec"], ctx)):
         item_ctx = f"{ctx}[{index}]"
         h = yaml_hash(item, item_ctx)
-        validate_known_keys(h, item_ctx, ("column", "transform"))
+        validate_known_keys(h, item_ctx, ("column", "transform", "num_buckets"))
         out.append(
             IcebergPartitionField(
                 column=get_string(h, "column", item_ctx),
                 transform=_or(opt_string(h, "transform", item_ctx), "identity"),
+                num_buckets=opt_u32(h, "num_buckets", item_ctx),
             )
         )
     return out
