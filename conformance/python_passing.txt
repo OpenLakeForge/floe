@@ -345,7 +345,7 @@ config/val1_state_path_blank manifest
 config/val1_state_path_ok manifest
 config/val1_version_below_minimum manifest
 config/val1_version_extra_dot manifest
-config/val1_version_future_major_ok manifest
+config/val1_version_future_major_ok
 config/val1_version_major_not_numeric manifest
 config/val1_version_minimum_ok manifest
 config/val1_version_minor_not_numeric manifest
