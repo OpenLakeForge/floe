@@ -42,6 +42,7 @@ UUID_PART = re.compile(
     r"part-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
 
+OK_EXIT = (0, 2)  # 2 = run aborted by policy: a recorded outcome, not a failure
 Snapshot = dict[str, str | Any]  # str: text file; Any: pyarrow Table
 
 
@@ -183,13 +184,18 @@ def run_in_copy(
             ["--profile", "profile.yml"] if (case / "profile.yml").exists() else []
         )
         args = ["validate", "-c", "config.yml", *profile]
-    return work, subprocess.run(
-        [*cmd, *args],
-        cwd=work,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    marker = (
+        case / "runs"
+    )  # optional: number of runs; only the last run's report is kept
+    runs = int(marker.read_text()) if marker.exists() else 1
+    while True:
+        shutil.rmtree(work / "report", ignore_errors=True)
+        proc = subprocess.run(
+            [*cmd, *args], cwd=work, check=False, capture_output=True, text=True
+        )
+        runs -= 1
+        if runs <= 0:
+            return work, proc
 
 
 def main() -> int:
@@ -202,7 +208,7 @@ def main() -> int:
             continue
         with tempfile.TemporaryDirectory(prefix="conformance-") as tmp:
             work, proc = run_in_copy(case, [str(binary)], Path(tmp))
-            if proc.returncode != 0 and not is_validate(case):
+            if proc.returncode not in OK_EXIT and not is_validate(case):
                 sys.stderr.write(proc.stdout + proc.stderr)
                 raise SystemExit(f"{case_name(case)}: floe exited {proc.returncode}")
             shutil.rmtree(case / "expected", ignore_errors=True)
