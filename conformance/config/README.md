@@ -41,13 +41,13 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-28 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
+18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
 - **D1** (dropped features): the case holds only `expected_python/validate.json`; there is no `expected/`, so
   `check.py --impl rust` skips it. The Python error follows one pattern: `<what> is not supported in 0.8`, with the
-  prefix the Rust message uses for that field (`entity.name=orders source.format=xml`, `catalogs.definitions name=u type=unity`).
+  prefix the Rust message uses for that field (`entity.name=orders source.format=xlsx`, `catalogs.definitions name=u type=unity`).
   Every D1 config is accepted by Rust 0.7 (checked, not recorded), except the S10-S17 repros, which hit the Rust rule
   quoted in `why`.
 - **D2**: Rust 0.7 rejects Iceberg `merge_scd1`/`merge_scd2` at the write-mode check; Python accepts. The `py` message of the
@@ -73,12 +73,6 @@ implementation exists yet; each is derived as its row says.
 | `div_S11_ctrl` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust.  |
 | `div_S12` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust. Rust 0.7: `merge.compare_columns has duplicate column amt` (validate.rs:977); the Iceberg side of the rule is `val2_d2_*`. |
 | `div_S12_ctrl` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust.  |
-| `div_S14b` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature): the repro needs an XML source. Not recorded from Rust. Rust 0.7: `schema.columns[0].source= is invalid: selector is empty` (validate.rs:1335). |
-| `div_S14b_ctrl` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature): XML source. |
-| `div_S15` | D1 | `entity.name=orders source.format=xlsx is not supported in 0.8` | D1 (dropped feature): the repro needs an XLSX source. Not recorded from Rust. Rust 0.7: `source.options.data_row must be greater than source.options.header_row` (validate.rs:517). |
-| `div_S15_ctrl` | D1 | `entity.name=orders source.format=xlsx is not supported in 0.8` | D1 (dropped feature): the repro needs an XLSX source. Not recorded from Rust.  |
-| `div_S16b` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature): the repro needs an XML source. Not recorded from Rust. Rust 0.7: `selector contains empty token` (validate.rs:1335). |
-| `div_S16b_ctrl` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature): XML source. |
 | `div_S17` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust. Rust 0.7: `merge.scd2 column names must be unique` (validate.rs:942); the Iceberg side of the rule is `val2_d2_*`. |
 | `div_S17_ctrl` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust.  |
 | `d1_sink_delta` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
@@ -89,10 +83,7 @@ implementation exists yet; each is derived as its row says.
 | `prof_catalogs_definition_type_unsupported` | D1 | `profile.catalogs.definitions[0]: profile.catalogs.definitions name=r has unsupported type=hive (supported: rest)` | Hand-derived, not recorded: Rust's message with the supported list reduced to `rest`, since Glue and Unity are dropped features (D1). |
 | `d1_storage_adls` | D1 | `storages.definitions name=a type=adls is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_storage_gcs` | D1 | `storages.definitions name=g type=gcs is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
-| `d1_source_xml` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_fixed` | D1 | `entity.name=orders source.format=fixed is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
-| `d1_source_xlsx` | D1 | `entity.name=orders source.format=xlsx is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
-| `d1_source_avro` | D1 | `entity.name=orders source.format=avro is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `example_config_yml` | D1 | `entity.name=customer sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): example/config.yml writes the `customer` entity to a Delta table and `customer_warehouse` to DuckDB. Not recorded from Rust. |
 | `parse_yaml_tab_indent` | D11 | `while scanning for the next token, found character '\t' that cannot start any token at byte 25 line 3 column 1` | PyYAML scanner wording and byte offset; derived by running floe.config.yaml.load_yaml (#684) on this file |
 | `val1_d2_pii_on_primary_key_with_merge` | D2 | `entity.name=orders pii.columns[name=id]: PII strategy cannot be applied to a primary_key column with write_mode=merge_scd1: masking the merge key corrupts the merge predicate` | D2: Iceberg accepts merge_scd1/merge_scd2 in Python. The Rust error is the write-mode capability check (validate.rs:657), which Python drops; the rule that Rust's PII-on-merge-key check (validate.rs:327) then reports is applied by Python in its place, with Rust's wording for that rule. |
@@ -120,8 +111,8 @@ implementation exists yet; each is derived as its row says.
 ## #584 divergences
 
 Each id has the divergent config and a control that differs only by the fix. S1-S7: Rust `ok`, Python rejects (D7).
-S8-S9, S13, S14a, S16a and S27-S32 are recorded errors. S10-S12, S14b, S15, S16b and S17 reproduce only with a dropped feature
-(Delta, XML, XLSX), so both sides are D1. S18-S26 are Rust-accepted profiles.
+S8-S9, S13, S14a, S14b, S16a, S16b and S27-S32 are recorded errors. S10-S12, S15 and S17 reproduce only with a dropped feature
+(Delta, XLSX), so both sides are D1. S18-S26 are Rust-accepted profiles.
 
 | id | cases |
 |---|---|
@@ -142,10 +133,10 @@ S8-S9, S13, S14a, S16a and S27-S32 are recorded errors. S10-S12, S14b, S15, S16b
 | S12 | `div_S12` (D1), `div_S12_ctrl` (D1) |
 | S13 | `div_S13`, `div_S13_ctrl` |
 | S14a | `div_S14a`, `div_S14a_ctrl_csv`, `div_S14a_ctrl_json` |
-| S14b | `div_S14b` (D1), `div_S14b_ctrl` (D1) |
+| S14b | `div_S14b`, `div_S14b_ctrl` |
 | S15 | `div_S15` (D1), `div_S15_ctrl` (D1) |
 | S16a | `div_S16a`, `div_S16a_ctrl` |
-| S16b | `div_S16b` (D1), `div_S16b_ctrl` (D1) |
+| S16b | `div_S16b`, `div_S16b_ctrl` |
 | S17 | `div_S17` (D1), `div_S17_ctrl` (D1) |
 | S18 | `div_S18`, `div_S18_ctrl` |
 | S19 | `div_S19`, `div_S19_ctrl` |
@@ -334,9 +325,9 @@ for Python only, because Rust 0.7 rejects that config earlier, at the write-mode
 | 500 | entity.name={} source.options.sheet must not be empty | not recorded: D1: xlsx source (source.options.sheet) -> `d1_source_xlsx` |
 | 509 | entity.name={} source.options.header_row must be greater than 0 | not recorded: D1: xlsx source (header_row) -> `d1_source_xlsx` |
 | 517 | entity.name={} source.options.data_row must be greater than source.options.header_row | not recorded: D1: xlsx source (data_row vs header_row) -> `d1_source_xlsx` |
-| 530 | entity.name={} source.options.row_tag is required for xml input | not recorded: D1: xml source (row_tag) -> `d1_source_xml` |
-| 541 | entity.name={} source.options.namespace must not be empty | not recorded: D1: xml source (namespace) -> `d1_source_xml` |
-| 553 | entity.name={} source.options.value_tag must not be empty | not recorded: D1: xml source (value_tag) -> `d1_source_xml` |
+| 530 | entity.name={} source.options.row_tag is required for xml input | not recorded: no case yet |
+| 541 | entity.name={} source.options.namespace must not be empty | not recorded: no case yet |
+| 553 | entity.name={} source.options.value_tag must not be empty | not recorded: no case yet |
 | 580 | entity.name={} sink.rejected is required when policy.severity=reject | `val1_reject_severity_without_rejected_sink` |
 | 611 | entity.name={} sink.accepted.format={} is not supported on {} storage (supported: {}) | not recorded: D1: duckdb sink (the only sink that restricts storage; parquet and iceberg accept local, s3, gcs and adls) -> `d1_sink_duckdb`, `d1_storage_adls`, `d1_storage_gcs` |
 | 637 | entity.name={} sink.archive.storage must match source.storage ({}) | `val1_archive_storage_differs_from_source` |
@@ -393,7 +384,7 @@ for Python only, because Rust 0.7 rejects that config earlier, at the write-mode
 | 1300 | entity.name={} schema.mismatch.extra_columns={} is unsupported (allowed: {}) | `val2_mismatch_extra_unsupported` |
 | 1313 | entity.name={} schema.columns[{}].type={} is unsupported for column {} (allowed: {}) | `div_S1` (D7), `val2_type_unsupported`, `val2_type_time` (D10) |
 | 1325 | entity.name={} schema.columns[{}].source={} is invalid: {} | `div_S14a`, `div_S16a`, `val2_jsel_empty` +10 |
-| 1335 | entity.name={} schema.columns[{}].source={} is invalid: {} | not recorded: D1: xml source selector -> `d1_source_xml` |
+| 1335 | entity.name={} schema.columns[{}].source={} is invalid: {} | `div_S14b`, `div_S16b` |
 | 1360 | entity.name={} schema.schema_evolution requires root.version >= "0.2" | `val2_evolution_old_version` |
 | 1370 | entity.name={} schema.schema_evolution.mode={} requires sink.accepted.format=delta (D... | `val2_evolution_add_columns_not_delta` |
 | 1385 | entity.name={} schema.primary_key must not be empty | `val2_pk_empty` |

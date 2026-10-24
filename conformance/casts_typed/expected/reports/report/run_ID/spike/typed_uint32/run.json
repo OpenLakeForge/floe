@@ -1,0 +1,143 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "spike.typed_uint32"
+  },
+  "source": {
+    "format": "parquet",
+    "path": "local://<ROOT>/in/casts_typed.parquet",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ";"
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "file",
+      "file_count": 1,
+      "files": [
+        "local://<ROOT>/in/casts_typed.parquet"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/typed_uint32"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/typed_uint32"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/typed_uint32",
+    "table_root_uri": "local://<ROOT>/out/accepted/typed_uint32",
+    "write_mode": "overwrite",
+    "accepted_rows": 0,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 890,
+    "avg_file_size_mb": 0.0008487701416015625,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 5,
+    "accepted_total": 0,
+    "rejected_total": 5,
+    "warnings_total": 0,
+    "errors_total": 17
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/casts_typed.parquet",
+      "status": "rejected",
+      "row_count": 5,
+      "accepted_count": 0,
+      "rejected_count": 5,
+      "mismatch": {
+        "declared_columns_count": 9,
+        "input_columns_count": 9,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/typed_uint32",
+        "rejected_path": "<ROOT>/out/rejected/typed_uint32/part-00000.csv",
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 17,
+        "warnings": 0,
+        "rules": [
+          {
+            "rule": "cast_error",
+            "severity": "reject",
+            "violations": 17,
+            "columns": [
+              {
+                "column": "d",
+                "violations": 1,
+                "target_type": "uint32"
+              },
+              {
+                "column": "f64",
+                "violations": 3,
+                "target_type": "uint32"
+              },
+              {
+                "column": "i64",
+                "violations": 2,
+                "target_type": "uint32"
+              },
+              {
+                "column": "ts",
+                "violations": 3,
+                "target_type": "uint32"
+              },
+              {
+                "column": "tstz",
+                "violations": 3,
+                "target_type": "uint32"
+              },
+              {
+                "column": "tzp",
+                "violations": 3,
+                "target_type": "uint32"
+              },
+              {
+                "column": "u64",
+                "violations": 2,
+                "target_type": "uint32"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
