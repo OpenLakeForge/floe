@@ -185,7 +185,7 @@ def resolve_source_ref(
 
 def _merge_entity(
     entity: object, sources: dict[str, Hash], defaults: dict[str, Hash]
-) -> object:
+) -> tuple[object, str | None, str | None]:
     ref = resource = None
     if resolved := resolve_source_ref(entity, sources):
         entity, ref, resource = resolved
@@ -202,8 +202,7 @@ def _merge_entity(
                 cast(str, source["path"]),
                 flags=re.DOTALL,
             )
-        source.update(source_ref=ref, resource=resource)  # for #710's source parser
-    return merged
+    return merged, ref, resource
 
 
 def parse_entities(
@@ -217,7 +216,7 @@ def parse_entities(
     result: list[EntityConfig] = []
     for index, entity in enumerate(entities):
         try:
-            parsed = parse_entity(_merge_entity(entity, sources, defaults))
+            parsed = parse_entity(*_merge_entity(entity, sources, defaults))
             if qualified and parsed.domain is not None:
                 parsed = parsed.model_copy(
                     update={"id": f"{parsed.domain}.{parsed.name}"}

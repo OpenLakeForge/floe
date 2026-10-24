@@ -12,9 +12,7 @@ from floe.config.project import RootConfig, config_version, validate_domains
 from floe.config.yaml import merge_yaml
 from floe.errors import FloeConfigError
 
-REST = (
-    "sink: {}, policy: {severity: warn}, schema: {columns: [{name: id, type: string}]}"
-)
+REST = "sink: {accepted: {format: parquet, path: o}}, policy: {severity: warn}, schema: {columns: [{name: id, type: string}]}"
 ENTITY = f"{{name: orders, source: {{format: csv, path: in/orders.csv}}, {REST}}}"
 
 
@@ -177,25 +175,17 @@ def test_source_ref_overlays_the_named_source_and_substitutes_the_resource(
         version: "0.3"
         {SOURCES}
         entities:
-        - {{name: orders, source: {{ref: lake, options: {{sep: ";"}}}}, {REST}}}
+        - {{name: orders, source: {{ref: lake, options: {{separator: "|"}}}}, {REST}}}
         - {{name: x, source: {{ref: lake, resource: items, path: "{{{{ resource }}}}/{{{{other}}}}"}}, {REST}}}
         """,
     )
-    assert [e.source for e in config.entities] == [
-        {
-            "format": "csv",
-            "path": "in/orders.csv",
-            "options": {"header": True, "sep": ";"},
-            "source_ref": "lake",
-            "resource": "orders",
-        },
-        {
-            "format": "csv",
-            "path": "items/{{other}}",
-            "options": {"header": True},
-            "source_ref": "lake",
-            "resource": "items",
-        },
+    assert [
+        (e.source.path, e.source.options.header, e.source.options.separator)
+        for e in config.entities
+    ] == [("in/orders.csv", True, "|"), ("items/{{other}}", True, ";")]
+    assert [(e.source.source_ref, e.source.resource) for e in config.entities] == [
+        ("lake", "orders"),
+        ("lake", "items"),
     ]
 
 
@@ -206,24 +196,23 @@ def test_domain_defaults_are_merged_under_the_entity(tmp_path: Path) -> None:
         version: "0.3"
         domains:
         - name: sales
-          defaults: {policy: {severity: warn}, sink: {accepted: {format: parquet}}, source: {format: csv, path: p}}
+          defaults: {policy: {severity: warn}, sink: {accepted: {format: parquet, path: o}}, source: {format: csv, path: p}}
         entities:
         - {name: a, domain: sales, policy: {severity: reject}, schema: {columns: [{name: id, type: string}]}}
-        - {name: b, domain: finance, policy: {severity: abort}, sink: {}, source: {format: csv, path: p}, schema: {columns: [{name: id, type: string}]}}
+        - {name: b, domain: finance, policy: {severity: abort}, sink: {accepted: {format: csv, path: x}}, source: {format: csv, path: p}, schema: {columns: [{name: id, type: string}]}}
         - {name: c, domain: sales, schema: {columns: [{name: id, type: string}]}}
         """,
     )
     a, b, c = config.entities
-    assert (a.policy.severity, a.sink) == (
-        "reject",
-        {"accepted": {"format": "parquet"}},
-    )
-    assert (b.policy.severity, b.sink) == ("abort", {})
-    assert (c.policy.severity, c.sink) == ("warn", {"accepted": {"format": "parquet"}})
+    assert [(e.policy.severity, e.sink.accepted.format) for e in (a, b, c)] == [
+        ("reject", "parquet"),
+        ("abort", "csv"),
+        ("warn", "parquet"),
+    ]
     assert [e.id for e in config.entities] == ["sales.a", "finance.b", "sales.c"]
     assert config.domains[0].defaults == {
         "policy": {"severity": "warn"},
-        "sink": {"accepted": {"format": "parquet"}},
+        "sink": {"accepted": {"format": "parquet", "path": "o"}},
         "source": {"format": "csv", "path": "p"},
     }
 
