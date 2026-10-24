@@ -130,6 +130,8 @@ class SinkTarget(_Model):
     options: SinkOptions | None
     merge: MergeOptions | None
     iceberg: IcebergSinkOptions | None
+    delta: object = None  # raw: Delta is dropped (D1), validation rejects it
+    duckdb: object = None
     partition_by: list[str] | None
     partition_spec: list[IcebergPartitionField] | None
     write_mode: WriteMode

@@ -324,10 +324,10 @@ def test_source_defaults_and_options_overlay() -> None:
                 "format": "csv",
                 "path": "p",
                 "filesystem": "lake",
-                "source_ref": "lake",
-                "resource": "orders",
             }
-        )
+        ),
+        "lake",
+        "orders",
     ).source
     assert (named.storage, named.source_ref, named.resource) == (
         "lake",
@@ -360,6 +360,10 @@ def test_sink_target_blocks_and_defaults() -> None:
     assert sink.archive is not None and sink.archive.path == "archive"
     assert sink.rejected is None
     assert parse_entity(entity()).sink.write_mode == "overwrite"
+    raw = parse_entity(
+        entity(sink={"accepted": {**_ACCEPTED, "delta": {"table": "t"}}})
+    ).sink.accepted
+    assert raw.delta == {"table": "t"}
 
 
 _ACCEPTED = {"format": "parquet", "path": "p"}
@@ -408,8 +412,12 @@ _ERRORS: list[tuple[dict[str, object], str]] = [
         'sink.accepted.duckdb is only valid when format is "duckdb" (found format="parquet")',
     ),
     (
-        {"sink": {"accepted": {**_ACCEPTED, "delta": {}}}},
-        "sink.accepted.delta is not supported in 0.8",
+        {"source": {"format": "csv", "path": "p", "source_ref": "x"}},
+        "unknown field source.source_ref",
+    ),
+    (
+        {"source": {"format": "csv", "path": "p", "resource": "x"}},
+        "unknown field source.resource",
     ),
     (
         {"sink": {"accepted": {**_ACCEPTED, "partition_spec": [{}]}}},

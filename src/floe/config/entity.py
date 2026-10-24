@@ -271,9 +271,8 @@ def _storage(h: dict[object, object], ctx: str) -> str | None:
     return _or(storage, filesystem)
 
 
-def _source(value: object) -> SourceConfig:
+def _source(value: object, ref: str | None, resource: str | None) -> SourceConfig:
     h = yaml_hash(value, "source")
-    # `source_ref` and `resource` are set by named-source resolution, not written by users
     validate_known_keys(
         h,
         "source",
@@ -284,8 +283,6 @@ def _source(value: object) -> SourceConfig:
             "filesystem",
             "options",
             "cast_mode",
-            "source_ref",
-            "resource",
         ),
     )
     fmt = get_string(h, "format", "source")
@@ -298,8 +295,8 @@ def _source(value: object) -> SourceConfig:
         storage=storage,
         options=options,
         cast_mode=_or(opt_string(h, "cast_mode", "source"), "strict"),
-        source_ref=opt_string(h, "source_ref", "source"),
-        resource=opt_string(h, "resource", "source"),
+        source_ref=ref,
+        resource=resource,
     )
 
 
@@ -372,16 +369,11 @@ def _sink_target(
         if "iceberg" in h
         else None
     )
-    # D1: Delta and DuckDB are dropped, so their blocks are rejected instead of modelled
-    if "delta" in h:
-        raise FloeConfigError(f"{ctx}.delta is not supported in 0.8")
     fmt = get_string(h, "format", ctx)
-    if "duckdb" in h:
-        if fmt != "duckdb":
-            raise FloeConfigError(
-                f'{ctx}.duckdb is only valid when format is "duckdb" (found format={rust_debug(fmt)})'
-            )
-        raise FloeConfigError(f"{ctx}.duckdb is not supported in 0.8")
+    if "duckdb" in h and fmt != "duckdb":
+        raise FloeConfigError(
+            f'{ctx}.duckdb is only valid when format is "duckdb" (found format={rust_debug(fmt)})'
+        )
     spec = (
         _partition_spec(h["partition_spec"], f"{ctx}.partition_spec")
         if "partition_spec" in h
@@ -394,6 +386,8 @@ def _sink_target(
         options=options,
         merge=merge,
         iceberg=iceberg,
+        delta=h.get("delta"),  # D1: dropped, left raw for validation (#633)
+        duckdb=h.get("duckdb"),
         partition_by=partition_by,
         partition_spec=spec,
         write_mode=write_mode,
@@ -432,7 +426,9 @@ def _sink(value: object) -> SinkConfig:
     )
 
 
-def parse_entity(value: object) -> EntityConfig:
+def parse_entity(
+    value: object, source_ref: str | None = None, resource: str | None = None
+) -> EntityConfig:
     h = yaml_hash(value, "entity")
     validate_known_keys(
         h,
@@ -460,7 +456,7 @@ def parse_entity(value: object) -> EntityConfig:
         else _choice(mode, get_args(IncrementalMode), "entity.incremental_mode")
     )
     state = _state(h["state"]) if "state" in h else None
-    source = _source(get_value(h, "source", "entity"))
+    source = _source(get_value(h, "source", "entity"), source_ref, resource)
     sink = _sink(get_value(h, "sink", "entity"))
     policy = _policy(get_value(h, "policy", "entity"))
     schema = _schema(get_value(h, "schema", "entity"))
