@@ -100,3 +100,8 @@ def test_archive_fnv1a_hash_matches_rust() -> None:
         archive_relative_path_for_run("", "x.csv", "r", "a")
         == "x__run-r__src-af63dc4c8601ec8c.csv"
     )
+
+
+def test_archive_filename_counts_extension_bytes() -> None:
+    rel = archive_relative_path_for_run("", "a" * 180 + "." + "é" * 30, "run-1", "u")
+    assert len(rel.encode()) <= 255

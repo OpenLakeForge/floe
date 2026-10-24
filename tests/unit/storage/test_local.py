@@ -115,3 +115,20 @@ def test_archive_delete_failure_is_run_error(tmp_path: Path) -> None:
         archive_input_file(
             Failing(), "r", "orders", lambda rel: str(tmp_path / rel), _input(src)
         )
+
+
+def test_read_and_write_failures_are_storage_errors(tmp_path: Path) -> None:
+    client = LocalClient()
+    with pytest.raises(FloeStorageError):
+        client.read(str(tmp_path))
+    (tmp_path / "f").write_text("x")
+    with pytest.raises(FloeStorageError):
+        client.write_conditional(str(tmp_path / "f" / "state.json"), None, b"x")
+
+
+def test_copy_keeps_restrictive_mode(tmp_path: Path) -> None:
+    src = tmp_path / "s"
+    src.write_text("x")
+    src.chmod(0o600)
+    LocalClient().copy(str(src), str(tmp_path / "d"))
+    assert (tmp_path / "d").stat().st_mode & 0o777 == 0o600

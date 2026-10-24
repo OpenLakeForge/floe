@@ -82,7 +82,11 @@ class LocalClient:
         src, dst = _path(src_uri), _path(dst_uri)
         try:
             dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(src, dst)
+            fd = os.open(
+                dst, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, src.stat().st_mode & 0o777
+            )
+            with src.open("rb") as fin, os.fdopen(fd, "wb") as fout:
+                shutil.copyfileobj(fin, fout)
         except OSError as e:
             raise FloeStorageError(f"local copy failed from {src} to {dst}: {e}") from e
 
@@ -95,21 +99,27 @@ class LocalClient:
 
     def read(self, uri: str) -> StoredObject | None:
         path = _path(uri)
-        if not path.exists():
-            return None
-        with _file_lock(path):
+        try:
             if not path.exists():
                 return None
-            return StoredObject(path.read_bytes(), _version(path))
+            with _file_lock(path):
+                if not path.exists():
+                    return None
+                return StoredObject(path.read_bytes(), _version(path))
+        except OSError as e:
+            raise FloeStorageError(f"local read failed for {path}: {e}") from e
 
     def write_conditional(
         self, uri: str, expected_version: str | None, body: bytes
     ) -> str | None:
         path = _path(uri)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with _file_lock(path):
-            current = _version(path) if path.exists() else None
-            if current != expected_version:
-                return None
-            path.write_bytes(body)
-            return _version(path)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with _file_lock(path):
+                current = _version(path) if path.exists() else None
+                if current != expected_version:
+                    return None
+                path.write_bytes(body)
+                return _version(path)
+        except OSError as e:
+            raise FloeStorageError(f"local write failed for {path}: {e}") from e

@@ -63,7 +63,7 @@ def archive_relative_path_for_run(
         stem, ext = name, ""
     suffix = f"__run-{_run_component(run_id)}__src-{_fnv1a_hex(source_uri)}"
     ext_suffix = f".{ext}" if ext else ""
-    available = _MAX_FILENAME_COMPONENT_BYTES - len(suffix) - len(ext_suffix)
+    available = _MAX_FILENAME_COMPONENT_BYTES - len(suffix) - len(ext_suffix.encode())
     archived = f"{_truncate_utf8(stem, max(available, 0))}{suffix}{ext_suffix}"
     entity = entity.strip("/")
     return f"{entity}/{archived}" if entity else archived
