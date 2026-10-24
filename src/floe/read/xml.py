@@ -204,8 +204,15 @@ def xml_columns(path: Path, options: SourceOptions) -> list[str]:
     """Sorted child element names of the first row: the probe Rust's `read_input_columns` runs."""
     row_tag, namespace, _ = _options(options)
     try:
-        for _, element in ET.iterparse(path):
-            if _matches(element, row_tag, namespace):
+        row = None  # the first matching element in document order, read once it closes
+        for event, element in ET.iterparse(path, events=("start", "end")):
+            if (
+                row is None
+                and event == "start"
+                and _matches(element, row_tag, namespace)
+            ):
+                row = element
+            elif element is row and event == "end":
                 return sorted(
                     {
                         c.tag.rpartition("}")[2]

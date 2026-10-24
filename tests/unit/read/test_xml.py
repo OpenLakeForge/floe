@@ -124,3 +124,8 @@ def test_probe_lists_the_first_rows_child_elements() -> None:
 def test_probe_fails_without_the_row_tag() -> None:
     with pytest.raises(FloeIoError, match="row_tag=nope not found in xml"):
         xml_columns(CASE / "in" / "items.xml", opts(row_tag="nope"))
+
+
+def test_probe_reads_the_enclosing_row_when_row_tags_nest(tmp_path: Path) -> None:
+    text = "<rows><row><id>1</id><row><other>x</other></row></row></rows>"
+    assert xml_columns(write(tmp_path, text), opts(row_tag="row")) == ["id", "row"]

@@ -220,9 +220,11 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
     severity = entity.policy.severity
     declared = declared_names(entity)
     chunks = _chunks(entity, path, plan.names)
+    keys = plan.tracker.snapshot()
 
     def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
         # Rust skips the raw copy under PII: the file cannot be masked
+        plan.tracker.restore(keys)  # the unreadable file leaves no keys behind
         keep = entity.pii is None and entity.sink.rejected is not None
         raw = _copy_raw(entity, plan.config_dir, path, severity) if keep else None
         return _failed_file(entity, uri, len(declared), mismatch, err, raw), []
@@ -284,6 +286,17 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
     return out, [] if out["status"] == "aborted" else [_output(plan, df) for df in accepted]  # fmt: skip
 
 
+def _seed_unique(plan: _Plan, base: Path, columns: list[str]) -> None:
+    """Append mode: the keys already in the sink's parts count as seen (Rust `seed_unique_tracker_for_append`)."""
+    stored = {n: plan.out_map.get(n, n) for n in columns}  # the sink holds output names
+    for part in sorted(base.glob("part-*.parquet")):
+        try:  # only the key columns are read
+            keys = pl.read_parquet(part, columns=list(stored.values()))
+        except pl.exceptions.PolarsError as err:
+            raise FloeRunError(f"entity.name={plan.entity.name} cannot seed unique keys from {part}: {err}") from err  # fmt: skip
+        plan.tracker.seed(keys.rename({v: k for k, v in stored.items()}))
+
+
 def run_entity(
     entity: EntityConfig,
     config_dir: Path,
@@ -321,6 +334,9 @@ def run_entity(
             if (n := c.name if c.source else normalize_name(c.name, strategy)) != c.name
         },
     )  # fmt: skip
+    base = normalize_local_path(config_dir / sink.accepted.path)
+    if sink.write_mode == "append":
+        _seed_unique(plan, base, sorted({runtime.get(c, c) for k in keys for c in k}))
     client = LocalClient()
     inputs: ResolvedInputs = resolve_inputs(
         config_dir, src.path, src.format, entity.name, src.storage or "local", client,
@@ -335,7 +351,6 @@ def run_entity(
         if report["status"] == "aborted":
             break
 
-    base = normalize_local_path(config_dir / sink.accepted.path)
     if frames or sink.write_mode == "overwrite":
         empty = pl.DataFrame(schema=dict.fromkeys(names, pl.String)).select(
             cast_column(n, c.column_type)[0]
