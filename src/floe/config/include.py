@@ -21,6 +21,16 @@ from floe.errors import FloeConfigError
 from floe.glob import Pattern, glob
 
 
+def glob_base(directory: Path) -> str:
+    """Rust `glob_base`: escaping would turn a Windows verbatim prefix's `?` into `[?]`."""
+    text = str(directory)
+    if text.startswith("\\\\?\\UNC\\"):
+        text = "\\\\" + text[8:]
+    else:
+        text = text.removeprefix("\\\\?\\")
+    return Pattern.escape(text)
+
+
 def assemble_includes(
     doc: object, config_dir: Path, config_files: list[Path]
 ) -> IncludeOrigins:
@@ -62,7 +72,7 @@ def assemble_includes(
     entities: list[tuple[object, Path]] = []
     for raw in patterns:
         pattern = yaml_string(raw, "include.domains")
-        matches = glob(os.path.join(Pattern.escape(str(config_dir)), pattern))
+        matches = glob(os.path.join(glob_base(config_dir), pattern))
         if not matches:
             raise FloeConfigError(
                 f"include.domains pattern {rust_debug(pattern)} matched no file "
