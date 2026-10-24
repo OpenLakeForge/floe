@@ -1,15 +1,12 @@
 """Input resolution, ported from `io/storage/ops/inputs.rs` (`resolve_inputs`)."""
 
-import os
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from fnmatch import fnmatchcase
-from glob import glob
 from pathlib import Path, PurePath
 from typing import Literal
 
-from floe.errors import FloeConfigError, FloeRunError
+from floe.errors import FloeConfigError, FloeError, FloeRunError
+from floe.glob import MatchOptions, Pattern, PatternError, glob
 from floe.storage.paths import normalize_local_path, parse_s3_uri
 from floe.storage.types import ObjectRef, StorageClient
 
@@ -49,23 +46,13 @@ def _rfc3339(ns: int) -> str:
     return f"{text}.{nanos:09d}".rstrip("0") + "Z" if nanos else f"{text}Z"
 
 
-def _raise(error: OSError) -> None:
-    raise error
-
-
 def _glob_files(pattern: str) -> list[Path]:
-    parts = Path(pattern).parts
-    magic = [i for i, p in enumerate(parts) if any(c in p for c in "*?[")]
-    if "**" in parts and magic:
-        base, rest = Path(*parts[: magic[0]]), parts[magic[0] :]
-        try:
-            for root, dirs, _ in os.walk(base, onerror=_raise):
-                depth = len(Path(root).relative_to(base).parts)
-                if depth < rest.index("**"):
-                    dirs[:] = [d for d in dirs if fnmatchcase(d, rest[depth])]
-        except OSError as e:
-            raise FloeConfigError(f'glob match failed for "{pattern}": {e}') from e
-    found = glob(pattern, recursive=True, include_hidden=True)
+    try:
+        found = glob(pattern)
+    except PatternError as e:
+        raise FloeConfigError(f'invalid glob pattern "{pattern}": {e}') from e
+    except FloeError as e:
+        raise FloeConfigError(f'glob match failed for "{pattern}": {e}') from e
     return [normalize_local_path(Path(p)) for p in found if Path(p).is_file()]
 
 
@@ -110,27 +97,7 @@ def _local_files(
     return files, "directory"
 
 
-def _cloud_matcher(source: str) -> re.Pattern[str]:
-    out = ""
-    i = 0
-    while i < len(source):
-        star = source.startswith("**", i) and source[i - 1 : i] in ("", "/")
-        if star and source[i + 2 : i + 3] == "/":
-            out, i = out + "(?:.*/)?", i + 3
-        elif star and i + 2 == len(source):
-            out, i = out + ".*", i + 2
-        elif source[i] in "*?":
-            out, i = out + ("[^/]*" if source[i] == "*" else "[^/]"), i + 1
-        elif source[i] == "[":
-            end = source.find("]", i + 2)
-            if end == -1:
-                raise FloeRunError("invalid cloud glob pattern: unclosed '['")
-            negated = source[i + 1] == "!"
-            body = re.sub(r"([\\\[^])", r"\\\1", source[i + 1 + negated : end])
-            out, i = out + f"[{'^' * negated}{body}{'/' * negated}]", end + 1
-        else:
-            out, i = out + re.escape(source[i]), i + 1
-    return re.compile(out)
+_CLOUD = MatchOptions(case_sensitive=True, require_literal_separator=True)
 
 
 def _first_glob(value: str) -> int:
@@ -164,7 +131,10 @@ def _cloud_refs(
                     "glob patterns for cloud sources must include a non-empty "
                     "literal prefix before the first wildcard"
                 )
-            matcher = _cloud_matcher(key)
+            try:
+                matcher = Pattern(key)
+            except PatternError as e:
+                raise FloeRunError(f'invalid cloud glob pattern "{key}": {e}') from e
         except FloeRunError as e:
             raise FloeRunError(
                 f"{where} invalid cloud source path ({location}, path={key}): {e}"
@@ -173,7 +143,7 @@ def _cloud_refs(
     refs = [
         r
         for r in client.list(prefix)
-        if (matcher is None or matcher.fullmatch(r.key))
+        if (matcher is None or matcher.matches_with(r.key, _CLOUD))
         and not (r.key.startswith(".floe/") or "/.floe/" in r.key)
         and r.uri.lower().endswith(lowered)
     ]

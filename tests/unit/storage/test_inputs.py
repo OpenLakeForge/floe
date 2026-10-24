@@ -341,3 +341,22 @@ def test_local_unreadable_directory_outside_the_glob_is_ignored(tmp_path: Path) 
         ]
     finally:
         (tmp_path / "restricted").chmod(0o700)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read any directory")
+def test_local_unreadable_sibling_under_star_is_an_error(tmp_path: Path) -> None:
+    touch(tmp_path / "allowed" / "a.csv")
+    touch(tmp_path / "restricted" / "b.csv")
+    (tmp_path / "restricted").chmod(0)
+    try:
+        with pytest.raises(FloeConfigError) as err:
+            local(Path("."), tmp_path / "*" / "*.csv")
+    finally:
+        (tmp_path / "restricted").chmod(0o700)
+    assert str(err.value).startswith("glob match failed for ")
+
+
+def test_s3_negated_class_keeps_a_trailing_hyphen_literal() -> None:
+    keys = ["data/_.csv", "data/-.csv", "data/b.csv"]
+    _, _, listed = s3("data/*[!_-].csv", keys, list_only=True)
+    assert listed == ["s3://bucket/data/b.csv"]
