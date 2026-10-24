@@ -9,6 +9,7 @@ from floe.config.types import EntityConfig, WriteMode
 from floe.config.yaml import rust_debug
 from floe.errors import FloeConfigError
 from floe.pii import token_n
+from floe.read.xml import parse_selector
 
 MIN_VERSION = (0, 1)
 QUALIFIED_VERSION = (0, 3)
@@ -414,6 +415,15 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
                 f"schema.columns[{index}].type={column.column_type} is unsupported "
                 f"for column {column.name} (allowed: {', '.join(COLUMN_TYPES)})",
             )
+        if entity.source.format == "xml":
+            selector = column.source if column.source is not None else column.name
+            try:
+                parse_selector(selector)
+            except ValueError as err:
+                raise _fail(
+                    entity,
+                    f"schema.columns[{index}].source={selector} is invalid: {err}",
+                ) from err
     _check_primary_key(entity)
     _check_unique_keys(entity)
     _check_evolution(entity, version)
