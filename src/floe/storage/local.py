@@ -151,3 +151,17 @@ class LocalClient:
                 return _version(path)
         except OSError as e:
             raise FloeStorageError(f"local write failed for {path}: {e}") from e
+
+    def delete_conditional(self, uri: str, expected_version: str | None) -> bool:
+        """False on a version conflict; `None` expects no file."""
+        path = _path(uri)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with _file_lock(path):
+                current = _version(path) if path.exists() else None
+                if current != expected_version:
+                    return False
+                path.unlink(missing_ok=True)
+                return True
+        except OSError as e:
+            raise FloeStorageError(f"local delete failed for {path}: {e}") from e

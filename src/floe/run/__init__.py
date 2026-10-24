@@ -61,10 +61,6 @@ def _rfc3339() -> str:
 
 def _refresh(entity: EntityConfig) -> EntityConfig:
     """Full refresh: an append sink overwrites; merge sinks cannot refresh."""
-    if (
-        entity.incremental_mode == "file"
-    ):  # ponytail: #787 ports Rust's claim_all + promote_full_refresh
-        raise FloeConfigError(f"entity '{entity.name}': full refresh is not yet supported for incremental_mode=file (#787)")  # fmt: skip
     mode = entity.sink.write_mode
     if mode in ("merge_scd1", "merge_scd2"):
         raise FloeConfigError(f"entity '{entity.name}': --full-refresh is not supported with write_mode '{mode}'")  # fmt: skip
