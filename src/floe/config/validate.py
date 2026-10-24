@@ -95,9 +95,10 @@ def _check_evolution(entity: EntityConfig, version: str) -> None:
         return
     if config_version(version) < (0, 2):
         raise _fail(entity, 'schema.schema_evolution requires root.version >= "0.2"')
+    # D13 (#619): add_columns is accepted on Iceberg; Rust allows only Delta, which D1 drops.
     if (
         evolution.mode == "add_columns"
-        and _get(_get(entity.sink, "accepted"), "format") != "delta"
+        and _get(_get(entity.sink, "accepted"), "format") != "iceberg"
     ):
         raise _fail(
             entity,

@@ -12,7 +12,13 @@ from floe.errors import FloeConfigError
 ALLOWED = "string, number, boolean, datetime, date"
 
 
-def check(tmp_path: Path, schema: str, version: str = "0.2", fmt: str = "csv") -> None:
+def check(
+    tmp_path: Path,
+    schema: str,
+    version: str = "0.2",
+    fmt: str = "csv",
+    sink: str = "{}",
+) -> None:
     path = tmp_path / "config.yml"
     path.write_text(
         textwrap.dedent(f"""
@@ -20,7 +26,7 @@ def check(tmp_path: Path, schema: str, version: str = "0.2", fmt: str = "csv") -
         entities:
         - name: orders
           source: {{format: {fmt}, path: in.csv}}
-          sink: {{}}
+          sink: {sink}
           policy: {{severity: warn}}
           schema: {schema}
         """)
@@ -113,4 +119,12 @@ def test_valid_spellings(tmp_path: Path) -> None:
         "{columns: [{name: id, type: Int-64}, {name: t, type: TIMESTAMP}],"
         " normalize_columns: {strategy: Snake-Case}, primary_key: [' id '],"
         " unique_keys: [[id, t]]}",
+    )
+
+
+def test_add_columns_on_iceberg(tmp_path: Path) -> None:
+    check(
+        tmp_path,
+        f"{{{COLS}, schema_evolution: {{mode: add_columns}}}}",
+        sink="{accepted: {format: iceberg}}",
     )

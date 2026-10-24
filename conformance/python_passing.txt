@@ -187,6 +187,7 @@ config/val2_catalogs_ok
 config/val2_d2_merge_scd1_ignore_columns_ok
 config/val2_d2_merge_scd1_ok
 config/val2_d2_merge_scd2_ok
+config/val2_evolution_add_columns_iceberg_ok
 config/val2_evolution_add_columns_not_delta
 config/val2_evolution_old_version
 config/val2_evolution_strict_ok
@@ -218,6 +219,7 @@ config/val2_storage_s3_ok
 config/val2_storages_ok
 config/val2_type_aliases_ok
 config/val2_type_time
+config/val2_type_unsupported
 config/val2_uk_duplicate_column
 config/val2_uk_duplicate_group_warns_ok
 config/val2_uk_empty
