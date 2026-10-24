@@ -360,3 +360,17 @@ def test_s3_negated_class_keeps_a_trailing_hyphen_literal() -> None:
     keys = ["data/_.csv", "data/-.csv", "data/b.csv"]
     _, _, listed = s3("data/*[!_-].csv", keys, list_only=True)
     assert listed == ["s3://bucket/data/b.csv"]
+
+
+def test_local_empty_glob_override_matches_nothing(tmp_path: Path) -> None:
+    touch(tmp_path / "a.csv")
+    with pytest.raises(FloeRunError, match="glob=,"):
+        local(tmp_path, tmp_path, glob_override="")
+
+
+def test_local_trailing_separator_is_directory_only(tmp_path: Path) -> None:
+    touch(tmp_path / "a.csv")
+    with pytest.raises(FloeRunError):
+        local(tmp_path, str(tmp_path / "*.csv") + "/")
+    with pytest.raises(FloeRunError):
+        local(tmp_path, tmp_path, glob_override="*.csv/")
