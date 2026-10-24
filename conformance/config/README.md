@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-28 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
+25 D1, 18 D2, 10 D7, 2 D10, 1 D11, 1 D13.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -75,8 +75,6 @@ implementation exists yet; each is derived as its row says.
 | `div_S12_ctrl` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust.  |
 | `div_S14b` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature): the repro needs an XML source. Not recorded from Rust. Rust 0.7: `schema.columns[0].source= is invalid: selector is empty` (validate.rs:1335). |
 | `div_S14b_ctrl` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature): XML source. |
-| `div_S15` | D1 | `entity.name=orders source.format=xlsx is not supported in 0.8` | D1 (dropped feature): the repro needs an XLSX source. Not recorded from Rust. Rust 0.7: `source.options.data_row must be greater than source.options.header_row` (validate.rs:517). |
-| `div_S15_ctrl` | D1 | `entity.name=orders source.format=xlsx is not supported in 0.8` | D1 (dropped feature): the repro needs an XLSX source. Not recorded from Rust.  |
 | `div_S16b` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature): the repro needs an XML source. Not recorded from Rust. Rust 0.7: `selector contains empty token` (validate.rs:1335). |
 | `div_S16b_ctrl` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature): XML source. |
 | `div_S17` | D1 | `entity.name=orders sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): the repro needs a Delta sink, which Python rejects at validate. Not recorded from Rust. Rust 0.7: `merge.scd2 column names must be unique` (validate.rs:942); the Iceberg side of the rule is `val2_d2_*`. |
@@ -91,7 +89,6 @@ implementation exists yet; each is derived as its row says.
 | `d1_storage_gcs` | D1 | `storages.definitions name=g type=gcs is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_xml` | D1 | `entity.name=orders source.format=xml is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_fixed` | D1 | `entity.name=orders source.format=fixed is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
-| `d1_source_xlsx` | D1 | `entity.name=orders source.format=xlsx is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `d1_source_orc` | D1 | `entity.name=orders source.format=orc is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `example_config_yml` | D1 | `entity.name=customer sink.accepted.format=delta is not supported in 0.8` | D1 (dropped feature): example/config.yml writes the `customer` entity to a Delta table and `customer_warehouse` to DuckDB. Not recorded from Rust. |
 | `parse_yaml_tab_indent` | D11 | `while scanning for the next token, found character '\t' that cannot start any token at byte 25 line 3 column 1` | PyYAML scanner wording and byte offset; derived by running floe.config.yaml.load_yaml (#684) on this file |
