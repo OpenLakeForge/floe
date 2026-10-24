@@ -226,7 +226,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --all-groups
       # `record.py` downloads the v0.7.0 release binary into this directory.
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/floe-conformance
           key: floe-conformance-${{ hashFiles('conformance/record.py') }}
