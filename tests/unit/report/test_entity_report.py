@@ -92,6 +92,14 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
             ["name", "addr", "price"] if entity.source.format == "xml" else df.columns
         )
         plan = plan_mismatch(entity, declared_names(entity), inputs)
+        uri = root.format(path.relative_to(base).as_posix())
+        if (
+            plan.rejected or plan.aborted
+        ):  # the raw file goes to the rejected dir, no row is read
+            accepted.append(pl.DataFrame())
+            raw = f"<ROOT>/out/rejected/{entity.name}/{path.name}"
+            files.append(file_report(entity, uri, 0, 0, [], plan, raw))
+            continue
         df = apply_mismatch(df, plan)
         df = df.select(
             pl.col(n) if n in df.columns else pl.lit(None, pl.String).alias(n)
@@ -122,7 +130,6 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
             written = write_rejected(bad, out / "rejected" / entity.name, mode)
             rejected_path = str(written).replace(str(tmp), "<ROOT>")
             rejected_path = UUID_PART.sub("part-<uuid>", rejected_path)
-        uri = root.format(path.relative_to(base).as_posix())
         files.append(file_report(entity, uri, df.height, bad.height, checks, plan, rejected_path))  # fmt: skip
     write = write_accepted(pl.concat(accepted), out / "accepted" / entity.name)
     rel = Path(entity.source.path).as_posix().removeprefix("./")
@@ -146,6 +153,8 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
 CASES = [
     ("casts", "spike.casts"),
     ("mismatch", "spike.customers"),
+    ("mismatch_abort", "spike.orders"),
+    ("mismatch_reject_file", "spike.orders"),
     ("unique_pii", "spike.orders"),
     ("example/standalone", "sales.orders"),
     ("avro_read", "spike.avro_read"),

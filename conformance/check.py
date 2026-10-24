@@ -42,6 +42,10 @@ def comparable(name: str, value: Any) -> str:
     if isinstance(value, str):
         if name.endswith(".json"):
             doc = json.loads(value)
+            if isinstance(doc, dict) and isinstance(doc.get("tool"), dict):
+                doc["tool"]["version"] = (
+                    "<volatile>"  # the implementation's own version
+                )
             return json.dumps(mask_bytes(doc), indent=2) + "\n"
         return value
     # parquet: schema, then one line per row

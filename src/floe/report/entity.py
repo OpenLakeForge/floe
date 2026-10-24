@@ -73,10 +73,15 @@ def file_report(
     errors_path: str | None = None,
 ) -> dict[str, Any]:
     """One `files[]` entry. `rejected_count` is the split's; severity decides status and counts (Rust `validate_split`)."""
-    rules = summarize_rules(checks, entity)
+    # a rejected/aborted mismatch decides the file before any row check runs (Rust `precheck.rs`)
+    precheck = mismatch.aborted or mismatch.rejected
+    rules = [] if precheck else summarize_rules(checks, entity)
     violations = sum(r["violations"] for r in rules)
     severity = entity.policy.severity
-    if severity == "warn" or not violations:
+    if precheck:
+        status = "aborted" if mismatch.aborted else "rejected"
+        accepted, rejected = 0, row_count
+    elif severity == "warn" or not violations:
         status, accepted, rejected = "success", row_count, 0
     elif severity == "reject":
         status, accepted, rejected = (
