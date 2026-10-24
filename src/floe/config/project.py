@@ -6,6 +6,12 @@ from typing import cast
 
 from pydantic import BaseModel
 
+from floe.config.storage import (
+    CatalogsConfig,
+    StoragesConfig,
+    parse_catalogs,
+    parse_storages,
+)
 from floe.config.vars import string_map
 from floe.config.yaml import (
     get_array,
@@ -48,11 +54,11 @@ class DomainConfig(BaseModel):
 
 
 class RootConfig(BaseModel):
-    # storages, catalogs, report, lineage and entities stay raw until their parsers are wired in
+    # report, lineage and entities stay raw until their parsers are wired in
     version: str
     metadata: ProjectMetadata | None
-    storages: object
-    catalogs: object
+    storages: StoragesConfig | None
+    catalogs: CatalogsConfig | None
     env: EnvConfig | None
     domains: list[DomainConfig]
     report: object
@@ -191,6 +197,8 @@ def parse_root(doc: object) -> RootConfig:
         raise FloeConfigError(
             "root.storages and root.filesystems are mutually exclusive"
         )
+    key = "storages" if "storages" in root else "filesystems"
+    storages = parse_storages(root[key]) if key in root else None
     env = None
     if "env" in root:
         env_hash = yaml_hash(root["env"], "env")
@@ -199,6 +207,7 @@ def parse_root(doc: object) -> RootConfig:
             string_map(env_hash["vars"], "env.vars") if "vars" in env_hash else {}
         )
         env = EnvConfig(file=opt_string(env_hash, "file", "env"), vars=env_vars)
+    catalogs = parse_catalogs(root["catalogs"]) if "catalogs" in root else None
     items = yaml_array(root["domains"], "domains") if "domains" in root else []
     domains = [parse_domain(item, version) for item in items]
     defaults = {d.name: d.defaults for d in domains if d.defaults is not None}
@@ -207,8 +216,8 @@ def parse_root(doc: object) -> RootConfig:
     return RootConfig(
         version=version,
         metadata=metadata,
-        storages=root.get("storages", root.get("filesystems")),
-        catalogs=root.get("catalogs"),
+        storages=storages,
+        catalogs=catalogs,
         env=env,
         domains=domains,
         report=root.get("report"),
