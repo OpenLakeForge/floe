@@ -1,4 +1,4 @@
-"""Project root, domains and defaults, ported from `config/parse.rs` (`parse_root`, `parse_domains`)."""
+"""Project root, domains and named sources, ported from `config/parse.rs` (`parse_root`, `parse_domains`, `parse_sources`)."""
 
 import re
 from pathlib import Path
@@ -24,6 +24,7 @@ from floe.config.yaml import (
     validate_known_keys,
     yaml_array,
     yaml_hash,
+    yaml_string,
 )
 from floe.errors import FloeConfigError, FloeError
 
@@ -31,8 +32,9 @@ Hash = dict[object, object]
 V0_3 = (0, 3)
 ROOT_KEYS = (
     *("version", "metadata", "storages", "filesystems", "catalogs", "env"),
-    *("domains", "report", "lineage", "entities"),
+    *("domains", "sources", "report", "lineage", "entities"),
 )
+SOURCE_KEYS = ("format", "path", "storage", "filesystem", "options", "cast_mode")
 
 
 class ProjectMetadata(BaseModel):
@@ -111,20 +113,78 @@ def parse_domain(item: object, version: str) -> DomainConfig:
     return DomainConfig(name=name, incoming_dir=incoming_dir, defaults=defaults)
 
 
-def _merge_entity(entity: object, defaults: dict[str, Hash]) -> object:
+def parse_sources(value: object, version: str) -> dict[str, Hash]:
+    if config_version(version) < V0_3:
+        raise FloeConfigError('root.sources requires root.version >= "0.3"')
+    sources: dict[str, Hash] = {}
+    for item in yaml_array(value, "sources"):
+        hash = dict(yaml_hash(item, "sources"))
+        validate_known_keys(hash, "sources", ("name", *SOURCE_KEYS))
+        name = get_string(hash, "name", "sources")
+        del hash["name"]
+        if name in sources:
+            raise FloeConfigError(f"duplicate source name {name}")
+        sources[name] = hash
+    return sources
+
+
+def resolve_source_ref(
+    entity: object, sources: dict[str, Hash]
+) -> tuple[Hash, str, str] | None:
+    source = _field(entity, "source")
+    if not isinstance(source, dict) or "ref" not in source:
+        return None
+    source = cast(Hash, source)
+    overlay = {k: v for k, v in source.items() if k != "ref"}
+    name = yaml_string(source["ref"], "source.ref")
+    if name not in sources:
+        available = ", ".join(sources)
+        raise FloeConfigError(
+            f"source.ref={name} is not a declared source (available: {available})"
+        )
+    if "resource" in overlay:
+        resource = yaml_string(overlay.pop("resource"), "source.resource")
+    else:
+        resource = _hint(entity, "name") or ""
+    resolved = dict(cast(Hash, entity))
+    resolved.pop("source")  # a re-inserted key moves to the back, as in hashlink
+    resolved["source"] = merge_yaml(sources[name], overlay)
+    return resolved, name, resource
+
+
+def _merge_entity(
+    entity: object, sources: dict[str, Hash], defaults: dict[str, Hash]
+) -> object:
+    ref = resource = None
+    if resolved := resolve_source_ref(entity, sources):
+        entity, ref, resource = resolved
     domain = _hint(entity, "domain")
-    return merge_yaml(defaults[domain], entity) if domain in defaults else entity
+    merged = merge_yaml(defaults[domain], entity) if domain in defaults else entity
+    source = _field(merged, "source") if resource is not None else None
+    if isinstance(source, dict):
+        source = cast(Hash, source)
+        if isinstance(source.get("path"), str):
+            # `{{resource}}` is entity-specific; the template pass leaves it alone
+            source["path"] = re.sub(
+                r"\{\{(.*?)\}\}",
+                lambda m: str(resource) if m[1].strip() == "resource" else m[0],
+                cast(str, source["path"]),
+                flags=re.DOTALL,
+            )
+        source.update(source_ref=ref, resource=resource)  # for #710's source parser
+    return merged
 
 
 def parse_entities(
     entities: list[object],
     defaults: dict[str, Hash],
+    sources: dict[str, Hash],
     qualified: bool,
 ) -> list[EntityConfig]:
     result: list[EntityConfig] = []
     for index, entity in enumerate(entities):
         try:
-            parsed = parse_entity(_merge_entity(entity, defaults))
+            parsed = parse_entity(_merge_entity(entity, sources, defaults))
             if qualified and parsed.domain is not None:
                 parsed = parsed.model_copy(
                     update={"id": f"{parsed.domain}.{parsed.name}"}
@@ -170,8 +230,9 @@ def parse_root(doc: object) -> RootConfig:
     items = yaml_array(root["domains"], "domains") if "domains" in root else []
     domains = [parse_domain(item, version) for item in items]
     defaults = {d.name: d.defaults for d in domains if d.defaults is not None}
+    sources = parse_sources(root["sources"], version) if "sources" in root else {}
     entities = parse_entities(
-        get_array(root, "entities", "root"), defaults, supports_v0_3(version)
+        get_array(root, "entities", "root"), defaults, sources, supports_v0_3(version)
     )
     return RootConfig(
         version=version,
