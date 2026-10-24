@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from botocore.stub import Stubber
 
 from floe.errors import FloeRunError
 from floe.storage.inputs import InputFile, localize_input
@@ -41,3 +42,16 @@ def test_localize_local_uri_is_not_copied(tmp_path: Path) -> None:
     local = localize_input(file, None, None)
     assert local.local_path == Path("/data/k.csv")
     assert not local.is_ephemeral
+
+
+def test_list_keeps_leading_slash_in_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
+    client = S3Client("b", "us-east-1")
+    with Stubber(client._client) as stub:  # pyright: ignore[reportPrivateUsage]
+        stub.add_response(  # pyright: ignore[reportUnknownMemberType]
+            "list_objects_v2",
+            {"Contents": [{"Key": "/in/a.csv", "Size": 1}]},
+            {"Bucket": "b", "Prefix": "/in/"},
+        )
+        assert [r.uri for r in client.list("/in/")] == ["s3://b//in/a.csv"]

@@ -79,7 +79,7 @@ class S3Client:
             )
             return [
                 ObjectRef(
-                    self.resolve_uri(o["Key"]),
+                    f"s3://{self.bucket}/{o['Key']}",
                     o["Key"],
                     _iso(o.get("LastModified")),
                     o.get("Size"),
