@@ -104,7 +104,7 @@ def run(table: Table, mode: WriteMode, start: int, count: int) -> list[int]:
     )
     table.refresh()
     added = [s for s in table.snapshots() if s.snapshot_id not in before]
-    assert len(added) == 2  # throwaway: proves the job fails (#840)
+    assert len(added) == 1
     assert result.snapshot_id == added[0].snapshot_id
     summary = added[0].summary
     assert summary is not None
