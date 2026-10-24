@@ -73,11 +73,10 @@ def _local_files(
         )
 
     if any(c in raw for c in "*?["):
-        text = os.path.join(config_dir, raw)  # keeps a trailing separator, as Rust
-        pattern = Path(text)
-        files = sorted(set(_glob_files(text)), key=str)
+        pattern = os.path.join(config_dir, raw)
+        files = sorted(set(_glob_files(pattern)), key=str)
         if not files:
-            raise no_match(pattern.parent, pattern.name)
+            raise no_match(Path(pattern).parent, Path(pattern).name)
         return files, "directory"
     base = normalize_local_path(config_dir / raw)
     if base.is_file():

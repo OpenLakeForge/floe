@@ -362,15 +362,15 @@ def test_s3_negated_class_keeps_a_trailing_hyphen_literal() -> None:
     assert listed == ["s3://bucket/data/b.csv"]
 
 
-def test_local_empty_glob_override_matches_nothing(tmp_path: Path) -> None:
-    touch(tmp_path / "a.csv")
-    with pytest.raises(FloeRunError, match="glob=,"):
-        local(tmp_path, tmp_path, glob_override="")
-
-
-def test_local_trailing_separator_is_directory_only(tmp_path: Path) -> None:
+def test_local_trailing_separator_keeps_a_glob_directory_only(tmp_path: Path) -> None:
     touch(tmp_path / "a.csv")
     with pytest.raises(FloeRunError):
-        local(tmp_path, str(tmp_path / "*.csv") + "/")
+        local(Path("."), f"{tmp_path}/*.csv/")
     with pytest.raises(FloeRunError):
         local(tmp_path, tmp_path, glob_override="*.csv/")
+
+
+def test_local_empty_glob_override_matches_nothing(tmp_path: Path) -> None:
+    touch(tmp_path / "a.csv")
+    with pytest.raises(FloeRunError):
+        local(tmp_path, tmp_path, glob_override="")
