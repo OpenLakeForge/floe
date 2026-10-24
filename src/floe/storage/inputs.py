@@ -9,7 +9,7 @@ from typing import Literal
 from floe.errors import FloeConfigError, FloeError, FloeRunError
 from floe.glob import MatchOptions, Pattern, PatternError, glob
 from floe.storage.paths import normalize_local_path, parse_s3_uri
-from floe.storage.types import ObjectRef, StorageClient
+from floe.storage.types import Downloader, ObjectRef, StorageClient
 
 _SUFFIXES = {
     "csv": [".csv"],
@@ -26,6 +26,13 @@ class InputFile:
     source_stem: str
     source_size: int | None
     source_mtime: str | None
+
+
+@dataclass(frozen=True)
+class LocalInputFile:
+    file: InputFile
+    local_path: Path
+    is_ephemeral: bool
 
 
 @dataclass(frozen=True)
@@ -101,6 +108,7 @@ def _local_files(
     return files, "directory"
 
 
+_REMOTE_SCHEMES = ("s3://", "gs://", "gcs://", "abfs://", "abfss://", "az://")
 _CLOUD = MatchOptions(case_sensitive=True, require_literal_separator=True)
 
 
@@ -214,3 +222,18 @@ def resolve_inputs(
                 )
             )
     return ResolvedInputs(files, uris, mode)
+
+
+def localize_input(
+    file: InputFile, client: Downloader | None, temp_dir: Path | None
+) -> LocalInputFile:
+    """Download a cloud input to `temp_dir`; a local input is used in place."""
+    if not file.source_uri.startswith(_REMOTE_SCHEMES):
+        return LocalInputFile(
+            file, Path(file.source_uri.removeprefix("local://")), False
+        )
+    if client is None:
+        raise FloeRunError(f"storage client required to download {file.source_uri}")
+    if temp_dir is None:
+        raise FloeRunError(f"temp_dir required to download {file.source_uri}")
+    return LocalInputFile(file, client.download(file.source_uri, temp_dir), True)
