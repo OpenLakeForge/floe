@@ -1,17 +1,30 @@
 """#600's golden fixture: unique flags against a local Iceberg table match the Rust contract."""
 
-# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportMissingTypeStubs=false
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingTypeStubs=false
 # ^ pyarrow ships no type stubs
 
 import math
 import random
 import struct
+import uuid
 from collections.abc import Sequence
 from pathlib import Path
 
 import polars as pl
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from pyiceberg.io import load_file_io
+from pyiceberg.manifest import (
+    DataFile,
+    DataFileContent,
+    FileFormat,
+    ManifestContent,
+    ManifestEntry,
+    ManifestEntryStatus,
+    ManifestFile,
+    ManifestWriterV2,
+)
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.table import CommitTableResponse, Table
@@ -23,9 +36,11 @@ from pyiceberg.table.update import (
     update_table_metadata,
 )
 from pyiceberg.transforms import BucketTransform
+from pyiceberg.typedef import Record
 from pyiceberg.types import DoubleType, LongType, NestedField, StringType
 
 from floe.checks.unique import UniqueTracker
+from floe.errors import FloeRunError
 from floe.iceberg.unique import seed_from_table
 
 SCHEMA = Schema(
@@ -206,3 +221,66 @@ def test_stored_names_are_scanned_and_renamed_back(tmp_path: Path) -> None:
 def test_an_empty_table_seeds_nothing(tmp_path: Path) -> None:
     table = local_table(tmp_path, [], partitioned=False)
     assert check(table, INCOMING, ["id"]) == ([3, 8], 0)
+
+
+class _DeletesWriter(ManifestWriterV2):
+    """PyIceberg writes no delete files, so the test commits a delete manifest by hand."""
+
+    def content(self) -> ManifestContent:
+        return ManifestContent.DELETES
+
+    @property
+    def _meta(self) -> dict[str, str]:
+        return {**super()._meta, "content": "deletes"}
+
+
+def add_delete_file(
+    table: Table,
+    tmp: Path,
+    content: DataFileContent,
+    rows: pa.Table,
+    equality_ids: list[int] | None = None,
+) -> None:
+    path = tmp / f"delete-{uuid.uuid4()}.parquet"
+    pq.write_table(rows, path)
+    delete = DataFile.from_args(
+        content=content, file_path=str(path), file_format=FileFormat.PARQUET,
+        partition=Record(), record_count=rows.num_rows,
+        file_size_in_bytes=path.stat().st_size, equality_ids=equality_ids,
+        _table_format_version=2,
+    )  # fmt: skip
+    delete.spec_id = 0
+    with table.transaction() as tx, tx.update_snapshot().fast_append() as snap:
+        process = snap._process_manifests  # pyright: ignore[reportPrivateUsage] -- the only hook to add a manifest
+
+        def with_deletes(manifests: list[ManifestFile]) -> list[ManifestFile]:
+            out = table.io.new_output(str(tmp / f"deletes-{uuid.uuid4()}.avro"))
+            snapshot_id = snap._snapshot_id  # pyright: ignore[reportPrivateUsage] -- the snapshot being written
+            with _DeletesWriter(PartitionSpec(), SCHEMA, out, snapshot_id, "deflate") as writer:  # fmt: skip
+                writer.add(ManifestEntry.from_args(status=ManifestEntryStatus.ADDED, snapshot_id=snapshot_id, data_file=delete))  # fmt: skip
+            return process(manifests) + [writer.to_manifest_file()]
+
+        snap._process_manifests = with_deletes  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue] -- see above
+
+
+def _field(name: str, kind: pa.DataType, field_id: int) -> pa.Field:
+    return pa.field(name, kind, nullable=False, metadata={"PARQUET:field_id": str(field_id)})  # fmt: skip
+
+
+def test_rows_removed_by_a_positional_delete_are_not_seeded(tmp_path: Path) -> None:
+    """DuckDB merges (#817) write positional deletes: a deleted key is not a target duplicate."""
+    table = local_table(tmp_path, [(1, "a", 1, 0.0), (2, "a", 2, 0.0)], partitioned=False)  # fmt: skip
+    (task,) = table.scan().plan_files()
+    position = pa.schema([_field("file_path", pa.string(), 2147483546), _field("pos", pa.int64(), 2147483545)])  # fmt: skip
+    deletes = pa.table({"file_path": [task.file.file_path], "pos": [1]}, schema=position)  # fmt: skip
+    add_delete_file(table, tmp_path, DataFileContent.POSITION_DELETES, deletes)
+    assert [len(t.delete_files) for t in table.scan().plan_files()] == [1]
+    assert check(table, [(1, "b", 9, None), (2, "b", 9, None)], ["id"]) == ([0], 1)
+
+
+def test_an_equality_delete_fails_instead_of_seeding_deleted_keys(tmp_path: Path) -> None:  # fmt: skip
+    table = local_table(tmp_path, [(1, "a", 1, 0.0), (2, "a", 2, 0.0)], partitioned=False)  # fmt: skip
+    deletes = pa.table({"id": [2]}, schema=pa.schema([_field("id", pa.int64(), 1)]))
+    add_delete_file(table, tmp_path, DataFileContent.EQUALITY_DELETES, deletes, [1])
+    with pytest.raises(FloeRunError, match="^iceberg unique seed scan failed: .*equality deletes"):  # fmt: skip
+        check(table, [(2, "b", 9, None)], ["id"])

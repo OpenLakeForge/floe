@@ -172,7 +172,10 @@ class UniqueTracker:
                 valid = keys.select(pl.all_horizontal(pl.all().is_not_null()))[c.ids[0]]
                 fresh = keys.filter(valid).unique()
                 c.seen = pl.concat([c.seen, fresh]).unique() if c.seen.width else fresh
-                c.seeded = c.seen
+                # Iceberg seeds chunk by chunk: keys the batch already holds stay batch keys
+                c.seeded = (
+                    pl.concat([c.seeded, fresh]).unique() if c.seeded.width else fresh
+                )
 
     @staticmethod
     def _keys(c: _Constraint, df: pl.DataFrame) -> pl.DataFrame:
