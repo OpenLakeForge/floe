@@ -8,10 +8,10 @@ from typing import Any, cast
 
 from floe.checks.rows import Formatter
 from floe.config.parse import parse_config
+from floe.config.profile import parse_profile
 from floe.config.project import RootConfig, validate_domains
 from floe.config.validate import validate_entities
-from floe.config.vars import string_map
-from floe.config.yaml import load_yaml, yaml_hash
+from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeError, FloeIoError
 from floe.report.summary import build_summary, id_path, write_reports
 from floe.run.entity import run_entity
@@ -24,11 +24,9 @@ def _load(config: str, profile: str | None) -> tuple[Path, RootConfig]:
         path = Path(os.path.realpath(config, strict=True))
     except OSError as e:
         raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
-    # ponytail: raw `variables:` only; validation and `${}` expansion land with #635
     variables = (
-        string_map(
-            yaml_hash(load_yaml(Path(profile))[0], "profile").get("variables", {}),
-            "profile.variables",
+        resolve_vars(
+            parse_profile(Path(profile)).variables, {}, extract_config_env_vars(path)
         )
         if profile
         else {}
@@ -88,7 +86,7 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     validate = commands.add_parser("validate")
     validate.add_argument("-c", "--config", required=True)
-    validate.add_argument("-p", "--profile")  # ponytail: profiles land with #635
+    validate.add_argument("-p", "--profile")
     commands.add_parser("run").add_argument("-c", "--config", required=True)
     try:
         args = parser.parse_args()

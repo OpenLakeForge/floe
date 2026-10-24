@@ -1,0 +1,245 @@
+"""Environment profiles, ported from `profile/parse.rs` and `profile/validate.rs`."""
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+from floe.config.vars import string_map
+from floe.config.yaml import (
+    load_yaml,
+    rust_debug,
+    validate_known_keys,
+    yaml_array,
+    yaml_hash,
+    yaml_string,
+)
+from floe.errors import FloeConfigError
+
+Hash = dict[object, object]
+Reader = Callable[[Hash, str, str], object]
+
+API_VERSION = "floe/v1"
+KIND = "EnvironmentProfile"
+RUNNERS = ("local", "kubernetes_job", "databricks_job")
+CONTRACT = {
+    "kubernetes_job": ("image", "namespace"),
+    "databricks_job": (
+        *("workspace_url", "existing_cluster_id", "config_uri", "python_file_uri"),
+        "auth.service_principal_oauth_ref",
+    ),
+}
+
+
+@dataclass(frozen=True)
+class ProfileConfig:
+    name: str
+    runner: dict[str, str]  # only the fields the runner contract checks
+    variables: dict[str, str]
+
+
+def _string(hash: Hash, key: str, ctx: str, required: bool = False) -> str | None:
+    if key not in hash:
+        if required:
+            raise FloeConfigError(f"{ctx}.{key} is required")
+        return None
+    return yaml_string(hash[key], f"{ctx}.{key}")
+
+
+def _strings(hash: Hash, key: str, ctx: str) -> list[str] | None:
+    if key not in hash:
+        return None
+    items = yaml_array(hash[key], f"{ctx}.{key}")
+    return [yaml_string(item, f"{ctx}.{key}[]") for item in items]
+
+
+def _u64(hash: Hash, key: str, ctx: str) -> int | None:
+    if key not in hash:
+        return None
+    value = hash[key]
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise FloeConfigError(f"{ctx}.{key} must be a non-negative integer")
+    return value
+
+
+def _map(hash: Hash, key: str, ctx: str) -> dict[str, str] | None:
+    return string_map(hash[key], f"{ctx}.{key}") if key in hash else None
+
+
+def _secrets(hash: Hash, key: str, ctx: str) -> None:
+    if key not in hash:
+        return
+    where = f"{ctx}.{key}[]"
+    for item in yaml_array(hash[key], f"{ctx}.{key}"):
+        secret = yaml_hash(item, where)
+        validate_known_keys(secret, where, ("name", "secret_name", "key"))
+        for field in ("name", "secret_name", "key"):
+            _string(secret, field, where, True)
+
+
+def _resources(hash: Hash, key: str, ctx: str) -> None:
+    if key not in hash:
+        return
+    where = f"{ctx}.{key}"
+    resources = yaml_hash(hash[key], where)
+    validate_known_keys(resources, where, ("cpu", "memory_mb"))
+    _string(resources, "cpu", where)
+    _u64(resources, "memory_mb", where)
+
+
+def _auth(hash: Hash, key: str, ctx: str) -> str | None:
+    if key not in hash:
+        return None
+    where = f"{ctx}.{key}"
+    auth = yaml_hash(hash[key], where)
+    validate_known_keys(auth, where, ("service_principal_oauth_ref",))
+    return _string(auth, "service_principal_oauth_ref", where)
+
+
+# Rust reads the runner fields in this order, so the first malformed one is the one reported.
+_RUNNER_FIELDS: tuple[tuple[str, Reader], ...] = (
+    ("command", _string),
+    ("args", _strings),
+    ("timeout_seconds", _u64),
+    ("ttl_seconds_after_finished", _u64),
+    ("poll_interval_seconds", _u64),
+    ("secrets", _secrets),
+    ("image", _string),
+    ("namespace", _string),
+    ("service_account", _string),
+    ("resources", _resources),
+    ("env", _map),
+    ("workspace_url", _string),
+    ("existing_cluster_id", _string),
+    ("config_uri", _string),
+    ("python_file_uri", _string),
+    ("job_name", _string),
+    ("auth", _auth),
+    ("env_parameters", _map),
+)
+
+
+def _runner(value: object) -> dict[str, str]:
+    ctx = "profile.execution.runner"
+    hash = yaml_hash(value, ctx)
+    validate_known_keys(hash, ctx, ("type", *(name for name, _ in _RUNNER_FIELDS)))
+    read: dict[str, object] = {"type": _string(hash, "type", ctx, True)}
+    for name, reader in _RUNNER_FIELDS:
+        read[name] = reader(hash, name, ctx)
+    read["auth.service_principal_oauth_ref"] = read.pop("auth")
+    return {k: v for k, v in read.items() if isinstance(v, str)}
+
+
+def _orchestration(value: object) -> None:
+    ctx = "profile.execution.orchestration"
+    hash = yaml_hash(value, ctx)
+    validate_known_keys(hash, ctx, ("max_concurrent_entities", "strategy"))
+    if _u64(hash, "max_concurrent_entities", ctx) == 0:
+        raise FloeConfigError(f"{ctx}.max_concurrent_entities: must be >= 1")
+    strategy = _string(hash, "strategy", ctx)
+    if strategy not in (None, "sequential", "parallel"):
+        raise FloeConfigError(
+            f'{ctx}.strategy: expected "sequential" or "parallel", got "{strategy}"'
+        )
+
+
+def _metadata(value: object) -> str:
+    ctx = "profile.metadata"
+    hash = yaml_hash(value, ctx)
+    validate_known_keys(hash, ctx, ("name", "description", "env", "tags"))
+    name = _string(hash, "name", ctx, True)
+    _string(hash, "description", ctx)
+    _string(hash, "env", ctx)
+    _strings(hash, "tags", ctx)
+    assert name is not None  # `required` raised otherwise
+    return name
+
+
+def _validation(value: object) -> None:
+    ctx = "profile.validation"
+    hash = yaml_hash(value, ctx)
+    validate_known_keys(hash, ctx, ("strict",))
+    if "strict" in hash and not isinstance(hash["strict"], bool):
+        raise FloeConfigError(f"{ctx}.strict must be a boolean")
+
+
+def _parse_doc(doc: object) -> ProfileConfig:
+    root = yaml_hash(doc, "profile")
+    # ponytail: catalogs, storages and lineage are accepted but not read until #635b
+    validate_known_keys(
+        root,
+        "profile",
+        (
+            *("apiVersion", "kind", "metadata", "execution", "variables"),
+            *("catalogs", "storages", "lineage", "validation"),
+        ),
+    )
+    for key, expected in (("apiVersion", API_VERSION), ("kind", KIND)):
+        got = _string(root, key, "profile", True)
+        if got != expected:
+            raise FloeConfigError(f'profile.{key}: expected "{expected}", got "{got}"')
+    if "metadata" not in root:
+        raise FloeConfigError("profile.metadata is required")
+    name = _metadata(root["metadata"])
+    runner: dict[str, str] = {}
+    if "execution" in root:
+        ctx = "profile.execution"
+        execution = yaml_hash(root["execution"], ctx)
+        validate_known_keys(execution, ctx, ("runner", "orchestration"))
+        if "runner" not in execution:
+            raise FloeConfigError(f"{ctx}.runner is required")
+        runner = _runner(execution["runner"])
+        if "orchestration" in execution:
+            _orchestration(execution["orchestration"])
+    variables = (
+        string_map(root["variables"], "profile.variables")
+        if "variables" in root
+        else {}
+    )
+    if "validation" in root:
+        _validation(root["validation"])
+    return ProfileConfig(name, runner, variables)
+
+
+def _malformed(value: str) -> str | None:
+    """The first `${}` or unclosed `${` in `value`; well-formed references are left to `resolve_vars`."""
+    rest = value
+    while (start := rest.find("${")) != -1:
+        rest = rest[start + 2 :]
+        end = rest.find("}")
+        if end == -1:
+            return f"${{... (unclosed placeholder in: {rust_debug(value)})}}"[:120]
+        if not rest[:end].strip():
+            return "${} (empty placeholder)"
+        rest = rest[end + 1 :]
+    return None
+
+
+def validate_profile(profile: ProfileConfig) -> None:
+    ctx = "profile.execution.runner"
+    if not profile.name.strip():
+        raise FloeConfigError("profile.metadata.name must not be empty")
+    if profile.runner:
+        kind = profile.runner["type"]
+        if kind not in RUNNERS:
+            raise FloeConfigError(
+                f'{ctx}.type: unknown runner "{kind}"; known runners: {", ".join(RUNNERS)}'
+            )
+        for field in CONTRACT.get(kind, ()):
+            if not profile.runner.get(field, "").strip():
+                raise FloeConfigError(f"{ctx}.{field} is required for {kind}")
+    for key, value in profile.variables.items():
+        if (placeholder := _malformed(value)) is not None:
+            raise FloeConfigError(
+                f'profile variable "{key}" contains malformed placeholder: {placeholder}'
+            )
+
+
+def parse_profile(path: Path) -> ProfileConfig:
+    docs = load_yaml(path)
+    if not docs:
+        raise FloeConfigError("profile YAML is empty")
+    if len(docs) > 1:
+        raise FloeConfigError("profile YAML contains multiple documents; expected one")
+    profile = _parse_doc(docs[0])
+    validate_profile(profile)
+    return profile

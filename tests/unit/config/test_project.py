@@ -287,7 +287,9 @@ def test_d7_accepts_domain_defaults_with_other_schema_keys(tmp_path: Path) -> No
 def test_cli_validate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    (tmp_path / "p.yml").write_text("variables: {A: b}\n")
+    (tmp_path / "p.yml").write_text(
+        "apiVersion: floe/v1\nkind: EnvironmentProfile\nmetadata: {name: p}\nvariables: {A: b}\n"
+    )
     (tmp_path / "ok.yml").write_text(f'version: "0.3"\nentities: [{ENTITY}]')
     (tmp_path / "bad.yml").write_text('version: "0.3"\ncolour: 1\nentities: []')
     for config, code, stderr in [
