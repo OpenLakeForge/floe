@@ -152,6 +152,7 @@ class ManifestRunnerDefinition:
     job_name: str | None = None
     auth: dict[str, str] | None = None
     env_parameters: dict[str, str] | None = None
+    resources: dict[str, Any] | None = None
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "ManifestRunnerDefinition":
@@ -183,6 +184,7 @@ class ManifestRunnerDefinition:
             job_name=_optional_str(data, "job_name"),
             auth=auth,
             env_parameters=env_parameters,
+            resources=data.get("resources"),
         )
 
 
