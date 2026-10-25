@@ -260,6 +260,12 @@ def test_d28_derived_columns_are_schema_columns(tmp_path: Path) -> None:
     check(tmp_path, schema, sink=sink, catalogs=CATALOG, partitioning=PART)
 
 
+def test_d28_derived_columns_are_not_json_selectors(tmp_path: Path) -> None:
+    columns = ", ".join(f"{{name: c{i}, type: string}}" for i in range(1024))
+    part = ", partitioning: {pattern: '{yyyy}/{MM}/{dd}', date_column: 'ingest]date'}"
+    check(tmp_path, f"{{columns: [{columns}]}}", fmt="json", partitioning=part)
+
+
 def test_d28_derived_columns_need_partitioning(tmp_path: Path) -> None:
     sink = "{accepted: {format: iceberg, path: out, iceberg: {}, partition_spec: [{column: ingest_date, transform: day}]}}"
     with pytest.raises(FloeConfigError, match="column=ingest_date references unknown"):

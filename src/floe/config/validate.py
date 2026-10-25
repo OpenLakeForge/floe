@@ -389,10 +389,13 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
 
 def validate_schema(entity: EntityConfig, version: str) -> None:
     schema = entity.schema_
-    if entity.source.format == "json" and len(schema.columns) > MAX_JSON_COLUMNS:
+    part = entity.source.partitioning  # D28: derived columns are not read from the file
+    derived = {part.date_column, part.batch_column} if part else set[str | None]()
+    inputs = [c for c in schema.columns if c.name not in derived]
+    if entity.source.format == "json" and len(inputs) > MAX_JSON_COLUMNS:
         raise _fail(
             entity,
-            f"schema.columns has {len(schema.columns)} entries which exceeds "
+            f"schema.columns has {len(inputs)} entries which exceeds "
             f"the JSON selector limit of {MAX_JSON_COLUMNS}",
         )
     strategy = schema.normalize_columns and schema.normalize_columns.strategy
@@ -416,7 +419,7 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
                     f"schema.mismatch.{field}={policy} is unsupported "
                     f"(allowed: {', '.join(allowed)})",
                 )
-    for index, column in enumerate(schema.columns):
+    for index, column in enumerate(inputs):
         if _canonical(column.column_type) not in _TYPE_NAMES:
             raise _fail(
                 entity,
