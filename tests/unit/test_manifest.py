@@ -220,3 +220,59 @@ def test_spec_version_is_the_floe_major_minor(
     assert set(schema["required"]) <= set(manifest)
     pattern = schema["properties"]["spec_version"]["pattern"]
     assert re.fullmatch(pattern, manifest["spec_version"])
+
+
+TAIL = (
+    "sink: {accepted: {format: parquet, path: ./out}}, policy: {severity: warn}, "
+    "schema: {columns: [{name: id, type: string}]}"
+)
+D20_PROJECT = f"""\
+version: "0.3"
+metadata: {{project: sales, owner: data-team, tags: [bronze]}}
+sources:
+  - {{name: crm, format: csv, path: "./in/crm/{{{{resource}}}}.csv"}}
+lineage: {{url: "http://ol", namespace: floe, api_key: "${{OL_API_KEY}}"}}
+domains: [{{name: d}}]
+entities:
+  - {{name: orders, domain: d, source: {{ref: crm}}, {TAIL}}}
+  - {{name: clients, domain: d, source: {{ref: crm, resource: customers}}, {TAIL}}}
+  - {{name: inline, domain: d, source: {{format: csv, path: ./in/x.csv}}, {TAIL}}}
+report: {{path: ./report}}
+"""
+
+
+def test_d20_manifest_holds_the_sources_index_metadata_and_no_host_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("FLOE_WORK_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yml").write_text(D20_PROJECT)
+    argv = ["floe", "manifest", "generate", "-c", "config.yml", "-o", "-"]
+    monkeypatch.setattr(sys, "argv", [*argv, "--runtime", "image"])
+    assert main() == 0
+    text = capsys.readouterr().out
+    manifest: dict[str, Any] = json.loads(text)
+    assert str(tmp_path) not in text
+    assert manifest["report_base_uri"] == "local:///work/report"
+    assert manifest["lineage"]["api_key"] == "${OL_API_KEY}"
+    assert manifest["metadata"] == {
+        "project": "sales",
+        "owner": "data-team",
+        "tags": ["bronze"],
+    }
+    assert manifest["sources"] == [
+        {
+            "name": "crm",
+            "format": "csv",
+            "uri": "local:///work/in/crm",
+            "entities": ["d.clients", "d.orders"],
+        }
+    ]
+    uris = {e["name"]: e["source"]["uri"] for e in manifest["entities"]}
+    assert uris["d.orders"] == "local:///work/in/crm/orders.csv"
+    assert uris["d.inline"] == "local:///work/in/x.csv"
+    root = Path(__file__).resolve().parents[2]
+    schema = json.loads(
+        (root / "orchestrators/schemas/floe.manifest.schema.json").read_text()
+    )
+    assert set(manifest) <= set(schema["properties"])

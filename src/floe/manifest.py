@@ -316,6 +316,24 @@ def _blocks(root: RootConfig) -> Json:
     return blocks
 
 
+def _sources(entities: list[Json]) -> list[Json] | None:
+    """D20: the named sources' index, derived from the entities that use them."""
+    index: dict[str, Json] = {}
+    for entity in entities:
+        source = entity["source"]
+        if (ref := source.get("ref")) is None:
+            continue
+        # ponytail: an entity overlay can change a named source's format; the first entity's wins
+        entry = index.setdefault(
+            ref, {"name": ref, "format": source["format"], "uri": source["uri"]}
+        )
+        pairs = zip(entry["uri"].split("/"), source["uri"].split("/"))
+        common = takewhile(lambda p: p[0] == p[1], pairs)
+        entry["uri"] = "/".join(a for a, _ in common)
+        entry.setdefault("entities", []).append(entity["name"])
+    return sorted(index.values(), key=lambda s: s["name"]) or None
+
+
 def detect_runtime() -> str:
     """`FLOE_RUNTIME`, else a container (`/.dockerenv` or cwd `/work`) is `image`, else `cli`."""
     forced = os.environ.get("FLOE_RUNTIME", "").strip().lower()
@@ -350,12 +368,15 @@ def build_manifest(
     if runtime == "image":
         work_root = os.environ.get("FLOE_WORK_ROOT", "")
         work_root = (work_root if work_root.strip() else _WORK_ROOT).replace("\\", "/")
+    config_uri = _config_uri(options.config_arg, config_path, work_root)
     ctx = _Context(
-        normalize_local_path(config_path.parent),
+        # D20: in `image` runtime local paths resolve beside `config_uri`, never on the host
+        Path(config_uri.removeprefix("local://")).parent
+        if work_root is not None
+        else normalize_local_path(config_path.parent),
         root.storages,
         options.path_mode == "resolved-uri",
     )
-    config_uri = _config_uri(options.config_arg, config_path, work_root)
     files = _config_files(root.config_files)
     checksum = (
         _sha256("".join(f"{f['path']}\0{f['sha256']}\n" for f in files).encode())
@@ -402,6 +423,11 @@ def build_manifest(
         ],
     }
     manifest |= _blocks(root)
+    manifest = _put(
+        manifest,
+        metadata=root.metadata and root.metadata.model_dump(exclude_none=True),
+        sources=_sources(manifest["entities"]),
+    )
     manifest = {
         k: v for k, v in manifest.items() if k not in _OPTIONAL or v is not None
     }
