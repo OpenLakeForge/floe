@@ -145,6 +145,7 @@ def _manifest(args: argparse.Namespace) -> int:
         if remote
         else None,  # a remote `-o` is where the manifest is deployed
         args.profile,
+        profile,
     )
     manifest = build_manifest(root, path, options, args.entities)
     text = json.dumps(manifest, indent=2, ensure_ascii=False)
