@@ -646,10 +646,9 @@ def _run_entity(
     pending, files = inc.claim(inputs.files, emit)
     frames: list[pl.DataFrame] = []
     downloader = None if isinstance(client, LocalClient) else client
+    # Rust `localize_input`: a remote input is read from a local copy
     with tempfile.TemporaryDirectory(prefix="floe-") as temp_dir:
-        for (
-            f
-        ) in pending:  # Rust `localize_input`: a remote input is read from a local copy
+        for f in pending:
             emit("file_started", entity=entity.name, input=f.source_uri)
             timer = time.monotonic()
             local = localize_input(f, downloader, Path(temp_dir))
