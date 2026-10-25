@@ -18,7 +18,7 @@ from floe.config.validate import validate_entities
 from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import OpenLineageObserver
-from floe.manifest import build_manifest
+from floe.manifest import Options, build_manifest
 from floe.run import run, select_entities
 
 
@@ -114,7 +114,15 @@ def _manifest(args: argparse.Namespace) -> int:
         raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}")  # fmt: skip
     path, root = _load(args.config, None)
     _check_config(root)
-    manifest = build_manifest(root, path, args.deterministic, args.manifest_name)
+    options = Options(
+        args.config,
+        args.deterministic,
+        args.manifest_name,
+        args.default_domain,
+        args.manifest_path_mode,
+        args.runtime,
+    )
+    manifest = build_manifest(root, path, options, args.entities)
     text = json.dumps(manifest, indent=2, ensure_ascii=False)
     if args.output == "-":
         print(text)
@@ -165,6 +173,12 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("-o", "--output", required=True)
     generate.add_argument("--deterministic", action="store_true")
     generate.add_argument("--manifest-name")
+    generate.add_argument("--default-domain")
+    generate.add_argument("--manifest-path-mode", default="default")
+    generate.add_argument("--runtime", choices=("image", "cli"))
+    generate.add_argument(
+        "--entities", action="extend", default=[], type=lambda v: v.split(",")
+    )
     add = commands.add_parser("add-entity")
     add.add_argument("-c", "--config", required=True)
     add.add_argument("--input", required=True)

@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 5 D12, 1 D13, 2 D21.
+18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 5 D12, 1 D13, 2 D21, 4 D26.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -107,13 +107,16 @@ implementation exists yet; each is derived as its row says.
 | `val2_type_time` | D10 | `entity.name=orders schema.columns[0].type=time is unsupported for column id (allowed: string, number, boolean, datetime, date)` | D10: Rust 0.7 accepts `time` at validate (every value later fails to cast); Python rejects it as not supported in 0.8. py is the validate.rs:1313 message with `time` dropped from the allowed list. |
 | `val2_type_unsupported` | D10 | `entity.name=orders schema.columns[0].type=varchar is unsupported for column id (allowed: string, number, boolean, datetime, date)` | Hand-derived, not recorded: Rust's message with `time` dropped from the allowed list (D10), as for `val2_type_time`. |
 | `val2_part_spec_transform_unsupported` | D12 | `entity.name=orders sink.accepted.partition_spec[0].num_buckets is required for transform=bucket` | D12 (#703): Python accepts `transform: bucket` with a required positive integer `num_buckets` on Iceberg sinks; Rust 0.7 rejects `bucket` (validate.rs:1227) and, at parse, any `num_buckets` key. This config has no `num_buckets`; wording follows `profile/validate.rs` `{field} is required for {kind}`. |
-| `val2_part_spec_bucket_ok` | D12 | ok | As above, with `num_buckets: 16`. |
+| `val2_part_spec_bucket_ok` | D12, D26 | `entity.name=orders sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8` | As above, with `num_buckets: 16`; D12 accepts the spec, then D26 rejects the catalog-less sink (the D12 accept is covered by `test_bucket_transform_ok`). |
 | `val2_part_spec_bucket_zero` | D12 | `entity.name=orders sink.accepted.partition_spec[0].num_buckets must be greater than 0` | As above; wording of the validate.rs `sink.accepted.options.{field} must be greater than 0` rule. |
 | `val2_part_spec_bucket_not_integer` | D12 | `entities[0] (entity.name=orders): expected integer at sink.accepted.partition_spec[0].num_buckets` | As above; `num_buckets: 1.5` hits parse.rs's integer reader (`expected integer at`). |
 | `val2_part_spec_bucket_on_day` | D12 | `entity.name=orders sink.accepted.partition_spec[0].num_buckets is only supported with transform=bucket` | As above; `num_buckets` on `transform: day`. Wording follows the validate.rs `is only supported with sink.write_mode=...` rules. |
 | `val2_evolution_add_columns_iceberg_ok` | D13 | ok | D13: Python accepts `schema_evolution.mode: add_columns` on Iceberg sinks. Rust 0.7 rejects it unless the sink is Delta (validate.rs:1366), which D1 drops; other formats keep Rust's rejection. |
 | `val1_version_future_major_ok` | D21 | `root.version=1.0 is unsupported (newer than Floe 0.8)` | D21 (#797): root.version is the minimum Floe release the config targets; Python rejects one newer than its own major.minor. Rust 0.7 accepts any u64 version. Wording mirrors the validate.rs:140 minimum-version message. |
 | `val1_version_d21_newer_minor` | D21 | `root.version=0.9 is unsupported (newer than Floe 0.8)` | As `val1_version_future_major_ok`, one minor ahead. Its control `val1_version_d21_floe_ok` (`0.8`) is ok on both sides. |
+| `val2_d26_iceberg_no_catalog` | D26 | `entity.name=orders sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8` | D26 (#844): an Iceberg sink requires a REST catalog in 0.8; Rust 0.7 accepts a catalog-less one and writes a filesystem table. Checked after every other rule, so a config Rust rejects keeps its message. Wording is the Python run-time error (`iceberg/sink.py` `resolve_target`). |
+| `val2_part_spec_ok` | D26 | `entity.name=orders sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8` | As `val2_d26_iceberg_no_catalog`; the sink has no `iceberg` block. |
+| `val2_part_spec_same_column_other_transform_ok` | D26 | `entity.name=orders sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8` | As above. |
 
 ## #584 divergences
 
