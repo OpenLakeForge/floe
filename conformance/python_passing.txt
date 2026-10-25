@@ -411,9 +411,9 @@ config/val2_part_spec_column_empty manifest
 config/val2_part_spec_column_unknown manifest
 config/val2_part_spec_duplicate manifest
 config/val2_part_spec_empty manifest
-config/val2_part_spec_ok manifest
+config/val2_part_spec_ok
 config/val2_part_spec_on_parquet manifest
-config/val2_part_spec_same_column_other_transform_ok manifest
+config/val2_part_spec_same_column_other_transform_ok
 config/val2_part_spec_transform_unsupported manifest
 config/val2_pk_duplicate manifest
 config/val2_pk_duplicate_after_trim manifest
@@ -634,3 +634,4 @@ config/prof_storages_unknown_key
 config/val1_version_d21_floe_ok
 config/val1_version_d21_newer_minor
 archive_mode
+config/val2_d26_iceberg_no_catalog

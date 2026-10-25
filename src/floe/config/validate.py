@@ -732,3 +732,11 @@ def validate_entities(config: RootConfig) -> None:
                 f"(entities[{ids[entity.id]}] and entities[{index}])"
             )
         ids[entity.id] = index
+    # D26 (#844): Rust 0.7's catalog-less Iceberg tables are dropped; checked last so
+    # configs Rust rejects keep its message. `_check_iceberg` resolved the catalog.
+    for entity in config.entities:
+        if entity.sink.accepted.format == "iceberg" and entity.sink.accepted.iceberg is None:  # fmt: skip
+            raise _fail(
+                entity,
+                "sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8",
+            )

@@ -18,10 +18,12 @@ def check(
     version: str = "0.2",
     fmt: str = "csv",
     sink: str = "{accepted: {format: parquet, path: out}}",
+    catalogs: str = "",
 ) -> None:
     path = tmp_path / "config.yml"
     path.write_text(
-        textwrap.dedent(f"""
+        catalogs
+        + textwrap.dedent(f"""
         version: "{version}"
         entities:
         - name: orders
@@ -35,6 +37,10 @@ def check(
 
 
 COLS = "columns: [{name: id, type: string}, {name: amt, type: number}]"
+CATALOG = (
+    "storages: {default: s, definitions: [{name: s, type: s3, bucket: b, region: r}]}\n"
+    "catalogs: {default: c, definitions: [{name: c, type: rest, uri: u}]}"
+)
 
 
 @pytest.mark.parametrize(
@@ -133,7 +139,8 @@ def test_add_columns_on_iceberg(tmp_path: Path) -> None:
     check(
         tmp_path,
         f"{{{COLS}, schema_evolution: {{mode: add_columns}}}}",
-        sink="{accepted: {format: iceberg, path: out}}",
+        sink="{accepted: {format: iceberg, path: out, iceberg: {}}}",
+        catalogs=CATALOG,
     )
 
 
@@ -141,7 +148,8 @@ def test_d2_iceberg_accepts_merge(tmp_path: Path) -> None:
     check(
         tmp_path,
         f"{{{COLS}, primary_key: [id]}}",
-        sink="{write_mode: merge_scd2, accepted: {format: iceberg, path: out, merge: {scd2: {}}}}",
+        sink="{write_mode: merge_scd2, accepted: {format: iceberg, path: out, iceberg: {}, merge: {scd2: {}}}}",
+        catalogs=CATALOG,
     )
 
 
@@ -223,5 +231,14 @@ def test_scd2_column_collides_with_normalised_schema_name(tmp_path: Path) -> Non
 
 
 def test_bucket_transform_ok(tmp_path: Path) -> None:
-    sink = "{accepted: {format: iceberg, path: out, partition_spec: [{column: id, transform: bucket, num_buckets: 16}]}}"
-    check(tmp_path, f"{{{COLS}}}", sink=sink)
+    sink = "{accepted: {format: iceberg, path: out, iceberg: {}, partition_spec: [{column: id, transform: bucket, num_buckets: 16}]}}"
+    check(tmp_path, f"{{{COLS}}}", sink=sink, catalogs=CATALOG)
+
+
+def test_d26_iceberg_requires_catalog(tmp_path: Path) -> None:
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", sink="{accepted: {format: iceberg, path: out}}")
+    assert str(err.value) == (
+        "entity.name=orders sink.accepted.format=iceberg requires "
+        "sink.accepted.iceberg with a catalog in 0.8"
+    )
