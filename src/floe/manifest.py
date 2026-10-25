@@ -75,6 +75,9 @@ class Options(NamedTuple):
     default_domain: str | None
     path_mode: str
     runtime: str | None  # None: detect
+    manifest_uri: str | None = (
+        None  # replaces `{manifest_uri}` in `execution.base_args`
+    )
 
 
 class _Context(NamedTuple):
@@ -223,10 +226,10 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
     )
 
 
-def _execution() -> Json:
+def _execution(manifest_uri: str | None) -> Json:
     return {
         "entrypoint": "floe",
-        "base_args": ["run", "--manifest", "{manifest_uri}"]
+        "base_args": ["run", "--manifest", manifest_uri or "{manifest_uri}"]
         + ["--log-format", "json", "--quiet"],
         "per_entity_args": ["--entities", "{entity_name}"],
         "log_format": "json",
@@ -410,7 +413,7 @@ def build_manifest(
             )
             for d in root.domains
         ],
-        "execution": _execution(),
+        "execution": _execution(options.manifest_uri),
         "runners": {
             "default": "local",
             "definitions": {
