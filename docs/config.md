@@ -357,7 +357,7 @@ state file shape, and CAS behavior.
 - `accepted` (required)
   - `format`: `parquet`, `delta`, `iceberg`, or `duckdb`.
     - `delta`: Delta Lake transactional sink; optional Unity Catalog registration via `sink.accepted.delta`.
-    - `iceberg`: local/S3/GCS filesystem-catalog sink, with optional AWS Glue or REST catalog registration; append/overwrite supported; no schema evolution.
+    - `iceberg`: Iceberg table in a REST catalog; `sink.accepted.iceberg` with a catalog is required (0.8). See [Iceberg sink](sinks/iceberg.md).
     - `duckdb`: local `.duckdb` file or MotherDuck (`md:`) database; `overwrite`/`append`/`merge_scd1`/`merge_scd2` via native `MERGE INTO`. Configured via `sink.accepted.duckdb`. See [DuckDB sink](sinks/duckdb.md).
 - `path`: output directory for accepted records.
   - Supports `{{var}}` templating (see "Templating & domains").
@@ -435,8 +435,8 @@ state file shape, and CAS behavior.
       - `valid_from_column` (default `__floe_valid_from`)
       - `valid_to_column` (default `__floe_valid_to`)
       - Custom names must be non-empty, unique, and must not collide with business schema columns.
-  - `iceberg` (optional, `sink.accepted.format: iceberg`)
-    - Enables Iceberg catalog-specific options.
+  - `iceberg` (required for `sink.accepted.format: iceberg` in 0.8)
+    - Binds the sink to its REST catalog; a catalog-less Iceberg sink is rejected by `floe validate`.
     - `catalog` (optional)
       - Catalog name from `catalogs.definitions` (type `glue` or `rest`).
       - If omitted, `catalogs.default` is used when set.

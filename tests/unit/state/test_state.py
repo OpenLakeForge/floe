@@ -1,9 +1,12 @@
 """Ported from `crates/floe-core/tests/unit/state/mod.rs` (state cases)."""
 
+import io
 import json
 from pathlib import Path
 
 import pytest
+from botocore.response import StreamingBody
+from botocore.stub import Stubber
 
 import floe.state as state_mod
 from floe.errors import FloeConfigError
@@ -20,9 +23,11 @@ from floe.state import (
     read_state,
     release,
     renew,
+    reset,
 )
 from floe.storage.inputs import InputFile
 from floe.storage.local import LocalClient
+from floe.storage.s3 import S3Client
 from floe.storage.types import StoredObject
 
 FIXTURE = Path(__file__).parent / "rust_0_7_state.json"
@@ -314,3 +319,51 @@ def test_full_refresh_with_no_inputs_deletes_the_state(tmp_path: Path) -> None:
 def test_claim_all_fails_after_retries(tmp_path: Path) -> None:
     with pytest.raises(FloeConfigError, match="full-refresh state write conflicted after 8 retries"):  # fmt: skip
         claim_all(Flaky(99), str(tmp_path / "state.json"), "sales", "run-a", [_input()])
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        dump_state(EntityState("sales", None, {}, {})),
+        b"{not valid json",
+        b'{"schema":"wrong.schema","entity":"other","updated_at":null,"files":{}}',
+    ],
+)
+def test_reset_removes_existing_malformed_or_mismatched_state(
+    tmp_path: Path, body: bytes
+) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    client.write_conditional(uri, None, body)
+    assert reset(client, uri, "sales") is True
+    assert not Path(uri).exists()
+    assert reset(client, uri, "sales") is False
+
+
+def test_reset_raises_when_state_changes_meanwhile(tmp_path: Path) -> None:
+    uri = str(tmp_path / "state.json")
+
+    class Racing(LocalClient):
+        def delete_conditional(self, uri: str, expected_version: str | None) -> bool:
+            return False
+
+    LocalClient().write_conditional(uri, None, b"{}")
+    with pytest.raises(FloeConfigError) as err:
+        reset(Racing(), uri, "sales")
+    assert str(err.value) == f"entity.name=sales remote state changed while resetting: {uri}"  # fmt: skip
+
+
+def test_reset_deletes_s3_state_with_its_etag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
+    client = S3Client("b", "us-east-1")
+    key = {"Bucket": "b", "Key": "s/state.json"}
+    with Stubber(client._client) as stub:  # pyright: ignore[reportPrivateUsage]
+        body = StreamingBody(io.BytesIO(b"{not valid json"), 15)
+        stub.add_response("get_object", {"ETag": '"e1"', "Body": body}, key)  # pyright: ignore[reportUnknownMemberType]
+        stub.add_response("delete_object", {}, key | {"IfMatch": '"e1"'})  # pyright: ignore[reportUnknownMemberType]
+        stub.add_client_error(
+            "get_object", "NoSuchKey", http_status_code=404, expected_params=key
+        )  # pyright: ignore[reportUnknownMemberType]
+        assert reset(client, "s3://b/s/state.json", "sales") is True
+        assert reset(client, "s3://b/s/state.json", "sales") is False
+        stub.assert_no_pending_responses()
