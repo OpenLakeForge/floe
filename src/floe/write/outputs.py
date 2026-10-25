@@ -3,19 +3,37 @@
 import math
 import re
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from functools import wraps
 from itertools import count
 from pathlib import Path
+from typing import ParamSpec, TypeVar
 
 import polars as pl
 
 from floe.config.types import SinkOptions, WriteMode
+from floe.errors import FloeError
 
 DEFAULT_MAX_SIZE_PER_FILE = 256 * 1024 * 1024
 MAX_REPORTED_PARTS = 50
 _MIB = 1024 * 1024
 _PART = re.compile(r"part-.+")
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _os_errors(write: Callable[_P, _R]) -> Callable[_P, _R]:
+    """An `OSError` while writing becomes a bare `FloeError`: Rust surfaces a raw `io::Error` here, which logs with code `error`."""
+
+    @wraps(write)
+    def wrapped(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        try:
+            return write(*args, **kwargs)
+        except OSError as e:
+            raise FloeError(f"{e.strerror} (os error {e.errno})") from e
+
+    return wrapped
 
 
 @dataclass(frozen=True)
@@ -42,6 +60,7 @@ def _part_names(base: Path, mode: WriteMode, ext: str) -> Iterator[str]:
         yield f"part-{i:05}.{ext}"
 
 
+@_os_errors
 def write_accepted(
     df: pl.DataFrame,
     base: Path,
@@ -75,6 +94,7 @@ def write_accepted(
     )
 
 
+@_os_errors
 def write_rejected(df: pl.DataFrame, base: Path, mode: WriteMode = "overwrite") -> Path:
     """Write the rejected frame from `split_rows` as one CSV part under `base`."""
     path = base / next(_part_names(base, mode, "csv"))
