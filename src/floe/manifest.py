@@ -20,6 +20,7 @@ from floe import __version__
 from floe.config.project import ReportConfig, RootConfig
 from floe.config.storage import StoragesConfig
 from floe.config.types import ArchiveTarget, EntityConfig, SinkTarget, SourceConfig
+from floe.config.validate import FLOE_VERSION
 from floe.errors import FloeError
 from floe.run import select_entities
 from floe.storage.paths import normalize_local_path
@@ -366,11 +367,10 @@ def build_manifest(
     report = _Target(ctx, root.report)
     manifest: Json = _put(
         {
-            "schema": "floe.manifest.v1",
             "generated_at_ts_ms": 0,
             "floe_version": __version__,
+            "spec_version": f"{FLOE_VERSION[0]}.{FLOE_VERSION[1]}",  # D22
         },
-        spec_version=root.version,
         manifest_name=options.manifest_name,
     )
     manifest |= {

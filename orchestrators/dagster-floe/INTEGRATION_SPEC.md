@@ -2,7 +2,7 @@
 
 ## Goal
 
-Dagster must consume Floe manifests (`floe.manifest.v1`) as the single orchestration contract, without parsing Floe YAML at runtime.
+Dagster must consume Floe manifests (`floe.manifest.schema.json`) as the single orchestration contract, without parsing Floe YAML at runtime.
 
 Production target model:
 
@@ -13,8 +13,8 @@ Production target model:
 
 ## Source of truth
 
-- Manifest schema id: `floe.manifest.v1`
-- Canonical schema file: `orchestrators/schemas/floe.manifest.v1.json`
+- Manifest `spec_version`: the Floe major.minor that generated it; dagster-floe accepts the versions in `SUPPORTED_SPEC_VERSIONS` (`0.8`)
+- Canonical schema file: `orchestrators/schemas/floe.manifest.schema.json`
 - Generation command:
 
 ```bash

@@ -2,12 +2,14 @@
 
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from floe import __version__
 from floe._cli import main
 from floe.manifest import detect_runtime
 
@@ -201,3 +203,20 @@ def test_floe_runtime_overrides_container_detection(
     assert detect_runtime() == "image"
     monkeypatch.setenv("FLOE_RUNTIME", "cli")
     assert detect_runtime() == "cli"
+
+
+def test_spec_version_is_the_floe_major_minor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """D22: `spec_version` is the Floe major.minor, and `floe.manifest.v1` is gone."""
+    assert generate(tmp_path, monkeypatch, "-o", "-") == 0
+    manifest: dict[str, Any] = json.loads(capsys.readouterr().out)
+    assert manifest["spec_version"] == ".".join(__version__.split(".")[:2])
+    root = Path(__file__).resolve().parents[2]
+    schema = json.loads(
+        (root / "orchestrators/schemas/floe.manifest.schema.json").read_text()
+    )
+    assert set(manifest) <= set(schema["properties"])
+    assert set(schema["required"]) <= set(manifest)
+    pattern = schema["properties"]["spec_version"]["pattern"]
+    assert re.fullmatch(pattern, manifest["spec_version"])

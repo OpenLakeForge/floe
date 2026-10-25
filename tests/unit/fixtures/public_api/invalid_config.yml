@@ -1,0 +1,14 @@
+version: "0.1"
+entities:
+  - name: "broken"
+    source:
+      format: "csv"
+      path: "/some/path"
+    sink:
+      accepted:
+        format: "not_a_real_format"
+        path: "/out"
+    policy:
+      severity: "reject"
+    schema:
+      columns: []
