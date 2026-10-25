@@ -284,3 +284,42 @@ def test_an_equality_delete_fails_instead_of_seeding_deleted_keys(tmp_path: Path
     add_delete_file(table, tmp_path, DataFileContent.EQUALITY_DELETES, deletes, [1])
     with pytest.raises(FloeRunError, match="^iceberg unique seed scan failed: .*equality deletes"):  # fmt: skip
         check(table, [(2, "b", 9, None)], ["id"])
+
+
+def test_unsigned_batch_keys_meet_the_signed_table_keys(tmp_path: Path) -> None:
+    """The sink widens unsigned keys (Iceberg has none); the hits come back in the batch's dtype."""
+    table = local_table(tmp_path, HISTORY, partitioned=False)
+    tracker = UniqueTracker([["id"]])
+    batch = frame(INCOMING).drop_nulls("id").with_columns(pl.col("id").cast(pl.UInt32))
+    seed_from_table(tracker, table, batch, {})
+    assert tracker.check(batch)[0].mask.arg_true().to_list() == [0, 2, 3, 5]
+    assert tracker.results()[0].target_duplicates_count == 3
+
+
+def test_a_key_column_the_table_lacks_seeds_nothing(tmp_path: Path) -> None:
+    """`add_columns` adds the column on write: historical rows hold NULL there, never a duplicate."""
+    table = local_table(tmp_path, HISTORY, partitioned=False)
+    tracker = UniqueTracker([["qty"], ["id"]])
+    batch = frame(INCOMING).with_columns(qty=pl.Series([1, 1] + [None] * 8, dtype=pl.Int32))  # fmt: skip
+    seed_from_table(tracker, table, batch, {})
+    qty, ident = tracker.check(batch)
+    assert qty.mask.arg_true().to_list() == [1]  # the in-batch check still runs
+    assert ident.mask.arg_true().to_list() == [0, 3, 4, 8]
+
+
+class _Recording(UniqueTracker):
+    def __init__(self, keys: list[list[str]]) -> None:
+        super().__init__(keys)
+        self.seeded: list[pl.DataFrame] = []
+
+    def seed(self, df: pl.DataFrame) -> None:
+        self.seeded.append(df)
+        super().seed(df)
+
+
+def test_only_distinct_historical_keys_are_collected(tmp_path: Path) -> None:
+    history = [(1, "a", i, 0.0) for i in range(50)]
+    table = local_table(tmp_path, history, partitioned=False)
+    tracker = _Recording([["id"]])
+    seed_from_table(tracker, table, frame([(1, "b", 0, None)]), {})
+    assert [df.height for df in tracker.seeded] == [1]
