@@ -133,7 +133,8 @@ def _run(args: argparse.Namespace) -> int:
 def _manifest(args: argparse.Namespace) -> int:
     if "://" in args.output:  # ponytail: remote `-o` needs the storage clients
         raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}")  # fmt: skip
-    path, root = _load(args.config, None)
+    path = _realpath(args.config)
+    root = _load(path, None)
     _check_config(root)
     options = Options(
         args.config,
