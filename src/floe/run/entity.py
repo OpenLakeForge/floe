@@ -1,4 +1,4 @@
-"""One entity run: inputs, per-file checks, split, outputs, `run.json` (Rust: `run/entity/*.rs`, local sources and sinks)."""
+"""One entity run: inputs, per-file checks, split, outputs, `run.json` (Rust: `run/entity/*.rs`, local and S3 storage)."""
 
 import io
 import tempfile
@@ -70,6 +70,7 @@ from floe.state import (
 from floe.storage.archive import archive_input_file
 from floe.storage.inputs import (
     InputFile,
+    NoInputsError,
     ResolvedInputs,
     localize_input,
     resolve_inputs,
@@ -77,7 +78,7 @@ from floe.storage.inputs import (
 )
 from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
-from floe.storage.resolve import require_local, resolve_path, storage_client
+from floe.storage.resolve import resolve_path, storage_client
 from floe.storage.s3 import S3Client
 from floe.storage.types import StorageClient
 from floe.write.outputs import (
@@ -214,7 +215,9 @@ class _Plan:
     tracker: UniqueTracker
     pii_map: dict[str, str]
     rejected_writes: int = 0
-    archive_dir: Path | None = None  # Rust `archive_enabled()`
+    archive: tuple[str, StorageClient] | None = (
+        None  # Rust `archive_enabled()`: URI and client
+    )
     run_id: str = ""
     rejected: tuple[str, StorageClient] | None = None  # `sink.rejected` URI and client
     table: Table | None = (
@@ -224,24 +227,32 @@ class _Plan:
 
 def _archive(plan: _Plan, file: InputFile) -> str | None:
     """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>` (Rust `archive_input`)."""
-    archive = plan.archive_dir
-    if archive is None or Path(file.source_uri.removeprefix("local://")).is_relative_to(archive):  # fmt: skip
+    if plan.archive is None:
+        return None
+    base, client = plan.archive
+    if file.source_uri.startswith(f"{base}/"):
         return None  # D24: an archived input stays put
-    return archive_input_file(LocalClient(), plan.run_id, plan.entity.name, lambda rel: str(archive / rel), file)  # fmt: skip
+    # Rust: copy, then delete the source; the report shows a local target as a path
+    uri = archive_input_file(client, plan.run_id, plan.entity.name, lambda rel: f"{base}/{rel}", file)  # fmt: skip
+    return uri.removeprefix("local://")
 
 
-def _with_archived(plan: _Plan, archive: Path, source: Callable[[], ResolvedInputs]) -> ResolvedInputs:  # fmt: skip
-    """D24: a full refresh reads `<archive>/<entity>/` first (by name), then the source inputs; either may be empty, not both."""
-    e = plan.entity
+def _with_archived(plan: _Plan, archive: tuple[str, StorageClient], source: Callable[[], ResolvedInputs]) -> ResolvedInputs:  # fmt: skip
+    """D24: a full refresh reads `<archive>/<entity>/` first (by name), then the source inputs; either may be empty, not both.
+
+    Only "no inputs matched" counts as empty: any other listing error fails the refresh rather than rebuild from part of the inputs.
+    """
+    e, (base, client) = plan.entity, archive
+    path = e.name if base.startswith("local://") else f"{base}/{e.name}/"
     try:
-        old = resolve_inputs(archive, e.name, e.source.format, e.name, e.source.storage or "local", LocalClient())  # fmt: skip
-    except FloeRunError:
+        old = resolve_inputs(Path(base.removeprefix("local://")), path, e.source.format, e.name, e.source.storage or "local", client)  # fmt: skip
+    except NoInputsError:
         return (
             source()
         )  # nothing archived: the source's "no input files matched" stands
     try:
         new = source()
-    except FloeRunError:  # no new source file: rebuild from the archive alone
+    except NoInputsError:  # no new source file: rebuild from the archive alone
         return old
     return ResolvedInputs(old.files + new.files, old.listed + new.listed, new.mode)
 
@@ -391,7 +402,7 @@ def _parent(value: str) -> str | None:
     return None if i < 0 else value[: max(i, 1)]
 
 
-def _source_root(raw: str, fmt: str, resolved: Path) -> str:
+def _source_root(raw: str, fmt: str, resolved: Path | None) -> str:
     """Rust `derive_source_root`: the directory the default state lives under."""
     trimmed = raw.rstrip(_SEPARATORS)
     if not trimmed:
@@ -401,28 +412,31 @@ def _source_root(raw: str, fmt: str, resolved: Path) -> str:
         prefix = trimmed[:cut]
         done = prefix if not prefix or prefix[-1] in _SEPARATORS else _parent(prefix) or prefix  # fmt: skip
         return done.rstrip(_SEPARATORS)
-    if resolved.is_dir():
+    if resolved and resolved.is_dir():  # a remote source has no local path to probe
         return trimmed
-    if resolved.is_file() or trimmed.lower().endswith(tuple(suffixes_for_format(fmt))):
+    if (resolved and resolved.is_file()) or trimmed.lower().endswith(
+        tuple(suffixes_for_format(fmt))
+    ):
         # #813: a bare filename lives in the config dir (Rust 0.7 used the file itself)
         return (_parent(trimmed) or ".").rstrip(_SEPARATORS)
     return trimmed
 
 
-def state_uri(entity: EntityConfig, config_dir: Path) -> str:
-    """`state.path` if set, else `<source root>/.floe/state/<domain>/<name>/state.json`; local only."""
+def state_uri(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None = None) -> tuple[str, StorageClient]:  # fmt: skip
+    """`state.path` if set (a URI on the source storage, else local), else `<source root>/.floe/state/<domain>/<name>/state.json` on the source storage (Rust `resolve_entity_state_path`)."""
+    src, field = entity.source, f"entity.name={entity.name} entity.state.path"
     custom = entity.state and entity.state.path
-    if custom:
-        if "://" in custom:
-            raise FloeConfigError(f"entity.name={entity.name} entity.state.path must be a local path (got {custom})")  # fmt: skip
-        return f"local://{normalize_local_path(config_dir / custom)}"
-    src = entity.source
-    root = _source_root(
-        src.path, src.format, normalize_local_path(config_dir / src.path)
-    )
-    ident = f"{entity.domain}/{entity.name}" if entity.domain and entity.id != entity.name else entity.name  # fmt: skip
-    tail = f".floe/state/{ident}/state.json"
-    return f"local://{normalize_local_path(config_dir / (f'{root}/{tail}' if root and root != '.' else tail))}"  # fmt: skip
+    if custom and "://" not in custom:
+        return f"local://{normalize_local_path(config_dir / custom)}", LocalClient()
+    if not custom:
+        source_uri, _ = resolve_path(storages, config_dir, src.storage, src.path, field)
+        local = source_uri.startswith("local://")
+        root = _source_root(src.path, src.format, Path(source_uri.removeprefix("local://")) if local else None)  # fmt: skip
+        ident = f"{entity.domain}/{entity.name}" if entity.domain and entity.id != entity.name else entity.name  # fmt: skip
+        tail = f".floe/state/{ident}/state.json"
+        custom = f"{root}/{tail}" if root and root != "." else tail
+    uri, definition = resolve_path(storages, config_dir, src.storage, custom, field)
+    return uri, storage_client(definition)
 
 
 def skipped_report(uri: str, reason: str, warning: str | None = None) -> dict[str, Any]:
@@ -481,8 +495,9 @@ def skipped_reports(
 class Incremental:
     """Claims the entity's inputs, renews the claims while it runs, then promotes or releases them."""
 
-    def __init__(self, entity: EntityConfig, config_dir: Path, run_id: str, full_refresh: bool = False) -> None:  # fmt: skip
+    def __init__(self, entity: EntityConfig, config_dir: Path, run_id: str, full_refresh: bool = False, storages: StoragesConfig | None = None) -> None:  # fmt: skip
         self.entity, self.config_dir, self.run_id = entity, config_dir, run_id
+        self.storages = storages
         self.full_refresh = full_refresh
         self.client: StorageClient = LocalClient()
         self.uri = ""
@@ -495,7 +510,7 @@ class Incremental:
         e = self.entity
         if e.incremental_mode != "file":
             return inputs, []
-        self.uri = state_uri(e, self.config_dir)
+        self.uri, self.client = state_uri(e, self.config_dir, self.storages)
         if self.full_refresh:
             self._hold(claim_all(self.client, self.uri, e.name, self.run_id, inputs))
             return inputs, []
@@ -565,8 +580,8 @@ def run_entity(
     full_refresh: bool = False,
     catalogs: CatalogsConfig | None = None,
 ) -> EntityRun:
-    """Run one entity with local sources and local or Iceberg sinks; `config_dir` is absolute and normalised."""
-    inc = Incremental(entity, config_dir, emit.run_id, full_refresh)
+    """Run one entity on local or S3 storage, with Parquet or Iceberg sinks; `config_dir` is absolute and normalised."""
+    inc = Incremental(entity, config_dir, emit.run_id, full_refresh, storages)
     try:
         run = _run_entity(
             entity, config_dir, spec_version, formatter, storages, emit, inc, catalogs
@@ -600,11 +615,6 @@ def _run_entity(
     # PyIceberg writes an Iceberg table's files, not Floe's storage clients
     base, accepted = resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"{who} sink.accepted.storage")  # fmt: skip
     rejected = sink.rejected and resolve_path(storages, config_dir, sink.rejected.storage, sink.rejected.path, f"{who} sink.rejected.storage")  # fmt: skip
-    # sink.archive.storage must equal source.storage (validated), as must the default state
-    if sink.archive:
-        require_local(storages, src.storage, f"{who} sink.archive.storage", "sink.archive")  # fmt: skip
-    if entity.incremental_mode == "file":
-        require_local(storages, src.storage, f"{who} source.storage", "incremental_mode=file")  # fmt: skip
     strategy = resolve_strategy(entity.schema_)
     columns = entity.schema_.columns
     names = source_names(columns, strategy)
@@ -629,7 +639,8 @@ def _run_entity(
         run_id=emit.run_id, rejected=rejected and (rejected[0], storage_client(rejected[1])),
     )  # fmt: skip
     if sink.archive and entity.incremental_mode in ("none", "archive"):
-        plan.archive_dir = normalize_local_path(config_dir / sink.archive.path)
+        uri, definition = resolve_path(storages, config_dir, sink.archive.storage or src.storage, sink.archive.path, f"{who} sink.archive.storage")  # fmt: skip
+        plan.archive = uri.rstrip("/"), storage_client(definition)
     accepted_client = storage_client(accepted)
     if sink.write_mode == "append" and target is None:
         _seed_unique(
@@ -646,7 +657,7 @@ def _run_entity(
     def source() -> ResolvedInputs:
         return list_source(entity, config_dir, source_uri, client)
 
-    archive = plan.archive_dir
+    archive = plan.archive
     inputs = _with_archived(plan, archive, source) if inc.full_refresh and archive else source()  # fmt: skip
     pending, files = inc.claim(inputs.files, emit)
     frames: list[pl.DataFrame] = []

@@ -32,6 +32,8 @@ def resolve_path(
     """`raw` as a `local://` or `s3://` URI, with its storage definition."""
     definition = _definition(storages, name, field)
     if definition is None or definition.type == "local":
+        if "://" in raw:
+            raise FloeConfigError(f"{field} must be a local path (got {raw})")
         return f"local://{normalize_local_path(config_dir / raw)}", definition
     if definition.type != "s3":
         raise FloeRunError(f"{field}={definition.name} (type {definition.type}) is not supported")  # fmt: skip
@@ -51,12 +53,3 @@ def storage_client(definition: StorageDefinition | None) -> LocalClient | S3Clie
     if definition is None or definition.type == "local":
         return LocalClient()
     return S3Client(definition.bucket or "", definition.region, definition.endpoint, definition.path_style_access)  # fmt: skip
-
-
-def require_local(
-    storages: StoragesConfig | None, name: str | None, field: str, feature: str
-) -> None:
-    """Refuse a remote storage for a feature that is still local-only."""
-    definition = _definition(storages, name, field)
-    if definition is not None and definition.type != "local":
-        raise FloeRunError(f"{field}={definition.name} (type {definition.type}) is not supported yet: {feature} is local only")  # fmt: skip

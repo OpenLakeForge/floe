@@ -11,6 +11,7 @@ import pytest
 
 import floe.storage.resolve as resolve_module
 from floe.config.parse import parse_config
+from floe.errors import FloeRunError
 from floe.run import run
 from floe.storage.paths import parse_s3_uri
 from floe.storage.s3 import temp_path_for_key
@@ -165,3 +166,47 @@ def test_abort_copies_the_raw_file_and_errors_to_s3(tmp_path: Path, s3: MemS3) -
     go(tmp_path, SINKS.replace("severity: reject", "severity: abort"))
     assert s3.objects["s3://b/out/rejected/a.csv"] == b"id\nx\n"
     assert json.loads(s3.objects["s3://b/out/rejected/a_reject_errors.json"])[0]["row_index"] == 0  # fmt: skip
+
+
+def test_file_mode_keeps_its_state_on_s3_and_skips_the_ingested_file(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    config = SINKS.replace("    domain: d\n", "    domain: d\n    incremental_mode: file\n", 1)  # fmt: skip
+    go(tmp_path, config)
+    state = json.loads(s3.objects["s3://b/in/.floe/state/d/orders/state.json"])
+    assert list(state["files"]) == ["s3://b/in/a.csv"]
+    out = go(tmp_path, config)
+    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    assert out.summary["results"]["files_skipped"] == 1
+    assert report["files"][0]["skip_reason"] == "already_ingested"
+
+
+ARCHIVE = SINKS.replace("    domain: d\n", "    domain: d\n    incremental_mode: archive\n", 1).replace("      accepted:", "      archive: {path: archive/, storage: lake}\n      accepted:")  # fmt: skip
+
+
+def test_archive_copies_then_deletes_the_s3_input(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    go(tmp_path, ARCHIVE)
+    [archived] = parts(s3, "s3://b/archive/")
+    assert archived.startswith("s3://b/archive/orders/a__run-r1__src-")
+    assert "s3://b/in/a.csv" not in s3.objects
+    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    assert report["files"][0]["output"]["archived_path"] == archived
+
+
+def full_refresh(tmp_path: Path, config: str) -> Any:
+    (tmp_path / "config.yml").write_text(config)
+    return run(tmp_path / "config.yml", parse_config(tmp_path / "config.yml"), run_id="r2", full_refresh=True)  # fmt: skip
+
+
+def test_full_refresh_reads_the_s3_archive_then_the_source(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    s3.write("s3://b/archive/orders/old.csv", b"id\n1\n")
+    s3.write("s3://b/in/new.csv", b"id\n2\n")
+    out = full_refresh(tmp_path, ARCHIVE)
+    assert out.summary["results"]["accepted_total"] == 2
+
+
+def test_full_refresh_fails_on_a_source_listing_error(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    """#828: only "no inputs matched" means empty; never rebuild from the archive alone on another error."""
+    s3.write("s3://b/archive/orders/old.csv", b"id\n1\n")
+    with pytest.raises(FloeRunError, match="non-empty literal prefix"):
+        full_refresh(tmp_path, ARCHIVE.replace("path: in/,", "path: '*.csv',"))
