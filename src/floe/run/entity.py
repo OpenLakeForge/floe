@@ -5,7 +5,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from itertools import chain
 from pathlib import Path
 from typing import Any
@@ -205,6 +205,9 @@ class _Plan:
     tracker: UniqueTracker
     pii_map: dict[str, str]
     rejected_writes: int = 0
+    prechecked: set[str] = field(
+        default_factory=set[str]
+    )  # files Rust settles in its precheck pass, before any file is read
     archive_dir: Path | None = None  # Rust `archive_enabled()`
     run_id: str = ""
     table: Table | None = (
@@ -293,6 +296,8 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
     def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
         # Rust skips the raw copy under PII: the file cannot be masked
         plan.tracker.restore(keys)  # the unreadable file leaves no keys behind
+        if mismatch is None:
+            plan.prechecked.add(uri)
         keep = entity.pii is None and entity.sink.rejected is not None
         raw = _copy_raw(entity, plan.config_dir, path, severity) if keep else None
         return _failed_file(entity, uri, len(declared), mismatch, err, raw), []
@@ -307,6 +312,7 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
         return failed(err, None)
     mismatch = plan_mismatch(entity, declared, probe)
     if mismatch.rejected or mismatch.aborted:
+        plan.prechecked.add(uri)
         raw = _copy_raw(
             entity, plan.config_dir, path, "abort" if mismatch.aborted else "reject"
         )
@@ -635,6 +641,7 @@ def _run_entity(
     inputs = _with_archived(plan, archive, source) if inc.full_refresh and archive else source()  # fmt: skip
     pending, files = inc.claim(inputs.files, emit)
     frames: list[pl.DataFrame] = []
+    skipped = len(files)
     for f in pending:
         emit("file_started", entity=entity.name, input=f.source_uri)
         timer = time.monotonic()
@@ -646,6 +653,7 @@ def _run_entity(
         frames += kept
         if report["status"] == "aborted":
             break
+    files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
 
     table: dict[str, Any] | None = None
     merge: dict[str, Any] | None = None
