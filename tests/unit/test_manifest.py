@@ -319,3 +319,32 @@ def test_d20_sources_uri_is_null_when_consumers_share_no_location(
     ).replace("{ref: crm, resource: customers}", "{ref: crm, storage: lake}")
     (crm,) = manifest_of(tmp_path, monkeypatch, config)["sources"]
     assert (crm["name"], crm["uri"]) == ("crm", None)
+
+
+PROFILE = """\
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata: {name: prod}
+storages:
+  default: lake
+  definitions:
+    - {name: lake, type: s3, bucket: prod-bucket, region: r}
+"""
+
+
+def test_profile_storages_shape_the_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """#872: `-p` applies the profile as `floe run -p` does, and records it like Rust 0.7."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "prod.yml").write_text(PROFILE)
+    args = ("-o", "-", "--runtime", "image", "-p", "prod.yml")
+    assert generate(tmp_path, monkeypatch, *args) == 0
+    manifest: dict[str, Any] = json.loads(capsys.readouterr().out)
+    source = manifest["entities"][0]["source"]
+    assert (source["storage"], source["uri"]) == ("lake", "s3://prod-bucket/./in/a.csv")
+    assert manifest["profile_uri"] == "local:///work/prod.yml"
+    checksum = hashlib.sha256(PROFILE.encode()).hexdigest()
+    assert manifest["profile_checksum"] == f"sha256:{checksum}"
+    assert generate(tmp_path, monkeypatch, "-o", "-") == 0
+    assert "profile_uri" not in json.loads(capsys.readouterr().out)
