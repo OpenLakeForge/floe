@@ -75,6 +75,10 @@ class Options(NamedTuple):
     default_domain: str | None
     path_mode: str
     runtime: str | None  # None: detect
+    manifest_uri: str | None = (
+        None  # replaces `{manifest_uri}` in `execution.base_args`
+    )
+    profile_arg: str | None = None  # `-p` as typed
 
 
 class _Context(NamedTuple):
@@ -223,10 +227,10 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
     )
 
 
-def _execution() -> Json:
+def _execution(manifest_uri: str | None) -> Json:
     return {
         "entrypoint": "floe",
-        "base_args": ["run", "--manifest", "{manifest_uri}"]
+        "base_args": ["run", "--manifest", manifest_uri or "{manifest_uri}"]
         + ["--log-format", "json", "--quiet"],
         "per_entity_args": ["--entities", "{entity_name}"],
         "log_format": "json",
@@ -251,7 +255,10 @@ _RUNNER_FIELDS = (
 )
 
 
-_OPTIONAL = ("work_root", "config_checksum", "config_files")
+_OPTIONAL = (
+    *("work_root", "config_checksum", "config_files"),
+    *("profile_uri", "profile_checksum"),
+)
 _WORK_ROOT = "/work"
 
 
@@ -316,6 +323,29 @@ def _blocks(root: RootConfig) -> Json:
     return blocks
 
 
+def _sources(entities: list[Json]) -> list[Json] | None:
+    """D20: the named sources' index, derived from the entities that use them."""
+    index: dict[str, Json] = {}
+    for entity in entities:
+        source = entity["source"]
+        if (ref := source.get("ref")) is None:
+            continue
+        # ponytail: an entity overlay can change a named source's format; the first entity's wins
+        entry = index.setdefault(
+            ref, {"name": ref, "format": source["format"], "uri": source["uri"]}
+        )
+        pairs = zip(entry["uri"].split("/"), source["uri"].split("/"))
+        common = takewhile(lambda p: p[0] == p[1], pairs)
+        entry["uri"] = "/".join(a for a, _ in common)
+        entry.setdefault("entities", []).append(entity["name"])
+    for (
+        entry
+    ) in index.values():  # consumers on different storages or buckets share no location
+        if entry["uri"].rstrip("/").endswith(":") or not entry["uri"]:
+            entry["uri"] = None
+    return sorted(index.values(), key=lambda s: s["name"]) or None
+
+
 def detect_runtime() -> str:
     """`FLOE_RUNTIME`, else a container (`/.dockerenv` or cwd `/work`) is `image`, else `cli`."""
     forced = os.environ.get("FLOE_RUNTIME", "").strip().lower()
@@ -350,12 +380,15 @@ def build_manifest(
     if runtime == "image":
         work_root = os.environ.get("FLOE_WORK_ROOT", "")
         work_root = (work_root if work_root.strip() else _WORK_ROOT).replace("\\", "/")
+    config_uri = _config_uri(options.config_arg, config_path, work_root)
     ctx = _Context(
-        normalize_local_path(config_path.parent),
+        # D20: in `image` runtime local paths resolve beside `config_uri`, never on the host
+        Path(config_uri.removeprefix("local://")).parent
+        if work_root is not None
+        else normalize_local_path(config_path.parent),
         root.storages,
         options.path_mode == "resolved-uri",
     )
-    config_uri = _config_uri(options.config_arg, config_path, work_root)
     files = _config_files(root.config_files)
     checksum = (
         _sha256("".join(f"{f['path']}\0{f['sha256']}\n" for f in files).encode())
@@ -365,6 +398,11 @@ def build_manifest(
         else None
     )
     report = _Target(ctx, root.report)
+    profile_uri = profile_checksum = None
+    if options.profile_arg is not None:  # recorded like `config_uri` and its checksum
+        profile = Path(os.path.realpath(options.profile_arg))
+        profile_uri = _config_uri(options.profile_arg, profile, work_root)
+        profile_checksum = _sha256(profile.read_bytes())
     manifest: Json = _put(
         {
             "generated_at_ts_ms": 0,
@@ -381,6 +419,8 @@ def build_manifest(
         "config_uri": config_uri,
         "config_checksum": checksum,
         "config_files": files,
+        "profile_uri": profile_uri,
+        "profile_checksum": profile_checksum,
         "report_base_uri": report.uri,
         "domains": [
             _put(
@@ -389,7 +429,7 @@ def build_manifest(
             )
             for d in root.domains
         ],
-        "execution": _execution(),
+        "execution": _execution(options.manifest_uri),
         "runners": {
             "default": "local",
             "definitions": {
@@ -402,6 +442,11 @@ def build_manifest(
         ],
     }
     manifest |= _blocks(root)
+    manifest = _put(
+        manifest,
+        metadata=root.metadata and root.metadata.model_dump(exclude_none=True),
+        sources=_sources(manifest["entities"]),
+    )
     manifest = {
         k: v for k, v in manifest.items() if k not in _OPTIONAL or v is not None
     }

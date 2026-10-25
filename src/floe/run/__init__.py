@@ -101,16 +101,22 @@ def run(
     require_local(root.storages, root.report.storage, "report.storage")
     run_id = run_id or started.replace(":", "-")
     report_path = str(normalize_local_path(config_dir / root.report.path))
+
+    def inputs(e: EntityConfig) -> list[str]:
+        return [f.source_uri for f in resolve_inputs(
+            config_dir, e.source.path, e.source.format, e.name, e.source.storage or "local",
+            LocalClient(), recursive=bool(e.source.options.recursive),
+            glob_override=e.source.options.glob).files]  # fmt: skip
+
     if dry_run:  # Rust: no events, no reports; the inputs are only listed
-        client = LocalClient()
-        scanned = {
-            e.id: [f.source_uri for f in resolve_inputs(
-                config_dir, e.source.path, e.source.format, e.name, e.source.storage or "local",
-                client, recursive=bool(e.source.options.recursive),
-                glob_override=e.source.options.glob).files]
-            for e in selected
-        }  # fmt: skip
-        return RunOutcome(run_id, {}, scanned, report_path, [])
+        scanned = {e.id: inputs(e) for e in selected}
+        summary = build_summary(
+            root.version, [], run_id=run_id, started_at=started, finished_at=_rfc3339(),
+            duration_ms=0, config_path=str(normalize_local_path(path)), report_path=report_path,
+            metadata=root.metadata,
+        )  # fmt: skip
+        summary["report"]["report_file"] = "disabled (dry-run)"
+        return RunOutcome(run_id, summary, scanned, report_path, [])
     emit = Emitter(observer, run_id)
     formatter = cast(
         Formatter, root.report.formatter or "json"
@@ -128,6 +134,14 @@ def run(
             raise
 
     emit("run_started", config=str(normalize_local_path(path)), report_base=report_path)
+    # Rust resolves every entity's inputs before the first entity_started (#864)
+    for e in selected:
+        # D24: a full refresh may rebuild from the archive alone, so run_entity decides
+        archive = full_refresh and e.sink.archive and e.incremental_mode in ("none", "archive")  # fmt: skip
+        if not archive:
+            require_local(root.storages, e.source.storage, f"entity.name={e.name} source.storage")  # fmt: skip
+            # ponytail: listed again in run_entity; pass the resolved inputs once #834 settles the source client
+            inputs(e)
     reports: list[tuple[str, dict[str, Any]]] = []
     run_dir = f"{report_path.rstrip('/')}/run_{run_id}"
     for e in selected:  # stops at the first abort

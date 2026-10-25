@@ -16,13 +16,18 @@ from floe.config.profile import (
     apply_profile,
     parse_profile,
 )
-from floe.config.project import RootConfig, validate_domains
-from floe.config.validate import validate_entities
+from floe.config.project import RootConfig
+from floe.config.validate import validate_config
 from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import OpenLineageObserver
 from floe.manifest import Options, build_manifest
 from floe.run import run, select_entities
+from floe.run.entity import state_uri
+from floe.state import dump_state, read_state, reset
+from floe.storage.local import LocalClient
+from floe.storage.paths import normalize_local_path, parse_s3_uri
+from floe.storage.s3 import S3Client
 
 
 def _realpath(path: str) -> Path:
@@ -44,11 +49,6 @@ def _load(path: Path, profile: ProfileConfig | None) -> RootConfig:
     return root
 
 
-def _check_config(root: RootConfig) -> None:
-    validate_domains(root)
-    validate_entities(root)
-
-
 def _validate(args: argparse.Namespace) -> int:
     profile = parse_profile(_realpath(args.profile)) if args.profile else None
     if args.config is None:
@@ -62,7 +62,7 @@ def _validate(args: argparse.Namespace) -> int:
         return 0
     path = _realpath(args.config)
     root = _load(path, profile)
-    _check_config(root)
+    validate_config(root)
     select_entities(root, args.entities)
     print(f"Config valid: {path}")
     print(f"Version: {root.version}")
@@ -110,9 +110,8 @@ def _run(args: argparse.Namespace) -> int:
             lineage(event)
 
     try:
-        _check_config(
-            root
-        )  # after the observer: lineage sees a config that fails validation
+        # after the observer: lineage sees a config that fails validation
+        validate_config(root)
         outcome = run(
             path, root, run_id=run_id, entities=args.entities, dry_run=args.dry_run,
             full_refresh=args.full_refresh, observer=observe,
@@ -132,11 +131,13 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _manifest(args: argparse.Namespace) -> int:
-    if "://" in args.output:  # ponytail: remote `-o` needs the storage clients
+    remote = "://" in args.output
+    if remote and not args.output.startswith("s3://"):  # D1: gcs and adls are dropped
         raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}")  # fmt: skip
     path = _realpath(args.config)
-    root = _load(path, None)
-    _check_config(root)
+    profile = parse_profile(_realpath(args.profile)) if args.profile else None
+    root = _load(path, profile)
+    validate_config(root)
     options = Options(
         args.config,
         args.deterministic,
@@ -144,17 +145,26 @@ def _manifest(args: argparse.Namespace) -> int:
         args.default_domain,
         args.manifest_path_mode,
         args.runtime,
+        args.output
+        if remote
+        else None,  # a remote `-o` is where the manifest is deployed
+        args.profile,
     )
     manifest = build_manifest(root, path, options, args.entities)
     text = json.dumps(manifest, indent=2, ensure_ascii=False)
     if args.output == "-":
         print(text)
         return 0
-    out = Path(args.output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(f".{out.name}.tmp")
-    tmp.write_text(text)
-    tmp.replace(out)
+    if (
+        remote
+    ):  # one PutObject: readers see the old or the new manifest, never a partial one
+        S3Client(parse_s3_uri(args.output)[0]).write(args.output, text.encode())
+    else:
+        out = Path(args.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_name(f".{out.name}.tmp")
+        tmp.write_text(text)
+        tmp.replace(out)
     print(f"Manifest written: {args.output}")
     return 0
 
@@ -174,6 +184,29 @@ def _add_entity(args: argparse.Namespace) -> int:
         print(f"Config written: {added.output}")
         for note in added.notes:
             print(f"Note: {note}")
+    return 0
+
+
+def _state(args: argparse.Namespace) -> int:
+    if args.state_command == "reset" and not args.yes:
+        raise FloeConfigError("state reset is destructive, rerun with --yes to confirm")
+    profile = parse_profile(_realpath(args.profile)) if args.profile else None
+    path = _realpath(args.config)
+    [entity] = select_entities(_load(path, profile), [args.entity])
+    uri = state_uri(entity, normalize_local_path(path.parent))
+    if args.state_command == "reset":
+        removed = reset(LocalClient(), uri, entity.name)
+        print(f"Entity: {entity.name}\nState path: {uri}")
+        print(f"State reset: {'removed state object' if removed else 'no state object found'}")  # fmt: skip
+        return 0
+    state = read_state(LocalClient(), uri, entity.name)
+    print(f"Entity: {entity.name}\nIncremental mode: {entity.incremental_mode}\nState path: {uri}")  # fmt: skip
+    if state is None:
+        print("State exists: no\nTracked files: 0\nActive claims: 0")
+        return 0
+    print(f"State exists: yes\nTracked files: {len(state.files)}\nActive claims: {len(state.claims)}")  # fmt: skip
+    print(f"Updated at: {state.updated_at or '(unknown)'}\n")
+    print(dump_state(state).decode())
     return 0
 
 
@@ -203,6 +236,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     generate.add_argument("-c", "--config", required=True)
     generate.add_argument("-o", "--output", required=True)
+    generate.add_argument("-p", "--profile")
     generate.add_argument("--deterministic", action="store_true")
     generate.add_argument("--manifest-name")
     generate.add_argument("--default-domain")
@@ -219,6 +253,14 @@ def _parser() -> argparse.ArgumentParser:
         add.add_argument(flag)
     add.add_argument("--source", dest="source_ref")
     add.add_argument("--dry-run", action="store_true")
+    state = commands.add_parser("state").add_subparsers(dest="state_command", required=True)  # fmt: skip
+    for name in ("inspect", "reset"):
+        command = state.add_parser(name)
+        command.add_argument("-c", "--config", required=True)
+        command.add_argument("--entity", required=True)
+        command.add_argument("-p", "--profile")
+        if name == "reset":
+            command.add_argument("--yes", action="store_true")
     return parser
 
 
@@ -232,6 +274,8 @@ def main() -> int:
             return _manifest(args)
         if args.command == "add-entity":
             return _add_entity(args)
+        if args.command == "state":
+            return _state(args)
         return _run(args) if args.command == "run" else _validate(args)
     except FloeError as e:
         print(f"Error: {e}", file=sys.stderr)

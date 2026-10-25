@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from botocore.stub import ANY, Stubber
 
 from floe import __version__
 from floe._cli import main
 from floe.manifest import detect_runtime
+from floe.storage.s3 import S3Client
 
 CONFIG = """\
 version: "0.3"
@@ -70,8 +72,8 @@ def test_literal_pii_hmac_key_is_redacted(
     assert "literal-secret" not in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("output", ["s3://bucket/manifest.json", "gs://b/m.json"])
-def test_remote_output_is_refused(
+@pytest.mark.parametrize("output", ["gs://b/m.json", "abfs://c@a/m.json"])
+def test_non_s3_remote_output_is_refused(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -79,6 +81,32 @@ def test_remote_output_is_refused(
 ) -> None:
     assert generate(tmp_path, monkeypatch, "-o", output) == 1
     assert "remote manifest output is not supported yet" in capsys.readouterr().err
+
+
+def test_s3_output_is_put_through_the_s3_client_and_baked_into_base_args(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
+    uri = "s3://b/dev/manifests/sales.json"
+    client = S3Client("b", "us-east-1")
+    sent: dict[str, Any] = {}
+    client._client.meta.events.register(  # pyright: ignore[reportPrivateUsage]
+        "provide-client-params.s3.PutObject",
+        lambda params, **_: sent.update(params),  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # botocore hooks are untyped
+    )
+    monkeypatch.setattr("floe._cli.S3Client", lambda _bucket: client)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # one stubbed client
+    with Stubber(client._client) as stub:  # pyright: ignore[reportPrivateUsage]
+        stub.add_response(  # pyright: ignore[reportUnknownMemberType]
+            "put_object",
+            {},
+            {"Bucket": "b", "Key": "dev/manifests/sales.json", "Body": ANY},
+        )
+        assert generate(tmp_path, monkeypatch, "-o", uri) == 0
+        stub.assert_no_pending_responses()
+    assert capsys.readouterr().out == f"Manifest written: {uri}\n"
+    manifest = json.loads(sent["Body"])
+    assert manifest["execution"]["base_args"][:3] == ["run", "--manifest", uri]
 
 
 def manifest_of(
@@ -220,3 +248,103 @@ def test_spec_version_is_the_floe_major_minor(
     assert set(schema["required"]) <= set(manifest)
     pattern = schema["properties"]["spec_version"]["pattern"]
     assert re.fullmatch(pattern, manifest["spec_version"])
+
+
+TAIL = (
+    "sink: {accepted: {format: parquet, path: ./out}}, policy: {severity: warn}, "
+    "schema: {columns: [{name: id, type: string}]}"
+)
+D20_PROJECT = f"""\
+version: "0.3"
+metadata: {{project: sales, owner: data-team, tags: [bronze]}}
+sources:
+  - {{name: crm, format: csv, path: "./in/crm/{{{{resource}}}}.csv"}}
+lineage: {{url: "http://ol", namespace: floe, api_key: "${{OL_API_KEY}}"}}
+domains: [{{name: d}}]
+entities:
+  - {{name: orders, domain: d, source: {{ref: crm}}, {TAIL}}}
+  - {{name: clients, domain: d, source: {{ref: crm, resource: customers}}, {TAIL}}}
+  - {{name: inline, domain: d, source: {{format: csv, path: ./in/x.csv}}, {TAIL}}}
+report: {{path: ./report}}
+"""
+
+
+def test_d20_manifest_holds_the_sources_index_metadata_and_no_host_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("FLOE_WORK_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yml").write_text(D20_PROJECT)
+    argv = ["floe", "manifest", "generate", "-c", "config.yml", "-o", "-"]
+    monkeypatch.setattr(sys, "argv", [*argv, "--runtime", "image"])
+    assert main() == 0
+    text = capsys.readouterr().out
+    manifest: dict[str, Any] = json.loads(text)
+    assert str(tmp_path) not in text
+    assert manifest["report_base_uri"] == "local:///work/report"
+    assert manifest["lineage"]["api_key"] == "${OL_API_KEY}"
+    assert manifest["metadata"] == {
+        "project": "sales",
+        "owner": "data-team",
+        "tags": ["bronze"],
+    }
+    assert manifest["sources"] == [
+        {
+            "name": "crm",
+            "format": "csv",
+            "uri": "local:///work/in/crm",
+            "entities": ["d.clients", "d.orders"],
+        }
+    ]
+    uris = {e["name"]: e["source"]["uri"] for e in manifest["entities"]}
+    assert uris["d.orders"] == "local:///work/in/crm/orders.csv"
+    assert uris["d.inline"] == "local:///work/in/x.csv"
+    root = Path(__file__).resolve().parents[2]
+    schema = json.loads(
+        (root / "orchestrators/schemas/floe.manifest.schema.json").read_text()
+    )
+    assert set(manifest) <= set(schema["properties"])
+
+
+def test_d20_sources_uri_is_null_when_consumers_share_no_location(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = D20_PROJECT.replace(
+        "domains:",
+        "storages:\n  default: fs\n  definitions:\n"
+        "    - {name: fs, type: local}\n"
+        "    - {name: lake, type: s3, bucket: b, region: r}\n"
+        "domains:",
+        1,
+    ).replace("{ref: crm, resource: customers}", "{ref: crm, storage: lake}")
+    (crm,) = manifest_of(tmp_path, monkeypatch, config)["sources"]
+    assert (crm["name"], crm["uri"]) == ("crm", None)
+
+
+PROFILE = """\
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata: {name: prod}
+storages:
+  default: lake
+  definitions:
+    - {name: lake, type: s3, bucket: prod-bucket, region: r}
+"""
+
+
+def test_profile_storages_shape_the_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """#872: `-p` applies the profile as `floe run -p` does, and records it like Rust 0.7."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "prod.yml").write_text(PROFILE)
+    args = ("-o", "-", "--runtime", "image", "-p", "prod.yml")
+    assert generate(tmp_path, monkeypatch, *args) == 0
+    manifest: dict[str, Any] = json.loads(capsys.readouterr().out)
+    source = manifest["entities"][0]["source"]
+    assert (source["storage"], source["uri"]) == ("lake", "s3://prod-bucket/./in/a.csv")
+    assert manifest["profile_uri"] == "local:///work/prod.yml"
+    checksum = hashlib.sha256(PROFILE.encode()).hexdigest()
+    assert manifest["profile_checksum"] == f"sha256:{checksum}"
+    assert generate(tmp_path, monkeypatch, "-o", "-") == 0
+    assert "profile_uri" not in json.loads(capsys.readouterr().out)

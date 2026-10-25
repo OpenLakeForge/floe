@@ -122,6 +122,70 @@
         "null"
       ]
     },
+    "metadata": {
+      "description": "Project metadata from the config, descriptive only (D20).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "sources": {
+      "description": "Index of the named config sources, derived from the entities that reference them (D20). Not execution data: the runner reads only entities[].source.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "format",
+          "uri",
+          "entities"
+        ],
+        "properties": {
+          "name": {
+            "description": "The named source, matching entities[].source.ref.",
+            "type": "string",
+            "minLength": 1
+          },
+          "format": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uri": {
+            "description": "Resolved location: the longest common prefix of the consuming entities' source URIs; null when they share none (e.g. different storages).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "entities": {
+            "description": "Names of the entities that consume this source.",
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
     "report_base_uri": {
       "type": "string",
       "minLength": 1

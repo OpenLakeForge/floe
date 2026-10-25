@@ -635,3 +635,4 @@ config/val1_version_d21_floe_ok
 config/val1_version_d21_newer_minor
 archive_mode
 config/val2_d26_iceberg_no_catalog
+unresolved_inputs

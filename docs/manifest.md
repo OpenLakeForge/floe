@@ -13,6 +13,26 @@ Orchestrators like Dagster and Airflow build their job/DAG graphs *before* any d
 
 Think of it as: **"resolve everything now so the orchestrator can be dumb at runtime."**
 
+### One manifest per project per environment
+
+Configs are the authoring format; the manifest is the compiled artifact. You write small config
+files (a source declared once and reused, domain defaults, includes, `{{templates}}`), and
+`floe manifest generate` compiles them, together with an environment profile, into one manifest
+per project per environment (`sales.dev.json`, `sales.uat.json`, `sales.prod.json`). That
+manifest is the single source of truth the orchestrator runs.
+
+1. Change the configs.
+2. Build the dev manifest with the dev profile and push it to the dev area of a bucket:
+   `floe manifest generate -c project.yml -p profiles/dev.yml --deterministic -o s3://<bucket>/dev/manifests/<project>.json`.
+3. Dagster in dev (dagster-floe) loads the manifest from that bucket URI.
+4. When ready, build the same configs with the UAT or prod profile and push to that area, where
+   the UAT or prod Dagster reads it.
+
+Each entity is self-contained and fully resolved: the runner reads only `entity.source` and never
+re-resolves includes, `source_ref`, domain defaults or templates. The `sources` index and the
+project `metadata` are descriptive (see [What's inside](#whats-inside)). Credentials stay `${ENV}`
+references, resolved by the runner at run time.
+
 ---
 
 ## Generating a manifest
@@ -81,7 +101,8 @@ otherwise `cli`. Override detection with the `FLOE_RUNTIME` environment variable
 
 - **`image`** — local paths are absolutized under the container work-root: `-c domains/orders.yml`
   is stored as `local:///work/domains/orders.yml` (recorded `work_root: /work`, overridable
-  with `FLOE_WORK_ROOT`). Because every container uses the same `/work` mount, this is **both**
+  with `FLOE_WORK_ROOT`). Every other local path (sources, sinks, `report_base_uri`) resolves
+  beside it, so the manifest never holds a path of the generating host. Because every container uses the same `/work` mount, this is **both**
   portable for remote replay **and** reproducible across container runs — so `manifest_id`
   (a hash of `config_uri` + `config_checksum`) is byte-stable in CI. Use this whenever the
   manifest is deployed to object storage and replayed by a remote or containerized runner.
@@ -144,6 +165,14 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
   "profile_uri": "local:///work/prod.yml", // profile used at generation time (if any)
   "profile_checksum": "sha256:...",      // SHA-256 of the profile file (if any)
   "report_base_uri": "./report",         // where run reports are written
+  "metadata": {"project": "sales", "owner": "data-team"}, // the config's project metadata (if any)
+
+  // Index of the named config sources, derived from the entities that use them (if any).
+  // Descriptive only: the runner reads entities[].source. `uri` is the longest common prefix
+  // of the consumers' source URIs (null when they share none, e.g. different storages).
+  "sources": [
+    {"name": "crm", "format": "csv", "uri": "s3://bronze/crm", "entities": ["sales.clients", "sales.orders"]}
+  ],
 
   // The exact CLI command the orchestrator must call
   "execution": {
@@ -266,6 +295,10 @@ floe manifest generate \
   -c sales.yml \
   --output s3://my-code-bucket/floe/sales/sales.manifest.json
 ```
+
+Floe 0.8 writes remote manifests to `s3://` only (GCS and ADLS storages are dropped, D1), in one
+`PutObject` with the AWS default credential chain (`AWS_ENDPOINT_URL_S3` and
+`AWS_S3_FORCE_PATH_STYLE` for S3-compatible stores).
 
 The manifest is uploaded to S3 and its `base_args` already contain `s3://my-code-bucket/floe/sales/sales.manifest.json` — no orchestrator-side placeholder rendering needed.
 
