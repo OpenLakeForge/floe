@@ -186,3 +186,18 @@ def test_append_without_unique_keys_never_reads_the_history(tmp_path: Path, s3: 
     monkeypatch.setattr(s3, "read", no_read)
     go(tmp_path, config)
     assert len(parts(s3, "s3://b/out/accepted/")) == 2
+
+
+def test_the_s3_source_is_listed_once_per_run(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#864: the pre-check lists the inputs before the first entity_started; run_entity reuses them."""
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    prefixes: list[str] = []
+    real = s3.list
+
+    def counted(prefix: str) -> list[ObjectRef]:
+        prefixes.append(prefix)
+        return real(prefix)
+
+    monkeypatch.setattr(s3, "list", counted)
+    go(tmp_path)
+    assert prefixes == ["in/"]
