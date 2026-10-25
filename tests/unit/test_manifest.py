@@ -304,3 +304,18 @@ def test_d20_manifest_holds_the_sources_index_metadata_and_no_host_path(
         (root / "orchestrators/schemas/floe.manifest.schema.json").read_text()
     )
     assert set(manifest) <= set(schema["properties"])
+
+
+def test_d20_sources_uri_is_null_when_consumers_share_no_location(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = D20_PROJECT.replace(
+        "domains:",
+        "storages:\n  default: fs\n  definitions:\n"
+        "    - {name: fs, type: local}\n"
+        "    - {name: lake, type: s3, bucket: b, region: r}\n"
+        "domains:",
+        1,
+    ).replace("{ref: crm, resource: customers}", "{ref: crm, storage: lake}")
+    (crm,) = manifest_of(tmp_path, monkeypatch, config)["sources"]
+    assert (crm["name"], crm["uri"]) == ("crm", None)

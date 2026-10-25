@@ -167,8 +167,11 @@
             "minLength": 1
           },
           "uri": {
-            "description": "Resolved location: the longest common prefix of the consuming entities' source URIs.",
-            "type": "string",
+            "description": "Resolved location: the longest common prefix of the consuming entities' source URIs; null when they share none (e.g. different storages).",
+            "type": [
+              "string",
+              "null"
+            ],
             "minLength": 1
           },
           "entities": {
