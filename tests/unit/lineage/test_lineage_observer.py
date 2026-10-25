@@ -387,7 +387,7 @@ def test_cli_failed_run_emits_fail(
 ) -> None:
     assert cli_run(tmp_path, monkeypatch, server.url, "missing.csv") == 1
     types = [b["eventType"] for b in server.bodies]
-    assert types == ["START", "START", "FAIL", "FAIL"]
+    assert types == ["START", "FAIL"]  # no entity starts on unresolved inputs (#864)
 
 
 def test_cli_config_failing_validation_emits_start_then_fail(

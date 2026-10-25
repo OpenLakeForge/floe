@@ -60,7 +60,7 @@ def test_abort_exits_two_and_skips_the_later_entities(
     assert not (tmp_path / "out" / "accepted" / "b").exists()
 
 
-def test_a_failing_entity_keeps_the_reports_of_the_ones_before_it_and_writes_no_summary(
+def test_an_unresolved_input_fails_before_any_entity_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "in").mkdir()
@@ -72,11 +72,9 @@ def test_a_failing_entity_keeps_the_reports_of_the_ones_before_it_and_writes_no_
         sys, "argv", ["floe", "run", "-c", str(tmp_path / "config.yml")]
     )
     assert main() == 1
-    assert not list(
-        (tmp_path / "report").glob("run_*/run.summary.json")
-    )  # Rust: no summary
-    assert len(list((tmp_path / "report").glob("run_*/d/a/run.json"))) == 1
-    assert (tmp_path / "out" / "accepted" / "a").exists()
+    # Rust resolves every entity's inputs first (#864): `a` never runs, nothing is written
+    assert not (tmp_path / "report").exists()
+    assert not (tmp_path / "out").exists()
 
 
 def test_a_remote_report_storage_is_refused(
