@@ -1,0 +1,255 @@
+{
+  "schema": "floe.manifest.v1",
+  "generated_at_ts_ms": 0,
+  "floe_version": "<volatile>",
+  "spec_version": "0.3",
+  "manifest_id": "<volatile>",
+  "manifest_revision": "<volatile>",
+  "runtime_env": "cli",
+  "config_uri": "local://<ROOT>/work/config.yml",
+  "config_checksum": "sha256:391a0d59bdea50a7153ea3f3a7b642343f205e6bb0778621b4b419d633e85d46",
+  "config_files": [
+    {
+      "path": "config.yml",
+      "sha256": "aa117167ce70ba1e21cf8d7acd6fd08a05b1042e779f1eee6af010fcd1960741"
+    },
+    {
+      "path": "domains/finance/_domain.yml",
+      "sha256": "5b58d0323bc2ff8abc19cbeab6daa365d4b8fc6f93deb72f04f7120b4a26a8a8"
+    },
+    {
+      "path": "domains/finance/accounts.yml",
+      "sha256": "c3bd12388855468816fdc3d63f358fdea0a881123270a8336995d8228194855c"
+    },
+    {
+      "path": "domains/sales/_domain.yml",
+      "sha256": "23fa2a290abf7d07eeea439d150815239bb3046814aff69feb7d632f7f676c18"
+    },
+    {
+      "path": "domains/sales/accounts.yml",
+      "sha256": "622f94abd4e9814084050302e9318c373775e2980e4f19e294235b3fe034ef4e"
+    },
+    {
+      "path": "sources.yml",
+      "sha256": "29b2062abd9a4a5b335f61c4ec214ef118abd29e09cca5fd4cba7cd95abcefc2"
+    }
+  ],
+  "report_base_uri": "local://<ROOT>/work/report",
+  "domains": [
+    {
+      "name": "finance"
+    },
+    {
+      "name": "sales"
+    }
+  ],
+  "execution": {
+    "entrypoint": "floe",
+    "base_args": [
+      "run",
+      "--manifest",
+      "{manifest_uri}",
+      "--log-format",
+      "json",
+      "--quiet"
+    ],
+    "per_entity_args": [
+      "--entities",
+      "{entity_name}"
+    ],
+    "log_format": "json",
+    "result_contract": {
+      "run_finished_event": true,
+      "summary_uri_field": "summary_uri",
+      "exit_codes": {
+        "0": "success_or_rejected",
+        "1": "technical_failure",
+        "2": "aborted"
+      }
+    },
+    "defaults": {
+      "env": {},
+      "workdir": null
+    }
+  },
+  "runners": {
+    "default": "local",
+    "definitions": {
+      "local": {
+        "type": "local_process",
+        "command": null,
+        "args": null,
+        "timeout_seconds": null,
+        "ttl_seconds_after_finished": null,
+        "poll_interval_seconds": null,
+        "secrets": null,
+        "image": null,
+        "namespace": null,
+        "service_account": null,
+        "resources": null,
+        "env": null,
+        "workspace_url": null,
+        "existing_cluster_id": null,
+        "config_uri": null,
+        "python_file_uri": null,
+        "job_name": null,
+        "auth": null,
+        "env_parameters": null
+      }
+    }
+  },
+  "entities": [
+    {
+      "name": "finance.accounts",
+      "domain": "finance",
+      "group_name": "finance",
+      "asset_key": [
+        "finance",
+        "accounts"
+      ],
+      "source_format": "csv",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/finance/accounts",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/finance/accounts",
+      "tags": null,
+      "source": {
+        "format": "csv",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/bronze/csv_drop/ledger_accounts.csv",
+        "path": "./bronze/csv_drop/ledger_accounts.csv",
+        "resolved": true,
+        "ref": "csv_drop",
+        "resource": "ledger_accounts",
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ",",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/finance/accounts",
+          "path": "./out/accepted/finance/accounts",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/finance/accounts",
+          "path": "./out/rejected/finance/accounts",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "label",
+            "column_type": "string"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "sales.accounts",
+      "domain": "sales",
+      "group_name": "sales",
+      "asset_key": [
+        "sales",
+        "accounts"
+      ],
+      "source_format": "csv",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/sales/accounts",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/sales/accounts",
+      "tags": null,
+      "source": {
+        "format": "csv",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/bronze/csv_drop/customer_accounts.csv",
+        "path": "./bronze/csv_drop/customer_accounts.csv",
+        "resolved": true,
+        "ref": "csv_drop",
+        "resource": "customer_accounts",
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ",",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/sales/accounts",
+          "path": "./out/accepted/sales/accounts",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/sales/accounts",
+          "path": "./out/rejected/sales/accounts",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "label",
+            "column_type": "string"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+version: "0.3"
+domains:
+  - name: sales
+    incoming_dir: incoming
+entities:
+  - name: orders
+    domain: sales
+    metadata:
+      owner: team-a
+      data_product: orders-dp
+      domain: finance
+    incremental_mode: file
+    state:
+      path: ./state/orders.json
+    source:
+      format: csv
+      path: ../shared/in/orders.csv
+      cast_mode: coerce
+      options:
+        header: false
+        null_values: ["", "NA"]
+    sink:
+      write_mode: append
+      accepted:
+        format: parquet
+        path: out/accepted/orders
+        options:
+          compression: zstd
+          row_group_size: 1000
+      rejected:
+        format: csv
+        path: out/rejected/orders
+    policy:
+      severity: reject
+    schema:
+      normalize_columns:
+        enabled: true
+        strategy: snake_case
+      mismatch:
+        missing_columns: fill_nulls
+        extra_columns: ignore
+      schema_evolution:
+        mode: strict
+      primary_key: [id]
+      unique_keys: [[id, region]]
+      columns:
+        - name: id
+          source: ID
+          type: string
+          nullable: false
+          unique: true
+          width: 10
+          trim: true
+        - name: region
+          type: string
+        - name: email
+          type: string
+        - name: phone
+          type: string
+        - name: note
+          type: string
+    pii:
+      columns:
+        - name: email
+          strategy: hash
+          key: literal-secret
+        - name: phone
+          strategy: hash
+          key: "${PII_KEY}"
+        - name: note
+          strategy: mask
+          mask_pattern: "{first2}***"
+  - name: plain
+    incremental_mode: archive
+    source:
+      format: tsv
+      path: /abs/in
+    sink:
+      accepted:
+        format: parquet
+        path: out/plain
+      archive:
+        path: archive/plain
+    policy:
+      severity: warn
+    schema:
+      columns:
+        - name: a
+          type: number
+report:
+  path: report

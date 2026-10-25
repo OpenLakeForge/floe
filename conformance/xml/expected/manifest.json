@@ -1,0 +1,158 @@
+{
+  "schema": "floe.manifest.v1",
+  "generated_at_ts_ms": 0,
+  "floe_version": "<volatile>",
+  "spec_version": "0.3",
+  "manifest_id": "<volatile>",
+  "manifest_revision": "<volatile>",
+  "runtime_env": "cli",
+  "config_uri": "local://<ROOT>/work/config.yml",
+  "config_checksum": "sha256:3f431f20359b6ddf26f1c1c0357a800f5248fb267ebdcf7272264a34f929e727",
+  "report_base_uri": "local://<ROOT>/work/report",
+  "domains": [
+    {
+      "name": "spike"
+    }
+  ],
+  "execution": {
+    "entrypoint": "floe",
+    "base_args": [
+      "run",
+      "--manifest",
+      "{manifest_uri}",
+      "--log-format",
+      "json",
+      "--quiet"
+    ],
+    "per_entity_args": [
+      "--entities",
+      "{entity_name}"
+    ],
+    "log_format": "json",
+    "result_contract": {
+      "run_finished_event": true,
+      "summary_uri_field": "summary_uri",
+      "exit_codes": {
+        "0": "success_or_rejected",
+        "1": "technical_failure",
+        "2": "aborted"
+      }
+    },
+    "defaults": {
+      "env": {},
+      "workdir": null
+    }
+  },
+  "runners": {
+    "default": "local",
+    "definitions": {
+      "local": {
+        "type": "local_process",
+        "command": null,
+        "args": null,
+        "timeout_seconds": null,
+        "ttl_seconds_after_finished": null,
+        "poll_interval_seconds": null,
+        "secrets": null,
+        "image": null,
+        "namespace": null,
+        "service_account": null,
+        "resources": null,
+        "env": null,
+        "workspace_url": null,
+        "existing_cluster_id": null,
+        "config_uri": null,
+        "python_file_uri": null,
+        "job_name": null,
+        "auth": null,
+        "env_parameters": null
+      }
+    }
+  },
+  "entities": [
+    {
+      "name": "spike.items",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "items"
+      ],
+      "source_format": "xml",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/items",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/items",
+      "tags": null,
+      "source": {
+        "format": "xml",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/items.xml",
+        "path": "./in/items.xml",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": "urn:x",
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": "item",
+          "separator": ";",
+          "sheet": null,
+          "value_tag": "value"
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/items",
+          "path": "./out/accepted/items",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/items",
+          "path": "./out/rejected/items",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "source": "@id"
+          },
+          {
+            "name": "name",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "city",
+            "column_type": "string",
+            "source": "addr.city"
+          },
+          {
+            "name": "price",
+            "column_type": "number"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    }
+  ]
+}
