@@ -218,10 +218,9 @@ def _make_manifest_with_orchestration(tmp_path, orchestration_block: str | None)
     if orchestration_block is not None:
         orch_section = f",\n    {orchestration_block}"
     payload = """{
-  "schema": "floe.manifest.v1",
   "generated_at_ts_ms": 0,
   "floe_version": "0.4.5",
-  "spec_version": "0.1",
+  "spec_version": "0.8",
   "manifest_id": "mfv1-orch-test",
   "config_uri": "./config.yml",
   "report_base_uri": "./report",

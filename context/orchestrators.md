@@ -27,16 +27,15 @@ manifest feature sets) and are not part of the drift guard.
 
 The manifest is a JSON file that decouples the Floe config from orchestrator-specific execution concerns. It tells the orchestrator how to invoke Floe and what entities exist.
 
-Schema identifier: `floe.manifest.v1`
+Schema: `orchestrators/schemas/floe.manifest.schema.json`, versioned with Floe releases. `spec_version` is the Floe major.minor that generated the manifest.
 
 ### Structure
 
 ```json
 {
-  "schema": "floe.manifest.v1",
   "generated_at_ts_ms": 1700000000000,
   "floe_version": "0.x.y",
-  "spec_version": "1",
+  "spec_version": "0.8",
   "manifest_id": "abc123",
   "config_uri": "local://config.yml",
   "config_checksum": "sha256:...",
