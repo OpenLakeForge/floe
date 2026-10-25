@@ -491,10 +491,8 @@ def _build_source_assets(
                         key=AssetKey(source_key),
                         group_name="sources",
                         description=f"Named source '{named['name']}' (format: {named['format']})",
-                        metadata={
-                            "format": named["format"],
-                            "dagster/uri": MetadataValue.url(named["uri"]),
-                        },
+                        metadata={"format": named["format"]}
+                        | ({"dagster/uri": MetadataValue.url(named["uri"])} if named["uri"] else {}),
                     )
                 )
             continue

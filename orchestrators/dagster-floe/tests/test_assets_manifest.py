@@ -241,7 +241,7 @@ def test_source_asset_group_matches_entity_group() -> None:
     assert source_assets[0].group_name == entities[0].group_name
 
 
-def _crm_manifest(tmp_path, project: str, uri: str) -> Path:
+def _crm_manifest(tmp_path, project: str, uri: str | None) -> Path:
     """The fixture with every entity reading the named source `crm`, as project `project`."""
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     payload["manifest_name"] = project
@@ -269,6 +269,15 @@ def test_entities_sharing_a_named_source_depend_on_one_source_asset(tmp_path) ->
     assert source_assets[0].metadata["dagster/uri"].url == "s3://b/crm"
     for asset_def in asset_defs:
         assert shared in set(asset_def.keys_by_input_name.values())
+
+
+def test_named_source_without_a_shared_location_has_no_uri_metadata(tmp_path) -> None:
+    """D20: `sources[].uri` is null when the consumers share no location."""
+    manifest_path = _crm_manifest(tmp_path, "sales", None)
+    _asset_defs, source_assets, _entities = build_floe_asset_defs(
+        manifest_path=str(manifest_path), runner=_NoopRunner()
+    )
+    assert "dagster/uri" not in source_assets[0].metadata
 
 
 def test_two_projects_naming_the_same_source_get_two_source_assets(tmp_path) -> None:
