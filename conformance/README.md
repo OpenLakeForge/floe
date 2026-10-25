@@ -89,5 +89,7 @@ skips them and `check.py --impl rust` prints `skip` for them.
   absolute paths feed them) and the temp dir holding the work dir is `<ROOT>` (so `../` paths mask too); every other byte is compared, key order included.
   D22 (#798): `check.py` also drops `schema` and masks `spec_version` on both sides at compare time, so the Rust 0.7
   recordings (`floe.manifest.v1`, the config version) stay as recorded; `tests/unit/test_manifest.py` checks Python's value.
+  D20 (#796): `check.py` also drops the Python-only `sources` index and project `metadata` at compare time;
+  `tests/unit/test_manifest.py` checks their content.
   Python's profile fields (`-p`) and remote `-o` are not covered yet (#635, storage clients).
 - Key order in reports is kept: it is part of the contract.
