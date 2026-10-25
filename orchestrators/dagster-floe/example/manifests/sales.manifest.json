@@ -1,8 +1,7 @@
 {
-  "schema": "floe.manifest.v1",
   "generated_at_ts_ms": 1771001087000,
   "floe_version": "0.2.4",
-  "spec_version": "0.2",
+  "spec_version": "0.8",
   "manifest_id": "mfv1-dagster-sales",
   "config_uri": "../config.sales.yml",
   "config_checksum": null,

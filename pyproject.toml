@@ -25,6 +25,7 @@ floe = "floe._cli:main"
 [dependency-groups]
 dev = [
     "boto3-stubs[s3]>=1.43.118",
+    "jsonschema>=4.26.0",
     "numpy>=2.4.6",
     "pyright",
     "pytest",

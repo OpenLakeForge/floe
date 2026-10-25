@@ -220,6 +220,9 @@ class _Plan:
     table: Table | None = (
         None  # the Iceberg target whose keys seed the tracker (append)
     )
+    merge_key: str | None = (
+        None  # the merge key's unique check; its duplicates are rejected even under warn (Rust `enforce_reject`)
+    )
 
 
 def _archive(plan: _Plan, file: InputFile) -> str | None:
@@ -316,7 +319,7 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
         raw = _copy_raw(plan, path, "abort" if mismatch.aborted else "reject", file.source_name)  # fmt: skip
         return file_report(entity, uri, 0, 0, [], mismatch, raw, _archive(plan, file)), []  # fmt: skip
 
-    rows, bad_total = 0, 0
+    rows, bad_total, forced_total = 0, 0, 0
     masks: dict[tuple[str, str, str], list[pl.Series]] = {}
     accepted: list[pl.DataFrame] = []
     rejected: list[pl.DataFrame] = []
@@ -333,6 +336,11 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
             for c in checks:
                 masks.setdefault((c.rule, c.column, c.message), []).append(c.mask)
             errors += zip(bad[ROW_INDEX].to_list(), bad[ERRORS].to_list(), strict=True)
+            forced = next((c.mask for c in checks if c.rule == "unique" and c.column == plan.merge_key), None)  # fmt: skip
+            if severity == "warn" and forced is not None:
+                forced = forced.fill_null(False)
+                forced_total += int(forced.sum())
+                typed = typed.filter(~forced)
             accepted.append(good if severity == "reject" else typed)
             if severity == "reject" and bad.height:
                 rejected.append(bad)
@@ -356,7 +364,7 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     archived = _archive(
         plan, file
     )  # Rust: after the rejected outputs, before the rows reach the sink
-    out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path, archived, errors_path)  # fmt: skip
+    out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path, archived, errors_path, forced_total)  # fmt: skip
     return out, [] if out["status"] == "aborted" else [_output(plan, df) for df in accepted]  # fmt: skip
 
 
@@ -594,7 +602,7 @@ def _run_entity(
     if sink.accepted.format not in ("parquet", "iceberg"):
         raise FloeRunError(f"entity.name={entity.name} unsupported sink format: {sink.accepted.format}")  # fmt: skip
     iceberg = sink.accepted.format == "iceberg"
-    if iceberg and sink.write_mode not in ("overwrite", "append"):
+    if iceberg and sink.write_mode == "merge_scd2":  # #654
         raise FloeRunError(f"entity.name={entity.name} sink.write_mode={sink.write_mode} is not yet supported for iceberg")  # fmt: skip
     who = f"entity.name={entity.name}"
     source_uri, client = resolve_source(entity, config_dir, storages)
@@ -632,6 +640,11 @@ def _run_entity(
     )  # fmt: skip
     if sink.archive and entity.incremental_mode in ("none", "archive"):
         plan.archive_dir = normalize_local_path(config_dir / sink.archive.path)
+    if sink.write_mode in ("merge_scd1", "merge_scd2") and entity.schema_.primary_key:
+        pk = [runtime.get(k.strip(), k.strip()) for k in entity.schema_.primary_key]
+        plan.merge_key = (
+            pk[0] if len(pk) == 1 else f"[{','.join(pk)}]"
+        )  # the tracker's check name
     accepted_client = storage_client(accepted)
     if sink.write_mode == "append" and target is None:
         _seed_unique(
@@ -671,6 +684,7 @@ def _run_entity(
                 break
 
     table: dict[str, Any] | None = None
+    merge: dict[str, Any] | None = None
     if pending and (
         frames or sink.write_mode == "overwrite"
     ):  # Rust writes nothing when every input was skipped
@@ -682,9 +696,8 @@ def _run_entity(
         if target is None:
             write = write_accepted(pl.concat(frames), accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
         else:
-            mode = "overwrite" if sink.write_mode == "overwrite" else "append"
             outputs = [plan.out_map.get(n, n) for n in names]
-            result, table = write_iceberg(entity, target, frames, outputs, mode, emit.run_id, input_hash(entity, pending))  # fmt: skip
+            result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, input_hash(entity, pending))  # fmt: skip
             write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
                                   result.avg_file_size_mb, result.small_files_count)  # fmt: skip
     else:
@@ -702,5 +715,6 @@ def _run_entity(
         unique=unique,
         table_root_uri=target.location if target and table else None,
         table=table,
+        merge=merge,
     )
     return EntityRun(report, any(f["status"] == "aborted" for f in files))
