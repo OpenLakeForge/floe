@@ -3,7 +3,7 @@
 import math
 import re
 import uuid
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import count
@@ -21,7 +21,7 @@ _PART = re.compile(r"part-.+")
 
 
 @contextmanager
-def _os_errors() -> Iterator[None]:
+def _os_errors() -> Generator[None]:
     """An `OSError` while writing becomes a bare `FloeError`: Rust surfaces a raw `io::Error` here, which logs with code `error`."""
     try:
         yield
