@@ -637,3 +637,4 @@ archive_mode
 config/val2_d26_iceberg_no_catalog
 unresolved_inputs
 write_oserror
+unresolved_inputs_dot
