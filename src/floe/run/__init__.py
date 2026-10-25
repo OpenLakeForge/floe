@@ -94,7 +94,7 @@ def run(
     selected = select_entities(root, entities)
     if full_refresh:
         selected = [_refresh(e) for e in selected]
-    config_dir = normalize_local_path(path.parent)
+    config_dir = normalize_local_path(path.parent.resolve())
     require_local(root.storages, root.report.storage, "report.storage")
     run_id = run_id or started.replace(":", "-")
     report_path = str(normalize_local_path(config_dir / root.report.path))

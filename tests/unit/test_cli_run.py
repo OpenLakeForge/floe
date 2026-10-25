@@ -240,7 +240,6 @@ def test_profile_variables_reach_the_config(
     ("args", "error"),
     [
         ([], "Error: one of --config or --manifest is required\n"),
-        (["--manifest", "m.json"], "Error: floe run --manifest is not supported yet\n"),
     ],
 )
 def test_run_needs_a_config(

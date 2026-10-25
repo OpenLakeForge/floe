@@ -18,6 +18,7 @@ from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import OpenLineageObserver
 from floe.manifest import Options, build_manifest
+from floe.manifest_run import load_manifest
 from floe.run import run, select_entities
 
 
@@ -77,21 +78,24 @@ def _validate(args: argparse.Namespace) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
-    if args.manifest is not None:
-        raise FloeConfigError("floe run --manifest is not supported yet")
-    if args.config is None:
+    if args.manifest is not None:  # Rust ignores `-p` here: the manifest is compiled
+        if "://" in args.manifest:  # ponytail: S3 in `floe run` is #834
+            raise FloeConfigError(f"remote manifest is not supported yet (#834): {args.manifest}")  # fmt: skip
+        root, observed = load_manifest(_realpath(args.manifest))
+        path = Path(args.manifest)  # the report keeps it as typed, as Rust's does
+        job = ""  # Rust names the lineage job `floe-run` (or `job_name`)
+    elif args.config is None:
         raise FloeConfigError("one of --config or --manifest is required")
-    profile = parse_profile(_realpath(args.profile)) if args.profile else None
-    path, root = _load(
-        args.config, profile
-    )  # lineage observes a config that fails validation
-    lineage = (
-        OpenLineageObserver(root.lineage, root.entities, str(path))
-        if root.lineage
-        else None
-    )
+    else:
+        profile = parse_profile(_realpath(args.profile)) if args.profile else None
+        path, root = _load(
+            args.config, profile
+        )  # lineage observes a config that fails validation
+        observed, job = root.entities, str(path)
+    lineage = OpenLineageObserver(root.lineage, observed, job) if root.lineage else None
     try:
-        _check_config(root)
+        if args.manifest is None:  # a manifest was validated when it was generated
+            _check_config(root)
         outcome = run(
             path, root, run_id=args.run_id, entities=args.entities,
             full_refresh=args.full_refresh, observer=lineage,

@@ -16,6 +16,7 @@ conformance/<case>/
 ├── runs              optional: number of runs (default 1), or one line of extra `run` args per run (`-` for none,
 │                     e.g. `-` then `--full-refresh`); only the last run is captured, state carries over
 ├── delta.yml         optional: intentional deltas of this case, e.g. `[D9]`
+├── manifest_run      optional marker: generate `manifest.json` from `config.yml`, then run `floe run --manifest manifest.json`
 └── expected_python/  optional: only the `expected/` files that differ for Python
 ```
 
