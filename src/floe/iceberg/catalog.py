@@ -1,6 +1,7 @@
 """Polaris REST catalog access, ported from `io/write/iceberg/rest.rs` and `iceberg/schema.rs`."""
 
 import os
+import re
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from urllib.parse import urlsplit
@@ -17,7 +18,8 @@ from floe.config.storage import CatalogDefinition, StorageDefinition
 from floe.config.types import SchemaEvolutionMode
 from floe.errors import FloeConfigError, FloeRunError
 
-# (column, transform) pairs, as in the entity's `sink.accepted.partition_spec`
+# (column, transform) pairs, as in the entity's `sink.accepted.partition_spec`;
+# a bucket is `bucket[N]` (PyIceberg's notation) with N its `num_buckets` (D12)
 PartitionFields = Sequence[tuple[str, str]]
 
 _TRANSFORMS = frozenset({"identity", "year", "month", "day", "hour"})
@@ -177,7 +179,6 @@ def open_duckdb(
 def build_partition_spec(
     schema: Schema, fields: PartitionFields, entity: str
 ) -> PartitionSpec:
-    """Bucket is rejected here until #703 (D12)."""
     spec_fields: list[PartitionField] = []
     for index, (column, transform) in enumerate(fields):
         column = column.strip()
@@ -188,7 +189,8 @@ def build_partition_spec(
                 f"entity.name={entity} iceberg partition_spec column {column} was not found in runtime schema"
             ) from None
         transform = transform.strip().lower()
-        if transform not in _TRANSFORMS:
+        bucket = re.fullmatch(r"bucket\[[1-9][0-9]*\]", transform)
+        if bucket is None and transform not in _TRANSFORMS:
             raise FloeRunError(
                 f"entity.name={entity} iceberg partition_spec column {column} has unsupported runtime transform {transform}"
             )
@@ -197,7 +199,9 @@ def build_partition_spec(
                 source_id=source.field_id,
                 field_id=_PARTITION_FIELD_ID_START + index,
                 transform=parse_transform(transform),
-                name=column if transform == "identity" else f"{column}_{transform}",
+                name=column
+                if transform == "identity"
+                else f"{column}_{'bucket' if bucket else transform}",
             )
         )
     return PartitionSpec(*spec_fields)

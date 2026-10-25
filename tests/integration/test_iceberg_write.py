@@ -78,7 +78,10 @@ def rows(start: int, count: int) -> pa.RecordBatchReader:  # pyright: ignore[rep
     return pa.RecordBatchReader.from_batches(ARROW, table.to_batches(max_chunksize=7))
 
 
-@pytest.fixture(params=[None, [("ts", "day")]], ids=["unpartitioned", "day"])
+@pytest.fixture(
+    params=[None, [("ts", "day")], [("id", "bucket[4]")]],
+    ids=["unpartitioned", "day", "bucket"],
+)
 def table(
     request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[Table]:

@@ -178,6 +178,21 @@ def test_glob_with_a_parent_directory_component_resolves(tmp_path: Path) -> None
     assert go(entity, tmp_path, "r1").report["results"]["files_total"] == 1
 
 
+@pytest.mark.parametrize(("mode", "moved"), [("archive", True), ("none", True), ("file", False), ("row", False)])  # fmt: skip
+def test_archive_follows_rust_archive_enabled(tmp_path: Path, mode: str, moved: bool) -> None:  # fmt: skip
+    """#824: only `archive`, or `none` with `sink.archive`, moves the source (Rust `archive_enabled()`)."""
+    setup(tmp_path, mode=mode)
+    config = tmp_path / "config.yml"
+    config.write_text(config.read_text().replace("      rejected:", "      archive: {path: ./arch}\n      rejected:"))  # fmt: skip
+    archived = go(parse_config(config).entities[0], tmp_path, "r1").report["files"][0]["output"]["archived_path"]  # fmt: skip
+    assert (tmp_path / "in/orders.csv").exists() is not moved
+    if moved:
+        assert Path(archived).parent == tmp_path / "arch/orders"
+        assert Path(archived).name.startswith("orders__run-r1__src-")
+    else:
+        assert archived is None
+
+
 def test_bare_source_filename_roots_the_state_in_the_config_dir(tmp_path: Path) -> None:
     """#813: `orders.csv` gets the same default state as `./orders.csv`, not one under the file."""
     entity = setup(tmp_path, src="orders.csv")
