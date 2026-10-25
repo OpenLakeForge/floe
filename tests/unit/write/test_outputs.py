@@ -84,6 +84,7 @@ def check(case: str, base: Path, entities: list[str]) -> None:
         k: v
         for k, v in load_expected(CONFORMANCE / case, "python").items()
         if not k.startswith("reports/")
+        and k != "manifest.json"
         and k.split("/")[1].removesuffix(".parquet") in entities
     }
     actual: dict[str, object] = {}
