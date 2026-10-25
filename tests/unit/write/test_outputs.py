@@ -24,7 +24,10 @@ from floe.pii import PiiColumn, apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.orc import read_orc
 from floe.read.parquet import read_parquet
+from floe.storage.local import LocalClient
 from floe.write.outputs import write_accepted, write_rejected
+
+LOCAL = LocalClient()
 
 CONFORMANCE = Path(__file__).parents[3] / "conformance"
 sys.path.insert(0, str(CONFORMANCE))
@@ -73,9 +76,9 @@ def emit(
     mode: WriteMode = "overwrite",
 ) -> None:
     accepted, rejected = frames
-    write_accepted(accepted, base / "accepted" / entity, mode)
+    write_accepted(accepted, LOCAL, f"local://{base}/accepted/{entity}", mode)
     if rejected.height:
-        write_rejected(rejected, base / "rejected" / entity, mode)
+        write_rejected(rejected, LOCAL, f"local://{base}/rejected/{entity}", mode)
 
 
 def check(case: str, base: Path, entities: list[str]) -> None:
@@ -156,10 +159,10 @@ def test_append_gives_unique_part_names_and_overwrite_clears_them(
     tmp_path: Path,
 ) -> None:
     df = pl.DataFrame({"a": [1, 2]})
-    write_accepted(df, tmp_path, "append")
-    write_accepted(df, tmp_path, "append")
+    write_accepted(df, LOCAL, f"local://{tmp_path}", "append")
+    write_accepted(df, LOCAL, f"local://{tmp_path}", "append")
     assert len(list(tmp_path.glob("part-*.parquet"))) == 2
-    result = write_accepted(df, tmp_path, "overwrite")
+    result = write_accepted(df, LOCAL, f"local://{tmp_path}", "overwrite")
     assert [p.name for p in tmp_path.glob("*.parquet")] == ["part-00000.parquet"]
     assert result.part_files == ["part-00000.parquet"]
 
@@ -169,10 +172,10 @@ def test_splits_at_max_size_per_file_and_writes_an_empty_part(tmp_path: Path) ->
     options = SinkOptions(
         compression="snappy", row_group_size=10, max_size_per_file=8 * 40
     )
-    result = write_accepted(df, tmp_path / "big", "overwrite", options)
+    result = write_accepted(df, LOCAL, f"local://{tmp_path}/big", "overwrite", options)
     assert result.files_written == 3
     assert pl.read_parquet(tmp_path / "big").height == 100
-    empty = write_accepted(df.clear(), tmp_path / "empty")
+    empty = write_accepted(df.clear(), LOCAL, f"local://{tmp_path}/empty")
     assert empty.part_files == ["part-00000.parquet"]
     assert pl.read_parquet(tmp_path / "empty").columns == ["a"]
 

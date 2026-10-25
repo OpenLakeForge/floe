@@ -3,6 +3,7 @@
 Skipped unless `FLOE_S3_ENDPOINT` is set, e.g. `FLOE_S3_ENDPOINT=http://localhost:8333`.
 """
 
+import io
 import json
 import os
 import uuid
@@ -37,7 +38,7 @@ entities:
     domain: d
     source: {{format: csv, path: in/, storage: lake, options: {{header: true, separator: ","}}}}
     sink:
-      accepted: {{format: parquet, path: ./out/accepted}}
+      accepted: {{format: parquet, path: out/accepted, storage: lake}}
     policy: {{severity: reject}}
     schema:
       columns:
@@ -53,7 +54,9 @@ def s3(monkeypatch: pytest.MonkeyPatch) -> S3Client:
     return S3Client(BUCKET, "us-east-1", os.environ["FLOE_S3_ENDPOINT"], True)
 
 
-def test_csv_on_s3_runs_with_the_report_on_s3(s3: S3Client, tmp_path: Path) -> None:
+def test_csv_on_s3_to_parquet_on_s3_with_the_report_on_s3(
+    s3: S3Client, tmp_path: Path
+) -> None:
     prefix = f"it-{uuid.uuid4().hex}"
     s3.write(s3.resolve_uri(f"{prefix}/in/a.csv"), b"id\n1\n2\n")
     config = tmp_path / "config.yml"
@@ -64,7 +67,9 @@ def test_csv_on_s3_runs_with_the_report_on_s3(s3: S3Client, tmp_path: Path) -> N
     )
     out = run(config, parse_config(config), run_id="r1")
     assert out.summary["run"]["status"] == "success"
-    assert pl.read_parquet(tmp_path / "out/accepted").height == 2
+    part = s3.read(s3.resolve_uri(f"{prefix}/out/accepted/part-00000.parquet"))
+    assert part is not None
+    assert pl.read_parquet(io.BytesIO(part.body)).height == 2
     stored = s3.read(s3.resolve_uri(f"{prefix}/runs/run_r1/d/orders/run.json"))
     assert stored is not None
     report = json.loads(stored.body)
