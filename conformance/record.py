@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -173,6 +174,30 @@ def case_snapshot(
     return validate_snapshot(work, proc) if is_validate(case) else snapshot(work)
 
 
+def manifest_snapshot(case: Path, cmd: list[str], work: Path) -> Snapshot:
+    """`floe manifest generate` of the case, with `floe_version`, `manifest_id` and `manifest_revision`
+    (they depend on the version string and the absolute paths) and the temp dir that holds the work dir masked.
+
+    Empty when the config does not generate (validate cases that fail) or needs a profile (#635).
+    """
+    if (case / "profile.yml").exists():
+        return {}
+    args = ["manifest", "generate", "-c", "config.yml", "-o", "-", "--deterministic"]
+    env = {**os.environ, "FLOE_RUNTIME": "cli"}
+    proc = subprocess.run(
+        [*cmd, *args], cwd=work, check=False, capture_output=True, text=True, env=env
+    )
+    if proc.returncode != 0:
+        return {}
+    manifest = json.loads(proc.stdout)
+    for key in ("floe_version", "manifest_id", "manifest_revision"):
+        manifest[key] = "<volatile>"
+    text = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+    return {
+        "manifest.json": text.replace(str(work.resolve().parent), "<ROOT>")
+    }  # `..` paths leave the work dir
+
+
 def run_in_copy(
     case: Path, cmd: list[str], tmp: Path
 ) -> tuple[Path, subprocess.CompletedProcess[str]]:
@@ -215,7 +240,9 @@ def main() -> int:
                 sys.stderr.write(proc.stdout + proc.stderr)
                 raise SystemExit(f"{case_name(case)}: floe exited {proc.returncode}")
             shutil.rmtree(case / "expected", ignore_errors=True)
-            snap = case_snapshot(case, work, proc)
+            snap = case_snapshot(case, work, proc) | manifest_snapshot(
+                case, [str(binary)], work
+            )
             if proc.returncode and not is_validate(case):
                 snap["exit_code"] = f"{proc.returncode}\n"  # absent file means 0
             if not is_validate(case) and not any(
