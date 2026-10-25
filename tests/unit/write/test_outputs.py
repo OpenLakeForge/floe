@@ -200,3 +200,16 @@ def test_write_oserror_is_a_floe_error(
     (tmp_path / "file").write_text("x")
     with pytest.raises(FloeError, match=r"^Not a directory \(os error 20\)$"):
         write(pl.DataFrame({"id": ["1"]}), tmp_path / "file" / "first")
+
+
+def test_write_oserror_without_errno_keeps_its_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Polars raises message-only `OSError`s (no errno): the cause must not become `None (os error None)`."""
+
+    def boom(*_: object, **__: object) -> None:
+        raise OSError("Read-only file system (os error 30)")
+
+    monkeypatch.setattr(pl.DataFrame, "write_csv", boom)
+    with pytest.raises(FloeError, match=r"^Read-only file system \(os error 30\)$"):
+        write_rejected(pl.DataFrame({"id": ["1"]}), tmp_path)
