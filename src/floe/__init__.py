@@ -162,8 +162,7 @@ def run(
 ) -> RunOutcome:
     profile = _profile(profile_path, profile_vars)
     if profile:  # Rust `run_with_runtime`: profile vars resolved against the config's env vars first
-        variables = resolve_vars(profile.variables, {}, _env_vars(Path(config_path).absolute()))  # fmt: skip
-        profile = replace(profile, variables=variables)
+        profile = replace(profile, variables=resolve_vars(profile.variables, {}, _env_vars(Path(config_path).absolute())))  # fmt: skip
     path, root = _load(config_path, profile)
     validate_config(root)
     out = _run.run(
@@ -240,10 +239,9 @@ def clear_observer() -> None:
 
 
 __all__ = [
-    "EntityConfig", "EntityFinishedEvent", "EntityStartedEvent", "FileFinishedEvent",
-    "FileStartedEvent", "FloeConfigError", "FloeError", "FloeIoError", "FloeRunError",
-    "FloeStorageError", "LogEvent", "RootConfig", "RunEvent", "RunFinishedEvent", "RunOutcome",
-    "RunStartedEvent", "SchemaEvolutionAppliedEvent", "__version__", "clear_observer",
-    "extract_config_env_vars", "inspect_entity_state", "load_config", "reset_entity_state",
-    "run", "set_observer", "validate",
+    "EntityConfig", "EntityFinishedEvent", "EntityStartedEvent", "FileFinishedEvent", "FileStartedEvent",
+    "FloeConfigError", "FloeError", "FloeIoError", "FloeRunError", "FloeStorageError", "LogEvent", "RootConfig",
+    "RunEvent", "RunFinishedEvent", "RunOutcome", "RunStartedEvent", "SchemaEvolutionAppliedEvent", "__version__",
+    "clear_observer", "extract_config_env_vars", "inspect_entity_state", "load_config", "reset_entity_state", "run",
+    "set_observer", "validate",
 ]  # fmt: skip
