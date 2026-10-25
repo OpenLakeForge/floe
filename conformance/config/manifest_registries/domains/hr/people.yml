@@ -1,0 +1,17 @@
+domain: hr
+name: people
+source:
+  format: csv
+  path: ./in/people.csv
+  storage: scratch
+sink:
+  accepted:
+    format: parquet
+    path: ""
+    storage: scratch
+policy:
+  severity: warn
+schema:
+  columns:
+    - name: id
+      type: string

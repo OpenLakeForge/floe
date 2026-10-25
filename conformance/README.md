@@ -19,6 +19,9 @@ conformance/<case>/
 └── expected_python/  optional: only the `expected/` files that differ for Python
 ```
 
+Every case whose config generates, and has no `profile.yml`, also holds `expected/manifest.json`: the output of
+`floe manifest generate -c config.yml -o - --deterministic`, run with `FLOE_RUNTIME=cli` after the case's own run.
+
 A case is any directory holding a `config.yml` (it may be nested, e.g. `example/standalone`).
 
 **Validate cases** are the cases under `config/`: they run `floe validate -c config.yml` (plus `--profile profile.yml`
@@ -43,7 +46,9 @@ uv run python conformance/check.py --impl rust|python [--case NAME | --cases-fil
 
 Runs the implementation on every case and prints a diff for each difference; exits 1 if any.
 `--impl python` runs `uv run floe run -c config.yml` (`validate -c config.yml` for the cases under `config/`). `--cases-file` runs only the case names listed in the file
-(one per line, `#` comments; an empty list runs nothing and passes).
+(one per line, `#` comments; an empty list runs nothing and passes). With `--impl python` a case is compared
+on `manifest.json` only when its line ends with `manifest` (`casts manifest`) or when it is named with `--case`;
+`--impl rust` always compares it. Python skips a case that has no recorded manifest (Rust 0.7 rejects a config Python accepts, D2). Port tasks add the `manifest` tag as the builder gains features.
 
 ## CI
 
@@ -80,4 +85,7 @@ skips them and `check.py --impl rust` prints `skip` for them.
 - Only `out/accepted` and `out/rejected` are captured; `record.py` fails on a case that produces neither.
 - Parquet dates and timestamps are compared as Arrow-rendered text, so years outside 1..9999 (which Python's `date` cannot hold) work.
 - A run's non-zero exit code is recorded in `expected/exit_code` (e.g. `2` for an aborted run) and compared; no file means 0. Codes other than 0 and 2 fail recording.
+- `manifest.json`: `floe_version`, `manifest_id` and `manifest_revision` are masked (the version string and the
+  absolute paths feed them) and the temp dir holding the work dir is `<ROOT>` (so `../` paths mask too); every other byte is compared, key order included.
+  Python's profile fields (`-p`) and remote `-o` are not covered yet (#635, storage clients).
 - Key order in reports is kept: it is part of the contract.

@@ -1,23 +1,34 @@
 # Iceberg sink (accepted output)
 
-Floe writes Iceberg tables for `sink.accepted.format: iceberg` using filesystem
-catalog layout semantics (table root with `metadata/` and `data/`) on local
-storage, S3, GCS, and ADLS Gen2. Floe also supports AWS Glue and Iceberg REST
-catalog registration.
+Floe writes Iceberg tables for `sink.accepted.format: iceberg` through an
+Iceberg REST catalog (e.g. Polaris).
 
-## Storage catalog model
-
-- Table identity: `sink.accepted.path` (table root directory).
-- Metadata lives under `<path>/metadata/` (storage catalog layout).
-- Supported storage in this phase:
-  - local filesystem (filesystem catalog semantics)
-  - S3 (filesystem catalog semantics or AWS Glue catalog)
-  - GCS (filesystem catalog semantics)
-  - ADLS Gen2 (filesystem catalog semantics or Iceberg REST catalog)
+**A catalog is required (0.8).** The sink needs a `sink.accepted.iceberg` block
+that resolves to a `catalogs.definitions` entry, through `iceberg.catalog` or
+`catalogs.default`. `floe validate` rejects a catalog-less Iceberg sink with
+`sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8`.
+Floe 0.7's catalog-less filesystem tables are not supported: a path-only table
+has no safe commit protocol for concurrent runs.
 
 ## Example config
 
 ```yaml
+storages:
+  default: "s3_out"
+  definitions:
+    - name: "s3_out"
+      type: "s3"
+      bucket: "my-bucket"
+      region: "us-east-1"
+
+catalogs:
+  default: "polaris"
+  definitions:
+    - name: "polaris"
+      type: "rest"
+      uri: "https://polaris.example.com/api/catalog"
+      warehouse: "lakehouse"
+
 entities:
   - name: "customer"
     source:
@@ -26,7 +37,8 @@ entities:
     sink:
       accepted:
         format: "iceberg"
-        path: "/data/out/customer_iceberg"
+        path: "customer_iceberg"
+        iceberg: {} # uses catalogs.default
     policy:
       severity: "warn"
     schema:
