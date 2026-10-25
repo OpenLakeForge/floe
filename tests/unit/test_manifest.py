@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from botocore.stub import ANY, Stubber
 
 from floe import __version__
 from floe._cli import main
 from floe.manifest import detect_runtime
+from floe.storage.s3 import S3Client
 
 CONFIG = """\
 version: "0.3"
@@ -70,8 +72,8 @@ def test_literal_pii_hmac_key_is_redacted(
     assert "literal-secret" not in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("output", ["s3://bucket/manifest.json", "gs://b/m.json"])
-def test_remote_output_is_refused(
+@pytest.mark.parametrize("output", ["gs://b/m.json", "abfs://c@a/m.json"])
+def test_non_s3_remote_output_is_refused(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -79,6 +81,32 @@ def test_remote_output_is_refused(
 ) -> None:
     assert generate(tmp_path, monkeypatch, "-o", output) == 1
     assert "remote manifest output is not supported yet" in capsys.readouterr().err
+
+
+def test_s3_output_is_put_through_the_s3_client_and_baked_into_base_args(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
+    uri = "s3://b/dev/manifests/sales.json"
+    client = S3Client("b", "us-east-1")
+    sent: dict[str, Any] = {}
+    client._client.meta.events.register(  # pyright: ignore[reportPrivateUsage]
+        "provide-client-params.s3.PutObject",
+        lambda params, **_: sent.update(params),  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # botocore hooks are untyped
+    )
+    monkeypatch.setattr("floe._cli.S3Client", lambda _bucket: client)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # one stubbed client
+    with Stubber(client._client) as stub:  # pyright: ignore[reportPrivateUsage]
+        stub.add_response(  # pyright: ignore[reportUnknownMemberType]
+            "put_object",
+            {},
+            {"Bucket": "b", "Key": "dev/manifests/sales.json", "Body": ANY},
+        )
+        assert generate(tmp_path, monkeypatch, "-o", uri) == 0
+        stub.assert_no_pending_responses()
+    assert capsys.readouterr().out == f"Manifest written: {uri}\n"
+    manifest = json.loads(sent["Body"])
+    assert manifest["execution"]["base_args"][:3] == ["run", "--manifest", uri]
 
 
 def manifest_of(

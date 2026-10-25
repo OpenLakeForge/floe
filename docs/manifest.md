@@ -296,6 +296,10 @@ floe manifest generate \
   --output s3://my-code-bucket/floe/sales/sales.manifest.json
 ```
 
+Floe 0.8 writes remote manifests to `s3://` only (GCS and ADLS storages are dropped, D1), in one
+`PutObject` with the AWS default credential chain (`AWS_ENDPOINT_URL_S3` and
+`AWS_S3_FORCE_PATH_STYLE` for S3-compatible stores).
+
 The manifest is uploaded to S3 and its `base_args` already contain `s3://my-code-bucket/floe/sales/sales.manifest.json` — no orchestrator-side placeholder rendering needed.
 
 Writing locally still leaves `{manifest_uri}` in `base_args` for the orchestrator connector to render at run time (the existing default behaviour).
