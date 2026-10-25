@@ -101,7 +101,8 @@ otherwise `cli`. Override detection with the `FLOE_RUNTIME` environment variable
 
 - **`image`** — local paths are absolutized under the container work-root: `-c domains/orders.yml`
   is stored as `local:///work/domains/orders.yml` (recorded `work_root: /work`, overridable
-  with `FLOE_WORK_ROOT`). Because every container uses the same `/work` mount, this is **both**
+  with `FLOE_WORK_ROOT`). Every other local path (sources, sinks, `report_base_uri`) resolves
+  beside it, so the manifest never holds a path of the generating host. Because every container uses the same `/work` mount, this is **both**
   portable for remote replay **and** reproducible across container runs — so `manifest_id`
   (a hash of `config_uri` + `config_checksum`) is byte-stable in CI. Use this whenever the
   manifest is deployed to object storage and replayed by a remote or containerized runner.
@@ -164,6 +165,14 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
   "profile_uri": "local:///work/prod.yml", // profile used at generation time (if any)
   "profile_checksum": "sha256:...",      // SHA-256 of the profile file (if any)
   "report_base_uri": "./report",         // where run reports are written
+  "metadata": {"project": "sales", "owner": "data-team"}, // the config's project metadata (if any)
+
+  // Index of the named config sources, derived from the entities that use them (if any).
+  // Descriptive only: the runner reads entities[].source. `uri` is the longest common prefix
+  // of the consumers' source URIs (null when they share none, e.g. different storages).
+  "sources": [
+    {"name": "crm", "format": "csv", "uri": "s3://bronze/crm", "entities": ["sales.clients", "sales.orders"]}
+  ],
 
   // The exact CLI command the orchestrator must call
   "execution": {
@@ -286,6 +295,10 @@ floe manifest generate \
   -c sales.yml \
   --output s3://my-code-bucket/floe/sales/sales.manifest.json
 ```
+
+Floe 0.8 writes remote manifests to `s3://` only (GCS and ADLS storages are dropped, D1), in one
+`PutObject` with the AWS default credential chain (`AWS_ENDPOINT_URL_S3` and
+`AWS_S3_FORCE_PATH_STYLE` for S3-compatible stores).
 
 The manifest is uploaded to S3 and its `base_args` already contain `s3://my-code-bucket/floe/sales/sales.manifest.json` — no orchestrator-side placeholder rendering needed.
 

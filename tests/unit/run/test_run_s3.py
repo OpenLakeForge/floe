@@ -250,3 +250,18 @@ def test_inspect_entity_state_reads_the_s3_state(tmp_path: Path, s3: MemS3) -> N
     assert got["path_uri"] == "s3://b/in/.floe/state/d/orders/state.json"
     assert got["path_local"] is None
     assert list(got["state"]["files"]) == ["s3://b/in/a.csv"]
+
+
+def test_the_s3_source_is_listed_once_per_run(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#864: the pre-check lists the inputs before the first entity_started; run_entity reuses them."""
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    prefixes: list[str] = []
+    real = s3.list
+
+    def counted(prefix: str) -> list[ObjectRef]:
+        prefixes.append(prefix)
+        return real(prefix)
+
+    monkeypatch.setattr(s3, "list", counted)
+    go(tmp_path)
+    assert prefixes == ["in/"]
