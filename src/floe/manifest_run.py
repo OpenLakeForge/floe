@@ -59,8 +59,6 @@ def _sink(t: Json, write_mode: str) -> Json:
         "options": _lenient(SinkOptions, t.get("options")),
         "merge": _lenient(MergeOptions, t.get("merge")),
         "iceberg": _lenient(IcebergSinkOptions, t.get("iceberg")),
-        "delta": t.get("delta"),
-        "duckdb": t.get("duckdb"),
         "partition_by": t.get("partition_by"),
         "partition_spec": None,
         "write_mode": _pick(t.get("write_mode"), _WRITE_MODES, write_mode),
