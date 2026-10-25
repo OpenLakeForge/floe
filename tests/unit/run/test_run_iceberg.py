@@ -196,6 +196,24 @@ def test_append_adds_rows(tmp_path: Path, catalog: LocalCatalog) -> None:
     assert report["accepted_output"]["table_version"] == 2
 
 
+def test_append_rejects_keys_already_in_the_table(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    run(tmp_path, "id,name\n1,a\n", mode="append")
+    (tmp_path / "in" / "b.csv").write_text("id,name\n2,x\n")  # read before orders.csv
+    report = run(tmp_path, "id,name\n2,b\n1,c\n", mode="append")
+    assert rows(catalog) == [(1, "a"), (2, "x")]
+    (unique,) = report["unique_constraints"]
+    # 1 is in the table; 2 only repeats the batch, though orders.csv also seeds 1
+    assert (unique["duplicates_count"], unique["target_duplicates_count"]) == (2, 1)
+    assert unique["batch_duplicates_count"] == 1
+
+
+def test_append_to_a_missing_table_seeds_nothing(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    report = run(tmp_path, "id,name\n1,a\n1,b\n", mode="append")
+    assert rows(catalog) == [(1, "a")]
+    (unique,) = report["unique_constraints"]
+    assert "target_duplicates_count" not in unique
+
+
 def test_add_columns_evolves_the_table(tmp_path: Path, catalog: LocalCatalog) -> None:
     evolution = "schema_evolution: {mode: add_columns}"
     run(tmp_path, "id,name\n1,a\n", mode="append", evolution=evolution)
