@@ -105,10 +105,13 @@ def build_floe_asset_defs(
                 runner=runner,
                 execution=manifest.execution,
                 runner_definition=runner_definition,
+                source_key=_source_key(entity, manifest.sources, _source_scope(manifest)),
             )
         )
 
-    source_assets = _build_source_assets(entity_items) if register_source_assets else []
+    source_assets = (
+        _build_source_assets(entity_items, manifest.sources, _source_scope(manifest)) if register_source_assets else []
+    )
     entity_key_set = {tuple(e.asset_key) for e in entity_items}
     for sa in source_assets:
         sk = tuple(sa.key.path)
@@ -197,9 +200,9 @@ def _make_entity_multi_asset(
     runner: Runner,
     execution: ManifestExecution,
     runner_definition: ManifestRunnerDefinition,
+    source_key: list[str],
 ):
     accepted_key = list(entity.asset_key)
-    source_dep_key = list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_source"]
     has_rejected = _has_rejected_asset(entity)
     rejected_key = list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_rejected"]
 
@@ -216,7 +219,7 @@ def _make_entity_multi_asset(
     @multi_asset(
         name=asset_name,
         outs=outs,
-        deps=[AssetKey(source_dep_key)],
+        deps=[AssetKey(source_key)],
         group_name=group_name,
         check_specs=build_asset_check_specs(accepted_key),
         can_subset=False,
@@ -456,10 +459,43 @@ def _as_optional_str(value: Any) -> str | None:
     return str(value)
 
 
-def _build_source_assets(entity_items: list[ManifestEntity]) -> list[SourceAsset]:
+def _source_scope(manifest: DagsterManifest) -> str:
+    """The project a named source belongs to, so two manifests can both name a source `crm`."""
+    return manifest.manifest_name or manifest.manifest_id
+
+
+def _source_key(
+    entity: ManifestEntity, sources: dict[str, dict[str, Any]] | None, scope: str
+) -> list[str]:
+    """D20: a source named in the manifest `sources` index is one asset shared by its entities."""
+    if sources and entity.source_ref in sources:
+        return ["sources", scope, entity.source_ref]
+    return list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_source"]
+
+
+def _build_source_assets(
+    entity_items: list[ManifestEntity],
+    sources: dict[str, dict[str, Any]] | None = None,
+    scope: str = "",
+) -> list[SourceAsset]:
     source_assets = []
+    named_seen: set[str] = set()
     for entity in entity_items:
-        source_key = list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_source"]
+        source_key = _source_key(entity, sources, scope)
+        if sources and entity.source_ref in sources:
+            if entity.source_ref not in named_seen:
+                named_seen.add(entity.source_ref)
+                named = sources[entity.source_ref]
+                source_assets.append(
+                    SourceAsset(
+                        key=AssetKey(source_key),
+                        group_name="sources",
+                        description=f"Named source '{named['name']}' (format: {named['format']})",
+                        metadata={"format": named["format"]}
+                        | ({"dagster/uri": MetadataValue.url(named["uri"])} if named["uri"] else {}),
+                    )
+                )
+            continue
         metadata: dict[str, Any] = {"format": entity.source_format}
         if entity.source_uri:
             metadata["dagster/uri"] = MetadataValue.url(entity.source_uri)

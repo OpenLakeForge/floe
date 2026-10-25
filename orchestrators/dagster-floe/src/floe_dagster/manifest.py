@@ -30,6 +30,7 @@ class ManifestEntity:
     policy_severity: str | None = None
     write_mode: str | None = None
     incremental_mode: str | None = None
+    source_ref: str | None = None
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "ManifestEntity":
@@ -51,6 +52,7 @@ class ManifestEntity:
             policy_severity=_optional_str(data, "policy_severity"),
             write_mode=_optional_str(data, "write_mode"),
             incremental_mode=_optional_str(data, "incremental_mode"),
+            source_ref=_optional_str(source, "ref") if isinstance(source, dict) else None,
         )
 
 
@@ -223,6 +225,7 @@ class DagsterManifest:
     manifest_revision: str | None = None
     profile_uri: str | None = None
     profile_checksum: str | None = None
+    sources: dict[str, dict[str, Any]] | None = None  # D20 index, by source name
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "DagsterManifest":
@@ -254,6 +257,7 @@ class DagsterManifest:
             manifest_revision=_optional_str(data, "manifest_revision"),
             profile_uri=_optional_str(data, "profile_uri"),
             profile_checksum=_optional_str(data, "profile_checksum"),
+            sources={s["name"]: s for s in data.get("sources") or []},
         )
 
 
