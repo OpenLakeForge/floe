@@ -14,8 +14,9 @@
   - `--quiet` reduces console output to run totals.
   - `--verbose` expands run output details.
 
-- `floe manifest generate -c <config> --output <path|-> [--entities <name[,name...]>]`
+- `floe manifest generate -c <config> --output <path|-> [-p <profile>] [--entities <name[,name...]>]`
   - Validate config and generate a common orchestrator manifest JSON (`spec_version` = the Floe major.minor).
+  - `-p` applies an environment profile (variables, storages, catalogs, lineage) as `floe run -p` does, and records its `profile_uri` and `profile_checksum`.
   - `--output -` writes manifest JSON to stdout.
 
 - `floe add-entity -c <config> --input <path|file://...> [--format csv|json|parquet] [--name <entity>] [--domain <domain>] [--source <ref> --resource <name>]`
@@ -30,13 +31,13 @@
   - `--dry-run` prints the YAML that would be written without creating the file.
   - `--output <new.yml>` writes the updated root config to a new file instead of overwriting `-c`; with an included domain, this keeps the existing inline entity behavior.
 
-- `floe state inspect -c <config> --entity <name>`
+- `floe state inspect -c <config> --entity <name> [-p <profile>]`
   - Print the resolved incremental state URI for an entity and the current state JSON when present.
   - Shows processed-file and active-claim counts.
   - Helpful for confirming what Floe has already seen in `incremental_mode: file`.
   - See [docs/incremental.md](incremental.md) for state file and CAS details.
 
-- `floe state reset -c <config> --entity <name> --yes`
+- `floe state reset -c <config> --entity <name> --yes [-p <profile>]`
   - Remove the local or remote state object for an entity.
   - Requires `--yes` because the next incremental run may reprocess previously tracked files.
   - Remote resets use the same conditional delete support as remote incremental state.

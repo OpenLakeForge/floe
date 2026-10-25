@@ -6,8 +6,7 @@ import sys
 import threading
 import time
 import urllib.request
-from collections.abc import Iterator
-from contextlib import suppress
+from collections.abc import Callable, Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -29,10 +28,10 @@ class Server:
         self.statuses: list[int] = []
         self.redirect: str | None = None  # Location for POSTs to the default endpoint
         self.redirect_code = 302
-        self.trickle = False  # dribble the response headers out byte by byte
-        self.trickle_to: str | None = (
-            None  # trickle a 307 to here, slower than the deadline
-        )
+        self.trickle = False  # dribble response headers that never end
+        self.trickle_to: str | None = None  # dribble a 307 to here, ended by `release`
+        self.release = threading.Event()  # ends every dribble
+        self.hangups: list[str] = []  # dribbles cut short by the client
         server = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -48,23 +47,12 @@ class Server:
                     (self.path, dict(self.headers), json.loads(body))
                 )
                 if server.trickle_to:
-                    with suppress(OSError):
-                        self.wfile.write(b"HTTP/1.1 307 Temporary Redirect\r\n")
-                        self.wfile.write(f"Location: {server.trickle_to}\r\n".encode())
-                        self.wfile.write(b"Content-Length: 0\r\nX-Slow: ")
-                        for _ in range(15):
-                            self.wfile.write(b"x")
-                            self.wfile.flush()
-                            time.sleep(0.1)
-                        self.wfile.write(b"\r\n\r\n")
+                    location = f"Location: {server.trickle_to}\r\n".encode()
+                    head = b"HTTP/1.1 307 Temporary Redirect\r\n" + location
+                    self.dribble(head + b"Content-Length: 0\r\nX-Slow: ", b"\r\n\r\n")
                     return
                 if server.trickle:
-                    with suppress(OSError):
-                        self.wfile.write(b"HTTP/1.1 200 OK\r\nX-Slow: ")
-                        for _ in range(40):
-                            self.wfile.write(b"x")
-                            self.wfile.flush()
-                            time.sleep(0.1)
+                    self.dribble(b"HTTP/1.1 200 OK\r\nX-Slow: ", b"")
                     return
                 if server.redirect and self.path == "/api/v1/lineage":
                     self.send_response(server.redirect_code)
@@ -75,6 +63,19 @@ class Server:
                 self.send_response(server.statuses.pop(0) if server.statuses else 200)
                 self.send_header("Content-Length", "0")
                 self.end_headers()
+
+            def dribble(self, head: bytes, tail: bytes) -> None:
+                """`head`, a byte every 0.1 s (each beats the socket timeout) for up to 30 s or until released, then `tail`."""
+                try:
+                    self.wfile.write(head)
+                    for _ in range(300):
+                        if server.release.wait(0.1):
+                            break
+                        self.wfile.write(b"x")
+                        self.wfile.flush()
+                    self.wfile.write(tail)
+                except OSError:
+                    server.hangups.append(self.path)
 
             def log_message(self, format: str, *args: Any) -> None:
                 pass
@@ -92,6 +93,7 @@ def serve() -> Iterator[Server]:
     thread = threading.Thread(target=s.httpd.serve_forever, args=(0.01,), daemon=True)
     thread.start()
     yield s
+    s.release.set()
     s.httpd.shutdown()
     s.httpd.server_close()
 
@@ -320,27 +322,46 @@ def test_a_worker_exception_never_reaches_the_thread_hook(
     assert "secret-xyz" not in capsys.readouterr().err
 
 
+def wait_for(condition: Callable[[], bool], secs: float = 10) -> bool:
+    deadline = time.monotonic() + secs
+    while not condition() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    return condition()
+
+
 def test_timeout_bounds_the_whole_request(
     server: Server, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(observer, "RETRY_DELAYS_S", (0.0, 0.0))
-    server.trickle = True  # each byte beats the socket timeout, the response does not
+    server.trickle = True
     obs = OpenLineageObserver(config(server.url, 2, timeout_secs=1), [], "")
     started = time.monotonic()
     obs(RUN_STARTED)
-    assert time.monotonic() - started < 3
+    assert time.monotonic() - started < 20  # two 1 s deadlines, not two 30 s dribbles
+    assert wait_for(lambda: len(server.hangups) == 2)  # both attempts were cut off
     assert len(server.requests) == 2  # a timeout is retried
     assert obs.consecutive_failures == 1
 
 
 def test_an_expired_attempt_never_follows_its_redirect(
-    server: Server, other_server: Server
+    server: Server, other_server: Server, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    workers: list[threading.Thread] = []
+    send = OpenLineageObserver._send  # pyright: ignore[reportPrivateUsage] -- spy on the worker threads
+
+    def tracked(self: OpenLineageObserver, *args: Any) -> bool | None:
+        workers.append(threading.current_thread())
+        return send(self, *args)
+
+    monkeypatch.setattr(OpenLineageObserver, "_send", tracked)
     server.trickle_to = f"{other_server.url}/elsewhere"
     obs = OpenLineageObserver(config(server.url, 1, timeout_secs=1), [], "")
     obs(RUN_STARTED)
     assert obs.circuit_open
-    time.sleep(3)  # an abandoned worker would get the 307 1.5 s in and POST
+    server.release.set()  # end every 307 now: an abandoned worker would follow it
+    for worker in workers:
+        worker.join(10)
+    assert len(workers) == 3 and not any(w.is_alive() for w in workers)
     assert other_server.requests == []
 
 
@@ -419,3 +440,25 @@ def test_lineage_error_on_the_failure_path_does_not_mask_the_run_error(
     err = capsys.readouterr().err
     assert "warn: lineage: boom" in err
     assert "Error: " in err
+
+
+def test_a_cancelled_attempt_counts_as_failed_even_if_its_worker_reports_success(monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#886: a socket shut down mid-headers can read as a 200; a cancelled attempt must still fail."""
+    reported = threading.Event()
+
+    def send(self: OpenLineageObserver, data: bytes, timeout: float, attempt: Any) -> None:  # fmt: skip
+        while not attempt.cancelled:
+            time.sleep(0.01)
+        reported.set()  # the worker's "200" lands right after the cancel
+
+    cancel = observer._Attempt.cancel  # pyright: ignore[reportPrivateUsage] -- the race under test
+
+    def cancel_then_report(self: Any) -> None:
+        cancel(self)
+        reported.wait(5)
+        time.sleep(0.05)  # the worker appends its result before `_attempt` reads it
+
+    monkeypatch.setattr(OpenLineageObserver, "_send", send)
+    monkeypatch.setattr(observer._Attempt, "cancel", cancel_then_report)  # pyright: ignore[reportPrivateUsage]
+    obs = OpenLineageObserver(config("http://127.0.0.1:9", timeout_secs=1), [], "config.yml")  # fmt: skip
+    assert obs._attempt(b"{}") is True  # pyright: ignore[reportPrivateUsage] -- retryable failure, never a delivery
