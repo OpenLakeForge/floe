@@ -312,3 +312,28 @@ def test_input_hash_covers_the_entity_and_the_claimed_files(tmp_path: Path) -> N
     assert input_hash(entity, [changed]) != input_hash(entity, [a])
     other = entity.model_copy(update={"id": "other"})
     assert input_hash(other, [a]) != input_hash(entity, [a])
+
+
+def test_warn_rejects_merge_key_duplicates_before_the_merge(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
+    """Rust `enforce_reject`: under warn, later rows repeating the merge key are rejected, never merged."""
+    report = run(tmp_path, "id,name\n1,a\n1,b\n", mode="merge_scd1", severity="warn")
+    assert rows(catalog) == [(1, "a")]
+    file = report["files"][0]
+    assert (file["status"], file["accepted_count"], file["rejected_count"]) == ("success", 1, 1)  # fmt: skip
+
+
+def test_merge_ignore_columns_are_trimmed(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
+    run(tmp_path, "id,name\n1,a\n", mode="merge_scd1", partition='merge: {ignore_columns: [" name "]}')  # fmt: skip
+    assert merges == [(["id"], {"name"})]
+
+
+def test_a_merge_key_column_cannot_be_added_by_evolution(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
+    evolution = "schema_evolution: {mode: add_columns}"
+    run(tmp_path, "id,name\n1,a\n", mode="merge_scd1", evolution=evolution)
+    text = CONFIG.format(mode="merge_scd1", severity="reject", partition="", evolution=evolution, extra="- {name: qty, type: int32}")  # fmt: skip
+    (tmp_path / "config.yml").write_text(text.replace("primary_key: [id]", "primary_key: [id, qty]"))  # fmt: skip
+    (tmp_path / "in" / "orders.csv").write_text("id,name,qty\n1,b,5\n")
+    root = parse_config(tmp_path / "config.yml")
+    with pytest.raises(FloeRunError, match="iceberg schema evolution failed: merge key columns cannot be added: qty$"):  # fmt: skip
+        run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, emit=NO_EVENTS, catalogs=root.catalogs)  # fmt: skip
+    assert rows(catalog) == [(1, "a")]

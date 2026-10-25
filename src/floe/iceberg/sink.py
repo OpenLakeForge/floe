@@ -164,17 +164,25 @@ def write_iceberg(
     schema: Schema = assign_fresh_schema_ids(arrow_schema)
     evolution = entity.schema_.schema_evolution
     catalog = open_catalog(target.catalog, target.storage)
+    output = {c.name: n for c, n in zip(entity.schema_.columns, names, strict=True)}
+    primary_key = entity.schema_.primary_key or []  # validated non-empty for merges
+    key = [output.get(k.strip(), k.strip()) for k in primary_key]
+    identifier = (target.namespace, target.table)
+    with run_error("rest catalog table_exists check failed"):
+        exists = mode == "merge_scd1" and catalog.table_exists(identifier)
+    if exists:
+        with run_error("rest catalog load_table failed"):
+            existing = set(catalog.load_table(identifier).schema().column_names)
+        if added := [k for k in key if k not in existing]:  # Rust `merge/shared.rs`
+            raise FloeRunError(f"entity.name={entity.name} iceberg schema evolution failed: merge key columns cannot be added: {', '.join(added)}")  # fmt: skip
     table = ensure_table(
         catalog, target.namespace, target.table, schema, entity.name, target.location.removeprefix("local://"),
         partition_fields(entity), evolution.mode if evolution else "strict",
     )  # fmt: skip
     merge: dict[str, Any] | None = None
     if mode == "merge_scd1":
-        output = {c.name: n for c, n in zip(entity.schema_.columns, names, strict=True)}
-        primary_key = entity.schema_.primary_key or []  # validated non-empty for merges
-        key = [output.get(k.strip(), k.strip()) for k in primary_key]
         options = entity.sink.accepted.merge
-        ignore = {output.get(c, c) for c in (options.ignore_columns or [])} if options else set()  # fmt: skip
+        ignore = {output.get(c.strip(), c.strip()) for c in (options.ignore_columns or [])} if options else set()  # fmt: skip
         started = time.monotonic()
         with open_duckdb(target.catalog, target.storage) as con:
             merged = merge_scd1(con, table, reader, key, ignore)

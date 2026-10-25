@@ -71,6 +71,7 @@ def file_report(
     rejected_path: str | None = None,
     archived_path: str | None = None,
     errors_path: str | None = None,
+    forced_rejects: int = 0,
 ) -> dict[str, Any]:
     """One `files[]` entry. `rejected_count` is the split's; severity decides status and counts (Rust `validate_split`)."""
     # a rejected/aborted mismatch decides the file before any row check runs (Rust `precheck.rs`)
@@ -81,8 +82,14 @@ def file_report(
     if precheck:
         status = "aborted" if mismatch.aborted else "rejected"
         accepted, rejected = 0, row_count
-    elif severity == "warn" or not violations:
-        status, accepted, rejected = "success", row_count, 0
+    elif (
+        severity == "warn" or not violations
+    ):  # warn still rejects merge-key duplicates
+        status, accepted, rejected = (
+            "success",
+            row_count - forced_rejects,
+            forced_rejects,
+        )
     elif severity == "reject":
         status, accepted, rejected = (
             "rejected",
