@@ -14,6 +14,7 @@ from test_entity_report import CASES, CONFORMANCE, run_entity
 from floe.config.parse import parse_config
 from floe.config.project import ProjectMetadata
 from floe.report.summary import build_summary, id_path, run_outcome, write_reports
+from floe.storage.local import LocalClient
 
 sys.path.insert(0, str(CONFORMANCE))
 from check import comparable, load_expected  # pyright: ignore[reportMissingImports]  # script on the sys.path entry above
@@ -43,7 +44,7 @@ def test_summary_matches_recorded(case: str, tmp_path: Path) -> None:
         config_path=str(tmp_path / "config.yml"),
         report_path=str(tmp_path / "report"),
     )
-    write_reports(summary, reports)
+    write_reports(summary, reports, LocalClient())
 
     expected = load_expected(CONFORMANCE / case, "python")
     prefix = "reports/report/run_ID/"
@@ -163,6 +164,6 @@ def test_summary_config_metadata_and_overwrite(tmp_path: Path) -> None:
         "metadata": {"project": "p", "owner": "o", "tags": ["a"]},
     }
     assert "metadata" not in build_summary("0.3", [], **kw)["config"]
-    write_reports(s, [])
-    write_reports(s, [])  # Rust overwrites
+    write_reports(s, [], LocalClient())
+    write_reports(s, [], LocalClient())  # Rust overwrites
     assert (tmp_path / "run_r" / "run.summary.json").read_text().startswith("{")

@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from floe.config.project import LineageConfig, RootConfig, parse_lineage
 from floe.config.storage import (
@@ -41,11 +42,12 @@ CONTRACT = {
 @dataclass(frozen=True)
 class ProfileConfig:
     name: str
-    runner: dict[str, str]  # only the fields the runner contract checks
+    runner: dict[str, object]  # `type` and every field, None when unset
     variables: dict[str, str]
     catalogs: CatalogsConfig | None
     storages: StoragesConfig | None
     lineage: LineageConfig | None
+    orchestration: dict[str, object] | None = None  # its set fields only, as Rust
 
 
 def _string(hash: Hash, key: str, ctx: str, required: bool = False) -> str | None:
@@ -76,34 +78,37 @@ def _map(hash: Hash, key: str, ctx: str) -> dict[str, str] | None:
     return string_map(hash[key], f"{ctx}.{key}") if key in hash else None
 
 
-def _secrets(hash: Hash, key: str, ctx: str) -> None:
+def _secrets(hash: Hash, key: str, ctx: str) -> list[dict[str, str | None]] | None:
     if key not in hash:
-        return
+        return None
     where = f"{ctx}.{key}[]"
+    secrets: list[dict[str, str | None]] = []
     for item in yaml_array(hash[key], f"{ctx}.{key}"):
         secret = yaml_hash(item, where)
         validate_known_keys(secret, where, ("name", "secret_name", "key"))
-        for field in ("name", "secret_name", "key"):
-            _string(secret, field, where, True)
+        fields = ("name", "secret_name", "key")
+        secrets.append({f: _string(secret, f, where, True) for f in fields})
+    return secrets
 
 
-def _resources(hash: Hash, key: str, ctx: str) -> None:
+def _resources(hash: Hash, key: str, ctx: str) -> dict[str, object] | None:
     if key not in hash:
-        return
+        return None
     where = f"{ctx}.{key}"
     resources = yaml_hash(hash[key], where)
     validate_known_keys(resources, where, ("cpu", "memory_mb"))
-    _string(resources, "cpu", where)
-    _u64(resources, "memory_mb", where)
+    cpu = _string(resources, "cpu", where)
+    return {"cpu": cpu, "memory_mb": _u64(resources, "memory_mb", where)}
 
 
-def _auth(hash: Hash, key: str, ctx: str) -> str | None:
+def _auth(hash: Hash, key: str, ctx: str) -> dict[str, str | None] | None:
     if key not in hash:
         return None
     where = f"{ctx}.{key}"
     auth = yaml_hash(hash[key], where)
     validate_known_keys(auth, where, ("service_principal_oauth_ref",))
-    return _string(auth, "service_principal_oauth_ref", where)
+    ref = _string(auth, "service_principal_oauth_ref", where)
+    return {"service_principal_oauth_ref": ref}
 
 
 # Rust reads the runner fields in this order, so the first malformed one is the one reported.
@@ -129,28 +134,30 @@ _RUNNER_FIELDS: tuple[tuple[str, Reader], ...] = (
 )
 
 
-def _runner(value: object) -> dict[str, str]:
+def _runner(value: object) -> dict[str, object]:
     ctx = "profile.execution.runner"
     hash = yaml_hash(value, ctx)
     validate_known_keys(hash, ctx, ("type", *(name for name, _ in _RUNNER_FIELDS)))
     read: dict[str, object] = {"type": _string(hash, "type", ctx, True)}
     for name, reader in _RUNNER_FIELDS:
         read[name] = reader(hash, name, ctx)
-    read["auth.service_principal_oauth_ref"] = read.pop("auth")
-    return {k: v for k, v in read.items() if isinstance(v, str)}
+    return read
 
 
-def _orchestration(value: object) -> None:
+def _orchestration(value: object) -> dict[str, object]:
     ctx = "profile.execution.orchestration"
     hash = yaml_hash(value, ctx)
     validate_known_keys(hash, ctx, ("max_concurrent_entities", "strategy"))
-    if _u64(hash, "max_concurrent_entities", ctx) == 0:
+    max_concurrent = _u64(hash, "max_concurrent_entities", ctx)
+    if max_concurrent == 0:
         raise FloeConfigError(f"{ctx}.max_concurrent_entities: must be >= 1")
     strategy = _string(hash, "strategy", ctx)
     if strategy not in (None, "sequential", "parallel"):
         raise FloeConfigError(
             f'{ctx}.strategy: expected "sequential" or "parallel", got "{strategy}"'
         )
+    read = {"max_concurrent_entities": max_concurrent, "strategy": strategy}
+    return {k: v for k, v in read.items() if v is not None}
 
 
 def _metadata(value: object) -> str:
@@ -190,7 +197,8 @@ def _parse_doc(doc: object) -> ProfileConfig:
     if "metadata" not in root:
         raise FloeConfigError("profile.metadata is required")
     name = _metadata(root["metadata"])
-    runner: dict[str, str] = {}
+    runner: dict[str, object] = {}
+    orchestration = None
     if "execution" in root:
         ctx = "profile.execution"
         execution = yaml_hash(root["execution"], ctx)
@@ -199,7 +207,7 @@ def _parse_doc(doc: object) -> ProfileConfig:
             raise FloeConfigError(f"{ctx}.runner is required")
         runner = _runner(execution["runner"])
         if "orchestration" in execution:
-            _orchestration(execution["orchestration"])
+            orchestration = _orchestration(execution["orchestration"])
     variables = (
         string_map(root["variables"], "profile.variables")
         if "variables" in root
@@ -214,7 +222,9 @@ def _parse_doc(doc: object) -> ProfileConfig:
     lineage = parse_lineage(root["lineage"]) if "lineage" in root else None
     if "validation" in root:
         _validation(root["validation"])
-    return ProfileConfig(name, runner, variables, catalogs, storages, lineage)
+    return ProfileConfig(
+        name, runner, variables, catalogs, storages, lineage, orchestration
+    )
 
 
 def _malformed(value: str) -> str | None:
@@ -289,7 +299,11 @@ def validate_profile(profile: ProfileConfig) -> None:
                 f'{ctx}.type: unknown runner "{kind}"; known runners: {", ".join(RUNNERS)}'
             )
         for field in CONTRACT.get(kind, ()):
-            if not profile.runner.get(field, "").strip():
+            key, _, sub = field.partition(".")
+            value = profile.runner.get(key)
+            if sub and isinstance(value, dict):
+                value = cast(dict[str, object], value).get(sub)
+            if not isinstance(value, str) or not value.strip():
                 raise FloeConfigError(f"{ctx}.{field} is required for {kind}")
     for key, value in profile.variables.items():
         if (placeholder := _malformed(value)) is not None:

@@ -348,3 +348,112 @@ def test_profile_storages_shape_the_manifest(
     assert manifest["profile_checksum"] == f"sha256:{checksum}"
     assert generate(tmp_path, monkeypatch, "-o", "-") == 0
     assert "profile_uri" not in json.loads(capsys.readouterr().out)
+
+
+_NULLS = dict.fromkeys(
+    [
+        "command",
+        "args",
+        "timeout_seconds",
+        "ttl_seconds_after_finished",
+        "poll_interval_seconds",
+        "secrets",
+        "image",
+        "namespace",
+        "service_account",
+        "resources",
+        "env",
+        "workspace_url",
+        "existing_cluster_id",
+        "config_uri",
+        "python_file_uri",
+        "job_name",
+        "auth",
+        "env_parameters",
+    ]
+)
+# Recorded from the Rust 0.7.0 release binary: `floe manifest generate -c config.yml -p <profile>`.
+K8S = """\
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata: {name: prod}
+execution:
+  runner:
+    type: kubernetes_job
+    image: registry/floe:0.8
+    namespace: floe-prod
+    command: floe
+    args: [run, -c, /config/config.yml]
+    timeout_seconds: 3600
+    env: {Z_LAST: z, A_FIRST: a}
+    resources: {memory_mb: 512}
+    secrets:
+      - {key: password, name: DB_PASSWORD, secret_name: floe-db}
+  orchestration: {strategy: parallel, max_concurrent_entities: 4}
+"""
+RUST_K8S = {
+    "orchestration": {"max_concurrent_entities": 4, "strategy": "parallel"},
+    "runner": _NULLS
+    | {
+        "type": "kubernetes_job",
+        "command": "floe",
+        "args": ["run", "-c", "/config/config.yml"],
+        "timeout_seconds": 3600,
+        "secrets": [
+            {"name": "DB_PASSWORD", "secret_name": "floe-db", "key": "password"}
+        ],
+        "image": "registry/floe:0.8",
+        "namespace": "floe-prod",
+        "resources": {"cpu": None, "memory_mb": 512},
+        "env": {"A_FIRST": "a", "Z_LAST": "z"},
+    },
+}
+DBX = """\
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata: {name: prod}
+execution:
+  runner:
+    type: databricks_job
+    workspace_url: https://adb.example.net
+    existing_cluster_id: c-1
+    config_uri: dbfs:/floe/prod.yml
+    python_file_uri: dbfs:/floe/entry.py
+    auth: {service_principal_oauth_ref: sp}
+    env_parameters: {B: b, A: a}
+    image: ignored
+  orchestration: {}
+"""
+RUST_DBX = {
+    "orchestration": {},
+    "runner": _NULLS
+    | {
+        "type": "databricks_job",
+        "workspace_url": "https://adb.example.net",
+        "existing_cluster_id": "c-1",
+        "config_uri": "dbfs:/floe/prod.yml",
+        "python_file_uri": "dbfs:/floe/entry.py",
+        "job_name": "floe-{domain}-{env}",
+        "auth": {"service_principal_oauth_ref": "sp"},
+        "env_parameters": {"A": "a", "B": "b"},
+    },
+}
+
+
+@pytest.mark.parametrize(("profile", "rust"), [(K8S, RUST_K8S), (DBX, RUST_DBX)])
+def test_profile_execution_shapes_the_runner_and_orchestration(
+    profile: str,
+    rust: dict[str, Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """#891: `-p` compiles the profile's `execution` block as Rust 0.7 does."""
+    (tmp_path / "prod.yml").write_text(profile)
+    argv = ("-o", "-", "-p", str(tmp_path / "prod.yml"))
+    assert generate(tmp_path, monkeypatch, *argv) == 0
+    manifest: dict[str, Any] = json.loads(capsys.readouterr().out)
+    assert manifest["execution"]["orchestration"] == rust["orchestration"]
+    runner = {"type": rust["runner"]["type"]} | rust["runner"]  # `type` comes first
+    runners = {"default": "default", "definitions": {"default": runner}}
+    assert json.dumps(manifest["runners"]) == json.dumps(runners)  # key order too
