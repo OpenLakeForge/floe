@@ -549,6 +549,7 @@ config/val2_d2_scd2_column_collides
 config/val2_d2_scd2_column_empty
 config/val2_d2_scd2_columns_not_unique
 config/val2_d2_scd2_with_scd1
+config/val2_d26_iceberg_no_catalog
 config/val2_evolution_add_columns_iceberg_ok
 config/val2_evolution_add_columns_not_delta
 config/val2_evolution_old_version
