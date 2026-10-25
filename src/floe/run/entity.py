@@ -252,7 +252,9 @@ def _with_archived(plan: _Plan, archive: tuple[str, StorageClient], source: Call
         new = source()
     except NoInputsError:  # no new source file: rebuild from the archive alone
         return old
-    return ResolvedInputs(old.files + new.files, old.listed + new.listed, new.mode)
+    seen = set(old.listed)  # an S3 source prefix also lists an archive nested under it
+    files = [f for f in new.files if f.source_uri not in seen]
+    return ResolvedInputs(old.files + files, old.listed + [u for u in new.listed if u not in seen], new.mode)  # fmt: skip
 
 
 def _output(plan: _Plan, df: pl.DataFrame) -> pl.DataFrame:

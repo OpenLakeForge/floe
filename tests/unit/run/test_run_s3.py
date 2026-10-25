@@ -231,3 +231,11 @@ def test_append_without_unique_keys_never_reads_the_history(tmp_path: Path, s3: 
     monkeypatch.setattr(s3, "read", no_read)
     go(tmp_path, config)
     assert len(parts(s3, "s3://b/out/accepted/")) == 2
+
+
+def test_full_refresh_reads_an_archive_nested_in_the_source_once(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    config = ARCHIVE.replace("path: archive/,", "path: in/archive/,")
+    go(tmp_path, config)
+    out = full_refresh(tmp_path, config)
+    assert out.summary["results"]["accepted_total"] == 1
