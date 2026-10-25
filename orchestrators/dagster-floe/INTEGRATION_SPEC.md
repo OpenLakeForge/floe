@@ -14,7 +14,7 @@ Production target model:
 ## Source of truth
 
 - Manifest schema id: `floe.manifest.v1`
-- Canonical schema file: `orchestrators/schemas/floe.manifest.v1.json`
+- Canonical schema file: `orchestrators/schemas/floe.manifest.schema.json`
 - Generation command:
 
 ```bash
