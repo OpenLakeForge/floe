@@ -102,7 +102,13 @@ def run(
     if dry_run:  # Rust: no events, no reports; the inputs are only listed
         listed = {e.id: list_source(e, config_dir, *resolve_source(e, config_dir, root.storages)) for e in selected}  # fmt: skip
         scanned = {k: [f.source_uri for f in v.files] for k, v in listed.items()}
-        return RunOutcome(run_id, {}, scanned, report_path, [])
+        summary = build_summary(
+            root.version, [], run_id=run_id, started_at=started, finished_at=_rfc3339(),
+            duration_ms=0, config_path=str(normalize_local_path(path)), report_path=report_path,
+            metadata=root.metadata,
+        )  # fmt: skip
+        summary["report"]["report_file"] = "disabled (dry-run)"
+        return RunOutcome(run_id, summary, scanned, report_path, [])
     emit = Emitter(observer, run_id)
     formatter = cast(
         Formatter, root.report.formatter or "json"

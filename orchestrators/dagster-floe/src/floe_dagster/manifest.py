@@ -12,7 +12,8 @@ from urllib.parse import unquote, urlparse, urlunparse
 
 from jsonschema import Draft202012Validator
 
-MANIFEST_SCHEMA = "floe.manifest.v1"
+# D22: a manifest's spec_version is the Floe major.minor that generated it.
+SUPPORTED_SPEC_VERSIONS = ("0.8",)
 
 
 @dataclass(frozen=True)
@@ -205,7 +206,6 @@ class ManifestRunners:
 
 @dataclass(frozen=True)
 class DagsterManifest:
-    schema: str
     generated_at_ts_ms: int
     floe_version: str
     spec_version: str
@@ -226,9 +226,6 @@ class DagsterManifest:
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "DagsterManifest":
-        schema = _required_str(data, "schema")
-        if schema != MANIFEST_SCHEMA:
-            raise ValueError(f"unexpected manifest schema: {schema}")
         generated_at = data.get("generated_at_ts_ms")
         if not isinstance(generated_at, int) or generated_at < 0:
             raise ValueError("generated_at_ts_ms must be a non-negative integer")
@@ -240,7 +237,6 @@ class DagsterManifest:
         catalogs = data.get("catalogs")
         lineage = data.get("lineage")
         return DagsterManifest(
-            schema=schema,
             generated_at_ts_ms=generated_at,
             floe_version=_required_str(data, "floe_version"),
             spec_version=_required_str(data, "spec_version"),
@@ -296,6 +292,13 @@ def load_manifest(path: str | Path) -> DagsterManifest:
     payload = json.loads(text)
     if not isinstance(payload, dict):
         raise ValueError("manifest file must contain a JSON object")
+    spec_version = payload.get("spec_version")
+    if spec_version not in SUPPORTED_SPEC_VERSIONS:
+        raise ValueError(
+            f"manifest spec_version {spec_version} is not supported "
+            f"(supported: {', '.join(SUPPORTED_SPEC_VERSIONS)}); "
+            "regenerate it with a supported Floe release"
+        )
     _validate_manifest_payload(payload)
     return DagsterManifest.from_dict(payload)
 
