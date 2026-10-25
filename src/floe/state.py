@@ -1,4 +1,4 @@
-"""Incremental file state, ported from `state/mod.rs` (CAS claim, promote, release, renew)."""
+"""Incremental file state, ported from `state/mod.rs` (CAS claim, promote, release, renew, reset)."""
 
 import copy
 import json
@@ -264,3 +264,15 @@ def renew(client: StorageClient, uri: str, run_id: str, claimed: Loaded) -> None
         state.updated_at = _now()
 
     _mutate(client, uri, claimed, apply)
+
+
+def reset(client: StorageClient, uri: str, entity: str) -> bool:
+    """Delete the state file, even a malformed one; False when there is none (Rust `reset_entity_state`)."""
+    stored = client.read(uri)
+    if stored is None:
+        return False
+    if not client.delete_conditional(uri, stored.version):
+        raise FloeConfigError(
+            f"entity.name={entity} remote state changed while resetting: {uri}"
+        )
+    return True
