@@ -1,0 +1,24 @@
+version: '0.3'
+sources:
+- name: raw
+  format: csv
+  path: in
+  options:
+    recursive: true
+  partitioning:
+    pattern: 'year={yyyy}/month={MM}/day={dd}'
+    date_column: ingest_date
+entities:
+- name: orders
+  source:
+    ref: raw
+  sink:
+    accepted:
+      format: parquet
+      path: out/accepted
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string
