@@ -22,7 +22,10 @@ from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import OpenLineageObserver
 from floe.manifest import Options, build_manifest
 from floe.run import run, select_entities
-from floe.storage.paths import parse_s3_uri
+from floe.run.entity import state_uri
+from floe.state import dump_state, read_state, reset
+from floe.storage.local import LocalClient
+from floe.storage.paths import normalize_local_path, parse_s3_uri
 from floe.storage.s3 import S3Client
 
 
@@ -165,6 +168,29 @@ def _manifest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _state(args: argparse.Namespace) -> int:
+    if args.state_command == "reset" and not args.yes:
+        raise FloeConfigError("state reset is destructive, rerun with --yes to confirm")
+    profile = parse_profile(_realpath(args.profile)) if args.profile else None
+    path = _realpath(args.config)
+    [entity] = select_entities(_load(path, profile), [args.entity])
+    uri = state_uri(entity, normalize_local_path(path.parent))
+    if args.state_command == "reset":
+        removed = reset(LocalClient(), uri, entity.name)
+        print(f"Entity: {entity.name}\nState path: {uri}")
+        print(f"State reset: {'removed state object' if removed else 'no state object found'}")  # fmt: skip
+        return 0
+    state = read_state(LocalClient(), uri, entity.name)
+    print(f"Entity: {entity.name}\nIncremental mode: {entity.incremental_mode}\nState path: {uri}")  # fmt: skip
+    if state is None:
+        print("State exists: no\nTracked files: 0\nActive claims: 0")
+        return 0
+    print(f"State exists: yes\nTracked files: {len(state.files)}\nActive claims: {len(state.claims)}")  # fmt: skip
+    print(f"Updated at: {state.updated_at or '(unknown)'}\n")
+    print(dump_state(state).decode())
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="floe")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -200,6 +226,14 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument(
         "--entities", action="extend", default=[], type=lambda v: v.split(",")
     )
+    state = commands.add_parser("state").add_subparsers(dest="state_command", required=True)  # fmt: skip
+    for name in ("inspect", "reset"):
+        command = state.add_parser(name)
+        command.add_argument("-c", "--config", required=True)
+        command.add_argument("--entity", required=True)
+        command.add_argument("-p", "--profile")
+        if name == "reset":
+            command.add_argument("--yes", action="store_true")
     return parser
 
 
@@ -211,6 +245,8 @@ def main() -> int:
     try:
         if args.command == "manifest":
             return _manifest(args)
+        if args.command == "state":
+            return _state(args)
         return _run(args) if args.command == "run" else _validate(args)
     except FloeError as e:
         print(f"Error: {e}", file=sys.stderr)
