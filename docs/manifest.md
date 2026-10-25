@@ -169,7 +169,7 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
 
   // Index of the named config sources, derived from the entities that use them (if any).
   // Descriptive only: the runner reads entities[].source. `uri` is the longest common prefix
-  // of the consumers' source URIs.
+  // of the consumers' source URIs (null when they share none, e.g. different storages).
   "sources": [
     {"name": "crm", "format": "csv", "uri": "s3://bronze/crm", "entities": ["sales.clients", "sales.orders"]}
   ],

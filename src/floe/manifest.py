@@ -331,6 +331,11 @@ def _sources(entities: list[Json]) -> list[Json] | None:
         common = takewhile(lambda p: p[0] == p[1], pairs)
         entry["uri"] = "/".join(a for a, _ in common)
         entry.setdefault("entities", []).append(entity["name"])
+    for (
+        entry
+    ) in index.values():  # consumers on different storages or buckets share no location
+        if entry["uri"].rstrip("/").endswith(":") or not entry["uri"]:
+            entry["uri"] = None
     return sorted(index.values(), key=lambda s: s["name"]) or None
 
 
