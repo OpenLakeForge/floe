@@ -13,6 +13,26 @@ Orchestrators like Dagster and Airflow build their job/DAG graphs *before* any d
 
 Think of it as: **"resolve everything now so the orchestrator can be dumb at runtime."**
 
+### One manifest per project per environment
+
+Configs are the authoring format; the manifest is the compiled artifact. You write small config
+files (a source declared once and reused, domain defaults, includes, `{{templates}}`), and
+`floe manifest generate` compiles them, together with an environment profile, into one manifest
+per project per environment (`sales.dev.json`, `sales.uat.json`, `sales.prod.json`). That
+manifest is the single source of truth the orchestrator runs.
+
+1. Change the configs.
+2. Build the dev manifest with the dev profile and push it to the dev area of a bucket:
+   `floe manifest generate -c project.yml -p profiles/dev.yml --deterministic -o s3://<bucket>/dev/manifests/<project>.json`.
+3. Dagster in dev (dagster-floe) loads the manifest from that bucket URI.
+4. When ready, build the same configs with the UAT or prod profile and push to that area, where
+   the UAT or prod Dagster reads it.
+
+Each entity is self-contained and fully resolved: the runner reads only `entity.source` and never
+re-resolves includes, `source_ref`, domain defaults or templates. The `sources` index and the
+project `metadata` are descriptive (see [What's inside](#whats-inside)). Credentials stay `${ENV}`
+references, resolved by the runner at run time.
+
 ---
 
 ## Generating a manifest
