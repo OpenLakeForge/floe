@@ -83,13 +83,16 @@ skips them and `check.py --impl rust` prints `skip` for them.
 - Recorded but ignored on compare (G5 ruling, #594): `total_bytes_written`, `avg_file_size_mb`.
 - Ignored on compare: `tool.version` in `run.summary.json` (each implementation reports its own version). `expected/` keeps the recorded `0.7.0`.
 - Paths in `expected/` use `run_ID` and `part-UUID` (no `<`/`>`: Windows can't check them out); file contents keep `run_<id>` / `part-<uuid>`.
-- Only `out/accepted` and `out/rejected` are captured; `record.py` fails on a case that produces neither.
+- Only `out/accepted` and `out/rejected` are captured; `record.py` fails on a case that produces neither, unless its
+  last run passes `--log-format json`: then stdout's event lines are captured too, in `expected/events.jsonl` (`ts_ms` masked).
 - Parquet dates and timestamps are compared as Arrow-rendered text, so years outside 1..9999 (which Python's `date` cannot hold) work.
-- A run's non-zero exit code is recorded in `expected/exit_code` (e.g. `2` for an aborted run) and compared; no file means 0. Codes other than 0 and 2 fail recording.
+- A run's non-zero exit code is recorded in `expected/exit_code` (e.g. `2` for an aborted run) and compared; no file means 0. Codes other than 0 and 2 fail recording, except on a `--log-format json` run.
 - `manifest.json`: `floe_version`, `manifest_id` and `manifest_revision` are masked (the version string and the
   absolute paths feed them) and the temp dir holding the work dir is `<ROOT>` (so `../` paths mask too); every other byte is compared, key order included.
   D22 (#798): `check.py` also drops `schema` and masks `spec_version` on both sides at compare time, so the Rust 0.7
   recordings (`floe.manifest.v1`, the config version) stay as recorded; `tests/unit/test_manifest.py` checks Python's value.
+  D20 (#796): `check.py` also drops the Python-only `sources` index and project `metadata` at compare time;
+  `tests/unit/test_manifest.py` checks their content.
   A manifest run reports the manifest's `spec_version` (the Floe version), so `manifest_run` carries a `[D22]`
   `expected_python/` for its report files.
   Python's profile fields (`-p`) and remote `-o` are not covered yet (#635, storage clients).

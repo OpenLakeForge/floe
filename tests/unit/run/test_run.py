@@ -100,6 +100,18 @@ def test_event_order(tmp_path: Path) -> None:
     assert events[3]["accepted"] == 2 and events[3]["status"] == "success"
 
 
+def test_unresolved_inputs_fail_before_any_entity_starts(tmp_path: Path) -> None:
+    """#864: Rust resolves every entity's inputs before the first `entity_started`."""
+    path, root = setup(tmp_path, ["a", "b"])
+    (tmp_path / "in/b.csv").unlink()
+    events: list[dict[str, Any]] = []
+    with pytest.raises(FloeRunError, match="no input files matched"):
+        run(path, root, observer=events.append)
+    assert [e["event"] for e in events] == ["run_started"]
+    assert not (tmp_path / "out").exists()
+    assert not (tmp_path / "report").exists()
+
+
 def qualified(tmp_path: Path) -> Any:
     (tmp_path / "in").mkdir()
     text = 'version: "0.3"\ndomains:\n  - name: sales\n  - name: hr\nentities:\n'

@@ -89,15 +89,18 @@ def test_a_run_from_the_generated_manifest_matches_the_config_run(
 
 
 @pytest.mark.parametrize(
-    "flags",
+    ("case", "flags"),
     [
-        ["--log-format", "json"],
-        ["--log-format", "text", "--verbose"],
-        ["--quiet"],
-        ["--dry-run", "--log-format", "json"],
+        ("archive_mode", ["--log-format", "json"]),
+        ("archive_mode", ["--log-format", "text", "--verbose"]),
+        ("archive_mode", ["--quiet"]),
+        ("archive_mode", ["--dry-run", "--log-format", "json"]),
+        # #880: a manifest run also lists every input before the first entity_started
+        ("unresolved_inputs", ["--log-format", "json"]),
     ],
 )
 def test_events_and_output_match_the_config_run(
+    case: str,
     flags: list[str],
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -111,9 +114,9 @@ def test_events_and_output_match_the_config_run(
         timing = re.compile(r'(ts_ms|elapsed_ms)(":|=)\d+')
         return code, timing.sub(r"\1\2T", out), timing.sub(r"\1\2T", err)
 
-    by_config = copy_case("archive_mode", tmp_path / "c")
+    by_config = copy_case(case, tmp_path / "c")
     expected = console(by_config, "-c", "config.yml")
-    by_manifest = copy_case("archive_mode", tmp_path / "m")
+    by_manifest = copy_case(case, tmp_path / "m")
     monkeypatch.chdir(by_manifest)
     assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
     capsys.readouterr()
@@ -126,6 +129,48 @@ def test_events_and_output_match_the_config_run(
         "--log-format" in flags and "--dry-run" not in flags
     )  # a dry run emits no events
     assert ("run_started" in expected[1]) == logged
+
+
+NAMED = """\
+version: "0.3"
+metadata: {project: shop, owner: data, tags: [bronze]}
+sources:
+  - {name: drop, format: csv, path: "./in/{{resource}}.csv", options: {header: true}}
+domains: [{name: spike}]
+entities:
+  - name: orders
+    domain: spike
+    source: {ref: drop, resource: orders}
+    sink: {accepted: {format: parquet, path: ./out/accepted/orders}}
+    policy: {severity: warn}
+    schema: {columns: [{name: id, type: int64}, {name: name, type: string}, {name: qty, type: int64}]}
+report: {path: ./report}
+"""
+
+
+def test_an_image_runtime_manifest_with_sources_and_metadata_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D20: the manifest's `sources` and `metadata` blocks and work-root paths load and run."""
+    by_config, by_manifest = copy_case("severity_warn", tmp_path / "c"), copy_case("severity_warn", tmp_path / "m")  # fmt: skip
+    for work in (by_config, by_manifest):
+        (work / "config.yml").write_text(NAMED)
+    monkeypatch.chdir(by_config)
+    assert floe(monkeypatch, "run", "-c", "config.yml", "--run-id", "r") == 0
+    monkeypatch.chdir(by_manifest)
+    monkeypatch.setenv("FLOE_WORK_ROOT", str(by_manifest))
+    argv = ("-c", "config.yml", "-o", "m.json", "--runtime", "image")
+    assert floe(monkeypatch, "manifest", "generate", *argv) == 0
+    m = json.loads((by_manifest / "m.json").read_text())
+    assert m["sources"][0]["name"] == "drop" and m["metadata"]["project"] == "shop"
+    assert m["entities"][0]["source"]["uri"] == f"local://{by_manifest}/in/orders.csv"
+    assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 0
+    expected, actual = outputs(by_config), outputs(by_manifest)
+    summary = "report/run_r/run.summary.json"
+    expected[summary]["config"].pop("metadata")  # ponytail: carried over by #873
+    assert expected[summary]["config"].pop("path") == "<ROOT>/config.yml"
+    assert actual[summary]["config"].pop("path") == "m.json"
+    assert actual == expected
 
 
 def test_manifest_paths_resolve_against_its_own_directory_and_entities_select(

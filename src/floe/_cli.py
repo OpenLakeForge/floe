@@ -23,6 +23,8 @@ from floe.lineage.observer import OpenLineageObserver
 from floe.manifest import Options, build_manifest
 from floe.manifest_run import load_manifest
 from floe.run import run, select_entities
+from floe.storage.paths import parse_s3_uri
+from floe.storage.s3 import S3Client
 
 
 def _realpath(path: str) -> Path:
@@ -136,7 +138,8 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _manifest(args: argparse.Namespace) -> int:
-    if "://" in args.output:  # ponytail: remote `-o` needs the storage clients
+    remote = "://" in args.output
+    if remote and not args.output.startswith("s3://"):  # D1: gcs and adls are dropped
         raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}")  # fmt: skip
     path = _realpath(args.config)
     root = _load(path, None)
@@ -148,17 +151,25 @@ def _manifest(args: argparse.Namespace) -> int:
         args.default_domain,
         args.manifest_path_mode,
         args.runtime,
+        args.output
+        if remote
+        else None,  # a remote `-o` is where the manifest is deployed
     )
     manifest = build_manifest(root, path, options, args.entities)
     text = json.dumps(manifest, indent=2, ensure_ascii=False)
     if args.output == "-":
         print(text)
         return 0
-    out = Path(args.output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(f".{out.name}.tmp")
-    tmp.write_text(text)
-    tmp.replace(out)
+    if (
+        remote
+    ):  # one PutObject: readers see the old or the new manifest, never a partial one
+        S3Client(parse_s3_uri(args.output)[0]).write(args.output, text.encode())
+    else:
+        out = Path(args.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_name(f".{out.name}.tmp")
+        tmp.write_text(text)
+        tmp.replace(out)
     print(f"Manifest written: {args.output}")
     return 0
 
