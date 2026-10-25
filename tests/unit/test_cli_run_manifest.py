@@ -80,6 +80,46 @@ def test_a_run_from_the_generated_manifest_matches_the_config_run(
     assert actual == expected
 
 
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--log-format", "json"],
+        ["--log-format", "text", "--verbose"],
+        ["--quiet"],
+        ["--dry-run", "--log-format", "json"],
+    ],
+)
+def test_events_and_output_match_the_config_run(
+    flags: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def console(work: Path, *source: str) -> tuple[int, str, str]:
+        monkeypatch.chdir(work)
+        code = floe(monkeypatch, "run", *source, "--run-id", "r", *flags)
+        out, err = capsys.readouterr()
+        out, err = (s.replace(str(work), "<ROOT>") for s in (out, err))
+        timing = re.compile(r'(ts_ms|elapsed_ms)(":|=)\d+')
+        return code, timing.sub(r"\1\2T", out), timing.sub(r"\1\2T", err)
+
+    by_config = copy_case("archive_mode", tmp_path / "c")
+    expected = console(by_config, "-c", "config.yml")
+    by_manifest = copy_case("archive_mode", tmp_path / "m")
+    monkeypatch.chdir(by_manifest)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    capsys.readouterr()
+    actual = console(by_manifest, "--manifest", "m.json")
+    config = "<ROOT>/config.yml"  # Rust logs the manifest path as typed
+    assert actual == tuple(
+        x.replace(config, "m.json") if isinstance(x, str) else x for x in expected
+    )
+    logged = (
+        "--log-format" in flags and "--dry-run" not in flags
+    )  # a dry run emits no events
+    assert ("run_started" in expected[1]) == logged
+
+
 def test_manifest_paths_resolve_against_its_own_directory_and_entities_select(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -217,3 +257,15 @@ def test_an_unreadable_manifest_location_fails(
     monkeypatch.chdir(tmp_path)
     assert floe(monkeypatch, "run", "--manifest", location) == 1
     assert capsys.readouterr().err == error
+
+
+def test_a_missing_manifest_is_logged_after_run_started_with_code_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    argv = ("run", "--manifest", "nope.json", "--run-id", "r", "--log-format", "text")
+    assert floe(monkeypatch, *argv) == 1
+    assert capsys.readouterr().out.splitlines()[:2] == [
+        "run_started run_id=r config=nope.json report_base=disabled",
+        "log level=error code=error No such file or directory (os error 2)",
+    ]  # Rust 0.7, byte for byte
