@@ -33,7 +33,10 @@ class AcceptedWrite:
 
 def part_uris(client: StorageClient, base: str, ext: str) -> list[str]:
     """The `part-*.<ext>` files directly under `base`, sorted."""
-    prefix = parse_s3_uri(base)[1] + "/" if base.startswith("s3://") else base.removeprefix("local://")  # fmt: skip
+    key = parse_s3_uri(base)[1] if base.startswith("s3://") else None
+    prefix = (
+        base.removeprefix("local://") if key is None else key and f"{key}/"
+    )  # a bucket root lists every key
     uris = (r.uri for r in client.list(prefix))
     return sorted(u for u in uris if u.rpartition("/")[0] == base and u.endswith(f".{ext}") and _PART.fullmatch(u.rpartition("/")[2].removesuffix(f".{ext}")))  # fmt: skip
 

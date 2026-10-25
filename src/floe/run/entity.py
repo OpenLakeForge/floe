@@ -362,6 +362,8 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
 
 def _seed_unique(plan: _Plan, client: StorageClient, base: str, columns: list[str]) -> None:  # fmt: skip
     """Append mode: the keys already in the sink's parts count as seen (Rust `seed_unique_tracker_for_append`)."""
+    if not columns:
+        return  # no unique keys: never read the history
     stored = {n: plan.out_map.get(n, n) for n in columns}  # the sink holds output names
     for uri in part_uris(client, base.rstrip("/"), "parquet"):
         part = uri.removeprefix("local://")
