@@ -28,6 +28,9 @@ class FakeClient:
             if k.startswith(prefix)
         ]
 
+    def write(self, uri: str, body: bytes) -> None:
+        raise NotImplementedError
+
     def copy(self, src_uri: str, dst_uri: str) -> None:
         raise NotImplementedError
 
