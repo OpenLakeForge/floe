@@ -17,6 +17,9 @@ Current model:
 - Manifest-first orchestration (`floe.manifest.schema.json`).
 - Strict schema validation at manifest load time.
 - Asset generation from `entities[]` (`asset_key`, `group_name` respected).
+- One upstream source asset per entity (`<entity>_source`), or one shared `sources/<project>/<name>` asset per
+  named source of the manifest `sources` index (group `sources`; `<project>` is `manifest_name`, else `manifest_id`).
+- Manifests load from a local path or a bucket URI (`s3://...`, `remote` extra; AWS default credential chain).
 - One Dagster job per manifest (stable job names).
 - Multi-manifest loading (`*.manifest.json`) with collision checks.
 - Local runner (`local_process`) support.

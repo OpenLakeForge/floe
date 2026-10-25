@@ -1,13 +1,13 @@
 """Run `run.summary.json`, run status and exit code, report layout (Rust: `report/{mod,output}.rs`, `run/mod.rs`)."""
 
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Any
 
 from floe import __version__
 from floe.config.project import ProjectMetadata
 from floe.config.types import EntityConfig
 from floe.report.entity import serialize
+from floe.storage.types import StorageClient
 
 _TOTALS = ("files_total", "files_skipped", "rows_total", "accepted_total",
            "rejected_total", "warnings_total", "errors_total")  # fmt: skip
@@ -79,21 +79,20 @@ def build_summary(
 
 
 def write_reports(
-    summary: dict[str, Any], reports: Sequence[tuple[str, dict[str, Any]]]
+    summary: dict[str, Any],
+    reports: Sequence[tuple[str, dict[str, Any]]],
+    client: StorageClient,
 ) -> None:
     """Write `<report>/run_<id>/<id_path>/run.json` per entity, then `run.summary.json` (overwriting, as Rust)."""
     summary_file = summary["report"]["report_file"]
     run_dir = summary_file.removesuffix("/run.summary.json")
     for path, report in reports:
-        write_entity_report(run_dir, path, report)
-    _write(summary_file, summary)
+        write_entity_report(run_dir, path, report, client)
+    client.write(summary_file, serialize(summary).encode())
 
 
-def write_entity_report(run_dir: str, path: str, report: dict[str, Any]) -> None:
+def write_entity_report(
+    run_dir: str, path: str, report: dict[str, Any], client: StorageClient
+) -> None:
     """One entity's `run.json`, written as the entity finishes (Rust)."""
-    _write(f"{run_dir}/{path}/run.json", report)
-
-
-def _write(file: str, doc: dict[str, Any]) -> None:
-    Path(file).parent.mkdir(parents=True, exist_ok=True)
-    Path(file).write_text(serialize(doc), encoding="utf-8")
+    client.write(f"{run_dir}/{path}/run.json", serialize(report).encode())
