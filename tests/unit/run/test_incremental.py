@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-import floe.run.entity as entity_module
 from floe.config.parse import parse_config
 from floe.errors import FloeConfigError, FloeRunError
+from floe.run import entity as entity_module  # `floe.run` is the public function
 from floe.run import run
 from floe.run.entity import EntityRun, run_entity
 from floe.run.events import Emitter

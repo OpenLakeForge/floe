@@ -9,6 +9,7 @@ from typing import Any
 import polars as pl
 import pytest
 
+import floe
 import floe.storage.resolve as resolve_module
 from floe.config.parse import parse_config
 from floe.errors import FloeRunError
@@ -239,3 +240,13 @@ def test_full_refresh_reads_an_archive_nested_in_the_source_once(tmp_path: Path,
     go(tmp_path, config)
     out = full_refresh(tmp_path, config)
     assert out.summary["results"]["accepted_total"] == 1
+
+
+def test_inspect_entity_state_reads_the_s3_state(tmp_path: Path, s3: MemS3) -> None:
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    config = SINKS.replace("    domain: d\n", "    domain: d\n    incremental_mode: file\n", 1)  # fmt: skip
+    go(tmp_path, config)
+    got = floe.inspect_entity_state(str(tmp_path / "config.yml"), "orders")
+    assert got["path_uri"] == "s3://b/in/.floe/state/d/orders/state.json"
+    assert got["path_local"] is None
+    assert list(got["state"]["files"]) == ["s3://b/in/a.csv"]
