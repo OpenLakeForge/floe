@@ -85,8 +85,13 @@ def write_reports(
     summary_file = summary["report"]["report_file"]
     run_dir = summary_file.removesuffix("/run.summary.json")
     for path, report in reports:
-        _write(f"{run_dir}/{path}/run.json", report)
+        write_entity_report(run_dir, path, report)
     _write(summary_file, summary)
+
+
+def write_entity_report(run_dir: str, path: str, report: dict[str, Any]) -> None:
+    """One entity's `run.json`, written as the entity finishes (Rust)."""
+    _write(f"{run_dir}/{path}/run.json", report)
 
 
 def _write(file: str, doc: dict[str, Any]) -> None:

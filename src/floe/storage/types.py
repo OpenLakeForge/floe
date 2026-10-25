@@ -1,5 +1,6 @@
 """Storage client types, ported from `io/storage/mod.rs` and `planner.rs`."""
 
+from pathlib import Path
 from typing import NamedTuple, Protocol
 
 
@@ -24,3 +25,8 @@ class StorageClient(Protocol):
     def write_conditional(
         self, uri: str, expected_version: str | None, body: bytes
     ) -> str | None: ...
+    def delete_conditional(self, uri: str, expected_version: str | None) -> bool: ...
+
+
+class Downloader(Protocol):
+    def download(self, uri: str, temp_dir: Path) -> Path: ...

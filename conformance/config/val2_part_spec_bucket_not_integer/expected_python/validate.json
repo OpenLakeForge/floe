@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): expected integer at sink.accepted.partition_spec[0].num_buckets"
+}

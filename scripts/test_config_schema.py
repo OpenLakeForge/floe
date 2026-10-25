@@ -114,6 +114,7 @@ class ConfigSchemaTest(unittest.TestCase):
             "RootConfig": {"sources", "include", "filesystems"},
             "DomainConfig": {"defaults"}, "SourceConfig": {"filesystem"},
             "SinkTarget": {"filesystem"},
+            "IcebergPartitionFieldConfig": {"num_buckets"},  # D12: Python-only, Rust 0.7 has no bucket transform
             "CatalogDefinition": {"region", "database", "create_database_if_missing", "allow_takeover", "uri", "credential", "warehouse", "oauth2_server_uri", "scope", "host", "catalog", "schema", "token", "create_schema_if_missing"},
         }
         for model, definition in bindings.items():
@@ -134,15 +135,10 @@ class ConfigSchemaTest(unittest.TestCase):
         for version in ("abc", "0.0", "0.3.1", "-1.0"):
             with self.subTest(version=version):
                 self.assert_invalid(ROOT_VALIDATOR, {"version": version, "entities": [fragment]})
-        for version in ("0.03", "01.0", "+1.+0"):
+        for version in ("0.03", "00.8", "+0.+08"):
             with self.subTest(version=version):
                 self.assert_valid(ROOT_VALIDATOR, {"version": version, "entities": [complete_entity()]})
-        self.assert_invalid(ROOT_VALIDATOR, {"version": "+0.+0", "entities": [complete_entity()]})
-        max_u64 = "18446744073709551615"
-        self.assert_valid(ROOT_VALIDATOR, {
-            "version": f"000{max_u64}.{max_u64}", "entities": [complete_entity()],
-        })
-        for version in ("18446744073709551616.0", "0.18446744073709551616", "0.1\n"):
+        for version in ("+0.+0", "0.9", "0.10", "01.0", "+1.+0", "0.1\n"):
             with self.subTest(version=version):
                 self.assert_invalid(ROOT_VALIDATOR, {"version": version, "entities": [complete_entity()]})
 
@@ -1013,6 +1009,20 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["sink"]["accepted"]["partition_spec"][0]["transform"] = "bucket[16]"
         self.assert_invalid(ROOT_VALIDATOR, document)
         self.assert_invalid(validator_for("entity_file"), entity)
+        for field, valid in (
+            ({"column": "id", "transform": " Bucket ", "num_buckets": 16}, True),
+            ({"column": "id", "transform": "bucket"}, False),
+            ({"column": "id", "transform": "bucket", "num_buckets": 0}, False),
+            ({"column": "id", "transform": "bucket", "num_buckets": 1.5}, False),
+            ({"column": "id", "transform": "bucket", "num_buckets": "16"}, False),
+            ({"column": "id", "transform": "day", "num_buckets": 16}, False),
+            ({"column": "id", "num_buckets": 16}, False),
+        ):
+            with self.subTest(field=field):
+                entity["sink"]["accepted"]["partition_spec"][0] = field
+                check = self.assert_valid if valid else self.assert_invalid
+                check(ROOT_VALIDATOR, document)
+                check(validator_for("entity_file"), entity)
         entity["sink"]["accepted"]["partition_spec"][0] = {"column": " ", "transform": "year"}
         self.assert_invalid(ROOT_VALIDATOR, document)
         self.assert_invalid(validator_for("entity_file"), entity)
@@ -1292,10 +1302,10 @@ class ConfigSchemaTest(unittest.TestCase):
                 "include": {"sources": "sources.yml"},
             },
         )
-        self.assert_invalid(ROOT_VALIDATOR, {"version": "1.0"})
+        self.assert_invalid(ROOT_VALIDATOR, {"version": "0.8"})
         self.assert_valid(
             ROOT_VALIDATOR,
-            {"version": "1.0", "entities": [complete_entity()]},
+            {"version": "0.8", "entities": [complete_entity()]},
         )
 
     def test_source_domain_and_entity_fragments(self):

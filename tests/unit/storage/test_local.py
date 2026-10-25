@@ -28,6 +28,17 @@ def test_conditional_create_update_and_stale(tmp_path: Path) -> None:
     assert client.read(str(tmp_path / "missing")) is None
 
 
+def test_conditional_delete(tmp_path: Path) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    assert client.delete_conditional(uri, None)
+    version = client.write_conditional(uri, None, b"{}")
+    assert not client.delete_conditional(uri, None)
+    assert not client.delete_conditional(uri, "stale")
+    assert client.delete_conditional(uri, version)
+    assert not (tmp_path / "state.json").exists()
+    assert not (tmp_path / "state.json.lock").exists()
+
+
 def test_concurrent_creates_have_one_winner(tmp_path: Path) -> None:
     uri, client = str(tmp_path / "state.json"), LocalClient()
     results: list[str | None] = []

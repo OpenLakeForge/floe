@@ -121,6 +121,7 @@ class IcebergSinkOptions(_Model):
 class IcebergPartitionField(_Model):
     column: str
     transform: str
+    num_buckets: int | None
 
 
 class SinkTarget(_Model):

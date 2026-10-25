@@ -1,9 +1,12 @@
 """Polaris REST catalog access, ported from `io/write/iceberg/rest.rs` and `iceberg/schema.rs`."""
 
 import os
+import re
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
+from urllib.parse import urlsplit
 
+import duckdb
 from pyiceberg.catalog import Catalog, load_catalog
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.schema import Schema
@@ -13,14 +16,16 @@ from pyiceberg.types import NestedField
 
 from floe.config.storage import CatalogDefinition, StorageDefinition
 from floe.config.types import SchemaEvolutionMode
-from floe.errors import FloeRunError
+from floe.errors import FloeConfigError, FloeRunError
 
-# (column, transform) pairs, as in the entity's `sink.accepted.partition_spec`
+# (column, transform) pairs, as in the entity's `sink.accepted.partition_spec`;
+# a bucket is `bucket[N]` (PyIceberg's notation) with N its `num_buckets` (D12)
 PartitionFields = Sequence[tuple[str, str]]
 
 _TRANSFORMS = frozenset({"identity", "year", "month", "day", "hour"})
 # first id of a partition field, as in the Iceberg spec
 _PARTITION_FIELD_ID_START = 1000
+DUCKDB_CATALOG = "floe_catalog"
 
 
 def transform_name(field: PartitionField) -> str:
@@ -28,7 +33,7 @@ def transform_name(field: PartitionField) -> str:
 
 
 @contextmanager
-def _run_error(context: str) -> Generator[None]:
+def run_error(context: str) -> Generator[None]:
     try:
         yield
     except Exception as e:  # PyIceberg has no common base exception
@@ -94,14 +99,86 @@ def open_catalog(
             props["s3.force-virtual-addressing"] = str(
                 not storage.path_style_access
             ).lower()
-    with _run_error("rest catalog init failed"):
+    with run_error("rest catalog init failed"):
         return load_catalog(definition.name, **props)
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _sql_options(options: dict[str, str]) -> str:
+    return ", ".join(f"{k} {_sql_literal(v)}" for k, v in options.items())
+
+
+def _duckdb_setup(
+    definition: CatalogDefinition, storage: StorageDefinition | None
+) -> list[str]:
+    """Secrets, then the ATTACH; S3 credentials come from the AWS chain, as for PyIceberg."""
+    statements: list[str] = []
+    auth: dict[str, str] = {}
+    if definition.credential is not None:
+        props = _credential_props(
+            definition.name, definition.credential.get_secret_value()
+        )
+        if "token" in props:
+            auth["TOKEN"] = props["token"]
+        else:
+            client_id, colon, secret = props["credential"].partition(":")
+            if (
+                not colon
+            ):  # PyIceberg sends it as a secret alone; DuckDB requires a client id
+                raise FloeConfigError(
+                    f"rest iceberg catalog {definition.name} credential needs client_id:client_secret "
+                    "for merges (DuckDB has no secret-only OAuth2)"
+                )
+            auth |= {
+                "CLIENT_ID": client_id,
+                "CLIENT_SECRET": secret,
+                "OAUTH2_SERVER_URI": definition.oauth2_server_uri
+                or f"{definition.uri.rstrip('/')}/v1/oauth/tokens",
+            }
+            if definition.scope is not None:
+                auth["OAUTH2_SCOPE"] = definition.scope
+    if storage is not None and storage.type == "s3":
+        s3 = {"PROVIDER": "credential_chain"}
+        if storage.region is not None:
+            s3["REGION"] = storage.region
+        if storage.endpoint is not None:
+            endpoint = urlsplit(storage.endpoint)
+            s3["ENDPOINT"] = endpoint.netloc or endpoint.path
+            s3["USE_SSL"] = str(endpoint.scheme != "http").lower()
+        if storage.path_style_access:
+            s3["URL_STYLE"] = "path"
+        statements.append(f"CREATE SECRET (TYPE s3, {_sql_options(s3)})")
+    # no access delegation, as in `open_catalog`
+    attach = {"TYPE": "iceberg", "ENDPOINT": definition.uri, "ACCESS_DELEGATION_MODE": "none"}  # fmt: skip
+    if auth:
+        statements.append(f"CREATE SECRET floe_auth (TYPE iceberg, {_sql_options(auth)})")  # fmt: skip
+        attach["SECRET"] = "floe_auth"
+    else:
+        attach["AUTHORIZATION_TYPE"] = "none"
+    warehouse = _sql_literal(definition.warehouse or "")
+    statements.append(f"ATTACH {warehouse} AS {DUCKDB_CATALOG} ({_sql_options(attach)})")  # fmt: skip
+    return statements
+
+
+def open_duckdb(
+    definition: CatalogDefinition, storage: StorageDefinition | None = None
+) -> duckdb.DuckDBPyConnection:
+    """DuckDB with the catalog attached as `DUCKDB_CATALOG`."""
+    statements = _duckdb_setup(definition, storage)
+    with run_error("duckdb catalog attach failed"):
+        # ponytail: DuckDB's default memory_limit and spill dir; set the ADR's limits when the run wires merges
+        con = duckdb.connect()
+        for statement in statements:
+            con.execute(statement)
+    return con
 
 
 def build_partition_spec(
     schema: Schema, fields: PartitionFields, entity: str
 ) -> PartitionSpec:
-    """Bucket is rejected here until #703 (D12)."""
     spec_fields: list[PartitionField] = []
     for index, (column, transform) in enumerate(fields):
         column = column.strip()
@@ -112,7 +189,8 @@ def build_partition_spec(
                 f"entity.name={entity} iceberg partition_spec column {column} was not found in runtime schema"
             ) from None
         transform = transform.strip().lower()
-        if transform not in _TRANSFORMS:
+        bucket = re.fullmatch(r"bucket\[[1-9][0-9]*\]", transform)
+        if bucket is None and transform not in _TRANSFORMS:
             raise FloeRunError(
                 f"entity.name={entity} iceberg partition_spec column {column} has unsupported runtime transform {transform}"
             )
@@ -121,7 +199,9 @@ def build_partition_spec(
                 source_id=source.field_id,
                 field_id=_PARTITION_FIELD_ID_START + index,
                 transform=parse_transform(transform),
-                name=column if transform == "identity" else f"{column}_{transform}",
+                name=column
+                if transform == "identity"
+                else f"{column}_{'bucket' if bucket else transform}",
             )
         )
     return PartitionSpec(*spec_fields)
@@ -218,16 +298,16 @@ def ensure_table(
     With `add_columns`, columns new in `schema` are added as optional (D13); partition changes stay rejected.
     """
     ident = (namespace,)
-    with _run_error("rest catalog namespace_exists check failed"):
+    with run_error("rest catalog namespace_exists check failed"):
         namespace_exists = catalog.namespace_exists(ident)
     if not namespace_exists:
-        with _run_error("rest catalog namespace create failed"):
+        with run_error("rest catalog namespace create failed"):
             catalog.create_namespace(ident)
     identifier = (namespace, name)
-    with _run_error("rest catalog table_exists check failed"):
+    with run_error("rest catalog table_exists check failed"):
         exists = catalog.table_exists(identifier)
     if exists:
-        with _run_error("rest catalog load_table failed"):
+        with run_error("rest catalog load_table failed"):
             table = catalog.load_table(identifier)
         added: list[NestedField] = []
         if schema_evolution == "add_columns":
@@ -245,7 +325,7 @@ def ensure_table(
             entity,
         )
         if added:
-            with _run_error("rest catalog update_schema failed"):
+            with run_error("rest catalog update_schema failed"):
                 with table.update_schema() as update:
                     for field in added:
                         update.add_column(field.name, field.field_type, required=False)
@@ -256,7 +336,7 @@ def ensure_table(
         if partition_fields is None
         else build_partition_spec(schema, partition_fields, entity)
     )
-    with _run_error("rest catalog create_table failed"):
+    with run_error("rest catalog create_table failed"):
         return catalog.create_table(  # pyright: ignore[reportUnknownMemberType] -- PyIceberg's `schema` is `Schema | Unknown`
             identifier,
             schema,

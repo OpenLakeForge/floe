@@ -20,7 +20,8 @@ from floe import __version__
 from floe.config.project import ReportConfig, RootConfig
 from floe.config.storage import StoragesConfig
 from floe.config.types import ArchiveTarget, EntityConfig, SinkTarget, SourceConfig
-from floe.errors import FloeConfigError, FloeError
+from floe.errors import FloeError
+from floe.run import select_entities
 from floe.storage.paths import normalize_local_path
 
 Json = dict[str, Any]
@@ -312,26 +313,6 @@ def _blocks(root: RootConfig) -> Json:
             | {"api_key": key and key.get_secret_value()}
         )
     return blocks
-
-
-def select_entities(root: RootConfig, selectors: list[str]) -> list[EntityConfig]:
-    """`RootConfig::select_entities`: an id wins over a name; no selector keeps every entity."""
-    chosen: set[int] = set()
-    missing: list[str] = []
-    for selector in selectors:
-        hits = [i for i, e in enumerate(root.entities) if e.id == selector] or [
-            i for i, e in enumerate(root.entities) if e.name == selector
-        ]
-        if len(hits) > 1:
-            ids = ", ".join(root.entities[i].id for i in hits)
-            raise FloeConfigError(f"entity {selector} is ambiguous; use one of: {ids}")
-        if hits:
-            chosen.update(hits)
-        else:
-            missing.append(selector)
-    if missing:
-        raise FloeConfigError(f"entities not found: {', '.join(missing)}")
-    return [e for i, e in enumerate(root.entities) if i in chosen or not selectors]
 
 
 def detect_runtime() -> str:
