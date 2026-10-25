@@ -1,7 +1,8 @@
 """Entity validation, ported from `config/validate.rs` (`validate_sink`, `validate_schema` and their helpers)."""
 
+from floe import __version__
 from floe.checks.normalize import output_names
-from floe.config.project import RootConfig, config_version
+from floe.config.project import LineageConfig, RootConfig, config_version
 from floe.config.types import EntityConfig, WriteMode
 from floe.config.yaml import rust_debug
 from floe.errors import FloeConfigError
@@ -11,6 +12,8 @@ from floe.read.xml import parse_selector
 
 MIN_VERSION = (0, 1)
 QUALIFIED_VERSION = (0, 3)
+# D21: root.version is the minimum Floe release (major.minor) the config targets.
+FLOE_VERSION = config_version(".".join(__version__.split(".")[:2]))
 MAX_JSON_COLUMNS = 1024
 CAST_MODES = ("strict", "coerce")
 SOURCE_FORMATS = ("csv", "tsv", "parquet", "json", "orc", "avro", "xlsx", "xml")
@@ -23,7 +26,7 @@ MISMATCH_EXTRA = ("reject_file", "ignore")
 COLUMN_TYPES = ("string", "number", "boolean", "datetime", "date")
 SINK_FORMATS = ("parquet", "iceberg")
 PARQUET_COMPRESSIONS = ("snappy", "gzip", "zstd", "uncompressed")
-PARTITION_TRANSFORMS = ("identity", "year", "month", "day", "hour")
+PARTITION_TRANSFORMS = ("identity", "year", "month", "day", "hour", "bucket")  # D12
 # D2 (#619): Iceberg accepts the merge modes; Rust 0.7 allows them for Delta (D1) and DuckDB (D1) only.
 SINK_WRITE_MODES: dict[str, tuple[WriteMode, ...]] = {
     "parquet": ("overwrite", "append"),
@@ -252,6 +255,17 @@ def _check_partitioning(entity: EntityConfig) -> None:
                 f"{where}[{index}].transform={field.transform} is unsupported "
                 f"(allowed: {', '.join(PARTITION_TRANSFORMS)})",
             )
+        if transform == "bucket" and field.num_buckets is None:
+            raise _fail(
+                entity, f"{where}[{index}].num_buckets is required for transform=bucket"
+            )
+        if transform != "bucket" and field.num_buckets is not None:
+            raise _fail(
+                entity,
+                f"{where}[{index}].num_buckets is only supported with transform=bucket",
+            )
+        if field.num_buckets == 0:
+            raise _fail(entity, f"{where}[{index}].num_buckets must be greater than 0")
         if (column, transform) in seen:
             raise _fail(entity, f"{where} has duplicate entry ({column}, {transform})")
         seen.add((column, transform))
@@ -262,20 +276,17 @@ def _storage_ref(
     name: str | None,
     field: str,
     who: str,
-    profiled: bool = False,
 ) -> str:
     """`resolve_name` then `validate_reference`; `who` is the `entity.name=X ` prefix, empty for the report."""
     storages = config.storages
     if name is None:
         name = (storages and storages.default) or "local"
-    # ponytail: a profile can replace the storages (#635); skip the reference check until it lands.
-    if not profiled:
-        if storages is None and name != "local":
-            raise FloeConfigError(
-                f"{who}{field} references unknown storage {name} (no storages block)"
-            )
-        if storages and name not in {d.name for d in storages.definitions}:
-            raise FloeConfigError(f"{who}{field} references unknown storage {name}")
+    if storages is None and name != "local":
+        raise FloeConfigError(
+            f"{who}{field} references unknown storage {name} (no storages block)"
+        )
+    if storages and name not in {d.name for d in storages.definitions}:
+        raise FloeConfigError(f"{who}{field} references unknown storage {name}")
     return name
 
 
@@ -323,7 +334,7 @@ def _check_iceberg(
             )
 
 
-def _check_sink(entity: EntityConfig, config: RootConfig, profiled: bool) -> None:
+def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
     sink, accepted = entity.sink, entity.sink.accepted
     if accepted.format in ("delta", "duckdb"):  # D1 (#619): reported first
         raise _fail(
@@ -352,21 +363,15 @@ def _check_sink(entity: EntityConfig, config: RootConfig, profiled: bool) -> Non
         )
     who = f"entity.name={entity.name} "
     accepted_storage = _storage_ref(
-        config, accepted.storage, "sink.accepted.storage", who, profiled
+        config, accepted.storage, "sink.accepted.storage", who
     )
-    # ponytail: a profile can add catalogs and storages, which land with #635; skip the binding.
-    if not profiled:
-        _check_iceberg(entity, config, accepted_storage)
+    _check_iceberg(entity, config, accepted_storage)
     _check_partitioning(entity)
     _check_write_mode(entity)
     if sink.rejected is not None:
-        _storage_ref(
-            config, sink.rejected.storage, "sink.rejected.storage", who, profiled
-        )
+        _storage_ref(config, sink.rejected.storage, "sink.rejected.storage", who)
     archive = sink.archive
-    source = _storage_ref(
-        config, entity.source.storage, "source.storage", who, profiled
-    )
+    source = _storage_ref(config, entity.source.storage, "source.storage", who)
     if archive is not None and archive.storage not in (None, source):
         raise _fail(
             entity, f"sink.archive.storage must match source.storage ({source})"
@@ -426,7 +431,7 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
     _check_evolution(entity, version)
 
 
-def _check_source(entity: EntityConfig, config: RootConfig, profiled: bool) -> None:
+def _check_source(entity: EntityConfig, config: RootConfig) -> None:
     source = entity.source
     if source.format == "fixed":  # D1 (#619): fixed-width is dropped
         raise _fail(entity, f"source.format={source.format} is not supported in 0.8")
@@ -439,7 +444,7 @@ def _check_source(entity: EntityConfig, config: RootConfig, profiled: bool) -> N
             f"(allowed: {', '.join(CAST_MODES)})",
         )
     who = f"entity.name={entity.name} "
-    _storage_ref(config, source.storage, "source.storage", who, profiled)
+    _storage_ref(config, source.storage, "source.storage", who)
     options = source.options
     mode = options.json_mode or "array"
     if source.format == "json" and mode not in ("array", "ndjson"):
@@ -664,44 +669,50 @@ def _check_storages(config: RootConfig) -> None:
         )
 
 
-def _check_report_lineage(config: RootConfig, profiled: bool) -> None:
+def check_lineage(lineage: LineageConfig, ctx: str) -> None:
+    if not lineage.url.strip():
+        raise FloeConfigError(f"{ctx}.url must not be empty")
+    if not lineage.namespace.strip():
+        raise FloeConfigError(f"{ctx}.namespace must not be empty")
+    if lineage.max_failures == 0:
+        raise FloeConfigError(f"{ctx}.max_failures must be at least 1")
+
+
+def _check_report_lineage(config: RootConfig) -> None:
     report, lineage = config.report, config.lineage
-    name = _storage_ref(config, report.storage, "report.storage", "", profiled)
+    name = _storage_ref(config, report.storage, "report.storage", "")
     if _storage_type(config, name) == "local" and report.path.startswith(REMOTE_URIS):
         raise FloeConfigError(f"report.path must be a local path (got {report.path})")
     # D7 (#584 S5): Rust 0.7 only rejects an unknown formatter when a run starts.
     if report.formatter not in (None, "json", "csv", "text"):
         raise FloeConfigError(f"unsupported report.formatter: {report.formatter}")
-    # ponytail: a profile can replace `lineage` (#635); skip its checks until it lands.
-    if lineage is None or profiled:
-        return
-    if not lineage.url.strip():
-        raise FloeConfigError("lineage.url must not be empty")
-    if not lineage.namespace.strip():
-        raise FloeConfigError("lineage.namespace must not be empty")
-    if lineage.max_failures == 0:
-        raise FloeConfigError("lineage.max_failures must be at least 1")
+    if lineage is not None:
+        check_lineage(lineage, "lineage")
 
 
-def validate_entities(config: RootConfig, profiled: bool = False) -> None:
+def validate_entities(config: RootConfig) -> None:
     version = config_version(config.version)
     if version < MIN_VERSION:
         raise FloeConfigError(
             f"root.version={config.version} is unsupported "
             f"(minimum supported version: {MIN_VERSION[0]}.{MIN_VERSION[1]})"
         )
+    if version > FLOE_VERSION:
+        raise FloeConfigError(
+            f"root.version={config.version} is unsupported "
+            f"(newer than Floe {FLOE_VERSION[0]}.{FLOE_VERSION[1]})"
+        )
     if not config.entities:
         raise FloeConfigError(
             "entities list is empty (at least one entity is required)"
         )
-    if not profiled:
-        _check_storages(config)
-    _check_report_lineage(config, profiled)
+    _check_storages(config)
+    _check_report_lineage(config)
     ids: dict[str, int] = {}
     for index, entity in enumerate(config.entities):
-        _check_source(entity, config, profiled)
+        _check_source(entity, config)
         _check_state(entity)
-        _check_sink(entity, config, profiled)
+        _check_sink(entity, config)
         validate_schema(entity, config.version)
         _check_pii(entity)
         for field, value in (("name", entity.name), ("domain", entity.domain)):

@@ -8,6 +8,8 @@ version = "0.8.0.dev0"
 description = "Floe: a data-contract runtime for file ingestion"
 requires-python = ">=3.11"
 dependencies = [
+    "boto3>=1.43.118",
+    "duckdb==1.5.6",
     "fastexcel>=0.21.0",
     "polars>=2.0.0",
     "pyarrow>=26.0.0",
@@ -22,6 +24,7 @@ floe = "floe._cli:main"
 
 [dependency-groups]
 dev = [
+    "boto3-stubs[s3]>=1.43.118",
     "numpy>=2.4.6",
     "pyright",
     "pytest",
@@ -44,4 +47,7 @@ pythonVersion = "3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["polaris: needs a running Polaris, enabled by FLOE_POLARIS_URI"]
+markers = [
+    "polaris: needs a running Polaris, enabled by FLOE_POLARIS_URI",
+    "s3: needs an S3-compatible service (set FLOE_S3_ENDPOINT)",
+]

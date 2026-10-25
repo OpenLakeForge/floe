@@ -1,0 +1,2 @@
+id,name,__floe_row_index,__floe_errors
+,b,1,"[{""rule"":""cast_error"",""column"":""id"",""message"":""invalid value for target type""}]"

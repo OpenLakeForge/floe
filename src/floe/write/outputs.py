@@ -20,12 +20,12 @@ _PART = re.compile(r"part-.+")
 
 @dataclass(frozen=True)
 class AcceptedWrite:
-    """Rust's accepted write output for Parquet; the byte metrics are recorded, not compared (G5)."""
+    """Rust's accepted write output; the byte metrics are recorded, not compared (G5)."""
 
     files_written: int
     part_files: list[str]
     total_bytes_written: int
-    avg_file_size_mb: float
+    avg_file_size_mb: float | None
     small_files_count: int
 
 

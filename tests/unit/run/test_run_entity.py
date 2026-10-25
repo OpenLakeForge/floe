@@ -9,7 +9,6 @@ import pytest
 
 import floe.run.entity as entity_module
 from floe.config.parse import parse_config
-from floe.errors import FloeRunError
 from floe.read.xml import read_xml
 from floe.run.entity import run_entity
 
@@ -124,17 +123,6 @@ def test_unreadable_file_is_rejected_with_the_reader_rule(tmp_path: Path) -> Non
     assert f["status"] == "rejected"
     assert f["mismatch"]["error"]["rule"] == "csv_read_error"
     assert f["validation"]["errors"] == 1
-
-
-def test_incremental_file_is_refused(tmp_path: Path) -> None:
-    (tmp_path / "config.yml").write_text(
-        CONFIG.format(severity="warn", mismatch="").replace(
-            "    source:", "    incremental_mode: file\n    source:"
-        )
-    )
-    entity = parse_config(tmp_path / "config.yml").entities[0]
-    with pytest.raises(FloeRunError, match="incremental_mode file"):
-        run_entity(entity, tmp_path, "0.3")
 
 
 def test_coerce_mode_runs_a_multi_row_file(tmp_path: Path) -> None:

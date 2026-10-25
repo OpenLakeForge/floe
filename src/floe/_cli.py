@@ -2,113 +2,145 @@ import argparse
 import json
 import os
 import sys
-import time
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
 
-from floe.checks.rows import Formatter
 from floe.config.parse import parse_config
+from floe.config.profile import (
+    API_VERSION,
+    KIND,
+    ProfileConfig,
+    apply_profile,
+    parse_profile,
+)
 from floe.config.project import RootConfig, validate_domains
 from floe.config.validate import validate_entities
-from floe.config.vars import string_map
-from floe.config.yaml import load_yaml, yaml_hash
+from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
+from floe.lineage.observer import OpenLineageObserver
 from floe.manifest import build_manifest
-from floe.report.summary import build_summary, id_path, write_reports
-from floe.run.entity import run_entity
-from floe.storage.paths import normalize_local_path
-from floe.storage.resolve import require_local
+from floe.run import run, select_entities
 
 
-def _load(config: str, profile: str | None) -> tuple[Path, RootConfig]:
+def _realpath(path: str) -> Path:
     try:
-        path = Path(os.path.realpath(config, strict=True))
+        return Path(os.path.realpath(path, strict=True))
     except OSError as e:
         raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
-    # ponytail: raw `variables:` only; validation and `${}` expansion land with #635
+
+
+def _load(config: str, profile: ProfileConfig | None) -> tuple[Path, RootConfig]:
+    path = _realpath(config)
     variables = (
-        string_map(
-            yaml_hash(load_yaml(Path(profile))[0], "profile").get("variables", {}),
-            "profile.variables",
-        )
+        resolve_vars(profile.variables, {}, extract_config_env_vars(path))
         if profile
         else {}
     )
     root = parse_config(path, variables)
-    validate_domains(root)
-    validate_entities(root, profile is not None)
+    if profile:
+        root = apply_profile(root, profile)
     return path, root
 
 
-def _rfc3339() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+def _check_config(root: RootConfig) -> None:
+    validate_domains(root)
+    validate_entities(root)
 
 
-def _run(config: str) -> int:
-    started, timer = _rfc3339(), time.monotonic()
-    path, root = _load(config, None)
-    config_dir = normalize_local_path(path.parent)
-    require_local(root.storages, root.report.storage, "report.storage")
-    reports: list[tuple[str, dict[str, Any]]] = []
-    formatter = cast(
-        Formatter, root.report.formatter or "json"
-    )  # validated with the config
-    # config order; `--entities` and parallelism are #656/#657
-    failure: FloeError | None = None
-    for entity in root.entities:
-        try:
-            result = run_entity(
-                entity, config_dir, root.version, formatter, root.storages
+def _validate(args: argparse.Namespace) -> int:
+    profile = parse_profile(_realpath(args.profile)) if args.profile else None
+    if args.config is None:
+        if profile is None:
+            raise FloeConfigError(
+                "floe validate requires --config unless --profile is provided"
             )
-        except FloeError as e:  # the entities already run keep their reports
-            failure = e
-            break
-        reports.append((id_path(entity), result.report))
-        if result.aborted:
-            break
-    summary = build_summary(
-        root.version, reports,
-        run_id=started.replace(":", "-"), started_at=started, finished_at=_rfc3339(),
-        duration_ms=int((time.monotonic() - timer) * 1000),
-        config_path=str(normalize_local_path(path)),
-        report_path=str(normalize_local_path(config_dir / root.report.path)),
-        metadata=root.metadata,
-    )  # fmt: skip
-    if failure:  # Rust: failed -> exit code 1
-        summary["run"] |= {"status": "failed", "exit_code": 1}
-    write_reports(summary, reports)
-    if failure:
-        raise failure
-    run = summary["run"]
-    print(f"run {run['run_id']}: {run['status']}")
-    return run["exit_code"]
+        print(f"Profile valid: {profile.name}")
+        print(f"Schema: {API_VERSION}/{KIND}")
+        print(f"Catalogs: {len(profile.catalogs.definitions) if profile.catalogs else 0}")  # fmt: skip
+        return 0
+    path, root = _load(args.config, profile)
+    _check_config(root)
+    select_entities(root, args.entities)
+    print(f"Config valid: {path}")
+    print(f"Version: {root.version}")
+    print(f"Report: {root.report.path}")
+    print(f"Entities: {len(root.entities)}")
+    for e in root.entities:
+        print(f"Entity: {e.name}")
+        print(f"  Source: {e.source.format} ({e.source.path})")
+        print(f"  Sink accepted: {e.sink.accepted.format} ({e.sink.accepted.path})")
+        if e.sink.rejected:
+            print(f"  Sink rejected: {e.sink.rejected.format} ({e.sink.rejected.path})")  # fmt: skip
+        print(f"  Severity: {e.policy.severity}")
+    profile_arg = f" -p {os.path.realpath(args.profile)}" if args.profile else ""
+    print(f"Next: floe run -c {path}{profile_arg}")
+    return 0
 
 
-def _manifest(args: argparse.Namespace) -> None:
+def _run(args: argparse.Namespace) -> int:
+    if args.manifest is not None:
+        raise FloeConfigError("floe run --manifest is not supported yet")
+    if args.config is None:
+        raise FloeConfigError("one of --config or --manifest is required")
+    profile = parse_profile(_realpath(args.profile)) if args.profile else None
+    path, root = _load(
+        args.config, profile
+    )  # lineage observes a config that fails validation
+    lineage = (
+        OpenLineageObserver(root.lineage, root.entities, str(path))
+        if root.lineage
+        else None
+    )
+    try:
+        _check_config(root)
+        outcome = run(
+            path, root, run_id=args.run_id, entities=args.entities,
+            full_refresh=args.full_refresh, observer=lineage,
+        )  # fmt: skip
+    except FloeError:
+        if lineage:
+            try:
+                lineage.fail_run()
+            except Exception as e:  # noqa: BLE001 -- lineage must not mask the run error
+                print(f"warn: lineage: {e}", file=sys.stderr)
+        raise
+    run_info = outcome.summary["run"]
+    print(f"run {run_info['run_id']}: {run_info['status']}")
+    return run_info["exit_code"]
+
+
+def _manifest(args: argparse.Namespace) -> int:
     if "://" in args.output:  # ponytail: remote `-o` needs the storage clients
         raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}")  # fmt: skip
     path, root = _load(args.config, None)
+    _check_config(root)
     manifest = build_manifest(root, path, args.deterministic, args.manifest_name)
     text = json.dumps(manifest, indent=2, ensure_ascii=False)
     if args.output == "-":
         print(text)
-        return
+        return 0
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(f".{out.name}.tmp")
     tmp.write_text(text)
     tmp.replace(out)
     print(f"Manifest written: {args.output}")
+    return 0
 
 
-def main() -> int:
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="floe")
     commands = parser.add_subparsers(dest="command", required=True)
     validate = commands.add_parser("validate")
-    validate.add_argument("-c", "--config", required=True)
-    validate.add_argument("-p", "--profile")  # ponytail: profiles land with #635
-    commands.add_parser("run").add_argument("-c", "--config", required=True)
+    run = commands.add_parser("run")
+    run_source = run.add_mutually_exclusive_group()
+    run_source.add_argument("-c", "--config")
+    run_source.add_argument("--manifest")
+    run.add_argument("--run-id")
+    run.add_argument("-F", "--full-refresh", action="store_true")
+    validate.add_argument("-c", "--config")
+    for command in (validate, run):
+        command.add_argument("--entities", action="extend", type=lambda s: s.split(","), default=[])  # fmt: skip
+        command.add_argument("-p", "--profile")
     generate = (
         commands.add_parser("manifest")
         .add_subparsers(dest="manifest_command", required=True)
@@ -118,15 +150,18 @@ def main() -> int:
     generate.add_argument("-o", "--output", required=True)
     generate.add_argument("--deterministic", action="store_true")
     generate.add_argument("--manifest-name")
+    return parser
+
+
+def main() -> int:
+    args, extra = _parser().parse_known_args()
+    if extra:  # clap's wording for an unknown flag
+        print(f"error: unexpected argument '{extra[0]}' found\n\nFor more information, try '--help'.", file=sys.stderr)  # fmt: skip
+        return 2
     try:
-        args = parser.parse_args()
-        if args.command == "run":
-            return _run(args.config)
         if args.command == "manifest":
-            _manifest(args)
-            return 0
-        _load(args.config, args.profile)
+            return _manifest(args)
+        return _run(args) if args.command == "run" else _validate(args)
     except FloeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-    return 0

@@ -39,6 +39,8 @@ VOLATILE_KEYS = {"run_id", "started_at", "finished_at", "duration_ms", "elapsed_
 # Recorded, but ignored on compare (G5 ruling on #594).
 WRITER_BYTES_KEYS = {"total_bytes_written", "avg_file_size_mb"}
 RUN_DIR = re.compile(r"run_[0-9T:.\-Z]+")
+# Archived file names embed the run id and a hash of the absolute source URI.
+ARCHIVE_NAME = re.compile(r"__run-.+?__src-[0-9a-f]{16}")
 UUID_PART = re.compile(
     r"part-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
@@ -123,6 +125,7 @@ def normalize(value: object, root: str) -> object:
     if isinstance(value, list):
         return [normalize(v, root) for v in value]
     if isinstance(value, str):
+        value = ARCHIVE_NAME.sub("__run-<id>__src-<hash>", value)
         return UUID_PART.sub(
             "part-<uuid>", RUN_DIR.sub("run_<id>", value.replace(root, "<ROOT>"))
         )
@@ -208,17 +211,18 @@ def run_in_copy(
             ["--profile", "profile.yml"] if (case / "profile.yml").exists() else []
         )
         args = ["validate", "-c", "config.yml", *profile]
-    marker = (
-        case / "runs"
-    )  # optional: number of runs; only the last run's report is kept
-    runs = int(marker.read_text()) if marker.exists() else 1
+    # optional `runs`: a run count, or one line of extra `run` args per run (`-` for none); only the last run's report is kept
+    marker = case / "runs"
+    text = marker.read_text().strip() if marker.exists() else "1"
+    runs = ["-"] * int(text) if text.isdigit() else text.splitlines()
     while True:
         shutil.rmtree(work / "report", ignore_errors=True)
+        line = runs.pop(0).strip()
+        extra = [] if line == "-" else line.split()
         proc = subprocess.run(
-            [*cmd, *args], cwd=work, check=False, capture_output=True, text=True
+            [*cmd, *args, *extra], cwd=work, check=False, capture_output=True, text=True
         )
-        runs -= 1
-        if runs <= 0:
+        if not runs:
             return work, proc
 
 

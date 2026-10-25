@@ -132,6 +132,10 @@ class UniqueTracker:
     def __init__(self, keys: Sequence[Sequence[str]]) -> None:
         self._constraints = [_Constraint(list(k), pl.DataFrame()) for k in keys]
 
+    @property
+    def keys(self) -> list[list[str]]:
+        return [list(c.columns) for c in self._constraints]
+
     def check(self, df: pl.DataFrame) -> list[RowCheck]:
         """One `RowCheck` per constraint for the rows of the next file, in constraint order.
 

@@ -42,6 +42,9 @@ class FakeClient:
     ) -> str | None:
         raise NotImplementedError
 
+    def delete_conditional(self, uri: str, expected_version: str | None) -> bool:
+        raise NotImplementedError
+
 
 def s3(
     path: str, keys: list[str], fmt: str = "csv", *, list_only: bool = False

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.accepted.partition_spec[0].num_buckets must be greater than 0"
+}
