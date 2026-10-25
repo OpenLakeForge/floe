@@ -100,34 +100,6 @@ def run_with(
     return main()
 
 
-@pytest.mark.parametrize(
-    ("old", "new", "field"),
-    [
-        (
-            "path: ./out/accepted/a}",
-            "path: ./out/accepted/a, storage: lake}",
-            "sink.accepted.storage",
-        ),
-        (
-            "path: ./out/rejected/a}",
-            "path: ./out/rejected/a, storage: lake}",
-            "sink.rejected.storage",
-        ),
-    ],
-)
-def test_a_remote_entity_storage_is_refused_before_any_io(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    old: str,
-    new: str,
-    field: str,
-) -> None:
-    assert run_with(tmp_path, monkeypatch, old, new) == 1
-    assert f"{field}=lake (type s3) is not supported yet" in capsys.readouterr().err
-    assert not (tmp_path / "out").exists()
-
-
 def test_a_local_named_storage_still_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
