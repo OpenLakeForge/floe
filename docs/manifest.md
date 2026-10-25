@@ -132,7 +132,7 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
 
 ```jsonc
 {
-  "schema": "floe.manifest.v1",          // version sentinel — never changes for v1
+  "spec_version": "0.8",                 // Floe major.minor that generated it (D22)
   "manifest_name": "sales.prod",         // optional stable logical name (--manifest-name)
   "manifest_id": "mfv1-a1b2c3d4...",    // FNV-1a hash of config URI + content
   "manifest_revision": "sha256:...",     // SHA-256 of canonical manifest content
@@ -202,7 +202,7 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
 }
 ```
 
-The full JSON Schema for the manifest format is at [`orchestrators/schemas/floe.manifest.v1.json`](../orchestrators/schemas/floe.manifest.v1.json).
+The full JSON Schema for the manifest format is at [`orchestrators/schemas/floe.manifest.schema.json`](../orchestrators/schemas/floe.manifest.schema.json).
 
 When an entity uses a named config source, its manifest `source` includes the source name in
 `ref` and the effective `resource` value (the entity name when `resource` is omitted). Inline
@@ -353,4 +353,4 @@ If the diff is non-empty, the committed manifest is stale. Commit manifests in t
 - [CLI reference — `floe manifest generate`](cli.md)
 - [Dagster connector](../orchestrators/dagster-floe/README.md)
 - [Airflow connector](../orchestrators/airflow-floe/README.md)
-- [Full manifest JSON Schema](../orchestrators/schemas/floe.manifest.v1.json)
+- [Full manifest JSON Schema](../orchestrators/schemas/floe.manifest.schema.json)

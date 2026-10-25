@@ -47,6 +47,10 @@ def comparable(name: str, value: Any) -> str:
                 doc["tool"]["version"] = (
                     "<volatile>"  # the implementation's own version
                 )
+            if name == "manifest.json":
+                # D22: Python has no `schema`; its spec_version is its own Floe major.minor
+                doc.pop("schema", None)
+                doc["spec_version"] = "<volatile>"
             return json.dumps(mask_bytes(doc), indent=2) + "\n"
         return value
     # parquet: schema, then one line per row
