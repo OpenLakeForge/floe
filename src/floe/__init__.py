@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from html import escape
 from importlib.metadata import version
 from pathlib import Path
@@ -18,6 +18,7 @@ from floe.config.profile import ProfileConfig, apply_profile, parse_profile
 from floe.config.project import RootConfig as _Root
 from floe.config.validate import validate_config
 from floe.config.vars import extract_config_env_vars as _env_vars
+from floe.config.vars import resolve_vars
 from floe.errors import (
     FloeConfigError,
     FloeError,
@@ -159,7 +160,11 @@ def run(
     profile_vars: dict[str, str] | None = None,
     profile_path: str | None = None,
 ) -> RunOutcome:
-    path, root = _load(config_path, _profile(profile_path, profile_vars))
+    profile = _profile(profile_path, profile_vars)
+    if profile:  # Rust `run_with_runtime`: profile vars resolved against the config's env vars first
+        variables = resolve_vars(profile.variables, {}, _env_vars(Path(config_path).absolute()))  # fmt: skip
+        profile = replace(profile, variables=variables)
+    path, root = _load(config_path, profile)
     validate_config(root)
     out = _run.run(
         path, root, run_id=run_id, entities=entities or [], dry_run=dry_run,

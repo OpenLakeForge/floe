@@ -247,3 +247,13 @@ def test_repr_html(tmp_path: Path) -> None:
     assert "<table" in html
     assert "RunOutcome" in html
     assert outcome.run_id in html
+
+
+def test_run_resolves_profile_vars_that_reference_each_other(tmp_path: Path) -> None:
+    """Rust `run_with_runtime` resolves `${VAR}` references in profile vars before parsing (#847 review)."""
+    text = (tmp_path / VALID_CONFIG).read_text()
+    config = text.replace('    incoming_root: "./in"\n', "")
+    (tmp_path / "chained.yml").write_text(config)
+    variables = {"ROOT": str(tmp_path), "incoming_root": "${ROOT}/in"}
+    outcome = floe.run("chained.yml", profile_vars=variables)
+    assert outcome.summary["run"]["status"] != "failed"
