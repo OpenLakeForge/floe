@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import subprocess
 from unittest.mock import patch
@@ -237,6 +238,27 @@ def test_source_asset_group_matches_entity_group() -> None:
         entities=["employees"],
     )
     assert source_assets[0].group_name == entities[0].group_name
+
+
+def test_entities_sharing_a_named_source_depend_on_one_source_asset(tmp_path) -> None:
+    """D20: entities with the same source.ref share the asset of that `sources` entry."""
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    for entity in payload["entities"]:
+        entity["source"]["ref"] = "crm"
+    payload["sources"] = [
+        {"name": "crm", "format": "csv", "uri": "s3://b/crm", "entities": ["employees", "orders"]}
+    ]
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    asset_defs, source_assets, _entities = build_floe_asset_defs(
+        manifest_path=str(manifest_path), runner=_NoopRunner()
+    )
+    shared = AssetKey(["sources", "crm"])
+    assert [sa.key for sa in source_assets] == [shared]
+    assert source_assets[0].metadata["dagster/uri"].url == "s3://b/crm"
+    for asset_def in asset_defs:
+        assert shared in set(asset_def.keys_by_input_name.values())
 
 
 def test_register_source_assets_false_returns_empty_source_list() -> None:

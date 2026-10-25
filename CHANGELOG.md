@@ -11,6 +11,11 @@ All notable changes to Floe are documented in this file.
 
 ## dagster-floe (unreleased)
 
+- **Entities sharing a named source depend on one `sources/<name>` asset (D20, #796).** When
+  the manifest carries the `sources` index, every entity whose `source.ref` names an entry depends
+  on one shared source asset (group `sources`, the source's format and `uri` as metadata) instead
+  of its own `<entity>_source` asset. Two manifests loaded together that both name a source
+  `crm` now collide on `sources/crm` and fail the existing duplicate-key check.
 - **Manifests may carry a `sources` index and project `metadata` (D20, #796).** The bundled
   schema accepts both optional blocks: `sources` lists each named config source with its
   format, resolved `uri` and consuming entities; `metadata` is the config's project metadata.
