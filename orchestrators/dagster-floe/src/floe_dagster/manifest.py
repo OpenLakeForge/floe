@@ -502,7 +502,7 @@ def _validate_manifest_payload(payload: dict[str, Any]) -> None:
 @lru_cache(maxsize=1)
 def _manifest_validator() -> Draft202012Validator:
     schema_path = resources.files("floe_dagster").joinpath(
-        "schemas/floe.manifest.v1.json"
+        "schemas/floe.manifest.schema.json"
     )
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     return Draft202012Validator(schema)
