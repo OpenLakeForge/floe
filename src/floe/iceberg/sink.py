@@ -37,7 +37,7 @@ from floe.iceberg.write import (
     write_table,
 )
 from floe.storage.inputs import InputFile
-from floe.storage.paths import normalize_local_path, parse_s3_uri
+from floe.storage.resolve import resolve_path
 
 
 @dataclass(frozen=True)
@@ -56,23 +56,6 @@ def catalog_ident(value: str) -> str:
     return out.strip("_") or "default"
 
 
-def _resolve(storages: StoragesConfig | None, config_dir: Path, entity: EntityConfig, storage: str | None, raw: str) -> tuple[str, StorageDefinition | None]:  # fmt: skip
-    """Rust `StorageResolver::resolve_path` for local and S3 (validated references)."""
-    name = storage or (storages and storages.default) or "local"
-    definition = next((d for d in storages.definitions if d.name == name), None) if storages else None  # fmt: skip
-    if definition is None or definition.type == "local":
-        return f"local://{normalize_local_path(config_dir / raw)}", definition
-    if definition.type != "s3" or definition.bucket is None:
-        raise FloeConfigError(f"entity.name={entity.name} storage {name} ({definition.type}) is not supported for iceberg")  # fmt: skip
-    if raw.startswith("s3://"):
-        bucket, key = parse_s3_uri(raw)
-        if bucket != definition.bucket:
-            raise FloeConfigError(f"storage {name} bucket mismatch: {bucket}")
-    else:
-        key = "/".join(p for p in ((definition.prefix or "").strip("/"), raw.lstrip("/")) if p)  # fmt: skip
-    return f"s3://{definition.bucket}/{key}" if key else f"s3://{definition.bucket}", definition  # fmt: skip
-
-
 def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | None, config_dir: Path, entity: EntityConfig) -> IcebergTarget:  # fmt: skip
     """Rust `CatalogResolver::resolve_iceberg_target`; the catalog reference is validated."""
     sink = entity.sink.accepted
@@ -85,15 +68,14 @@ def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | N
         raise FloeConfigError(f"entity.name={entity.name} sink.accepted.iceberg.catalog references unknown catalog {name}")  # fmt: skip
     namespace = catalog_ident(sink.iceberg.namespace or entity.domain or "default")
     table = catalog_ident(sink.iceberg.table or entity.name)
-    accepted_uri, storage = _resolve(
-        storages, config_dir, entity, sink.storage, sink.path
-    )
+    field = f"entity.name={entity.name} sink.accepted.storage"
+    accepted_uri, storage = resolve_path(storages, config_dir, sink.storage, sink.path, field)  # fmt: skip
     where = catalog.warehouse_storage or sink.storage
     if sink.iceberg.location is not None:
-        location, storage = _resolve(storages, config_dir, entity, where, sink.iceberg.location)  # fmt: skip
+        location, storage = resolve_path(storages, config_dir, where, sink.iceberg.location, field)  # fmt: skip
     elif catalog.warehouse_storage is not None or catalog.warehouse_prefix is not None:
         parts = ((catalog.warehouse_prefix or "").strip("/"), namespace, table)
-        location, storage = _resolve(storages, config_dir, entity, where, "/".join(p for p in parts if p))  # fmt: skip
+        location, storage = resolve_path(storages, config_dir, where, "/".join(p for p in parts if p), field)  # fmt: skip
     else:
         location = accepted_uri
     return IcebergTarget(catalog, storage, namespace, table, location, accepted_uri)  # fmt: skip

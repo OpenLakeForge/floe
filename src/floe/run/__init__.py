@@ -18,12 +18,10 @@ from floe.report.summary import (
     write_entity_report,
     write_reports,
 )
-from floe.run.entity import EntityRun, run_entity
+from floe.run.entity import EntityRun, list_source, resolve_source, run_entity
 from floe.run.events import Emitter, Observer
-from floe.storage.inputs import resolve_inputs
-from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
-from floe.storage.resolve import require_local
+from floe.storage.resolve import resolve_path, storage_client
 
 
 @dataclass(frozen=True)
@@ -98,18 +96,12 @@ def run(
     if full_refresh:
         selected = [_refresh(e) for e in selected]
     config_dir = normalize_local_path(path.parent)
-    require_local(root.storages, root.report.storage, "report.storage")
+    report_uri, report_storage = resolve_path(root.storages, config_dir, root.report.storage, root.report.path, "report.storage")  # fmt: skip
+    report_path = report_uri.removeprefix("local://")
     run_id = run_id or started.replace(":", "-")
-    report_path = str(normalize_local_path(config_dir / root.report.path))
     if dry_run:  # Rust: no events, no reports; the inputs are only listed
-        client = LocalClient()
-        scanned = {
-            e.id: [f.source_uri for f in resolve_inputs(
-                config_dir, e.source.path, e.source.format, e.name, e.source.storage or "local",
-                client, recursive=bool(e.source.options.recursive),
-                glob_override=e.source.options.glob).files]
-            for e in selected
-        }  # fmt: skip
+        listed = {e.id: list_source(e, config_dir, *resolve_source(e, config_dir, root.storages)) for e in selected}  # fmt: skip
+        scanned = {k: [f.source_uri for f in v.files] for k, v in listed.items()}
         return RunOutcome(run_id, {}, scanned, report_path, [])
     emit = Emitter(observer, run_id)
     formatter = cast(
@@ -129,11 +121,12 @@ def run(
 
     emit("run_started", config=str(normalize_local_path(path)), report_base=report_path)
     reports: list[tuple[str, dict[str, Any]]] = []
+    client = storage_client(report_storage)
     run_dir = f"{report_path.rstrip('/')}/run_{run_id}"
     for e in selected:  # stops at the first abort
         result = one(e)
         reports.append((id_path(e), result.report))
-        write_entity_report(run_dir, id_path(e), result.report)
+        write_entity_report(run_dir, id_path(e), result.report, client)
         _finished(emit, e.id, result.report)
         if result.aborted:
             break
@@ -144,7 +137,7 @@ def run(
         config_path=str(normalize_local_path(path)), report_path=report_path,
         metadata=root.metadata,
     )  # fmt: skip
-    write_reports(summary, [])
+    write_reports(summary, [], client)
     r, t = summary["run"], summary["results"]
     emit("run_finished", status=r["status"], exit_code=r["exit_code"], files=t["files_total"],
          files_skipped=t["files_skipped"], rows=t["rows_total"], accepted=t["accepted_total"], rejected=t["rejected_total"],
