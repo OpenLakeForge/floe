@@ -16,7 +16,7 @@ The connector must:
 ### 2.1 Manifest schema
 
 - Schema id: `floe.manifest.v1`
-- Canonical schema file: `orchestrators/schemas/floe.manifest.v1.json`
+- Canonical schema file: `orchestrators/schemas/floe.manifest.schema.json`
 
 ### 2.2 Manifest generation
 
@@ -151,7 +151,7 @@ Task fails when:
    - Implement `kubernetes_pod` / `kubernetes_job` and `ecs_task` mappings.
    - Preserve `local_process` as dev default.
 3. Strict manifest validation at parse-time.
-   - Validate every loaded manifest against `orchestrators/schemas/floe.manifest.v1.json`.
+   - Validate every loaded manifest against `orchestrators/schemas/floe.manifest.schema.json`.
    - Fail fast with explicit validation errors in DAG import diagnostics.
 4. Multi-manifest robustness.
    - Add explicit collision policy for DAG ids and asset keys across manifests.

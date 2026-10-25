@@ -1,11 +1,14 @@
 """`run_entity` with an Iceberg accepted sink, on a local warehouse behind a stub catalog."""
 
-# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportMissingTypeStubs=false
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingTypeStubs=false
 # ^ pyarrow ships no type stubs
 
+from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import Any
 
+import duckdb
+import pyarrow as pa
 import pytest
 from pyiceberg.io import load_file_io
 from pyiceberg.partitioning import PartitionSpec
@@ -22,9 +25,11 @@ from pyiceberg.table.update import (
 import floe.iceberg.sink as sink_module
 from floe.config.parse import parse_config
 from floe.config.project import RootConfig
-from floe.errors import FloeRunError
+from floe.errors import FloeConfigError, FloeRunError
+from floe.iceberg.merge import MergeResult
 from floe.iceberg.sink import input_hash, partition_fields
-from floe.iceberg.write import INPUT_HASH, RUN_ID
+from floe.iceberg.write import INPUT_HASH, RUN_ID, write_result
+from floe.run import run as run_project
 from floe.run.entity import run_entity
 from floe.run.events import NO_EVENTS
 from floe.storage.inputs import InputFile
@@ -196,6 +201,24 @@ def test_append_adds_rows(tmp_path: Path, catalog: LocalCatalog) -> None:
     assert report["accepted_output"]["table_version"] == 2
 
 
+def test_append_rejects_keys_already_in_the_table(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    run(tmp_path, "id,name\n1,a\n", mode="append")
+    (tmp_path / "in" / "b.csv").write_text("id,name\n2,x\n")  # read before orders.csv
+    report = run(tmp_path, "id,name\n2,b\n1,c\n", mode="append")
+    assert rows(catalog) == [(1, "a"), (2, "x")]
+    (unique,) = report["unique_constraints"]
+    # 1 is in the table; 2 only repeats the batch, though orders.csv also seeds 1
+    assert (unique["duplicates_count"], unique["target_duplicates_count"]) == (2, 1)
+    assert unique["batch_duplicates_count"] == 1
+
+
+def test_append_to_a_missing_table_seeds_nothing(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    report = run(tmp_path, "id,name\n1,a\n1,b\n", mode="append")
+    assert rows(catalog) == [(1, "a")]
+    (unique,) = report["unique_constraints"]
+    assert "target_duplicates_count" not in unique
+
+
 def test_add_columns_evolves_the_table(tmp_path: Path, catalog: LocalCatalog) -> None:
     evolution = "schema_evolution: {mode: add_columns}"
     run(tmp_path, "id,name\n1,a\n", mode="append", evolution=evolution)
@@ -229,9 +252,54 @@ def test_nulls_in_a_required_column_fail_the_write(tmp_path: Path, catalog: Loca
     assert not catalog.tables
 
 
-def test_merge_modes_are_not_yet_supported(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
-    with pytest.raises(FloeRunError, match="sink.write_mode=merge_scd1 is not yet supported for iceberg"):  # fmt: skip
-        run(tmp_path, "id,name\n1,a\n", mode="merge_scd1")
+Merges = list[tuple[list[str], set[str]]]
+
+
+@pytest.fixture
+def merges(monkeypatch: pytest.MonkeyPatch) -> Merges:
+    """DuckDB can't attach the stub catalog: PyIceberg's upsert stands in for `merge_scd1` (Polaris runs the real one)."""
+    calls: Merges = []
+
+    def merge_scd1(_: object, table: Table, reader: pa.RecordBatchReader, key: Sequence[str], ignore: Collection[str] = ()) -> MergeResult:  # fmt: skip
+        calls.append((list(key), set(ignore)))
+        done = table.upsert(reader.read_all(), join_cols=list(key))
+        return MergeResult(write_result(table, []), done.rows_inserted, done.rows_updated)  # fmt: skip
+
+    monkeypatch.setattr(sink_module, "open_duckdb", lambda *_: duckdb.connect())  # pyright: ignore[reportUnknownLambdaType] -- stub
+    monkeypatch.setattr(sink_module, "merge_scd1", merge_scd1)
+    return calls
+
+
+def test_merge_scd1_upserts_and_reports_the_counts(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
+    ignore = "merge: {ignore_columns: [name]}"
+    first = run(tmp_path, "id,name\n1,a\n2,b\n", mode="merge_scd1", partition=ignore)
+    report = run(tmp_path, "id,name\n2,B\n3,c\n", mode="merge_scd1", partition=ignore)
+    assert rows(catalog) == [
+        (1, "a"),
+        (2, "B"),
+        (3, "c"),
+    ]  # the stand-in ignores nothing
+    assert merges == [(["id"], {"name"})] * 2
+    assert (first["accepted_output"]["inserted_count"], first["accepted_output"]["updated_count"]) == (2, 0)  # fmt: skip
+    out = report["accepted_output"]
+    assert list(out)[-4:] == ["merge_key", "inserted_count", "updated_count", "merge_elapsed_ms"]  # fmt: skip
+    assert (out["write_mode"], out["merge_key"]) == ("merge_scd1", ["id"])
+    assert (out["inserted_count"], out["updated_count"]) == (1, 1)
+    assert out["merge_elapsed_ms"] >= 0 and out["snapshot_id"] is not None
+
+
+def test_merge_scd2_is_not_yet_supported(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    with pytest.raises(FloeRunError, match="sink.write_mode=merge_scd2 is not yet supported for iceberg"):  # fmt: skip
+        run(tmp_path, "id,name\n1,a\n", mode="merge_scd2")
+
+
+def test_full_refresh_with_a_merge_is_a_config_error(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
+    root = config(tmp_path, mode="merge_scd1")
+    with pytest.raises(FloeConfigError, match="^entity 'Orders': --full-refresh is not supported with write_mode 'merge_scd1'$"):  # fmt: skip
+        run_project(tmp_path / "config.yml", root, full_refresh=True)
+    assert not catalog.tables
 
 
 def test_input_hash_covers_the_entity_and_the_claimed_files(tmp_path: Path) -> None:  # fmt: skip
@@ -244,3 +312,28 @@ def test_input_hash_covers_the_entity_and_the_claimed_files(tmp_path: Path) -> N
     assert input_hash(entity, [changed]) != input_hash(entity, [a])
     other = entity.model_copy(update={"id": "other"})
     assert input_hash(other, [a]) != input_hash(entity, [a])
+
+
+def test_warn_rejects_merge_key_duplicates_before_the_merge(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
+    """Rust `enforce_reject`: under warn, later rows repeating the merge key are rejected, never merged."""
+    report = run(tmp_path, "id,name\n1,a\n1,b\n", mode="merge_scd1", severity="warn")
+    assert rows(catalog) == [(1, "a")]
+    file = report["files"][0]
+    assert (file["status"], file["accepted_count"], file["rejected_count"]) == ("success", 1, 1)  # fmt: skip
+
+
+def test_merge_ignore_columns_are_trimmed(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
+    run(tmp_path, "id,name\n1,a\n", mode="merge_scd1", partition='merge: {ignore_columns: [" name "]}')  # fmt: skip
+    assert merges == [(["id"], {"name"})]
+
+
+def test_a_merge_key_column_cannot_be_added_by_evolution(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
+    evolution = "schema_evolution: {mode: add_columns}"
+    run(tmp_path, "id,name\n1,a\n", mode="merge_scd1", evolution=evolution)
+    text = CONFIG.format(mode="merge_scd1", severity="reject", partition="", evolution=evolution, extra="- {name: qty, type: int32}")  # fmt: skip
+    (tmp_path / "config.yml").write_text(text.replace("primary_key: [id]", "primary_key: [id, qty]"))  # fmt: skip
+    (tmp_path / "in" / "orders.csv").write_text("id,name,qty\n1,b,5\n")
+    root = parse_config(tmp_path / "config.yml")
+    with pytest.raises(FloeRunError, match="iceberg schema evolution failed: merge key columns cannot be added: qty$"):  # fmt: skip
+        run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, emit=NO_EVENTS, catalogs=root.catalogs)  # fmt: skip
+    assert rows(catalog) == [(1, "a")]
