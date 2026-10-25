@@ -207,7 +207,7 @@ class _Plan:
     rejected_writes: int = 0
     prechecked: set[str] = field(
         default_factory=set[str]
-    )  # files Rust settles in its precheck pass, before any file is read
+    )  # files the mismatch precheck rejects or aborts; Rust settles them before it reads any file
     archive_dir: Path | None = None  # Rust `archive_enabled()`
     run_id: str = ""
     table: Table | None = (
@@ -296,8 +296,6 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
     def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
         # Rust skips the raw copy under PII: the file cannot be masked
         plan.tracker.restore(keys)  # the unreadable file leaves no keys behind
-        if mismatch is None:
-            plan.prechecked.add(uri)
         keep = entity.pii is None and entity.sink.rejected is not None
         raw = _copy_raw(entity, plan.config_dir, path, severity) if keep else None
         return _failed_file(entity, uri, len(declared), mismatch, err, raw), []
