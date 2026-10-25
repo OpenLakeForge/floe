@@ -1,0 +1,83 @@
+name: Python integration (Polaris)
+
+# Runs the `polaris` and `s3` marked tests against the #602 harness (Polaris + SeaweedFS).
+# Not a required check yet (#840): the maintainer makes it required once it is stable.
+on:
+  pull_request:
+    paths:
+      - "src/floe/iceberg/**"
+      - "src/floe/storage/**"
+      - "src/floe/run/**"
+      - "tests/integration/**"
+      - ".github/workflows/python-integration.yml"
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  polaris:
+    runs-on: ubuntu-latest
+    env:
+      FLOE_POLARIS_URI: http://localhost:8181/api/catalog
+      FLOE_S3_ENDPOINT: http://localhost:8333
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups
+      # Same images, credentials and settings as spikes/python/harness/docker-compose.yml (#602).
+      - name: Start SeaweedFS and Polaris
+        run: |
+          docker network create harness
+          docker run -d --name seaweedfs --network harness -p 8333:8333 \
+            -e AWS_ACCESS_KEY_ID=spike -e AWS_SECRET_ACCESS_KEY=spike-s3-secret \
+            chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d \
+            mini -dir=/data -bucket=warehouse
+          # 403 without credentials means S3 is up and auth is on.
+          timeout 120 sh -c 'until [ "$(curl -s -o /dev/null -w "%{http_code}" localhost:8333/warehouse)" = 403 ]; do sleep 2; done'
+          docker run -d --name polaris --network harness -p 8181:8181 -p 8182:8182 \
+            -e AWS_REGION=us-east-1 -e AWS_ACCESS_KEY_ID=spike -e AWS_SECRET_ACCESS_KEY=spike-s3-secret \
+            -e POLARIS_BOOTSTRAP_CREDENTIALS=POLARIS,root,s3cr3t \
+            -e polaris.realm-context.realms=POLARIS -e quarkus.otel.sdk.disabled=true \
+            apache/polaris:1.8.0@sha256:347615e736cab2c9be0d8c464552ac930be4755302bb0aeb745216bbae99ba5b
+          timeout 180 sh -c 'until curl -sf localhost:8182/q/health; do sleep 2; done'
+      # Same steps as spikes/python/harness/bootstrap.py (#602), on a fresh in-memory Polaris.
+      - name: Bootstrap catalog, principal and grants
+        run: |
+          token() {
+            curl -sS --fail-with-body localhost:8181/api/catalog/v1/oauth/tokens \
+              -d grant_type=client_credentials -d client_id="$1" -d client_secret="$2" \
+              -d scope=PRINCIPAL_ROLE:ALL | jq -r .access_token
+          }
+          api() {
+            curl -sS --fail-with-body -X "$1" "localhost:8181/api$2" \
+              -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$3"
+            echo
+          }
+          TOKEN=$(token root s3cr3t)
+          api POST /management/v1/catalogs '{"catalog": {"name": "spike", "type": "INTERNAL",
+            "properties": {"default-base-location": "s3://warehouse/spike"},
+            "storageConfigInfo": {"storageType": "S3", "allowedLocations": ["s3://warehouse"],
+              "endpoint": "http://localhost:8333", "endpointInternal": "http://seaweedfs:8333",
+              "pathStyleAccess": true, "region": "us-east-1", "stsUnavailable": true}}}'
+          api POST /management/v1/principals '{"principal": {"name": "spike"}}'
+          api POST /management/v1/principals/spike/reset '{"clientId": "spike-client", "clientSecret": "spike-secret"}'
+          api POST /management/v1/principal-roles '{"principalRole": {"name": "spike_role"}}'
+          api PUT /management/v1/principals/spike/principal-roles '{"principalRole": {"name": "spike_role"}}'
+          api PUT /management/v1/principal-roles/spike_role/catalog-roles/spike '{"catalogRole": {"name": "catalog_admin"}}'
+          api PUT /management/v1/catalogs/spike/catalog-roles/catalog_admin/grants '{"grant": {"type": "catalog", "privilege": "CATALOG_MANAGE_CONTENT"}}'
+          # As the new principal: checks its credentials and grants.
+          TOKEN=$(token spike-client spike-secret)
+          api POST /catalog/v1/spike/namespaces '{"namespace": ["spike"]}'
+      - run: uv run pytest -m "polaris or s3" -rs tests/integration
+      - name: Container logs
+        if: failure()
+        run: |
+          docker logs seaweedfs
+          docker logs polaris
