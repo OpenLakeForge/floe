@@ -15,7 +15,7 @@
   - `--verbose` expands run output details.
 
 - `floe manifest generate -c <config> --output <path|-> [--entities <name[,name...]>]`
-  - Validate config and generate a common orchestrator manifest JSON (`schema=floe.manifest.v1`).
+  - Validate config and generate a common orchestrator manifest JSON (`spec_version` = the Floe major.minor).
   - `--output -` writes manifest JSON to stdout.
 
 - `floe add-entity -c <config> --input <path|file://...> [--format csv|json|parquet] [--name <entity>] [--domain <domain>] [--source <ref> --resource <name>]`

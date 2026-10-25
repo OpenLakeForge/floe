@@ -87,5 +87,7 @@ skips them and `check.py --impl rust` prints `skip` for them.
 - A run's non-zero exit code is recorded in `expected/exit_code` (e.g. `2` for an aborted run) and compared; no file means 0. Codes other than 0 and 2 fail recording.
 - `manifest.json`: `floe_version`, `manifest_id` and `manifest_revision` are masked (the version string and the
   absolute paths feed them) and the temp dir holding the work dir is `<ROOT>` (so `../` paths mask too); every other byte is compared, key order included.
+  D22 (#798): `check.py` also drops `schema` and masks `spec_version` on both sides at compare time, so the Rust 0.7
+  recordings (`floe.manifest.v1`, the config version) stay as recorded; `tests/unit/test_manifest.py` checks Python's value.
   Python's profile fields (`-p`) and remote `-o` are not covered yet (#635, storage clients).
 - Key order in reports is kept: it is part of the contract.
