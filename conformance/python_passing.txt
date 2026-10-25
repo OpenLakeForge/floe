@@ -28,7 +28,7 @@ config/div_S11_ctrl manifest
 config/div_S12 manifest
 config/div_S12_ctrl manifest
 config/div_S13 manifest
-config/div_S13_ctrl
+config/div_S13_ctrl manifest
 config/div_S14a_ctrl_csv manifest
 config/div_S14a_ctrl_json manifest
 config/div_S14b manifest
@@ -79,7 +79,7 @@ config/div_S5
 config/div_S5_ctrl manifest
 config/div_S6
 config/div_S6_ctrl manifest
-config/div_S7_ctrl
+config/div_S7_ctrl manifest
 config/div_S7a
 config/div_S7b
 config/div_S7c
@@ -91,9 +91,10 @@ config/example_config_yml manifest
 config/example_profile_dev manifest
 config/example_profile_prod manifest
 config/example_profile_uat manifest
-config/example_project
+config/example_project manifest
 config/example_standalone manifest
 config/manifest_fields manifest
+config/manifest_registries manifest
 config/parse_catalogs_definition_wrapper manifest
 config/parse_catalogs_missing_definitions manifest
 config/parse_catalogs_type_unsupported manifest
@@ -125,7 +126,7 @@ config/parse_env_vars_value_not_string manifest
 config/parse_expected_boolean manifest
 config/parse_expected_integer manifest
 config/parse_expected_positive_integer manifest
-config/parse_filesystems_alias_ok
+config/parse_filesystems_alias_ok manifest
 config/parse_include_domain_file_empty manifest
 config/parse_include_domain_file_missing_name manifest
 config/parse_include_domain_file_not_a_map manifest
@@ -134,7 +135,7 @@ config/parse_include_domains_no_match manifest
 config/parse_include_domains_not_array manifest
 config/parse_include_domains_pattern_not_string manifest
 config/parse_include_entities_array_conflict manifest
-config/parse_include_entity_file_domain_matches
+config/parse_include_entity_file_domain_matches manifest
 config/parse_include_entity_file_domain_mismatch manifest
 config/parse_include_entity_file_domain_not_string manifest
 config/parse_include_entity_file_error_names_file manifest
@@ -143,10 +144,10 @@ config/parse_include_glob_pattern_invalid manifest
 config/parse_include_missing_domains manifest
 config/parse_include_missing_version manifest
 config/parse_include_not_a_map manifest
-config/parse_include_ok
+config/parse_include_ok manifest
 config/parse_include_requires_version_0_3 manifest
 config/parse_include_root_entities_not_array manifest
-config/parse_include_sibling_non_yml_ignored
+config/parse_include_sibling_non_yml_ignored manifest
 config/parse_include_source_ref_error_names_files manifest
 config/parse_include_sources_and_root_sources manifest
 config/parse_include_sources_file_empty manifest
@@ -155,12 +156,12 @@ config/parse_include_sources_file_missing_sources manifest
 config/parse_include_sources_file_unknown_key manifest
 config/parse_include_sources_only_no_entities manifest
 config/parse_include_sources_path_not_string manifest
-config/parse_include_sources_with_domains
+config/parse_include_sources_with_domains manifest
 config/parse_include_unknown_key manifest
 config/parse_incremental_mode_case_insensitive manifest
 config/parse_incremental_mode_unsupported manifest
 config/parse_integer_exceeds_u32 manifest
-config/parse_integer_u32_max_ok
+config/parse_integer_u32_max_ok manifest
 config/parse_lineage_missing_url manifest
 config/parse_missing_entities manifest
 config/parse_missing_entity_source manifest
@@ -274,7 +275,7 @@ config/prof_vars_reference_ok manifest
 config/val1_archive_conflicts_with_file_mode manifest
 config/val1_archive_conflicts_with_row_mode manifest
 config/val1_archive_storage_differs_from_source manifest
-config/val1_archive_storage_same_as_source_ok
+config/val1_archive_storage_same_as_source_ok manifest
 config/val1_archive_without_incremental_mode_warns_ok manifest
 config/val1_d2_iceberg_merge_scd1 manifest
 config/val1_d2_iceberg_merge_scd2 manifest
@@ -291,10 +292,10 @@ config/val1_id_name_with_dot_before_0_3_ok manifest
 config/val1_id_name_with_slash manifest
 config/val1_incremental_archive_with_sink_archive_ok manifest
 config/val1_incremental_archive_without_sink_archive manifest
-config/val1_lineage_max_failures_one_ok
+config/val1_lineage_max_failures_one_ok manifest
 config/val1_lineage_max_failures_zero manifest
 config/val1_lineage_namespace_blank manifest
-config/val1_lineage_ok
+config/val1_lineage_ok manifest
 config/val1_lineage_url_blank manifest
 config/val1_pii_abort_severity manifest
 config/val1_pii_drop_ok manifest
@@ -302,7 +303,7 @@ config/val1_pii_drop_on_iceberg manifest
 config/val1_pii_drop_on_primary_key manifest
 config/val1_pii_duplicate_column manifest
 config/val1_pii_hash_ok manifest
-config/val1_pii_hash_on_iceberg_ok
+config/val1_pii_hash_on_iceberg_ok manifest
 config/val1_pii_hash_on_legacy_unique_column manifest
 config/val1_pii_hash_on_number manifest
 config/val1_pii_hash_on_unique_key manifest
@@ -327,7 +328,7 @@ config/val1_pii_with_archive manifest
 config/val1_reject_severity_with_rejected_sink_ok manifest
 config/val1_reject_severity_without_rejected_sink manifest
 config/val1_report_remote_path_on_local manifest
-config/val1_report_remote_path_on_s3_ok
+config/val1_report_remote_path_on_s3_ok manifest
 config/val1_sink_accepted_format_unknown manifest
 config/val1_sink_options_compression_unknown manifest
 config/val1_sink_options_max_size_per_file_zero manifest
@@ -352,14 +353,14 @@ config/val1_version_minor_not_numeric manifest
 config/val1_version_no_dot manifest
 config/val1_write_mode_append_ok manifest
 config/val1_write_mode_merge_on_parquet manifest
-config/val2_catalog_default_absent_ok
+config/val2_catalog_default_absent_ok manifest
 config/val2_catalog_default_unknown manifest
 config/val2_catalog_duplicate manifest
 config/val2_catalog_rest_wh_storage_local manifest
-config/val2_catalog_rest_wh_storage_s3_ok
+config/val2_catalog_rest_wh_storage_s3_ok manifest
 config/val2_catalog_rest_wh_storage_unknown manifest
 config/val2_catalogs_empty manifest
-config/val2_catalogs_ok
+config/val2_catalogs_ok manifest
 config/val2_d2_compare_pk manifest
 config/val2_d2_ignore_pk manifest
 config/val2_d2_merge_block_overwrite manifest
@@ -378,12 +379,12 @@ config/val2_evolution_add_columns_not_delta manifest
 config/val2_evolution_old_version manifest
 config/val2_evolution_strict_ok manifest
 config/val2_iceberg_block_on_parquet manifest
-config/val2_iceberg_default_catalog_ok
+config/val2_iceberg_default_catalog_ok manifest
 config/val2_iceberg_local_storage manifest
-config/val2_iceberg_local_storage_with_warehouse_storage_ok
+config/val2_iceberg_local_storage_with_warehouse_storage_ok manifest
 config/val2_iceberg_no_catalog manifest
 config/val2_iceberg_unknown_catalog manifest
-config/val2_iceberg_valid
+config/val2_iceberg_valid manifest
 config/val2_jsel_blank manifest
 config/val2_jsel_empty manifest
 config/val2_jsel_empty_field manifest
@@ -426,7 +427,7 @@ config/val2_pk_unknown_column manifest
 config/val2_ref_accepted_unknown manifest
 config/val2_ref_accepted_unknown_no_block manifest
 config/val2_ref_rejected_unknown manifest
-config/val2_ref_report_ok
+config/val2_ref_report_ok manifest
 config/val2_ref_report_unknown manifest
 config/val2_ref_report_unknown_no_block manifest
 config/val2_ref_source_local_no_block_ok manifest
@@ -437,10 +438,10 @@ config/val2_storage_default_unknown manifest
 config/val2_storage_duplicate manifest
 config/val2_storage_s3_no_bucket manifest
 config/val2_storage_s3_no_region manifest
-config/val2_storage_s3_ok
+config/val2_storage_s3_ok manifest
 config/val2_storage_type_unsupported manifest
 config/val2_storages_empty manifest
-config/val2_storages_ok
+config/val2_storages_ok manifest
 config/val2_type_aliases_ok manifest
 config/val2_type_time
 config/val2_type_unsupported manifest
