@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/OpenLakeForge/floe/orchestrators/schemas/floe.manifest.v1.json",
-  "title": "Floe Common Manifest v1",
+  "$id": "https://github.com/OpenLakeForge/floe/orchestrators/schemas/floe.manifest.schema.json",
+  "title": "Floe Common Manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [
