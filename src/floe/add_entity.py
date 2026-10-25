@@ -17,6 +17,7 @@ from floe import __version__
 from floe.config.include import glob_base
 from floe.config.parse import parse_config
 from floe.config.project import V0_3, config_version, validate_domains
+from floe.config.types import SourceOptions
 from floe.config.validate import validate_entities
 from floe.config.yaml import _FLOAT, load_yaml, rust_debug  # pyright: ignore[reportPrivateUsage] -- the YAML float grammar the emitter must quote
 from floe.errors import FloeConfigError, FloeError, FloeIoError
@@ -107,15 +108,21 @@ def _columns(fmt: str, path: str) -> tuple[Hash | None, list[Hash]]:
     if fmt == "csv":
         separator = _sniff_separator(path)
         try:
-            df = pl.read_csv(path, separator=separator, n_rows=SAMPLE_ROWS, infer_schema_length=SAMPLE_ROWS)  # fmt: skip
+            df = pl.read_csv(
+                path, separator=separator, n_rows=SAMPLE_ROWS, infer_schema_length=SAMPLE_ROWS,
+                null_values=SourceOptions.model_fields["null_values"].default, glob=False,
+            )  # fmt: skip
         except (OSError, pl.exceptions.PolarsError) as e:
             raise FloeIoError(f"csv schema inference failed: {e}") from e
         nullable = {c.name: df.height == 0 or c.null_count() > 0 for c in df.iter_columns()}  # fmt: skip
         schema, options = df.schema, cast(Hash, {"separator": separator})
     elif fmt == "parquet":
-        try:
-            schema = pl.read_parquet_schema(path)
-        except (OSError, pl.exceptions.PolarsError) as e:
+        try:  # a file object: Polars would expand glob characters in a path
+            with open(path, "rb") as f:
+                schema = pl.read_parquet_schema(f)
+        except OSError as e:
+            raise FloeIoError(f"failed to open parquet at {path}: {_os(e)}") from e
+        except pl.exceptions.PolarsError as e:
             raise FloeIoError(f"failed to read parquet schema at {path}: {e}") from e
         nullable, options = dict.fromkeys(schema, True), None
     else:  # ponytail: Rust infers JSON by hand (dates in strings, mixed kinds); needs a decision, see #852

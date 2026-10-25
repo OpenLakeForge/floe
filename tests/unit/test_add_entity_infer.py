@@ -49,6 +49,29 @@ def test_csv_header_only_columns_are_nullable(tmp_path: Path) -> None:
     assert columns(entity) == [("x", "string", True), ("y", "string", True)]
 
 
+def test_csv_quoted_empty_value_is_null_as_in_rust(tmp_path: Path) -> None:
+    path = tmp_path / "a.csv"
+    path.write_text('id,name\n1,Alice\n2,""\n')
+    entity, _ = infer_entity(str(path), None, None, None, None, None)
+    assert columns(entity) == [("id", "number", False), ("name", "string", True)]
+
+
+def test_csv_path_with_glob_characters_is_read_literally(tmp_path: Path) -> None:
+    path = tmp_path / "orders[1].csv"
+    path.write_text("id\n1\n")
+    (tmp_path / "orders1.csv").write_text("other\nx\n")
+    entity, _ = infer_entity(str(path), None, None, None, None, None)
+    assert columns(entity) == [("id", "number", False)]
+
+
+def test_parquet_path_with_glob_characters_is_read_literally(tmp_path: Path) -> None:
+    path = tmp_path / "p[1].parquet"
+    pl.DataFrame({"a": [1]}).write_parquet(path)
+    pl.DataFrame({"other": ["x"]}).write_parquet(tmp_path / "p1.parquet")
+    entity, _ = infer_entity(str(path), None, None, None, None, None)
+    assert columns(entity) == [("a", "number", True)]
+
+
 def test_parquet_maps_types_as_rust_does(tmp_path: Path) -> None:
     path = tmp_path / "emp.parquet"
     pl.DataFrame(
