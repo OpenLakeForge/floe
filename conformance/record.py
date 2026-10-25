@@ -35,7 +35,14 @@ CACHE = Path.home() / ".cache" / "floe-conformance" / f"v{VERSION}"
 
 # Paths in expected/ use filesystem-safe tokens (run_ID, part-UUID): `<` and `>` break Windows checkouts.
 # Differ between any two runs of the same binary: masked when recording.
-VOLATILE_KEYS = {"run_id", "started_at", "finished_at", "duration_ms", "elapsed_ms"}
+VOLATILE_KEYS = {
+    "run_id",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "elapsed_ms",
+    "ts_ms",
+}
 # Recorded, but ignored on compare (G5 ruling on #594).
 WRITER_BYTES_KEYS = {"total_bytes_written", "avg_file_size_mb"}
 RUN_DIR = re.compile(r"run_[0-9T:.\-Z]+")
@@ -168,10 +175,23 @@ def validate_snapshot(work: Path, proc: subprocess.CompletedProcess[str]) -> Sna
     return {"validate.json": json.dumps(out, indent=2) + "\n"}
 
 
+def events_snapshot(proc: subprocess.CompletedProcess[str], work: Path) -> Snapshot:
+    """A `--log-format json` run: its stdout event lines, normalized."""
+    if "--log-format" not in proc.args:
+        return {}
+    root = str(work.resolve())
+    lines = [
+        json.dumps(normalize(json.loads(l), root)) for l in proc.stdout.splitlines()
+    ]
+    return {"events.jsonl": "".join(f"{l}\n" for l in lines)}
+
+
 def case_snapshot(
     case: Path, work: Path, proc: subprocess.CompletedProcess[str]
 ) -> Snapshot:
-    return validate_snapshot(work, proc) if is_validate(case) else snapshot(work)
+    if is_validate(case):
+        return validate_snapshot(work, proc)
+    return snapshot(work) | events_snapshot(proc, work)
 
 
 def manifest_snapshot(case: Path, cmd: list[str], work: Path) -> Snapshot:
@@ -236,7 +256,8 @@ def main() -> int:
             continue
         with tempfile.TemporaryDirectory(prefix="conformance-") as tmp:
             work, proc = run_in_copy(case, [str(binary)], Path(tmp))
-            if proc.returncode not in (0, 2) and not is_validate(case):  # 2 = aborted
+            failed = proc.returncode not in (0, 2)  # 2 = aborted
+            if failed and not is_validate(case) and "--log-format" not in proc.args:
                 sys.stderr.write(proc.stdout + proc.stderr)
                 raise SystemExit(f"{case_name(case)}: floe exited {proc.returncode}")
             shutil.rmtree(case / "expected", ignore_errors=True)
@@ -246,7 +267,7 @@ def main() -> int:
             if proc.returncode and not is_validate(case):
                 snap["exit_code"] = f"{proc.returncode}\n"  # absent file means 0
             if not is_validate(case) and not any(
-                k.startswith(("accepted/", "rejected/")) for k in snap
+                k.startswith(("accepted/", "rejected/", "events")) for k in snap
             ):
                 raise SystemExit(
                     f"{case_name(case)}: no accepted or rejected output found under out/"

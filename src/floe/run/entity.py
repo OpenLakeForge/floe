@@ -571,12 +571,21 @@ def run_entity(
     emit: Emitter = NO_EVENTS,
     full_refresh: bool = False,
     catalogs: CatalogsConfig | None = None,
+    listed: ResolvedInputs | None = None,
 ) -> EntityRun:
     """Run one entity with local sources and local or Iceberg sinks; `config_dir` is absolute and normalised."""
     inc = Incremental(entity, config_dir, emit.run_id, full_refresh)
     try:
         run = _run_entity(
-            entity, config_dir, spec_version, formatter, storages, emit, inc, catalogs
+            entity,
+            config_dir,
+            spec_version,
+            formatter,
+            storages,
+            emit,
+            inc,
+            catalogs,
+            listed,
         )
     except BaseException:
         inc.release()  # a failed entity leaves no claims behind
@@ -594,6 +603,7 @@ def _run_entity(
     emit: Emitter,
     inc: Incremental,
     catalogs: CatalogsConfig | None,
+    listed: ResolvedInputs | None,
 ) -> EntityRun:
     src, sink = entity.source, entity.sink
     if sink.accepted.format not in ("parquet", "iceberg"):
@@ -652,7 +662,12 @@ def _run_entity(
         )  # Rust `seed_unique_tracker`; no table, nothing to seed
 
     def source() -> ResolvedInputs:
-        return list_source(entity, config_dir, source_uri, client)
+        # `listed`: the run's pre-check already listed the source (#864)
+        return (
+            listed
+            if listed is not None
+            else list_source(entity, config_dir, source_uri, client)
+        )
 
     archive = plan.archive_dir
     inputs = _with_archived(plan, archive, source) if inc.full_refresh and archive else source()  # fmt: skip
