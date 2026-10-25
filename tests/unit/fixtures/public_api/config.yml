@@ -1,0 +1,47 @@
+version: "0.1"
+
+env:
+  vars:
+    report_root: "./report"
+    out_root: "./out"
+    incoming_root: "./in"
+
+report:
+  path: "{{report_root}}"
+
+entities:
+  - name: "customer"
+    source:
+      format: "csv"
+      path: "{{incoming_root}}/customer"
+      options:
+        header: true
+        separator: ","
+        null_values: ["", "NULL", "null"]
+      cast_mode: "coerce"
+
+    sink:
+      accepted:
+        format: "parquet"
+        path: "{{out_root}}/accepted/customer/"
+      rejected:
+        format: "csv"
+        path: "{{out_root}}/rejected/customer/"
+
+    policy:
+      severity: "reject"
+    schema:
+      columns:
+        - name: "customer_id"
+          type: "string"
+          nullable: false
+          unique: true
+        - name: "email"
+          type: "string"
+          nullable: true
+        - name: "country_code"
+          type: "string"
+          nullable: true
+        - name: "created_at"
+          type: "datetime"
+          nullable: true

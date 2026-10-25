@@ -71,6 +71,7 @@ def file_report(
     rejected_path: str | None = None,
     archived_path: str | None = None,
     errors_path: str | None = None,
+    forced_rejects: int = 0,
 ) -> dict[str, Any]:
     """One `files[]` entry. `rejected_count` is the split's; severity decides status and counts (Rust `validate_split`)."""
     # a rejected/aborted mismatch decides the file before any row check runs (Rust `precheck.rs`)
@@ -81,8 +82,14 @@ def file_report(
     if precheck:
         status = "aborted" if mismatch.aborted else "rejected"
         accepted, rejected = 0, row_count
-    elif severity == "warn" or not violations:
-        status, accepted, rejected = "success", row_count, 0
+    elif (
+        severity == "warn" or not violations
+    ):  # warn still rejects merge-key duplicates
+        status, accepted, rejected = (
+            "success",
+            row_count - forced_rejects,
+            forced_rejects,
+        )
     elif severity == "reject":
         status, accepted, rejected = (
             "rejected",
@@ -149,6 +156,7 @@ def build_report(
     write_mode: WriteMode | None = None,
     table_root_uri: str | None = None,
     table: Mapping[str, Any] | None = None,
+    merge: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The entity's `run.json`; `files` are the `file_report`s, in input order.
 
@@ -223,6 +231,7 @@ def build_report(
             "total_bytes_written": write.total_bytes_written if write.files_written or table else None,
             "avg_file_size_mb": write.avg_file_size_mb if write.files_written or table else None,
             "small_files_count": write.small_files_count if write.files_written or table else None,
+            **(merge or {}),
         },
         "schema_evolution": {
             "enabled": False,
