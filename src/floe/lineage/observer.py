@@ -199,6 +199,7 @@ class OpenLineageObserver:
         thread.join(timeout)
         if thread.is_alive():
             attempt.cancel()
+            return True  # an expired attempt failed, even if its cut-off read looks like a 200 (#886)
         return result[0] if result else True
 
     def _send(self, data: bytes, timeout: float, attempt: _Attempt) -> bool | None:

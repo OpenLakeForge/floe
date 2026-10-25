@@ -419,3 +419,25 @@ def test_lineage_error_on_the_failure_path_does_not_mask_the_run_error(
     err = capsys.readouterr().err
     assert "warn: lineage: boom" in err
     assert "Error: " in err
+
+
+def test_a_cancelled_attempt_counts_as_failed_even_if_its_worker_reports_success(monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#886: a socket shut down mid-headers can read as a 200; a cancelled attempt must still fail."""
+    reported = threading.Event()
+
+    def send(self: OpenLineageObserver, data: bytes, timeout: float, attempt: Any) -> None:  # fmt: skip
+        while not attempt.cancelled:
+            time.sleep(0.01)
+        reported.set()  # the worker's "200" lands right after the cancel
+
+    cancel = observer._Attempt.cancel  # pyright: ignore[reportPrivateUsage] -- the race under test
+
+    def cancel_then_report(self: Any) -> None:
+        cancel(self)
+        reported.wait(5)
+        time.sleep(0.05)  # the worker appends its result before `_attempt` reads it
+
+    monkeypatch.setattr(OpenLineageObserver, "_send", send)
+    monkeypatch.setattr(observer._Attempt, "cancel", cancel_then_report)  # pyright: ignore[reportPrivateUsage]
+    obs = OpenLineageObserver(config("http://127.0.0.1:9", timeout_secs=1), [], "config.yml")  # fmt: skip
+    assert obs._attempt(b"{}") is True  # pyright: ignore[reportPrivateUsage] -- retryable failure, never a delivery
