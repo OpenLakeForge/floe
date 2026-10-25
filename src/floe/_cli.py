@@ -131,7 +131,8 @@ def _manifest(args: argparse.Namespace) -> int:
     if remote and not args.output.startswith("s3://"):  # D1: gcs and adls are dropped
         raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}")  # fmt: skip
     path = _realpath(args.config)
-    root = _load(path, None)
+    profile = parse_profile(_realpath(args.profile)) if args.profile else None
+    root = _load(path, profile)
     validate_config(root)
     options = Options(
         args.config,
@@ -143,6 +144,7 @@ def _manifest(args: argparse.Namespace) -> int:
         args.output
         if remote
         else None,  # a remote `-o` is where the manifest is deployed
+        args.profile,
     )
     manifest = build_manifest(root, path, options, args.entities)
     text = json.dumps(manifest, indent=2, ensure_ascii=False)
@@ -189,6 +191,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     generate.add_argument("-c", "--config", required=True)
     generate.add_argument("-o", "--output", required=True)
+    generate.add_argument("-p", "--profile")
     generate.add_argument("--deterministic", action="store_true")
     generate.add_argument("--manifest-name")
     generate.add_argument("--default-domain")

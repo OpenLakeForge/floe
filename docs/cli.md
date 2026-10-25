@@ -14,8 +14,9 @@
   - `--quiet` reduces console output to run totals.
   - `--verbose` expands run output details.
 
-- `floe manifest generate -c <config> --output <path|-> [--entities <name[,name...]>]`
+- `floe manifest generate -c <config> --output <path|-> [-p <profile>] [--entities <name[,name...]>]`
   - Validate config and generate a common orchestrator manifest JSON (`spec_version` = the Floe major.minor).
+  - `-p` applies an environment profile (variables, storages, catalogs, lineage) as `floe run -p` does, and records its `profile_uri` and `profile_checksum`.
   - `--output -` writes manifest JSON to stdout.
 
 - `floe add-entity -c <config> --input <path|file://...> [--format csv|json|parquet] [--name <entity>] [--domain <domain>] [--source <ref> --resource <name>]`

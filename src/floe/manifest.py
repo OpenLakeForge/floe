@@ -78,6 +78,7 @@ class Options(NamedTuple):
     manifest_uri: str | None = (
         None  # replaces `{manifest_uri}` in `execution.base_args`
     )
+    profile_arg: str | None = None  # `-p` as typed
 
 
 class _Context(NamedTuple):
@@ -254,7 +255,10 @@ _RUNNER_FIELDS = (
 )
 
 
-_OPTIONAL = ("work_root", "config_checksum", "config_files")
+_OPTIONAL = (
+    *("work_root", "config_checksum", "config_files"),
+    *("profile_uri", "profile_checksum"),
+)
 _WORK_ROOT = "/work"
 
 
@@ -394,6 +398,11 @@ def build_manifest(
         else None
     )
     report = _Target(ctx, root.report)
+    profile_uri = profile_checksum = None
+    if options.profile_arg is not None:  # recorded like `config_uri` and its checksum
+        profile = Path(os.path.realpath(options.profile_arg))
+        profile_uri = _config_uri(options.profile_arg, profile, work_root)
+        profile_checksum = _sha256(profile.read_bytes())
     manifest: Json = _put(
         {
             "generated_at_ts_ms": 0,
@@ -410,6 +419,8 @@ def build_manifest(
         "config_uri": config_uri,
         "config_checksum": checksum,
         "config_files": files,
+        "profile_uri": profile_uri,
+        "profile_checksum": profile_checksum,
         "report_base_uri": report.uri,
         "domains": [
             _put(
