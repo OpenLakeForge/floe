@@ -14,6 +14,7 @@ import polars as pl
 import pyarrow as pa
 from pyiceberg.catalog import Catalog
 from pyiceberg.schema import Schema, assign_fresh_schema_ids
+from pyiceberg.table import Table
 
 from floe.config.storage import (
     CatalogDefinition,
@@ -23,7 +24,12 @@ from floe.config.storage import (
 )
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeRunError
-from floe.iceberg.catalog import PartitionFields, ensure_table, open_catalog
+from floe.iceberg.catalog import (
+    PartitionFields,
+    ensure_table,
+    open_catalog,
+    run_error,
+)
 from floe.iceberg.write import (
     SMALL_FILE_THRESHOLD_BYTES,
     IcebergWriteResult,
@@ -91,6 +97,16 @@ def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | N
     else:
         location = accepted_uri
     return IcebergTarget(catalog, storage, namespace, table, location, accepted_uri)  # fmt: skip
+
+
+def existing_table(target: IcebergTarget) -> Table | None:
+    catalog = open_catalog(target.catalog, target.storage)
+    identifier = (target.namespace, target.table)
+    with run_error("rest catalog table_exists check failed"):
+        if not catalog.table_exists(identifier):
+            return None
+    with run_error("rest catalog load_table failed"):
+        return catalog.load_table(identifier)
 
 
 def input_hash(entity: EntityConfig, files: Sequence[InputFile]) -> str:
