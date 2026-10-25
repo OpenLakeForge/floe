@@ -21,7 +21,7 @@ from floe.config.parse import parse_config
 from floe.config.project import V0_3, config_version, validate_domains
 from floe.config.types import SourceOptions
 from floe.config.validate import validate_entities
-from floe.config.yaml import _FLOAT, load_yaml, rust_debug  # pyright: ignore[reportPrivateUsage] -- the YAML float grammar the emitter must quote
+from floe.config.yaml import _FLOAT, load_yaml, parse_yaml, rust_debug  # pyright: ignore[reportPrivateUsage] -- the YAML float grammar the emitter must quote
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.glob import PatternError, glob
 
@@ -407,14 +407,18 @@ def _write_new(path: str, text: str) -> None:
     )
     try:
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
-        with os.fdopen(fd, "wb") as f:
-            f.write(text.encode())
     except OSError as e:
         raise FloeIoError(f"failed to stage entity file: {_os(e)}") from e
-    try:
-        os.link(tmp, path)
-    except OSError as e:
-        raise FloeIoError(f"failed to write entity file: {_os(e)}") from e
+    try:  # a partial `.yml` left behind would be loaded as an entity
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(text.encode())
+        except OSError as e:
+            raise FloeIoError(f"failed to stage entity file: {_os(e)}") from e
+        try:
+            os.link(tmp, path)
+        except OSError as e:
+            raise FloeIoError(f"failed to write entity file: {_os(e)}") from e
     finally:
         os.unlink(tmp)
 
@@ -450,7 +454,9 @@ def add_entity(
             entity.pop("domain", None)
         rendered = _render(entity)
         try:
-            _validate(Path(config), {**entity, "domain": domain})
+            # the reloaded bytes, as Rust: a name like `0o123` is written bare and reloads as an integer
+            [reloaded] = parse_yaml(rendered)
+            _validate(Path(config), {**cast(Hash, reloaded), "domain": domain})
         except FloeError as e:
             raise FloeConfigError(f"generated entity file {output} failed validation: {e}") from e  # fmt: skip
         if not dry_run:

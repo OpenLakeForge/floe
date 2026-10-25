@@ -46,8 +46,8 @@ SHARED_MODULES = (
 # loaded via importlib.resources without a runtime dependency on floe-core).
 CANONICAL_COPIES = (
     (
-        REPO_ROOT / "orchestrators" / "schemas" / "floe.manifest.v1.json",
-        DAGSTER_PKG / "schemas" / "floe.manifest.v1.json",
+        REPO_ROOT / "orchestrators" / "schemas" / "floe.manifest.schema.json",
+        DAGSTER_PKG / "schemas" / "floe.manifest.schema.json",
     ),
 )
 

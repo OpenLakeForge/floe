@@ -2,8 +2,11 @@ import argparse
 import json
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
+from floe._cli_output import Console, run_output
 from floe.add_entity import add_entity
 from floe.config.parse import parse_config
 from floe.config.profile import (
@@ -29,8 +32,7 @@ def _realpath(path: str) -> Path:
         raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
 
 
-def _load(config: str, profile: ProfileConfig | None) -> tuple[Path, RootConfig]:
-    path = _realpath(config)
+def _load(path: Path, profile: ProfileConfig | None) -> RootConfig:
     variables = (
         resolve_vars(profile.variables, {}, extract_config_env_vars(path))
         if profile
@@ -39,7 +41,7 @@ def _load(config: str, profile: ProfileConfig | None) -> tuple[Path, RootConfig]
     root = parse_config(path, variables)
     if profile:
         root = apply_profile(root, profile)
-    return path, root
+    return root
 
 
 def _check_config(root: RootConfig) -> None:
@@ -58,7 +60,8 @@ def _validate(args: argparse.Namespace) -> int:
         print(f"Schema: {API_VERSION}/{KIND}")
         print(f"Catalogs: {len(profile.catalogs.definitions) if profile.catalogs else 0}")  # fmt: skip
         return 0
-    path, root = _load(args.config, profile)
+    path = _realpath(args.config)
+    root = _load(path, profile)
     _check_config(root)
     select_entities(root, args.entities)
     print(f"Config valid: {path}")
@@ -82,37 +85,57 @@ def _run(args: argparse.Namespace) -> int:
         raise FloeConfigError("floe run --manifest is not supported yet")
     if args.config is None:
         raise FloeConfigError("one of --config or --manifest is required")
+    run_id = args.run_id or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S.%fZ")
+    console = Console(args.log_format, run_id)
     profile = parse_profile(_realpath(args.profile)) if args.profile else None
-    path, root = _load(
-        args.config, profile
-    )  # lineage observes a config that fails validation
+    try:  # Rust logs a missing config without `run_started`
+        path = _realpath(args.config)
+    except FloeError as e:
+        console.failed(e, None)
+        raise
+    try:
+        root = _load(path, profile)
+    except FloeError as e:
+        console.failed(e, str(path))
+        raise
     lineage = (
         OpenLineageObserver(root.lineage, root.entities, str(path))
         if root.lineage
         else None
     )
+
+    def observe(event: dict[str, Any]) -> None:
+        console(event)
+        if lineage:
+            lineage(event)
+
     try:
-        _check_config(root)
+        _check_config(
+            root
+        )  # after the observer: lineage sees a config that fails validation
         outcome = run(
-            path, root, run_id=args.run_id, entities=args.entities,
-            full_refresh=args.full_refresh, observer=lineage,
+            path, root, run_id=run_id, entities=args.entities, dry_run=args.dry_run,
+            full_refresh=args.full_refresh, observer=observe,
         )  # fmt: skip
-    except FloeError:
+    except FloeError as e:
+        console.failed(e, str(path))
         if lineage:
             try:
                 lineage.fail_run()
             except Exception as e:  # noqa: BLE001 -- lineage must not mask the run error
                 print(f"warn: lineage: {e}", file=sys.stderr)
         raise
-    run_info = outcome.summary["run"]
-    print(f"run {run_info['run_id']}: {run_info['status']}")
-    return run_info["exit_code"]
+    mode = "quiet" if args.quiet else "verbose" if args.verbose else "default"
+    out = run_output(outcome, root.entities, mode, console.timings)
+    print(out, file=sys.stderr if args.log_format == "json" else sys.stdout)
+    return 0 if args.dry_run else outcome.summary["run"]["exit_code"]
 
 
 def _manifest(args: argparse.Namespace) -> int:
     if "://" in args.output:  # ponytail: remote `-o` needs the storage clients
         raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}")  # fmt: skip
-    path, root = _load(args.config, None)
+    path = _realpath(args.config)
+    root = _load(path, None)
     _check_config(root)
     options = Options(
         args.config,
@@ -164,6 +187,11 @@ def _parser() -> argparse.ArgumentParser:
     run_source.add_argument("--manifest")
     run.add_argument("--run-id")
     run.add_argument("-F", "--full-refresh", action="store_true")
+    run.add_argument("--dry-run", action="store_true")
+    run.add_argument("--log-format", choices=("off", "text", "json"), default="off")
+    verbosity = run.add_mutually_exclusive_group()
+    verbosity.add_argument("--quiet", action="store_true")
+    verbosity.add_argument("--verbose", action="store_true")
     validate.add_argument("-c", "--config")
     for command in (validate, run):
         command.add_argument("--entities", action="extend", type=lambda s: s.split(","), default=[])  # fmt: skip

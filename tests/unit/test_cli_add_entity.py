@@ -10,6 +10,7 @@ import stat
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Self
 
 import polars as pl
 import pytest
@@ -164,6 +165,53 @@ def test_add_entity_sibling_uses_normal_file_permissions(
     assert add(floe, config, input, "--domain", "sales")[0] == 0
     mode = stat.S_IMODE((domain_dir / "orders.yml").stat().st_mode)
     assert mode == stat.S_IMODE(control.stat().st_mode)
+
+
+def test_add_entity_validates_the_rendered_sibling_yaml(
+    floe: Run, tmp_path: Path
+) -> None:
+    # `0o123` is written unquoted (as Rust does) and reloads as an integer
+    config, domain_dir = included_sales_project(tmp_path)
+    input = tmp_path / "orders.csv"
+    input.write_text("0o123\n1\n")
+    code, _, err = add(floe, config, input, "--domain", "sales")
+    assert code == 1
+    assert err.startswith(
+        f"Error: generated entity file {domain_dir / 'orders.yml'} failed validation: "
+    )
+    assert not (domain_dir / "orders.yml").exists()
+
+
+def test_add_entity_removes_a_staging_file_that_failed_to_write(
+    floe: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, domain_dir = included_sales_project(tmp_path)
+    input = tmp_path / "orders.csv"
+    input.write_text("id\n1\n")
+    real_fdopen = os.fdopen
+
+    class FullDisk:
+        def __init__(self, fd: int, mode: str) -> None:
+            self.file = real_fdopen(fd, mode)
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            self.file.close()
+
+        def write(self, data: bytes) -> int:
+            self.file.write(data[:10])
+            self.file.flush()
+            raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("floe.add_entity.os.fdopen", FullDisk)
+    code, _, err = add(floe, config, input, "--domain", "sales")
+    assert (code, err) == (
+        1,
+        "Error: failed to stage entity file: No space left on device (os error 28)\n",
+    )
+    assert sorted(p.name for p in domain_dir.iterdir()) == ["_domain.yml"]
 
 
 def test_add_entity_refuses_to_overwrite_included_domain_sibling(

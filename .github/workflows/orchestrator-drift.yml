@@ -7,8 +7,8 @@ on:
       - "orchestrators/airflow-floe/src/airflow_floe/databricks_client.py"
       - "orchestrators/dagster-floe/src/floe_dagster/k8s_status.py"
       - "orchestrators/airflow-floe/src/airflow_floe/k8s_status.py"
-      - "orchestrators/schemas/floe.manifest.v1.json"
-      - "orchestrators/dagster-floe/src/floe_dagster/schemas/floe.manifest.v1.json"
+      - "orchestrators/schemas/floe.manifest.schema.json"
+      - "orchestrators/dagster-floe/src/floe_dagster/schemas/floe.manifest.schema.json"
       - "scripts/check_orchestrator_drift.py"
       - ".github/workflows/orchestrator-drift.yml"
   push:
@@ -18,8 +18,8 @@ on:
       - "orchestrators/airflow-floe/src/airflow_floe/databricks_client.py"
       - "orchestrators/dagster-floe/src/floe_dagster/k8s_status.py"
       - "orchestrators/airflow-floe/src/airflow_floe/k8s_status.py"
-      - "orchestrators/schemas/floe.manifest.v1.json"
-      - "orchestrators/dagster-floe/src/floe_dagster/schemas/floe.manifest.v1.json"
+      - "orchestrators/schemas/floe.manifest.schema.json"
+      - "orchestrators/dagster-floe/src/floe_dagster/schemas/floe.manifest.schema.json"
       - "scripts/check_orchestrator_drift.py"
       - ".github/workflows/orchestrator-drift.yml"
   workflow_dispatch: {}
