@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from unittest.mock import MagicMock, patch
 
 from floe_dagster.kubernetes_runner import (
@@ -168,3 +169,52 @@ def test_run_kubernetes_job_surfaces_image_pull_reason() -> None:
     assert result.status == STATUS_FAILED
     assert result.failure_reason == "ImagePullBackOff"
     assert result.backend_metadata["container_reason"] == "ImagePullBackOff"
+
+
+def test_build_k8s_job_spec_renders_resource_requests() -> None:
+    runner = replace(_runner(), resources={"cpu": "500m", "memory_mb": 2048})
+    spec = build_k8s_job_spec("floe-orders-abc", ["floe", "run"], runner)
+    container = spec["spec"]["template"]["spec"]["containers"][0]
+    assert container["resources"] == {"requests": {"cpu": "500m", "memory": "2048Mi"}}
+
+
+def test_build_k8s_job_spec_without_resources_is_unchanged() -> None:
+    for resources in (None, {}, {"cpu": None, "memory_mb": None}):
+        runner = replace(_runner(), resources=resources)
+        spec = build_k8s_job_spec("floe-orders-abc", ["floe", "run"], runner)
+        assert "resources" not in spec["spec"]["template"]["spec"]["containers"][0]
+
+
+def test_manifest_runner_definition_parses_resources() -> None:
+    runner = ManifestRunnerDefinition.from_dict(
+        {"type": "kubernetes_job", "resources": {"cpu": "1", "memory_mb": 512}}
+    )
+    assert runner.resources == {"cpu": "1", "memory_mb": 512}
+
+
+def test_run_kubernetes_job_surfaces_oom_killed_reason() -> None:
+    jobs_api = MagicMock()
+    jobs_api.read_namespaced_job.side_effect = [
+        _job(failed=1, conditions=[{"type": "Failed", "status": "True", "reason": "BackoffLimitExceeded"}]),
+    ]
+    core_api = MagicMock()
+    pods = MagicMock()
+    pods.items = [
+        {
+            "metadata": {"name": "pod-1"},
+            "status": {
+                "container_statuses": [
+                    {"state": {"terminated": {"reason": "OOMKilled", "exit_code": 137}}}
+                ]
+            },
+        }
+    ]
+    core_api.list_namespaced_pod.return_value = pods
+    core_api.read_namespaced_pod_log.return_value = ""
+
+    with patch("time.sleep"):
+        result = run_kubernetes_job(
+            ["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api
+        )
+
+    assert result.failure_reason == "OOMKilled (exit_code=137)"

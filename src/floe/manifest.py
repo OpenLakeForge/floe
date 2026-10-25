@@ -17,6 +17,7 @@ from typing import Any, NamedTuple, cast
 from pydantic import BaseModel
 
 from floe import __version__
+from floe.config.profile import ProfileConfig
 from floe.config.project import ReportConfig, RootConfig
 from floe.config.storage import StoragesConfig
 from floe.config.types import ArchiveTarget, EntityConfig, SinkTarget, SourceConfig
@@ -79,6 +80,7 @@ class Options(NamedTuple):
         None  # replaces `{manifest_uri}` in `execution.base_args`
     )
     profile_arg: str | None = None  # `-p` as typed
+    profile: ProfileConfig | None = None  # its `execution` block shapes the runners
 
 
 class _Context(NamedTuple):
@@ -227,8 +229,9 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
     )
 
 
-def _execution(manifest_uri: str | None) -> Json:
-    return {
+def _execution(manifest_uri: str | None, profile: ProfileConfig | None) -> Json:
+    orchestration = profile and profile.orchestration
+    execution: Json = {
         "entrypoint": "floe",
         "base_args": ["run", "--manifest", manifest_uri or "{manifest_uri}"]
         + ["--log-format", "json", "--quiet"],
@@ -245,6 +248,9 @@ def _execution(manifest_uri: str | None) -> Json:
         },
         "defaults": {"env": {}, "workdir": None},
     }
+    if orchestration is not None:  # Rust skips it when the profile sets none
+        execution["orchestration"] = orchestration
+    return execution
 
 
 _RUNNER_FIELDS = (
@@ -253,6 +259,32 @@ _RUNNER_FIELDS = (
     *("resources", "env", "workspace_url", "existing_cluster_id", "config_uri"),
     *("python_file_uri", "job_name", "auth", "env_parameters"),
 )
+
+
+# Rust `runners_contract`: the fields each profile runner type carries into the manifest
+_PROFILE_RUNNER_FIELDS = {
+    "kubernetes_job": _RUNNER_FIELDS[:11],
+    "databricks_job": (*_RUNNER_FIELDS[:3], _RUNNER_FIELDS[4], *_RUNNER_FIELDS[11:]),
+}
+
+
+def _runners(profile: ProfileConfig | None) -> Json:
+    """The profile's `kubernetes_job` or `databricks_job` runner as `default`, else `local`."""
+    kind = profile and profile.runner.get("type")
+    if not isinstance(kind, str) or kind not in _PROFILE_RUNNER_FIELDS:
+        local = {"type": "local_process"} | dict.fromkeys(_RUNNER_FIELDS)
+        return {"default": "local", "definitions": {"local": local}}
+    assert profile is not None
+    keep = _PROFILE_RUNNER_FIELDS[kind]
+    runner: Json = {"type": kind}
+    for k in _RUNNER_FIELDS:
+        v = profile.runner.get(k) if k in keep else None
+        if k in ("env", "env_parameters") and isinstance(v, dict):  # a BTreeMap in Rust
+            v = dict(sorted(cast(dict[str, str], v).items()))
+        runner[k] = v
+    if kind == "databricks_job":
+        runner["job_name"] = runner["job_name"] or "floe-{domain}-{env}"
+    return {"default": "default", "definitions": {"default": runner}}
 
 
 _OPTIONAL = (
@@ -429,13 +461,8 @@ def build_manifest(
             )
             for d in root.domains
         ],
-        "execution": _execution(options.manifest_uri),
-        "runners": {
-            "default": "local",
-            "definitions": {
-                "local": {"type": "local_process"} | dict.fromkeys(_RUNNER_FIELDS)
-            },
-        },
+        "execution": _execution(options.manifest_uri, options.profile),
+        "runners": _runners(options.profile),
         "entities": [
             _entity(e, ctx, options.default_domain)
             for e in sorted(select_entities(root, selectors), key=lambda e: e.id)

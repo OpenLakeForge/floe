@@ -129,6 +129,9 @@ def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunne
         container["args"] = container_args
     if env_vars:
         container["env"] = env_vars
+    requests = _resource_requests(runner.resources)
+    if requests:
+        container["resources"] = {"requests": requests}
 
     pod_spec: dict[str, Any] = {"containers": [container], "restartPolicy": "Never"}
     if runner.service_account:
@@ -152,6 +155,16 @@ def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunne
         "metadata": {"name": job_name, "namespace": runner.namespace, "labels": {"app": "floe-runner"}},
         "spec": job_spec,
     }
+
+
+def _resource_requests(resources: dict[str, Any] | None) -> dict[str, str]:
+    requests: dict[str, str] = {}
+    if resources:
+        if resources.get("cpu"):
+            requests["cpu"] = str(resources["cpu"])
+        if resources.get("memory_mb") is not None:
+            requests["memory"] = f"{resources['memory_mb']}Mi"
+    return requests
 
 
 def _make_job_name(entity: str) -> str:

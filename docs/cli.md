@@ -16,7 +16,7 @@
 
 - `floe manifest generate -c <config> --output <path|-> [-p <profile>] [--entities <name[,name...]>]`
   - Validate config and generate a common orchestrator manifest JSON (`spec_version` = the Floe major.minor).
-  - `-p` applies an environment profile (variables, storages, catalogs, lineage) as `floe run -p` does, and records its `profile_uri` and `profile_checksum`.
+  - `-p` applies an environment profile (variables, storages, catalogs, lineage) as `floe run -p` does, and records its `profile_uri` and `profile_checksum`. Its `execution` block sets `execution.orchestration` and, for a `kubernetes_job` or `databricks_job` runner, the `default` runner definition.
   - `--output -` writes manifest JSON to stdout.
 
 - `floe add-entity -c <config> --input <path|file://...> [--format csv|json|parquet] [--name <entity>] [--domain <domain>] [--source <ref> --resource <name>]`
