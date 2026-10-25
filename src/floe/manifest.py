@@ -6,11 +6,12 @@ Rust structs, and every value Rust builds with `serde_json::to_value` has its ke
 
 import hashlib
 import json
+import os
 import re
 import time
 from dataclasses import asdict
 from itertools import takewhile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, NamedTuple, cast
 
 from pydantic import BaseModel
@@ -19,6 +20,8 @@ from floe import __version__
 from floe.config.project import ReportConfig, RootConfig
 from floe.config.storage import StoragesConfig
 from floe.config.types import ArchiveTarget, EntityConfig, SinkTarget, SourceConfig
+from floe.errors import FloeError
+from floe.run import select_entities
 from floe.storage.paths import normalize_local_path
 
 Json = dict[str, Any]
@@ -64,9 +67,19 @@ def _revision(manifest: Json) -> str:
     )
 
 
+class Options(NamedTuple):
+    config_arg: str  # `-c` as typed
+    deterministic: bool
+    manifest_name: str | None
+    default_domain: str | None
+    path_mode: str
+    runtime: str | None  # None: detect
+
+
 class _Context(NamedTuple):
     config_dir: Path
     storages: StoragesConfig | None
+    resolved_uri_paths: bool
 
 
 def _s3_uri(bucket: str, prefix: str | None, raw: str) -> str | None:
@@ -102,9 +115,15 @@ class _Target:
         self.resolved = uri is not None
         self.storage = name if uri else target.storage or "local"
         self.uri = uri or self.raw
+        # `--manifest-path-mode resolved-uri`: a resolved path is recorded as its URI, minus `local://`
+        self.path = (
+            self.uri.removeprefix("local://")
+            if ctx.resolved_uri_paths and uri
+            else self.raw
+        )
 
     def json(self, fmt: str | None = None) -> Json:
-        fields = {"storage": self.storage, "uri": self.uri, "path": self.raw}
+        fields = {"storage": self.storage, "uri": self.uri, "path": self.path}
         return ({"format": fmt} if fmt else {}) | fields | {"resolved": self.resolved}
 
 
@@ -123,13 +142,13 @@ def _sink(ctx: _Context, target: SinkTarget) -> Json:
     )
 
 
-def _entity(entity: EntityConfig, ctx: _Context) -> Json:
+def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> Json:
     source = _Target(ctx, entity.source)
     sink, meta, schema, domain = (
         entity.sink,
         entity.metadata,
         entity.schema_,
-        entity.domain,
+        entity.domain if entity.domain is not None else default_domain,
     )
     accepted = _Target(ctx, sink.accepted)
     rejected = sink.rejected and _Target(ctx, sink.rejected)
@@ -153,8 +172,8 @@ def _entity(entity: EntityConfig, ctx: _Context) -> Json:
         {
             "name": entity.id,
             "domain": domain,
-            "group_name": domain or "default",
-            "asset_key": [domain or "default", entity.name],
+            "group_name": domain if domain is not None else "default",
+            "asset_key": [domain if domain is not None else "default", entity.name],
             "source_format": entity.source.format,
             "accepted_sink_uri": accepted.uri,
             "rejected_sink_uri": rejected and rejected.uri,
@@ -231,7 +250,8 @@ _RUNNER_FIELDS = (
 )
 
 
-_OPTIONAL = ("config_checksum", "config_files")
+_OPTIONAL = ("work_root", "config_checksum", "config_files")
+_WORK_ROOT = "/work"
 
 
 def _config_files(files: list[Path]) -> list[Json] | None:
@@ -295,14 +315,46 @@ def _blocks(root: RootConfig) -> Json:
     return blocks
 
 
+def detect_runtime() -> str:
+    """`FLOE_RUNTIME`, else a container (`/.dockerenv` or cwd `/work`) is `image`, else `cli`."""
+    forced = os.environ.get("FLOE_RUNTIME", "").strip().lower()
+    if forced in ("image", "cli"):
+        return forced
+    in_container = Path("/.dockerenv").exists() or Path.cwd() == Path(_WORK_ROOT)
+    return "image" if in_container else "cli"
+
+
+def _config_uri(typed: str, canonical: Path, work_root: str | None) -> str:
+    """`cli`: the canonical host path. `image`: the path as typed, rebased under the work-root."""
+    if work_root is None:
+        return f"local://{canonical}"
+    parts = ["" if p.startswith("/") else p for p in PurePosixPath(typed).parts]
+    rel = "/".join(parts) or "."
+    return (
+        f"local://{rel}"
+        if rel.startswith("/")
+        else f"local://{work_root.rstrip('/')}/{rel}"
+    )
+
+
 def build_manifest(
-    root: RootConfig,
-    config_path: Path,
-    deterministic: bool,
-    manifest_name: str | None,
+    root: RootConfig, config_path: Path, options: Options, selectors: list[str]
 ) -> Json:
-    ctx = _Context(normalize_local_path(config_path.parent), root.storages)
-    config_uri = f"local://{config_path}"
+    if options.path_mode not in ("default", "resolved-uri"):
+        raise FloeError(
+            f"unknown --manifest-path-mode value '{options.path_mode}'; expected 'default' or 'resolved-uri'"
+        )
+    runtime = options.runtime or detect_runtime()
+    work_root = None
+    if runtime == "image":
+        work_root = os.environ.get("FLOE_WORK_ROOT", "")
+        work_root = (work_root if work_root.strip() else _WORK_ROOT).replace("\\", "/")
+    ctx = _Context(
+        normalize_local_path(config_path.parent),
+        root.storages,
+        options.path_mode == "resolved-uri",
+    )
+    config_uri = _config_uri(options.config_arg, config_path, work_root)
     files = _config_files(root.config_files)
     checksum = (
         _sha256("".join(f"{f['path']}\0{f['sha256']}\n" for f in files).encode())
@@ -319,12 +371,13 @@ def build_manifest(
             "floe_version": __version__,
         },
         spec_version=root.version,
-        manifest_name=manifest_name,
+        manifest_name=options.manifest_name,
     )
     manifest |= {
         "manifest_id": _manifest_id(config_uri, checksum),
         "manifest_revision": None,
-        "runtime_env": "cli",
+        "runtime_env": runtime,
+        "work_root": work_root,
         "config_uri": config_uri,
         "config_checksum": checksum,
         "config_files": files,
@@ -344,14 +397,15 @@ def build_manifest(
             },
         },
         "entities": [
-            _entity(e, ctx) for e in sorted(root.entities, key=lambda e: e.id)
+            _entity(e, ctx, options.default_domain)
+            for e in sorted(select_entities(root, selectors), key=lambda e: e.id)
         ],
     }
     manifest |= _blocks(root)
     manifest = {
         k: v for k, v in manifest.items() if k not in _OPTIONAL or v is not None
     }
-    if not deterministic:
+    if not options.deterministic:
         manifest["generated_at_ts_ms"] = time.time_ns() // 1_000_000
     manifest["manifest_revision"] = _revision(manifest)
     return manifest
