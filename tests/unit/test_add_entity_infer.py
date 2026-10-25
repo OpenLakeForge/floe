@@ -25,7 +25,7 @@ def test_csv_sniffs_the_separator_and_infers_types(tmp_path: Path) -> None:
     path.write_text(
         "id;name;active;amt;d\n1;Alice;true;1.5;2024-01-01\n2;;false;2;2024-01-02\n"
     )
-    entity, fmt = infer_entity(str(path), None, None, None, None, None)
+    entity, fmt, _ = infer_entity(str(path), None, None, None, None, None)
     assert fmt == "csv"
     assert entity["name"] == "cust"
     assert entity["source"] == {
@@ -45,14 +45,14 @@ def test_csv_sniffs_the_separator_and_infers_types(tmp_path: Path) -> None:
 def test_csv_header_only_columns_are_nullable(tmp_path: Path) -> None:
     path = tmp_path / "a.csv"
     path.write_text("x|y\n")
-    entity, _ = infer_entity(str(path), None, None, None, None, None)
+    entity, _, _ = infer_entity(str(path), None, None, None, None, None)
     assert columns(entity) == [("x", "string", True), ("y", "string", True)]
 
 
 def test_csv_quoted_empty_value_is_null_as_in_rust(tmp_path: Path) -> None:
     path = tmp_path / "a.csv"
     path.write_text('id,name\n1,Alice\n2,""\n')
-    entity, _ = infer_entity(str(path), None, None, None, None, None)
+    entity, _, _ = infer_entity(str(path), None, None, None, None, None)
     assert columns(entity) == [("id", "number", False), ("name", "string", True)]
 
 
@@ -60,7 +60,7 @@ def test_csv_path_with_glob_characters_is_read_literally(tmp_path: Path) -> None
     path = tmp_path / "orders[1].csv"
     path.write_text("id\n1\n")
     (tmp_path / "orders1.csv").write_text("other\nx\n")
-    entity, _ = infer_entity(str(path), None, None, None, None, None)
+    entity, _, _ = infer_entity(str(path), None, None, None, None, None)
     assert columns(entity) == [("id", "number", False)]
 
 
@@ -68,7 +68,7 @@ def test_parquet_path_with_glob_characters_is_read_literally(tmp_path: Path) -> 
     path = tmp_path / "p[1].parquet"
     pl.DataFrame({"a": [1]}).write_parquet(path)
     pl.DataFrame({"other": ["x"]}).write_parquet(tmp_path / "p1.parquet")
-    entity, _ = infer_entity(str(path), None, None, None, None, None)
+    entity, _, _ = infer_entity(str(path), None, None, None, None, None)
     assert columns(entity) == [("a", "number", True)]
 
 
@@ -92,7 +92,7 @@ def test_parquet_maps_types_as_rust_does(tmp_path: Path) -> None:
             "nul": pl.Series([None], dtype=pl.Null),
         }
     ).write_parquet(path)
-    entity, fmt = infer_entity(str(path), None, None, None, None, None)
+    entity, fmt, _ = infer_entity(str(path), None, None, None, None, None)
     assert fmt == "parquet"
     assert entity["source"] == {"format": "parquet", "path": str(path)}
     types = ["number"] * 4 + [
@@ -130,7 +130,7 @@ def test_parquet_maps_types_as_rust_does(tmp_path: Path) -> None:
 def test_entity_defaults_and_overrides(tmp_path: Path) -> None:
     path = tmp_path / "strange_name.data"
     path.write_text("id,name\n1,Alice\n")
-    entity, fmt = infer_entity(str(path), "csv", "customers", "sales", None, None)
+    entity, fmt, _ = infer_entity(str(path), "csv", "customers", "sales", None, None)
     assert fmt == "csv"
     assert {k: v for k, v in entity.items() if k not in ("source", "schema")} == {
         "name": "customers",
@@ -152,14 +152,14 @@ def test_entity_defaults_and_overrides(tmp_path: Path) -> None:
 def test_source_reference_replaces_format_and_path(tmp_path: Path) -> None:
     path = tmp_path / "orders.csv"
     path.write_text("id\n1\n")
-    entity, _ = infer_entity(str(path), None, None, None, "crm", "crm_orders")
+    entity, _, _ = infer_entity(str(path), None, None, None, "crm", "crm_orders")
     assert entity["source"] == {"ref": "crm", "resource": "crm_orders"}
 
 
 def test_file_uri_names_the_entity_and_persists_the_local_path(tmp_path: Path) -> None:
     path = tmp_path / "Order Events-2024.csv"
     path.write_text("id\n1\n")
-    entity, _ = infer_entity(path.as_uri(), None, None, None, None, None)
+    entity, _, _ = infer_entity(path.as_uri(), None, None, None, None, None)
     assert entity["name"] == "order_events_2024"
     source = entity["source"]
     assert isinstance(source, dict)
