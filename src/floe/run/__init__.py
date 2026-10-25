@@ -2,7 +2,7 @@
 
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -31,6 +31,7 @@ class RunOutcome:
     run_id: str
     summary: dict[str, Any]
     dry_run: dict[str, list[str]] | None  # entity id -> scanned files
+    entity_reports: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
 
 
 def select_entities(root: RootConfig, selectors: Sequence[str]) -> list[EntityConfig]:
@@ -107,7 +108,13 @@ def run(
                 glob_override=e.source.options.glob).files]
             for e in selected
         }  # fmt: skip
-        return RunOutcome(run_id, {}, scanned)
+        summary = build_summary(
+            root.version, [], run_id=run_id, started_at=started, finished_at=_rfc3339(),
+            duration_ms=0, config_path=str(normalize_local_path(path)), report_path=report_path,
+            metadata=root.metadata,
+        )  # fmt: skip
+        summary["report"]["report_file"] = "disabled (dry-run)"
+        return RunOutcome(run_id, summary, scanned)
     emit = Emitter(observer, run_id)
     formatter = cast(
         Formatter, root.report.formatter or "json"
@@ -147,4 +154,4 @@ def run(
          rows=t["rows_total"], accepted=t["accepted_total"], rejected=t["rejected_total"],
          warnings=t["warnings_total"], errors=t["errors_total"],
          summary_uri=summary["report"]["report_file"])  # fmt: skip
-    return RunOutcome(run_id, summary, None)
+    return RunOutcome(run_id, summary, None, [r for _, r in reports])

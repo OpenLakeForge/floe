@@ -2,7 +2,12 @@
 
 from floe import __version__
 from floe.checks.normalize import output_names
-from floe.config.project import LineageConfig, RootConfig, config_version
+from floe.config.project import (
+    LineageConfig,
+    RootConfig,
+    config_version,
+    validate_domains,
+)
 from floe.config.types import EntityConfig, WriteMode
 from floe.config.yaml import rust_debug
 from floe.errors import FloeConfigError
@@ -732,3 +737,9 @@ def validate_entities(config: RootConfig) -> None:
                 f"(entities[{ids[entity.id]}] and entities[{index}])"
             )
         ids[entity.id] = index
+
+
+def validate_config(config: RootConfig) -> None:
+    """Rust `config::validate_config`."""
+    validate_domains(config)
+    validate_entities(config)

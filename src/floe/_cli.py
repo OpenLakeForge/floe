@@ -11,8 +11,8 @@ from floe.config.profile import (
     apply_profile,
     parse_profile,
 )
-from floe.config.project import RootConfig, validate_domains
-from floe.config.validate import validate_entities
+from floe.config.project import RootConfig
+from floe.config.validate import validate_config
 from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import OpenLineageObserver
@@ -39,11 +39,6 @@ def _load(config: str, profile: ProfileConfig | None) -> tuple[Path, RootConfig]
     return path, root
 
 
-def _check_config(root: RootConfig) -> None:
-    validate_domains(root)
-    validate_entities(root)
-
-
 def _validate(args: argparse.Namespace) -> int:
     profile = parse_profile(_realpath(args.profile)) if args.profile else None
     if args.config is None:
@@ -56,7 +51,7 @@ def _validate(args: argparse.Namespace) -> int:
         print(f"Catalogs: {len(profile.catalogs.definitions) if profile.catalogs else 0}")  # fmt: skip
         return 0
     path, root = _load(args.config, profile)
-    _check_config(root)
+    validate_config(root)
     select_entities(root, args.entities)
     print(f"Config valid: {path}")
     print(f"Version: {root.version}")
@@ -89,7 +84,7 @@ def _run(args: argparse.Namespace) -> int:
         else None
     )
     try:
-        _check_config(root)
+        validate_config(root)
         outcome = run(
             path, root, run_id=args.run_id, entities=args.entities,
             full_refresh=args.full_refresh, observer=lineage,
