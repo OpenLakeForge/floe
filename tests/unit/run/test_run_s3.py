@@ -16,6 +16,7 @@ from floe.run import run
 from floe.storage.paths import parse_s3_uri
 from floe.storage.s3 import temp_path_for_key
 from floe.storage.types import ObjectRef, StoredObject
+from floe.write.outputs import write_accepted
 
 
 class MemS3:
@@ -210,3 +211,23 @@ def test_full_refresh_fails_on_a_source_listing_error(tmp_path: Path, s3: MemS3)
     s3.write("s3://b/archive/orders/old.csv", b"id\n1\n")
     with pytest.raises(FloeRunError, match="non-empty literal prefix"):
         full_refresh(tmp_path, ARCHIVE.replace("path: in/,", "path: '*.csv',"))
+
+
+def test_overwrite_at_the_bucket_root_clears_the_old_parts(s3: MemS3) -> None:
+    df = pl.DataFrame({"id": [1]})
+    write_accepted(df, s3, "s3://b", "append")
+    write_accepted(df, s3, "s3://b", "overwrite")
+    assert parts(s3, "s3://b/") == ["s3://b/part-00000.parquet"]
+
+
+def test_append_without_unique_keys_never_reads_the_history(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    config = SINKS.replace("    sink:\n", "    sink:\n      write_mode: append\n")
+    go(tmp_path, config)
+
+    def no_read(uri: str) -> None:
+        raise AssertionError(f"read {uri}")
+
+    monkeypatch.setattr(s3, "read", no_read)
+    go(tmp_path, config)
+    assert len(parts(s3, "s3://b/out/accepted/")) == 2
