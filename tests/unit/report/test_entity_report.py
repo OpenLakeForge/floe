@@ -37,6 +37,7 @@ from floe.read.xlsx import read_xlsx
 from floe.read.xml import read_xml
 from floe.report.entity import build_report, file_report, serialize
 from floe.storage.inputs import ResolvedInputs
+from floe.storage.local import LocalClient
 from floe.write.outputs import AcceptedWrite, write_accepted, write_rejected
 
 CONFORMANCE = Path(__file__).parents[3] / "conformance"
@@ -121,11 +122,15 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
         rejected_path = None
         if bad.height:
             mode = "overwrite" if i == 0 else "append"
-            written = write_rejected(bad, out / "rejected" / entity.name, mode)
-            rejected_path = str(written).replace(str(tmp), "<ROOT>")
+            written = write_rejected(
+                bad, LocalClient(), f"local://{out}/rejected/{entity.name}", mode
+            )
+            rejected_path = written.removeprefix("local://").replace(str(tmp), "<ROOT>")
             rejected_path = UUID_PART.sub("part-<uuid>", rejected_path)
         files.append(file_report(entity, uri, df.height, bad.height, checks, plan, rejected_path))  # fmt: skip
-    write = write_accepted(pl.concat(accepted), out / "accepted" / entity.name)
+    write = write_accepted(
+        pl.concat(accepted), LocalClient(), f"local://{out}/accepted/{entity.name}"
+    )
     rel = Path(entity.source.path).as_posix().removeprefix("./")
     listed = [f["input_file"] for f in files]
     resolved = ResolvedInputs([], listed, "directory" if src_path.is_dir() else "file")

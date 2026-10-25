@@ -1,6 +1,7 @@
 """`floe run` on `storage: s3`, against an in-memory S3 client (the SeaweedFS run is in tests/integration)."""
 
 import hashlib
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from floe.run import run
 from floe.storage.paths import parse_s3_uri
 from floe.storage.s3 import temp_path_for_key
 from floe.storage.types import ObjectRef, StoredObject
+from floe.write.outputs import write_accepted
 
 
 class MemS3:
@@ -126,6 +128,64 @@ def test_dry_run_lists_the_s3_inputs(tmp_path: Path, s3: MemS3) -> None:
     (tmp_path / "config.yml").write_text(CONFIG)
     out = run(tmp_path / "config.yml", parse_config(tmp_path / "config.yml"), dry_run=True)  # fmt: skip
     assert out.dry_run == {"d.orders": ["s3://b/in/a.csv"]}
+
+
+SINKS = CONFIG.replace("path: ./out/accepted}", "path: out/accepted, storage: lake}").replace("path: ./out/rejected}", "path: out/rejected, storage: lake}")  # fmt: skip
+
+
+def parts(s3: MemS3, prefix: str) -> list[str]:
+    return sorted(u for u in s3.objects if u.startswith(prefix))
+
+
+def test_parquet_and_rejected_parts_are_written_to_s3(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    s3.write("s3://b/in/a.csv", b"id\n1\nx\n")
+    s3.write("s3://b/out/accepted/part-00007.parquet", b"old")
+    s3.write("s3://b/out/accepted/keep/part-00001.parquet", b"nested")
+    go(tmp_path, SINKS)
+    assert parts(s3, "s3://b/out/accepted/") == ["s3://b/out/accepted/keep/part-00001.parquet", "s3://b/out/accepted/part-00000.parquet"]  # fmt: skip
+    accepted = pl.read_parquet(io.BytesIO(s3.objects["s3://b/out/accepted/part-00000.parquet"]))  # fmt: skip
+    assert accepted["id"].to_list() == [1]
+    [rejected] = parts(s3, "s3://b/out/rejected/")
+    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    assert report["sink"]["accepted"]["path"] == "s3://b/out/accepted"
+    assert report["sink"]["rejected"]["path"] == "s3://b/out/rejected"
+    assert report["files"][0]["output"]["rejected_path"] == rejected
+
+
+def test_append_seeds_unique_keys_from_the_s3_parts(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    config = SINKS.replace("    sink:\n", "    sink:\n      write_mode: append\n").replace("{name: id, type: int64}", "{name: id, type: int64, unique: true}")  # fmt: skip
+    go(tmp_path, config)
+    out = go(tmp_path, config)
+    assert out.summary["results"]["rejected_total"] == 1
+    assert len(parts(s3, "s3://b/out/accepted/")) == 2
+
+
+def test_abort_copies_the_raw_file_and_errors_to_s3(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    s3.write("s3://b/in/a.csv", b"id\nx\n")
+    go(tmp_path, SINKS.replace("severity: reject", "severity: abort"))
+    assert s3.objects["s3://b/out/rejected/a.csv"] == b"id\nx\n"
+    assert json.loads(s3.objects["s3://b/out/rejected/a_reject_errors.json"])[0]["row_index"] == 0  # fmt: skip
+
+
+def test_overwrite_at_the_bucket_root_clears_the_old_parts(s3: MemS3) -> None:
+    df = pl.DataFrame({"id": [1]})
+    write_accepted(df, s3, "s3://b", "append")
+    write_accepted(df, s3, "s3://b", "overwrite")
+    assert parts(s3, "s3://b/") == ["s3://b/part-00000.parquet"]
+
+
+def test_append_without_unique_keys_never_reads_the_history(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    config = SINKS.replace("    sink:\n", "    sink:\n      write_mode: append\n")
+    go(tmp_path, config)
+
+    def no_read(uri: str) -> None:
+        raise AssertionError(f"read {uri}")
+
+    monkeypatch.setattr(s3, "read", no_read)
+    go(tmp_path, config)
+    assert len(parts(s3, "s3://b/out/accepted/")) == 2
 
 
 def test_the_s3_source_is_listed_once_per_run(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
