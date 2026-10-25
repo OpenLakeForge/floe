@@ -1,0 +1,288 @@
+{
+  "schema": "floe.manifest.v1",
+  "generated_at_ts_ms": 0,
+  "floe_version": "<volatile>",
+  "spec_version": "0.3",
+  "manifest_id": "<volatile>",
+  "manifest_revision": "<volatile>",
+  "runtime_env": "cli",
+  "config_uri": "local://<ROOT>/work/config.yml",
+  "config_checksum": "sha256:114c3f8acd1ec64293cfdb9928c92946a4d094b9c5d0a8b7eb4722c67b160ef4",
+  "report_base_uri": "local://<ROOT>/work/report",
+  "domains": [
+    {
+      "name": "sales",
+      "incoming_dir": "incoming"
+    }
+  ],
+  "execution": {
+    "entrypoint": "floe",
+    "base_args": [
+      "run",
+      "--manifest",
+      "{manifest_uri}",
+      "--log-format",
+      "json",
+      "--quiet"
+    ],
+    "per_entity_args": [
+      "--entities",
+      "{entity_name}"
+    ],
+    "log_format": "json",
+    "result_contract": {
+      "run_finished_event": true,
+      "summary_uri_field": "summary_uri",
+      "exit_codes": {
+        "0": "success_or_rejected",
+        "1": "technical_failure",
+        "2": "aborted"
+      }
+    },
+    "defaults": {
+      "env": {},
+      "workdir": null
+    }
+  },
+  "runners": {
+    "default": "local",
+    "definitions": {
+      "local": {
+        "type": "local_process",
+        "command": null,
+        "args": null,
+        "timeout_seconds": null,
+        "ttl_seconds_after_finished": null,
+        "poll_interval_seconds": null,
+        "secrets": null,
+        "image": null,
+        "namespace": null,
+        "service_account": null,
+        "resources": null,
+        "env": null,
+        "workspace_url": null,
+        "existing_cluster_id": null,
+        "config_uri": null,
+        "python_file_uri": null,
+        "job_name": null,
+        "auth": null,
+        "env_parameters": null
+      }
+    }
+  },
+  "entities": [
+    {
+      "name": "plain",
+      "domain": null,
+      "group_name": "default",
+      "asset_key": [
+        "default",
+        "plain"
+      ],
+      "source_format": "tsv",
+      "accepted_sink_uri": "local://<ROOT>/work/out/plain",
+      "rejected_sink_uri": null,
+      "tags": null,
+      "source": {
+        "format": "tsv",
+        "storage": "local",
+        "uri": "local:///abs/in",
+        "path": "/abs/in",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": "\t",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/plain",
+          "path": "out/plain",
+          "resolved": true
+        },
+        "rejected": null,
+        "archive": {
+          "storage": "local",
+          "uri": "local://<ROOT>/work/archive/plain",
+          "path": "archive/plain",
+          "resolved": true
+        }
+      },
+      "runner": null,
+      "policy_severity": "warn",
+      "write_mode": "overwrite",
+      "incremental_mode": "archive",
+      "schema": {
+        "columns": [
+          {
+            "name": "a",
+            "column_type": "number"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "sales.orders",
+      "domain": "sales",
+      "group_name": "sales",
+      "asset_key": [
+        "sales",
+        "orders"
+      ],
+      "source_format": "csv",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/orders",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/orders",
+      "tags": {
+        "data_product": "orders-dp",
+        "domain": "finance",
+        "owner": "team-a"
+      },
+      "source": {
+        "format": "csv",
+        "storage": "local",
+        "uri": "local://<ROOT>/shared/in/orders.csv",
+        "path": "../shared/in/orders.csv",
+        "resolved": true,
+        "cast_mode": "coerce",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": false,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            "",
+            "NA"
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/orders",
+          "path": "out/accepted/orders",
+          "resolved": true,
+          "options": {
+            "compression": "zstd",
+            "max_size_per_file": null,
+            "row_group_size": 1000
+          }
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/orders",
+          "path": "out/rejected/orders",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "append",
+      "incremental_mode": "file",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "source": "ID",
+            "nullable": false,
+            "unique": true,
+            "width": 10,
+            "trim": true
+          },
+          {
+            "name": "region",
+            "column_type": "string"
+          },
+          {
+            "name": "email",
+            "column_type": "string"
+          },
+          {
+            "name": "phone",
+            "column_type": "string"
+          },
+          {
+            "name": "note",
+            "column_type": "string"
+          }
+        ],
+        "primary_key": [
+          "id"
+        ],
+        "unique_keys": [
+          [
+            "id",
+            "region"
+          ]
+        ],
+        "normalize_columns": {
+          "enabled": true,
+          "strategy": "snake_case"
+        },
+        "mismatch": {
+          "extra_columns": "ignore",
+          "missing_columns": "fill_nulls"
+        },
+        "schema_evolution": {
+          "mode": "strict",
+          "on_incompatible": "fail"
+        }
+      },
+      "pii": {
+        "columns": [
+          {
+            "key": null,
+            "mask_pattern": null,
+            "name": "email",
+            "redact_value": null,
+            "strategy": "hash"
+          },
+          {
+            "key": "${PII_KEY}",
+            "mask_pattern": null,
+            "name": "phone",
+            "redact_value": null,
+            "strategy": "hash"
+          },
+          {
+            "key": null,
+            "mask_pattern": "{first2}***",
+            "name": "note",
+            "redact_value": null,
+            "strategy": "mask"
+          }
+        ]
+      },
+      "state_path": "./state/orders.json"
+    }
+  ]
+}
