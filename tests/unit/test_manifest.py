@@ -76,3 +76,51 @@ def test_remote_output_is_refused(
 ) -> None:
     assert generate(tmp_path, monkeypatch, "-o", output) == 1
     assert "remote manifest output is not supported yet" in capsys.readouterr().err
+
+
+def manifest_of(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config: str
+) -> dict[str, Any]:
+    out = tmp_path / "manifest.json"
+    assert generate(tmp_path, monkeypatch, "-o", str(out), config=config) == 0
+    return json.loads(out.read_text())
+
+
+def test_s3_paths_resolve_under_bucket_and_prefix_and_registries_are_embedded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = CONFIG.replace(
+        "domains:",
+        "storages:\n  default: lake\n  definitions:\n"
+        "    - {name: lake, type: s3, bucket: b, region: r, prefix: base}\n"
+        "domains:",
+    )
+    manifest = manifest_of(tmp_path, monkeypatch, config)
+    assert manifest["report_base_uri"] == "s3://b/base/./report"
+    source = manifest["entities"][0]["source"]
+    assert (source["storage"], source["uri"]) == ("lake", "s3://b/base/./in/a.csv")
+    (definition,) = manifest["storages"]["definitions"]
+    assert definition["fs_type"] == "s3"
+
+
+def test_config_files_are_relative_to_the_root_and_hashed_into_the_checksum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "domains" / "d").mkdir(parents=True)
+    (tmp_path / "domains" / "d" / "_domain.yml").write_text("name: d\n")
+    (tmp_path / "domains" / "d" / "a.yml").write_text(
+        "domain: d\nname: a\nsource: {format: csv, path: in/a.csv}\n"
+        "sink: {accepted: {format: parquet, path: out/a}}\n"
+        "policy: {severity: warn}\nschema: {columns: [{name: id, type: string}]}\n"
+    )
+    config = "version: '0.3'\ninclude:\n  domains: ['domains/*/_domain.yml']\n"
+    manifest = manifest_of(tmp_path, monkeypatch, config + "report: {path: ./report}\n")
+    files = manifest["config_files"]
+    assert [f["path"] for f in files] == [
+        "config.yml",
+        "domains/d/_domain.yml",
+        "domains/d/a.yml",
+    ]
+    lines = "".join(f"{f['path']}\0{f['sha256']}\n" for f in files)
+    digest = hashlib.sha256(lines.encode()).hexdigest()
+    assert manifest["config_checksum"] == f"sha256:{digest}"

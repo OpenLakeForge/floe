@@ -48,7 +48,7 @@ Runs the implementation on every case and prints a diff for each difference; exi
 `--impl python` runs `uv run floe run -c config.yml` (`validate -c config.yml` for the cases under `config/`). `--cases-file` runs only the case names listed in the file
 (one per line, `#` comments; an empty list runs nothing and passes). With `--impl python` a case is compared
 on `manifest.json` only when its line ends with `manifest` (`casts manifest`) or when it is named with `--case`;
-`--impl rust` always compares it. Port tasks add the `manifest` tag as the builder gains features.
+`--impl rust` always compares it. Python skips a case that has no recorded manifest (Rust 0.7 rejects a config Python accepts, D2). Port tasks add the `manifest` tag as the builder gains features.
 
 ## CI
 
