@@ -14,7 +14,15 @@ from floe._cli import main
 from floe.manifest_run import load_manifest
 
 CONFORMANCE = Path(__file__).parents[2] / "conformance"
-VOLATILE = {"started_at", "finished_at", "duration_ms", "elapsed_ms"}
+# D22: a manifest run reports the manifest spec_version (the Floe version), a config run the config version
+VOLATILE = {
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "elapsed_ms",
+    "spec_version",
+    "version",
+}
 ARCHIVE_NAME = re.compile(
     r"__run-.+?__src-[0-9a-f]{16}"
 )  # hashes the absolute source URI

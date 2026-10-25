@@ -90,5 +90,7 @@ skips them and `check.py --impl rust` prints `skip` for them.
   absolute paths feed them) and the temp dir holding the work dir is `<ROOT>` (so `../` paths mask too); every other byte is compared, key order included.
   D22 (#798): `check.py` also drops `schema` and masks `spec_version` on both sides at compare time, so the Rust 0.7
   recordings (`floe.manifest.v1`, the config version) stay as recorded; `tests/unit/test_manifest.py` checks Python's value.
+  A manifest run reports the manifest's `spec_version` (the Floe version), so `manifest_run` carries a `[D22]`
+  `expected_python/` for its report files.
   Python's profile fields (`-p`) and remote `-o` are not covered yet (#635, storage clients).
 - Key order in reports is kept: it is part of the contract.
