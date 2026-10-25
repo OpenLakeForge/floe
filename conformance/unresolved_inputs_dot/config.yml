@@ -1,0 +1,32 @@
+version: "0.3"
+entities:
+  - name: first
+    source:
+      format: csv
+      path: "./in/first.csv"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/first"
+    policy:
+      severity: warn
+    schema:
+      columns:
+        - name: id
+          type: string
+  - name: nomatch
+    source:
+      format: csv
+      path: "./in/missing_*.csv"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/nomatch"
+    policy:
+      severity: warn
+    schema:
+      columns:
+        - name: id
+          type: string
+report:
+  path: "./report"
