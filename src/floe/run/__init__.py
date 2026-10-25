@@ -31,6 +31,8 @@ class RunOutcome:
     run_id: str
     summary: dict[str, Any]
     dry_run: dict[str, list[str]] | None  # entity id -> scanned files
+    report_base_path: str
+    entity_reports: list[dict[str, Any]]
 
 
 def select_entities(root: RootConfig, selectors: Sequence[str]) -> list[EntityConfig]:
@@ -71,8 +73,9 @@ def _refresh(entity: EntityConfig) -> EntityConfig:
 
 def _finished(emit: Emitter, name: str, report: dict[str, Any] | None) -> None:
     """`entity_finished`; a failed entity (no report) counts zeros."""
-    keys = ("files", "rows", "accepted", "rejected", "warnings", "errors")
-    totals = {k: report["results"][f"{k}_total"] if report else 0 for k in keys}
+    keys = ("files", "files_skipped", "rows", "accepted", "rejected", "warnings", "errors")  # fmt: skip
+    results: dict[str, int] = report["results"] if report else {}
+    totals = {k: results.get(k if k == "files_skipped" else f"{k}_total", 0) for k in keys}  # fmt: skip
     status = "failed"
     if report:
         status = run_outcome([f["status"] for f in report["files"]], totals["warnings"])[0]  # fmt: skip
@@ -107,7 +110,7 @@ def run(
                 glob_override=e.source.options.glob).files]
             for e in selected
         }  # fmt: skip
-        return RunOutcome(run_id, {}, scanned)
+        return RunOutcome(run_id, {}, scanned, report_path, [])
     emit = Emitter(observer, run_id)
     formatter = cast(
         Formatter, root.report.formatter or "json"
@@ -144,7 +147,8 @@ def run(
     write_reports(summary, [])
     r, t = summary["run"], summary["results"]
     emit("run_finished", status=r["status"], exit_code=r["exit_code"], files=t["files_total"],
-         rows=t["rows_total"], accepted=t["accepted_total"], rejected=t["rejected_total"],
+         files_skipped=t["files_skipped"], rows=t["rows_total"], accepted=t["accepted_total"], rejected=t["rejected_total"],
          warnings=t["warnings_total"], errors=t["errors_total"],
-         summary_uri=summary["report"]["report_file"])  # fmt: skip
-    return RunOutcome(run_id, summary, None)
+         summary_uri=summary["report"]["report_file"], report_base=report_path,
+         entity_report_uris={e["name"]: e["report_file"] for e in summary["entities"]})  # fmt: skip
+    return RunOutcome(run_id, summary, None, report_path, [r for _, r in reports])
