@@ -619,3 +619,12 @@ def test_add_entity_maps_parquet_types_as_rust_does(
         + columns
         + "\n"
     )
+
+
+def test_add_entity_writes_parquet_time_as_string(floe: Run, tmp_path: Path) -> None:
+    # D27b: Rust writes `time`, which 0.8 rejects (D10)
+    config, input = tmp_path / "config.yml", tmp_path / "events.parquet"
+    pl.DataFrame({"at": [dt.time(1, 2)]}).write_parquet(input)
+    assert add(floe, config, input)[0] == 0
+    assert column(entities(config)[0], "at").column_type == "string"
+    assert floe("validate", "-c", config)[0] == 0

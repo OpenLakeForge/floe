@@ -95,7 +95,8 @@ def _sniff_separator(path: str) -> str:
 
 
 def _floe_type(dtype: pl.DataType) -> str:
-    for kind, name in ((pl.Boolean, "boolean"), (pl.Date, "date"), (pl.Time, "time"), (pl.Datetime, "datetime")):  # fmt: skip
+    # D27b (#619): a `time` column becomes `string`; Rust writes `time`, which 0.8 rejects (D10)
+    for kind, name in ((pl.Boolean, "boolean"), (pl.Date, "date"), (pl.Datetime, "datetime")):  # fmt: skip
         if dtype == kind:
             return name
     return "number" if dtype.is_numeric() else "string"
