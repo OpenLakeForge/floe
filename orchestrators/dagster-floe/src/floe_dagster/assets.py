@@ -105,12 +105,12 @@ def build_floe_asset_defs(
                 runner=runner,
                 execution=manifest.execution,
                 runner_definition=runner_definition,
-                source_key=_source_key(entity, manifest.sources),
+                source_key=_source_key(entity, manifest.sources, _source_scope(manifest)),
             )
         )
 
     source_assets = (
-        _build_source_assets(entity_items, manifest.sources) if register_source_assets else []
+        _build_source_assets(entity_items, manifest.sources, _source_scope(manifest)) if register_source_assets else []
     )
     entity_key_set = {tuple(e.asset_key) for e in entity_items}
     for sa in source_assets:
@@ -459,20 +459,29 @@ def _as_optional_str(value: Any) -> str | None:
     return str(value)
 
 
-def _source_key(entity: ManifestEntity, sources: dict[str, dict[str, Any]] | None) -> list[str]:
+def _source_scope(manifest: DagsterManifest) -> str:
+    """The project a named source belongs to, so two manifests can both name a source `crm`."""
+    return manifest.manifest_name or manifest.manifest_id
+
+
+def _source_key(
+    entity: ManifestEntity, sources: dict[str, dict[str, Any]] | None, scope: str
+) -> list[str]:
     """D20: a source named in the manifest `sources` index is one asset shared by its entities."""
     if sources and entity.source_ref in sources:
-        return ["sources", entity.source_ref]
+        return ["sources", scope, entity.source_ref]
     return list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_source"]
 
 
 def _build_source_assets(
-    entity_items: list[ManifestEntity], sources: dict[str, dict[str, Any]] | None = None
+    entity_items: list[ManifestEntity],
+    sources: dict[str, dict[str, Any]] | None = None,
+    scope: str = "",
 ) -> list[SourceAsset]:
     source_assets = []
     named_seen: set[str] = set()
     for entity in entity_items:
-        source_key = _source_key(entity, sources)
+        source_key = _source_key(entity, sources, scope)
         if sources and entity.source_ref in sources:
             if entity.source_ref not in named_seen:
                 named_seen.add(entity.source_ref)

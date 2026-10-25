@@ -13,6 +13,7 @@ from floe_dagster.assets import (
     build_floe_asset_defs,
     load_floe_assets,
 )
+from floe_dagster.definitions import build_definitions_from_manifest_paths
 from floe_dagster.manifest import ManifestRunnerDefinition
 from floe_dagster.runner import LocalRunner, RunResult, Runner
 
@@ -240,25 +241,46 @@ def test_source_asset_group_matches_entity_group() -> None:
     assert source_assets[0].group_name == entities[0].group_name
 
 
-def test_entities_sharing_a_named_source_depend_on_one_source_asset(tmp_path) -> None:
-    """D20: entities with the same source.ref share the asset of that `sources` entry."""
+def _crm_manifest(tmp_path, project: str, uri: str) -> Path:
+    """The fixture with every entity reading the named source `crm`, as project `project`."""
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    payload["manifest_name"] = project
+    payload["manifest_id"] = f"mfv1-{project}"
     for entity in payload["entities"]:
         entity["source"]["ref"] = "crm"
+        entity["asset_key"] = [project, *entity["asset_key"]]
     payload["sources"] = [
-        {"name": "crm", "format": "csv", "uri": "s3://b/crm", "entities": ["employees", "orders"]}
+        {"name": "crm", "format": "csv", "uri": uri, "entities": ["employees", "orders"]}
     ]
-    manifest_path = tmp_path / "manifest.json"
+    manifest_path = tmp_path / f"{project}.manifest.json"
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    return manifest_path
+
+
+def test_entities_sharing_a_named_source_depend_on_one_source_asset(tmp_path) -> None:
+    """D20: entities with the same source.ref share the asset of that `sources` entry."""
+    manifest_path = _crm_manifest(tmp_path, "sales", "s3://b/crm")
 
     asset_defs, source_assets, _entities = build_floe_asset_defs(
         manifest_path=str(manifest_path), runner=_NoopRunner()
     )
-    shared = AssetKey(["sources", "crm"])
+    shared = AssetKey(["sources", "sales", "crm"])
     assert [sa.key for sa in source_assets] == [shared]
     assert source_assets[0].metadata["dagster/uri"].url == "s3://b/crm"
     for asset_def in asset_defs:
         assert shared in set(asset_def.keys_by_input_name.values())
+
+
+def test_two_projects_naming_the_same_source_get_two_source_assets(tmp_path) -> None:
+    """D20: the shared source key is scoped by project, so two manifests can both name `crm`."""
+    paths = [
+        str(_crm_manifest(tmp_path, "sales", "s3://b/sales/crm")),
+        str(_crm_manifest(tmp_path, "hr", "s3://b/hr/crm")),
+    ]
+    defs = build_definitions_from_manifest_paths(manifest_paths=paths, runner=_NoopRunner())
+    graph = defs.get_repository_def().asset_graph
+    for project in ("sales", "hr"):
+        assert AssetKey(["sources", project, "crm"]) in graph.get_all_asset_keys()
 
 
 def test_register_source_assets_false_returns_empty_source_list() -> None:
