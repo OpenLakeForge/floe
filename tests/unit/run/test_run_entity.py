@@ -7,9 +7,9 @@ from typing import Any
 import polars as pl
 import pytest
 
-import floe.run.entity as entity_module
 from floe.config.parse import parse_config
 from floe.read.xml import read_xml
+from floe.run import entity as entity_module  # `floe.run` is the public function
 from floe.run.entity import run_entity
 
 CONFIG = """\
