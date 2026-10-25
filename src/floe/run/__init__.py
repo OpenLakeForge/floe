@@ -83,6 +83,7 @@ def run(
     path: Path,
     root: RootConfig,
     *,
+    run_id: str | None = None,
     entities: Sequence[str] = (),
     dry_run: bool = False,
     full_refresh: bool = False,
@@ -95,7 +96,7 @@ def run(
         selected = [_refresh(e) for e in selected]
     config_dir = normalize_local_path(path.parent)
     require_local(root.storages, root.report.storage, "report.storage")
-    run_id = started.replace(":", "-")
+    run_id = run_id or started.replace(":", "-")
     report_path = str(normalize_local_path(config_dir / root.report.path))
     if dry_run:  # Rust: no events, no reports; the inputs are only listed
         client = LocalClient()
@@ -116,7 +117,8 @@ def run(
         emit("entity_started", name=entity.id)
         try:
             return run_entity(
-                entity, config_dir, root.version, formatter, root.storages, emit, full_refresh
+                entity, config_dir, root.version, formatter, root.storages, emit, full_refresh,
+                root.catalogs,
             )  # fmt: skip
         except FloeError:
             _finished(emit, entity.id, None)

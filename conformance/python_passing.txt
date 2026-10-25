@@ -463,6 +463,7 @@ unique_pii manifest
 xlsx manifest
 xml manifest
 incremental_file
+incremental_file_full_refresh manifest
 config/prof_api_version_missing
 config/prof_api_version_not_string
 config/prof_api_version_wrong
