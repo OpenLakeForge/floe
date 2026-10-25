@@ -77,35 +77,6 @@ def test_an_unresolved_input_fails_before_any_entity_runs(
     assert not (tmp_path / "out").exists()
 
 
-def test_a_remote_report_storage_is_refused(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    (tmp_path / "in").mkdir()
-    (tmp_path / "in" / "a.csv").write_text("id\n1\n")
-    storages = (
-        "storages:\n  default: local\n  definitions:\n    - {name: local, type: local}\n"
-        "    - {name: audit, type: s3, bucket: b, region: eu-west-1}\n"
-    )
-    config = (
-        f'version: "0.3"\n{storages}domains:\n  - name: d\nentities:\n'
-        + ENTITY.format(name="a")
-    )
-    (tmp_path / "config.yml").write_text(
-        config + "report: {path: runs, storage: audit}\n"
-    )
-    monkeypatch.setattr(
-        sys, "argv", ["floe", "run", "-c", str(tmp_path / "config.yml")]
-    )
-    assert main() == 1
-    assert (
-        "report.storage=audit (type s3) is not supported yet" in capsys.readouterr().err
-    )
-    assert not (tmp_path / "runs").exists()
-    assert not (tmp_path / "out").exists()
-
-
 STORAGES = (
     "storages:\n  default: local\n  definitions:\n    - {name: local, type: local}\n    - {name: lake, type: s3, bucket: b, region: eu-west-1}\n"
     "    - {name: other, type: local}\n"
@@ -130,11 +101,6 @@ def run_with(
 @pytest.mark.parametrize(
     ("old", "new", "field"),
     [
-        (
-            "path: ./in/a.csv\n",
-            "path: ./in/a.csv\n      storage: lake\n",
-            "source.storage",
-        ),
         (
             "path: ./out/accepted/a}",
             "path: ./out/accepted/a, storage: lake}",

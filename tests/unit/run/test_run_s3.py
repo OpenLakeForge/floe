@@ -1,0 +1,143 @@
+"""`floe run` on `storage: s3`, against an in-memory S3 client (the SeaweedFS run is in tests/integration)."""
+
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
+
+import polars as pl
+import pytest
+
+import floe.storage.resolve as resolve_module
+from floe.config.parse import parse_config
+from floe.run import run
+from floe.storage.paths import parse_s3_uri
+from floe.storage.s3 import temp_path_for_key
+from floe.storage.types import ObjectRef, StoredObject
+
+
+class MemS3:
+    """`S3Client` over a dict of `s3://` URIs; keys are listed by prefix, as S3 does."""
+
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    def resolve_uri(self, path: str) -> str:
+        return f"s3://b/{path.lstrip('/')}"
+
+    def list(self, prefix: str) -> list[ObjectRef]:
+        keys = sorted(parse_s3_uri(u)[1] for u in self.objects)
+        return [ObjectRef(f"s3://b/{k}", k, "2026-01-01T00:00:00Z", len(self.objects[f"s3://b/{k}"])) for k in keys if k.startswith(prefix)]  # fmt: skip
+
+    def download(self, uri: str, temp_dir: Path) -> Path:
+        dest = temp_path_for_key(temp_dir, parse_s3_uri(uri)[1])
+        dest.write_bytes(self.objects[uri])
+        return dest
+
+    def write(self, uri: str, body: bytes) -> None:
+        self.objects[uri] = body
+
+    def copy(self, src_uri: str, dst_uri: str) -> None:
+        self.objects[dst_uri] = self.objects[src_uri]
+
+    def delete(self, uri: str) -> None:
+        self.objects.pop(uri, None)
+
+    def read(self, uri: str) -> StoredObject | None:
+        body = self.objects.get(uri)
+        return None if body is None else StoredObject(body, hashlib.md5(body).hexdigest())  # fmt: skip
+
+    def write_conditional(self, uri: str, expected_version: str | None, body: bytes) -> str | None:  # fmt: skip
+        current = self.read(uri)
+        if (current and current.version) != expected_version:
+            return None
+        self.objects[uri] = body
+        return hashlib.md5(body).hexdigest()
+
+    def delete_conditional(self, uri: str, expected_version: str | None) -> bool:
+        current = self.read(uri)
+        if (current and current.version) != expected_version:
+            return False
+        self.objects.pop(uri, None)
+        return True
+
+
+CONFIG = """\
+version: "0.3"
+storages:
+  default: local
+  definitions:
+    - {name: local, type: local}
+    - {name: lake, type: s3, bucket: b, region: us-east-1}
+domains:
+  - name: d
+entities:
+  - name: orders
+    domain: d
+    source: {format: csv, path: in/, storage: lake, options: {header: true, separator: ","}}
+    sink:
+      accepted: {format: parquet, path: ./out/accepted}
+      rejected: {format: csv, path: ./out/rejected}
+    policy: {severity: reject}
+    schema:
+      columns:
+        - {name: id, type: int64}
+report: {path: runs, storage: lake}
+"""
+
+
+@pytest.fixture
+def s3(monkeypatch: pytest.MonkeyPatch) -> MemS3:
+    store = MemS3()
+
+    def client(*_: object) -> MemS3:
+        return store
+
+    monkeypatch.setattr(resolve_module, "S3Client", client, raising=False)
+    return store
+
+
+def go(tmp_path: Path, config: str = CONFIG) -> Any:
+    (tmp_path / "config.yml").write_text(config)
+    return run(tmp_path / "config.yml", parse_config(tmp_path / "config.yml"), run_id="r1")  # fmt: skip
+
+
+def test_an_s3_source_is_ingested_and_the_reports_land_on_s3(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    s3.write("s3://b/in/a.csv", b"id\n1\n2\n")
+    s3.write("s3://b/in/.floe/x.csv", b"id\n9\n")  # D23
+    out = go(tmp_path)
+    assert out.report_base_path == "s3://b/runs"
+    assert pl.read_parquet(tmp_path / "out/accepted").height == 2
+    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    assert report["source"]["path"] == "s3://b/in/"
+    assert [f["input_file"] for f in report["files"]] == ["s3://b/in/a.csv"]
+    summary = json.loads(s3.objects["s3://b/runs/run_r1/run.summary.json"])
+    assert summary["report"]["report_file"] == "s3://b/runs/run_r1/run.summary.json"
+
+
+def test_a_rejected_s3_file_is_copied_under_its_source_name(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    s3.write("s3://b/in/a.csv", b"other\n1\n")
+    go(tmp_path, CONFIG.replace("{name: id, type: int64}", "{name: id, type: int64, nullable: false}\n      mismatch: {missing_columns: reject_file}"))  # fmt: skip
+    assert (tmp_path / "out/rejected/a.csv").read_bytes() == b"other\n1\n"
+
+
+def test_dry_run_lists_the_s3_inputs(tmp_path: Path, s3: MemS3) -> None:
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    (tmp_path / "config.yml").write_text(CONFIG)
+    out = run(tmp_path / "config.yml", parse_config(tmp_path / "config.yml"), dry_run=True)  # fmt: skip
+    assert out.dry_run == {"d.orders": ["s3://b/in/a.csv"]}
+
+
+def test_the_s3_source_is_listed_once_per_run(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#864: the pre-check lists the inputs before the first entity_started; run_entity reuses them."""
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    prefixes: list[str] = []
+    real = s3.list
+
+    def counted(prefix: str) -> list[ObjectRef]:
+        prefixes.append(prefix)
+        return real(prefix)
+
+    monkeypatch.setattr(s3, "list", counted)
+    go(tmp_path)
+    assert prefixes == ["in/"]

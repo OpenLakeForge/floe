@@ -97,7 +97,9 @@ def _local_files(
         root = Path(prefix) if prefix.endswith(os.sep) else Path(prefix).parent
         files = _visible(sorted(set(_glob_files(pattern)), key=str), root)
         if not files:
-            raise no_match(Path(pattern).parent, Path(pattern).name)
+            raise no_match(
+                os.path.dirname(pattern), os.path.basename(pattern)
+            )  # as written: Rust keeps a leading `./`
         return files, "directory"
     base = normalize_local_path(config_dir / raw)
     if base.is_file():
