@@ -215,9 +215,7 @@ class _Plan:
     tracker: UniqueTracker
     pii_map: dict[str, str]
     rejected_writes: int = 0
-    archive: tuple[str, StorageClient] | None = (
-        None  # Rust `archive_enabled()`: URI and client
-    )
+    archive: tuple[str, StorageClient] | None = None  # Rust `archive_enabled()`
     run_id: str = ""
     rejected: tuple[str, StorageClient] | None = None  # `sink.rejected` URI and client
     table: Table | None = (
