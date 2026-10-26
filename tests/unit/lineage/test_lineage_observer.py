@@ -431,10 +431,14 @@ def _lineage(server: Server) -> list[tuple[Any, ...]]:
     return events
 
 
-@pytest.mark.parametrize(("file", "code"), [("orders.csv", 0), ("missing.csv", 1)])
+@pytest.mark.parametrize(
+    ("file", "code", "failing_observer"),
+    [("orders.csv", 0, False), ("missing.csv", 1, False), ("orders.csv", 0, True)],
+)
 def test_api_run_manifest_posts_the_same_lineage_as_the_cli(
     file: str,
     code: int,
+    failing_observer: bool,
     server: Server,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -454,10 +458,19 @@ def test_api_run_manifest_posts_the_same_lineage_as_the_cli(
     assert main() == code
     by_cli = _lineage(server)
     generate(tmp_path / "api")
+
+    def boom(event: floe.RunEvent) -> None:
+        raise RuntimeError("user observer")
+
+    # its error is swallowed, as before; lineage still gets every event
+    if failing_observer:
+        floe.set_observer(boom)
     try:
         assert floe.run_manifest("m.json").summary["run"]["exit_code"] == code
     except floe.FloeError:
         assert code == 1
+    finally:
+        floe.clear_observer()
     assert _lineage(server) == by_cli
     assert by_cli[0][0] == "START" and by_cli[-1][0] == (
         "COMPLETE" if code == 0 else "FAIL"

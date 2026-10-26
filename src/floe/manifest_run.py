@@ -208,11 +208,11 @@ def _named_local(m: Json) -> bool:
 def load_manifest(path: Path) -> tuple[RootConfig, list[EntityConfig]]:
     """The run's config, and the entities its lineage observes."""
     try:
-        text = path.read_text()
+        data = path.read_bytes()
     except OSError as e:  # as the CLI's `_realpath`
         raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
     try:
-        m = json.loads(text)
+        m = json.loads(data.decode())
         spec = m["spec_version"]
         entities = [_entity(e, _named_local(m)) for e in m["entities"]]
         report_base = m["report_base_uri"]

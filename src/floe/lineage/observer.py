@@ -238,9 +238,11 @@ def run_with_lineage(
     lineage = OpenLineageObserver(root.lineage, observed, job) if root.lineage else None
 
     def observe(event: dict[str, Any]) -> None:
-        observer(event)
-        if lineage:
-            lineage(event)
+        try:
+            observer(event)
+        finally:  # a failing user observer never drops a lineage event
+            if lineage:
+                lineage(event)
 
     try:
         if validate:  # after the observer: lineage sees a config that fails validation

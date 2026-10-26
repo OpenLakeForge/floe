@@ -424,6 +424,23 @@ def test_run_manifest_api_raises_floe_io_error_on_a_missing_manifest(
         api.run_manifest("nope.json")
 
 
+def test_an_undecodable_manifest_is_a_parse_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import floe as api
+
+    monkeypatch.chdir(tmp_path)
+    Path("m.json").write_bytes(b"\xff")
+    with pytest.raises(
+        api.FloeConfigError, match="manifest parse error: 'utf-8' codec"
+    ):
+        api.run_manifest("m.json")
+    assert floe(monkeypatch, "run", "--manifest", "m.json") == 1
+    assert capsys.readouterr().err.startswith(
+        "Error: manifest parse error: 'utf-8' codec"
+    )
+
+
 @pytest.mark.parametrize("metadata", ["{}", "{project: null, owner: null}"])
 def test_an_empty_metadata_block_runs_and_is_reported(
     metadata: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
