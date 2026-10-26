@@ -70,6 +70,8 @@ def copy_case(case: str, dest: Path) -> Path:
         "archive_mode",
         "xml",
         "example/standalone",
+        "partitioning_two_days",  # D28: the manifest carries source.partitioning
+        "partitioning_hive_hour",
     ],
 )
 def test_a_run_from_the_generated_manifest_matches_the_config_run(
@@ -348,6 +350,21 @@ def test_an_option_block_omitting_an_optional_field_is_kept(
     for out in (expected, actual):
         out["report/run_r/run.summary.json"]["config"].pop("path")
     assert actual == expected
+
+
+def test_a_partitioning_block_without_batch_column_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D28: the schema-optional `batch_column` may be omitted from a manifest."""
+    case = copy_case("partitioning_hive_hour", tmp_path / "m")
+    monkeypatch.chdir(case)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    doc = json.loads(Path("m.json").read_text())
+    assert doc["entities"][0]["source"]["partitioning"].pop("batch_column") is None
+    Path("m.json").write_text(json.dumps(doc))
+    _, (entity,) = load_manifest(Path("m.json"))
+    assert entity.source.partitioning is not None
+    assert entity.source.partitioning.batch_column is None
 
 
 EXPLICIT_LOCAL = """\

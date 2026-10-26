@@ -84,6 +84,29 @@ def test_failed_run_releases_its_claims(tmp_path: Path, monkeypatch: pytest.Monk
     assert go(entity, tmp_path, "r2").report["results"]["files_skipped"] == 0
 
 
+def test_a_failure_after_the_sink_commit_promotes_the_written_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#915: once the rows are in the sink, a later failure must not release the claims (a rerun would append them again)."""
+    setup(tmp_path)
+    config = tmp_path / "config.yml"
+    config.write_text(config.read_text().replace("    sink:", "    sink:\n      write_mode: append"))  # fmt: skip
+    entity = parse_config(config).entities[0]
+
+    def boom(*_: Any, **__: Any) -> None:
+        raise FloeRunError("report failed")
+
+    monkeypatch.setattr(entity_module, "build_report", boom)
+    with pytest.raises(FloeRunError, match="report failed"):
+        go(entity, tmp_path, "r1")
+    after = state(tmp_path)
+    assert list(after["files"]) == [f"local://{tmp_path / 'in/orders.csv'}"]
+    assert after["claims"] == {}
+    parts = sorted((tmp_path / "out/accepted").iterdir())
+    monkeypatch.undo()
+    rerun = go(entity, tmp_path, "r2").report
+    assert rerun["results"]["files_skipped"] == 1
+    assert sorted((tmp_path / "out/accepted").iterdir()) == parts
+
+
 def test_aborted_run_releases_its_claims(tmp_path: Path) -> None:
     entity = setup(tmp_path, severity="abort")
     (tmp_path / "in/orders.csv").write_text("id\nx\n")

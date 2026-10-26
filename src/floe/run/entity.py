@@ -527,6 +527,8 @@ class Incremental:
         self.client: StorageClient = LocalClient()
         self.uri = ""
         self.claimed: Loaded | None = None
+        # the file reports, set once the sink step is done (#915)
+        self.committed: list[dict[str, Any]] | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -570,9 +572,9 @@ class Incremental:
         if claimed := self._end():
             release(self.client, self.uri, self.run_id, claimed)
 
-    def finish(self, report: dict[str, Any]) -> None:
+    def finish(self, files: list[dict[str, Any]]) -> None:
         """Promote unless the entity failed or aborted (Rust commits on success, warnings and rejected)."""
-        status, _ = run_outcome([f["status"] for f in report["files"]])
+        status, _ = run_outcome([f["status"] for f in files])
         if status in ("failed", "aborted"):
             return self.release()
         if claimed := self._end():
@@ -660,9 +662,12 @@ def run_entity(
             listed,
         )
     except BaseException:
-        inc.release()  # a failed entity leaves no claims behind
+        if inc.committed is None:
+            inc.release()  # a failed entity leaves no claims behind
+        else:  # #915: the sink holds the rows, so a release would let a rerun write them again
+            inc.finish(inc.committed)
         raise
-    inc.finish(run.report)
+    inc.finish(run.report["files"])
     return run
 
 
@@ -790,6 +795,7 @@ def _run_entity(
                                   result.avg_file_size_mb, result.small_files_count)  # fmt: skip
     else:
         write = AcceptedWrite(0, [], 0, 0.0, 0)
+    inc.committed = files  # #915: from here on a failure promotes the written files
     # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source (Rust archives before)
     by_uri = {r["input_file"]: r for r in files}
     for f in plan.to_archive:
