@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import subprocess
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
+from unittest.mock import patch
 
 from .manifest import ManifestExecution, ManifestRunnerDefinition, render_execution_args
 
@@ -130,6 +133,77 @@ class LocalRunner(Runner):
             dagster_job_name=dagster_job_name,
             timeout=self._timeout,
         )
+
+
+# ponytail: `floe.set_observer` is process-global, so in-process runs are serialized; one
+# run's events never reach another run's logs. Per-run observers in `floe.run_manifest` lift it.
+_IN_PROCESS_LOCK = threading.Lock()
+
+
+class InProcessRunner(LocalRunner):
+    """Runs a local `floe run --manifest` through the `floe` Python API; anything else as LocalRunner."""
+
+    def run_floe_entity(
+        self,
+        config_uri: str,
+        run_id: str | None,
+        entity: str,
+        log_format: str = "json",
+        execution: ManifestExecution | None = None,
+        runner_definition: ManifestRunnerDefinition | None = None,
+        manifest_uri: str | None = None,
+        dagster_job_name: str | None = None,
+    ) -> RunResult:
+        args = (
+            render_execution_args(
+                execution,
+                config_uri=config_uri,
+                entity_name=entity,
+                run_id=run_id,
+                manifest_uri=manifest_uri,
+            )
+            if execution is not None
+            else []
+        )
+        # ponytail: a timeout, env, workdir or other flags fall back to the CLI subprocess (it can be
+        # killed, gets its own env); an in-process cancel/timeout lifts the timeout case.
+        known = {"--log-format", "json", "--quiet", "--entities", entity, "--full-refresh"}
+        known |= {"--run-id", run_id} if run_id else set()
+        if (
+            self._timeout is not None
+            or execution is None
+            or execution.defaults.env
+            or execution.defaults.workdir
+            or (runner_definition is not None and runner_definition.runner_type != "local_process")
+            or args[:2] != ["run", "--manifest"]
+            or len(args) < 3
+            or not set(args[3:]) <= known
+            or args.count("--entities") != 1
+            or args[args.index("--entities") + 1 :][:1] != [entity]  # it selects only `entity`
+        ):
+            return super().run_floe_entity(
+                config_uri, run_id, entity, log_format, execution,
+                runner_definition, manifest_uri, dagster_job_name,
+            )  # fmt: skip
+        import floe
+
+        events: list[dict[str, object]] = []
+        job = {"DAGSTER_JOB_NAME": dagster_job_name} if dagster_job_name else {}
+        # the env the subprocess gets, for the lineage parent run; restored on exit
+        with _IN_PROCESS_LOCK, patch.dict(os.environ, job):
+            floe.set_observer(events.append)
+            try:
+                outcome = floe.run_manifest(
+                    args[2], entities=[entity], run_id=run_id,
+                    full_refresh="--full-refresh" in args,
+                )  # fmt: skip
+                stderr, exit_code = "", outcome.summary["run"]["exit_code"]
+            except floe.FloeError as exc:  # as the CLI: the message on stderr, exit code 1
+                stderr, exit_code = str(exc), 1
+            finally:
+                floe.clear_observer()
+        stdout = "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in events)
+        return RunResult(stdout=stdout, stderr=stderr, exit_code=exit_code)
 
 
 # Conventional exit code for a process killed by a timeout (matches timeout(1)).

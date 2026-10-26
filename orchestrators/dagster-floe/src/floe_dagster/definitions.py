@@ -9,14 +9,24 @@ from dagster import AssetSelection, Definitions, define_asset_job
 
 from .assets import build_floe_asset_defs
 from .manifest import ManifestExecution, load_manifest
-from .runner import LocalRunner, Runner
+from .runner import InProcessRunner, LocalRunner, Runner
 
 
 def build_runner_from_env() -> Runner:
-    return LocalRunner(
-        os.environ.get("FLOE_BIN", "floe"),
-        timeout=_timeout_from_env(),
-    )
+    """In-process when the `floe` Python API can run a manifest, unless `FLOE_RUNNER=local`."""
+    choice = os.environ.get("FLOE_RUNNER", "in_process")
+    if choice not in ("in_process", "local"):
+        raise ValueError(f"FLOE_RUNNER must be 'in_process' or 'local', got {choice!r}")
+    runner = InProcessRunner if choice == "in_process" and _floe_api() else LocalRunner
+    return runner(os.environ.get("FLOE_BIN", "floe"), timeout=_timeout_from_env())
+
+
+def _floe_api() -> bool:
+    try:
+        import floe
+    except ImportError:
+        return False
+    return hasattr(floe, "run_manifest")  # the Rust `floe-python` package has none
 
 
 def _timeout_from_env() -> float | None:
