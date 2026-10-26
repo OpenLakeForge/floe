@@ -230,15 +230,17 @@ def promote(
     run_id: str,
     claimed: Loaded,
     full_refresh: bool = False,
+    only: set[str] | None = None,
 ) -> None:
-    """A full refresh replaces `files` with this run's (Rust `promote_full_refresh_claimed_entity_state`)."""
+    """A full refresh replaces `files` with this run's (Rust `promote_full_refresh_claimed_entity_state`); `only` limits the URIs."""
 
     def apply(state: EntityState, ours: set[str]) -> None:
         processed_at = _now()
         if full_refresh:
             state.files.clear()
+        mine = ours if only is None else ours & only
         for u in [
-            u for u, c in state.claims.items() if c.run_id == run_id and u in ours
+            u for u, c in state.claims.items() if c.run_id == run_id and u in mine
         ]:
             c = state.claims.pop(u)
             state.files[u] = FileState(processed_at, c.size, c.mtime)

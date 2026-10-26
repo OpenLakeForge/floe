@@ -565,28 +565,46 @@ class Incremental:
     def skip_committed(self, table: Table | None, pending: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:  # fmt: skip
         """#545 retry guard (append): the reports of the pending inputs a dead run already committed, before any is read.
 
-        `file` mode looks only when a dead run's claim is taken over, back to that claim; other modes match the whole set.
+        `file` mode re-derives each dead run's batch from its expired claims (by `run_id`, with their size and mtime),
+        so a retry that also holds new inputs still matches; it looks back to that run's claim. Other modes match the
+        whole set.
         """
-        e, since = self.entity, None
+        e = self.entity
         if table is None or not pending or self.full_refresh:
             return []
-        if e.incremental_mode == "file":
-            stale = [self.expired[f.source_uri].acquired_at for f in pending if f.source_uri in self.expired]  # fmt: skip
-            if not stale:
-                return []  # new inputs, or a reload after `floe state reset`
-            since = min(datetime.fromisoformat(a) for a in stale)
-        found = find_committed(table, input_hash(e, pending), since)
-        if found is None:
-            # fail closed, and put the dead run's claims back so the next run fails too
-            if claimed := self._end():
-                release(self.client, self.uri, self.run_id, claimed, self.expired)
-            raise FloeRunError(
-                f"entity.name={e.name} cannot tell whether a run that died after claiming its inputs at {since} "
-                "committed them: the table's snapshots since then were expired (retention floor: 7 days and at least "
-                "10 snapshots); run `floe state reset` for the entity, then rerun"
-            )  # fmt: skip
-        reports = [skipped_report(f.source_uri, "already_committed") for f in pending] if found else []  # fmt: skip
-        _emit_skipped(emit, e.name, reports)
+        if e.incremental_mode != "file":
+            done = pending if find_committed(table, input_hash(e, pending)) else []
+            return self._skipped(done, emit)
+        ours = {f.source_uri for f in pending}
+        runs: dict[str, dict[str, Claim]] = {}
+        for u, c in self.expired.items():
+            runs.setdefault(c.run_id, {})[u] = c
+        committed: set[str] = set()
+        for claims in runs.values():
+            if ours.isdisjoint(claims):
+                continue  # new inputs, or a reload after `floe state reset`
+            since = min(datetime.fromisoformat(c.acquired_at) for c in claims.values())
+            batch = [InputFile(u, "", "", c.size, c.mtime) for u, c in claims.items()]
+            found = find_committed(table, input_hash(e, batch), since)
+            if found is None:
+                # fail closed, and put the dead runs' claims back so the next run fails too
+                if claimed := self._end():
+                    release(self.client, self.uri, self.run_id, claimed, self.expired)
+                raise FloeRunError(
+                    f"entity.name={e.name} cannot tell whether a run that died after claiming its inputs at {since} "
+                    "committed them: the table's snapshots since then were expired (retention floor: 7 days and at least "
+                    "10 snapshots); run `floe state reset` for the entity, then rerun"
+                )  # fmt: skip
+            if found:
+                committed |= claims.keys() & ours
+        # promote now, so a later failure of the other inputs can't release them
+        if committed and self.claimed:
+            promote(self.client, self.uri, self.run_id, self.claimed, only=committed)
+        return self._skipped([f for f in pending if f.source_uri in committed], emit)
+
+    def _skipped(self, files: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:
+        reports = [skipped_report(f.source_uri, "already_committed") for f in files]
+        _emit_skipped(emit, self.entity.name, reports)
         return reports
 
     def _hold(self, claimed: Loaded) -> None:
@@ -794,8 +812,10 @@ def _run_entity(
     pending, files = inc.claim(inputs.files, emit)
     if done := inc.skip_committed(plan.table, pending, emit):
         files += done
-        plan.to_archive += pending  # `archive` mode: the archive is the marker
-        pending = []
+        skip = {r["input_file"] for r in done}
+        # `archive` mode: the archive is the marker
+        plan.to_archive += [f for f in pending if f.source_uri in skip]
+        pending = [f for f in pending if f.source_uri not in skip]
     plan.input_hash = input_hash(entity, pending)
     frames: list[pl.DataFrame] = []
     skipped = len(files)
