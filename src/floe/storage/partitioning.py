@@ -11,7 +11,7 @@ from floe.storage.inputs import InputFile, ResolvedInputs
 _TOKEN = re.compile(r"\{(yyyy|MM|dd|HH|batch)\}")  # validated: no other token
 _GROUP = {"yyyy": r"\d{4}", "MM": r"\d{2}", "dd": r"\d{2}", "HH": r"\d{2}", "batch": r"[^/]+"}  # fmt: skip
 _FRACTION = re.compile(r"(?:\.(\d+))?Z$")
-_ARCHIVED = re.compile(r"__run-.*__src-[0-9a-f]{16}(?=(?:\.[^.]*)?$)")  # D29 suffix  # fmt: skip
+_ARCHIVED = re.compile(r"__run-(?!.*__run-).*__src-[0-9a-f]{16}(?=(?:\.[^.]*)?$)")  # D29 suffix  # fmt: skip
 
 
 class Partition(NamedTuple):

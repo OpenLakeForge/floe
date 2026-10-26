@@ -132,6 +132,18 @@ def test_d29_a_source_name_like_an_archived_one_keeps_its_name_order(tmp_path: P
     assert names == ["x0.csv", "x__run-a__src-0123456789abcdef.csv"]
 
 
+def test_d29_a_full_refresh_strips_only_the_archive_suffix(tmp_path: Path) -> None:
+    """An original name that already holds `__run-…__src-…` keeps it: the replay order is the first run's."""
+    put(tmp_path, "2026/10/24/a1b2/x__run-a__src-0123456789abcdef.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a1b2/x0.csv", "id\n1\n", 100)
+    archive = "archive: {path: ./arch}"
+    go(tmp_path, "incremental_mode: archive", archive)
+    go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
+    names = [f["input_file"].rsplit("/", 1)[1] for f in report(tmp_path)["files"]]
+    assert names[0].startswith("x0__run-")
+    assert names[1].startswith("x__run-a__src-0123456789abcdef__run-")
+
+
 def test_d29_without_partitioning_the_archive_stays_flat(tmp_path: Path) -> None:
     (tmp_path / "in").mkdir()
     (tmp_path / "in/x.csv").write_text("id\n1\n")
