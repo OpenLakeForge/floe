@@ -335,6 +335,31 @@ state file shape, and CAS behavior.
 - `cast_mode` (optional)
   - `strict` (default): invalid values produce cast errors.
   - `coerce`: invalid values become null (and may still fail `not_null`).
+- `partitioning` (optional, D28)
+  - For raw layouts such as `<source>/yyyy/MM/dd/<batch>/files`:
+    ```yaml
+    source:
+      path: s3://raw/crm/customer/
+      partitioning:
+        pattern: "{yyyy}/{MM}/{dd}/{batch}"   # or "year={yyyy}/month={MM}/day={dd}"
+        date_column: ingest_date               # required
+        batch_column: batch_id                 # optional
+    ```
+  - `pattern` is matched against each input's directory, relative to the source root (the
+    part of `path` before any glob). The match is on the whole directory; the file name is free.
+    Tokens are `{yyyy}`, `{MM}` and `{dd}` (required), `{HH}` (optional) and `{batch}`
+    (optional, one folder name, such as a hash). Other text is literal.
+  - Every row gets `date_column`, a `date`, or a `datetime` when the pattern has `{HH}`. With
+    `batch_column`, it also gets the `{batch}` folder name as a `string`. Both are ordinary columns
+    for keys, merges and `partition_spec` (for example `{column: ingest_date, transform: day}`).
+    They must not also be in `schema.columns`.
+  - Inputs are listed recursively, whatever `options.recursive` says. They load by date, then by
+    batch (earliest file modification time first, then name), then by file name.
+    `resolved_inputs` in the report lists them in that order.
+  - A listed file whose directory doesn't match, or whose date is invalid (month 13), fails the
+    run before any entity starts. The error names the file and the pattern.
+  - The archive doesn't keep the partition path yet, so `--full-refresh` fails on archived inputs
+    until D29 (#884).
 
 ### `sink` (required)
 

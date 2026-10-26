@@ -110,6 +110,7 @@ See [docs/lineage.md](../../docs/lineage.md) for the full lineage config referen
 - For local development without an installed `floe` binary, you can point `LocalRunner` to a custom command, e.g.:
   - `LocalRunner(\"cargo run -p floe-cli --\")`
 - Manifest runner support in connector is currently `local_process` only.
+- `build_runner_from_env()` runs Floe in-process (`InProcessRunner`, through `floe.run_manifest`) when the `floe` Python core is installed in the Dagster environment, otherwise as a `floe` subprocess (`LocalRunner`). Set `FLOE_RUNNER=local` to force the subprocess. A timeout (`FLOE_RUN_TIMEOUT_SECONDS`) also runs as a subprocess, which can be killed. In-process runs are serialized within a process.
 - For local setup commands, use `orchestrators/LOCAL_DEV.md`.
 - Design notes and future work: `orchestrators/dagster-floe/INTEGRATION_SPEC.md`
 

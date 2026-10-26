@@ -38,7 +38,7 @@ from floe.checks.rows import (
 )
 from floe.checks.unique import UniqueResult, UniqueTracker, resolve_unique_keys
 from floe.config.storage import CatalogsConfig, StorageDefinition, StoragesConfig
-from floe.config.types import EntityConfig
+from floe.config.types import EntityConfig, with_partition_columns
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
 from floe.iceberg.sink import (
     existing_table,
@@ -77,6 +77,7 @@ from floe.storage.inputs import (
     suffixes_for_format,
 )
 from floe.storage.local import LocalClient
+from floe.storage.partitioning import in_load_order, partition_of, source_root
 from floe.storage.paths import normalize_local_path
 from floe.storage.resolve import resolve_path, storage_client
 from floe.storage.s3 import S3Client
@@ -115,7 +116,7 @@ def _chunks(entity: EntityConfig, path: Path, names: list[str]) -> Chunks:
         case "xlsx":
             yield 0, read_xlsx(path, src.options), None
         case "xml":
-            for x in read_xml(path, src.options, entity.schema_.columns):
+            for x in read_xml(path, src.options, entity.schema_.columns[: len(names)]):
                 yield x.offset, x.df, None
         case other:
             raise FloeRunError(
@@ -228,6 +229,7 @@ class _Plan:
     merge_key: str | None = (
         None  # the merge key's unique check; its duplicates are rejected even under warn (Rust `enforce_reject`)
     )
+    derived: dict[str, list[pl.Expr]] = field(default_factory=dict[str, list[pl.Expr]])  # D28: by input URI  # fmt: skip
 
 
 def _archive(plan: _Plan, file: InputFile) -> str | None:
@@ -310,8 +312,14 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     """The file's report and its accepted frames (none when it aborted the run); `path` is the local copy."""
     entity, uri = plan.entity, file.source_uri
     severity = entity.policy.severity
-    declared = declared_names(entity)
-    chunks = _chunks(entity, path, plan.names)
+    derived = plan.derived.get(uri, [])
+    added = [e.meta.output_name() for e in derived]
+    # D28: the derived columns come last; they are declared, whatever their name, but not in the file
+    derived_names = [normalize_name(n, plan.strategy) for n in added]
+    declared = [
+        n for n in declared_names(entity) if n not in derived_names
+    ] + derived_names
+    chunks = _chunks(entity, path, plan.names[: len(plan.names) - len(derived)])
     keys = plan.tracker.snapshot()
 
     def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
@@ -330,7 +338,9 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     except FloeIoError as err:
         plan.prechecked.add(uri)  # Rust `run_precheck` settles an unreadable header too
         return failed(err, None)
-    mismatch = plan_mismatch(entity, declared, probe)
+    mismatch = plan_mismatch(entity, declared, probe + added)
+    if derived:  # D28: the input columns are the file's own
+        mismatch.report["input_columns_count"] = len(probe)
     if mismatch.rejected or mismatch.aborted:
         plan.prechecked.add(uri)
         raw = _copy_raw(plan, path, "abort" if mismatch.aborted else "reject", file.source_name)  # fmt: skip
@@ -344,7 +354,7 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     errors: list[tuple[int, str]] = []
     try:
         for offset, raw_df, ragged in chain(first, chunks):
-            typed, checks = _typed(plan, raw_df, mismatch)
+            typed, checks = _typed(plan, raw_df.with_columns(derived), mismatch)
             if ragged is not None and ragged.any():
                 checks.insert(0, RowCheck("csv_read_error", "", RAGGED_MESSAGE, ragged))
             good, bad = split_rows(typed, checks, plan.formatter, plan.sources)
@@ -585,19 +595,39 @@ def archive_location(entity: EntityConfig, config_dir: Path, storages: StoragesC
     return uri.rstrip("/"), definition
 
 
+def _derived(entity: EntityConfig, source_uri: str, archive: str | None, files: list[InputFile]) -> dict[str, list[pl.Expr]]:  # fmt: skip
+    """D28: each input's date (and batch) column values, from its path."""
+    p = entity.source.partitioning
+    if p is None:
+        return {}
+    root, out = source_root(source_uri), dict[str, list[pl.Expr]]()
+    for f in files:
+        if archive and f.source_uri.startswith(f"{archive}/"):  # a full refresh
+            raise FloeRunError(f"entity.name={entity.name} archived inputs keep their partition path only with D29 (#884): {f.source_uri}")  # fmt: skip
+        part = partition_of(p, entity.name, root, f.source_uri)
+        out[f.source_uri] = [pl.lit(part.when).alias(p.date_column)]
+        if p.batch_column:
+            out[f.source_uri].append(
+                pl.lit(part.batch, pl.String).alias(p.batch_column)
+            )
+    return out
+
+
 def list_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None, uri: str, client: StorageClient, full_refresh: bool = False) -> ResolvedInputs:  # fmt: skip
     """The source inputs; a local path keeps its globs relative to the config.
 
     D31: the archive is never listed as source input; only a full refresh reads it, explicitly (D24).
     """
     src, archive = entity.source, archive_location(entity, config_dir, storages)
+    p = src.partitioning
 
     def source() -> ResolvedInputs:
-        return resolve_inputs(
+        inputs = resolve_inputs(
             config_dir, src.path if uri.startswith("local://") else uri, src.format, entity.name,
-            src.storage or "local", client, recursive=bool(src.options.recursive), glob_override=src.options.glob,
-            exclude=archive and archive[0],
+            src.storage or "local", client, glob_override=src.options.glob, exclude=archive and archive[0],
+            recursive=bool(src.options.recursive) or p is not None,  # D28: partitioning lists recursively
         )  # fmt: skip
+        return in_load_order(p, entity.name, source_root(uri), inputs) if p else inputs
 
     if full_refresh and archive and entity.incremental_mode in ("none", "archive"):
         return _with_archived(entity, (archive[0], storage_client(archive[1])), source)
@@ -647,6 +677,9 @@ def _run_entity(
     catalogs: CatalogsConfig | None,
     listed: ResolvedInputs | None,
 ) -> EntityRun:
+    entity = with_partition_columns(
+        entity
+    )  # D28: the derived columns are schema columns
     sink = entity.sink
     if sink.accepted.format not in ("parquet", "iceberg"):
         raise FloeRunError(f"entity.name={entity.name} unsupported sink format: {sink.accepted.format}")  # fmt: skip
@@ -714,6 +747,8 @@ def _run_entity(
         )
 
     inputs = source()
+    archive = plan.archive  # a full refresh lists it too
+    plan.derived = _derived(entity, source_uri, archive and archive[0], inputs.files)
     pending, files = inc.claim(inputs.files, emit)
     frames: list[pl.DataFrame] = []
     skipped = len(files)
