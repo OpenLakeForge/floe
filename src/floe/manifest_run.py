@@ -27,7 +27,7 @@ from floe.config.types import (
     SourceOptions,
 )
 from floe.config.validate import FLOE_VERSION
-from floe.errors import FloeConfigError, FloeRunError
+from floe.errors import FloeConfigError, FloeIoError, FloeRunError
 
 Json = dict[str, Any]
 _M = TypeVar("_M", bound=BaseModel)
@@ -202,7 +202,11 @@ def _named_local(m: Json) -> bool:
 def load_manifest(path: Path) -> tuple[RootConfig, list[EntityConfig]]:
     """The run's config, and the entities its lineage observes."""
     try:
-        m = json.loads(path.read_text())
+        text = path.read_text()
+    except OSError as e:  # as the CLI's `_realpath`
+        raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
+    try:
+        m = json.loads(text)
         spec = m["spec_version"]
         entities = [_entity(e, _named_local(m)) for e in m["entities"]]
         report_base = m["report_base_uri"]

@@ -4,7 +4,6 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from floe._cli_output import Console, run_output
 from floe.add_entity import add_entity
@@ -20,10 +19,10 @@ from floe.config.project import RootConfig
 from floe.config.validate import validate_config
 from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
-from floe.lineage.observer import OpenLineageObserver
+from floe.lineage.observer import run_with_lineage
 from floe.manifest import Options, build_manifest
 from floe.manifest_run import load_manifest
-from floe.run import run, select_entities
+from floe.run import select_entities
 from floe.run.entity import state_uri
 from floe.state import dump_state, read_state, reset
 from floe.storage.paths import normalize_local_path, parse_s3_uri
@@ -111,28 +110,13 @@ def _run(args: argparse.Namespace) -> int:
             console.failed(e, str(path))
             raise
         observed, job = root.entities, str(path)
-    lineage = OpenLineageObserver(root.lineage, observed, job) if root.lineage else None
-
-    def observe(event: dict[str, Any]) -> None:
-        console(event)
-        if lineage:
-            lineage(event)
-
     try:
-        if args.manifest is None:  # a manifest was validated when it was generated
-            # after the observer: lineage sees a config that fails validation
-            validate_config(root)
-        outcome = run(
-            path, root, run_id=run_id, entities=args.entities, dry_run=args.dry_run,
-            full_refresh=args.full_refresh, observer=observe,
+        outcome = run_with_lineage(
+            path, root, observed, job, console, validate=args.manifest is None,
+            run_id=run_id, entities=args.entities, dry_run=args.dry_run, full_refresh=args.full_refresh,
         )  # fmt: skip
     except FloeError as e:
         console.failed(e, str(path))
-        if lineage:
-            try:
-                lineage.fail_run()
-            except Exception as e:  # noqa: BLE001 -- lineage must not mask the run error
-                print(f"warn: lineage: {e}", file=sys.stderr)
         raise
     mode = "quiet" if args.quiet else "verbose" if args.verbose else "default"
     out = run_output(outcome, root.entities, mode, console.timings)
