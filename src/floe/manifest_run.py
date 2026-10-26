@@ -21,6 +21,7 @@ from floe.config.project import (
 from floe.config.storage import CatalogsConfig, StoragesConfig
 from floe.config.types import (
     EntityConfig,
+    IcebergPartitionField,
     IcebergSinkOptions,
     MergeOptions,
     NormalizeColumnsConfig,
@@ -87,7 +88,9 @@ def _sink(t: Json, write_mode: str, named_local: bool) -> Json:
         "merge": _lenient(MergeOptions, t.get("merge")),
         "iceberg": _lenient(IcebergSinkOptions, t.get("iceberg")),
         "partition_by": t.get("partition_by"),
-        "partition_spec": None,
+        # #911: validated when generated, so not lenient; `num_buckets` may be omitted
+        "partition_spec": (spec := t.get("partition_spec"))
+        and [_omitted_as_none(IcebergPartitionField, f) for f in spec],
         "write_mode": _pick(t.get("write_mode"), _WRITE_MODES, write_mode),
     }
 

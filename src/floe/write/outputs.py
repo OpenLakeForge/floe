@@ -108,10 +108,14 @@ def write_accepted(
     )
 
 
-def write_rejected(df: pl.DataFrame, client: StorageClient, base: str, mode: WriteMode = "overwrite") -> str:  # fmt: skip
-    """Write the rejected frame from `split_rows` as one CSV part under `base`; returns its URI."""
+def write_rejected(df: pl.DataFrame, client: StorageClient, base: str, mode: WriteMode = "overwrite", key: str | None = None) -> str:  # fmt: skip
+    """Write the rejected frame from `split_rows` as one CSV part under `base`; returns its URI.
+
+    With a `key` (the run's input hash and the file) a non-overwrite part is named from it, so a retry rewrites the same part (S6, #919); Rust has no retry guard.
+    """
     with _os_errors():
         base = base.rstrip("/")
-        uri = f"{base}/{next(_part_names(client, base, mode, 'csv'))}"
+        name = f"part-{uuid.uuid5(uuid.NAMESPACE_URL, key)}.csv" if key and mode != "overwrite" else next(_part_names(client, base, mode, "csv"))  # fmt: skip
+        uri = f"{base}/{name}"
         client.write(uri, df.write_csv().encode())
     return uri

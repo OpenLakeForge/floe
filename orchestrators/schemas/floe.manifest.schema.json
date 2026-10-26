@@ -929,6 +929,35 @@
             "minLength": 1
           }
         },
+        "partition_spec": {
+          "description": "#911: the Iceberg partition spec; absent when the sink has none.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "column",
+              "transform"
+            ],
+            "properties": {
+              "column": {
+                "type": "string",
+                "minLength": 1
+              },
+              "transform": {
+                "type": "string",
+                "minLength": 1
+              },
+              "num_buckets": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              }
+            }
+          }
+        },
         "merge": {
           "type": [
             "object",

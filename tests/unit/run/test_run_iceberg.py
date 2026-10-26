@@ -3,6 +3,8 @@
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingTypeStubs=false
 # ^ pyarrow ships no type stubs
 
+import json
+import sys
 from collections.abc import Collection, Sequence
 from datetime import date
 from pathlib import Path
@@ -11,6 +13,7 @@ from typing import Any
 import duckdb
 import pyarrow as pa
 import pytest
+from jsonschema import Draft202012Validator
 from pyiceberg.io import load_file_io
 from pyiceberg.partitioning import PartitionSpec
 from pyiceberg.schema import Schema
@@ -23,7 +26,9 @@ from pyiceberg.table.update import (
     update_table_metadata,
 )
 
+import floe
 import floe.iceberg.sink as sink_module
+from floe._cli import main
 from floe.config.parse import parse_config
 from floe.config.project import RootConfig
 from floe.errors import FloeConfigError, FloeRunError
@@ -202,6 +207,26 @@ def test_append_adds_rows(tmp_path: Path, catalog: LocalCatalog) -> None:
     assert report["accepted_output"]["table_version"] == 2
 
 
+@pytest.mark.parametrize("mode", ["overwrite", "append"])
+def test_a_failed_commit_leaves_the_input_unarchived(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch, mode: str) -> None:  # fmt: skip
+    """#914: archiving waits for the Iceberg commit, so a failed commit loses no rows."""
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
+    config(tmp_path, mode=mode)
+    path = tmp_path / "config.yml"
+    path.write_text(path.read_text().replace("      rejected:", "      archive: {path: ./arch}\n      rejected:"))  # fmt: skip
+    root = parse_config(path)
+
+    def boom(*_: object) -> None:
+        raise FloeRunError("commit failed")
+
+    monkeypatch.setattr(catalog, "commit_table", boom)
+    with pytest.raises(FloeRunError, match="commit failed"):
+        run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, catalogs=root.catalogs)  # fmt: skip
+    assert (tmp_path / "in/orders.csv").exists()
+    assert not (tmp_path / "arch").exists()
+
+
 def test_append_rejects_keys_already_in_the_table(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
     run(tmp_path, "id,name\n1,a\n", mode="append")
     (tmp_path / "in" / "b.csv").write_text("id,name\n2,x\n")  # read before orders.csv
@@ -350,4 +375,26 @@ def test_d28_partition_spec_on_the_derived_date(tmp_path: Path, catalog: LocalCa
     run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, emit=NO_EVENTS, catalogs=root.catalogs)  # fmt: skip
     table = catalog.tables["sales.orders"]
     assert [(f.name, str(f.transform)) for f in table.spec().fields] == [("ingest_date_day", "day")]  # fmt: skip
+    assert rows(catalog) == [(1, "a", date(2026, 10, 24))]
+
+
+def test_a_manifest_run_keeps_the_partition_spec(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#911: `run --manifest` creates the table with the config's spec (D28 derived column, D12 bucket)."""
+    (tmp_path / "in/2026/10/24/a1").mkdir(parents=True)
+    (tmp_path / "in/2026/10/24/a1/orders.csv").write_text("id,name\n1,a\n")
+    config(tmp_path, partition="partition_spec: [{column: ingest_date, transform: day}, {column: id, transform: bucket, num_buckets: 4}]")  # fmt: skip
+    text = (tmp_path / "config.yml").read_text().replace('separator: ","}', 'separator: ","}\n      partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: ingest_date}')  # fmt: skip
+    (tmp_path / "config.yml").write_text(text.replace("prefix: floe}", "prefix: floe, region: r}"))  # fmt: skip
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["floe", "manifest", "generate", "-c", "config.yml", "-o", "m.json"])  # fmt: skip
+    assert main() == 0
+    doc = json.loads((tmp_path / "m.json").read_text())
+    spec = doc["entities"][0]["sinks"]["accepted"]["partition_spec"]
+    assert spec[0].pop("num_buckets") is None  # the schema lets a manifest omit it
+    schema = Path(__file__).parents[3] / "orchestrators/schemas/floe.manifest.schema.json"  # fmt: skip
+    Draft202012Validator(json.loads(schema.read_text())).validate(doc)
+    (tmp_path / "m.json").write_text(json.dumps(doc))
+    floe.run_manifest(str(tmp_path / "m.json"))
+    table = catalog.tables["sales.orders"]
+    assert [(f.name, str(f.transform)) for f in table.spec().fields] == [("ingest_date_day", "day"), ("id_bucket", "bucket[4]")]  # fmt: skip
     assert rows(catalog) == [(1, "a", date(2026, 10, 24))]

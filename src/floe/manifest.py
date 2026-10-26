@@ -144,6 +144,7 @@ def _sink(ctx: _Context, target: SinkTarget) -> Json:
         _Target(ctx, target).json(target.format),
         options=_sorted(target.options),
         partition_by=target.partition_by,
+        partition_spec=_sorted(target.partition_spec),  # #911
         merge=_sorted(target.merge),
         iceberg=_sorted(target.iceberg),
     )

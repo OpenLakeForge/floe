@@ -245,3 +245,18 @@ def test_a_prefixed_xml_selector_keeps_its_value(tmp_path: Path) -> None:
     entity = parse_config(tmp_path / "config.yml").entities[0]
     run_entity(entity, tmp_path, "0.3")
     assert accepted(tmp_path)["id"].to_list() == [1]
+
+
+def test_append_retry_overwrites_the_rejected_part(tmp_path: Path) -> None:
+    """S6 (#919): the same rejecting input run twice leaves one rejected file with the same rows."""
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "    sink:\n", "    sink:\n      write_mode: append\n"
+    )
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\nx,b\n")
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    run_entity(entity, tmp_path, "0.3")
+    run_entity(entity, tmp_path, "0.3")
+    (part,) = (tmp_path / "out" / "rejected").glob("*.csv")
+    assert pl.read_csv(part)["__floe_row_index"].to_list() == [1]
