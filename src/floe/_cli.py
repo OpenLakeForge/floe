@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from floe._cli_output import Console, run_output
+from floe.add_entity import add_entity
 from floe.config.parse import parse_config
 from floe.config.profile import (
     API_VERSION,
@@ -168,6 +169,20 @@ def _manifest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_entity(args: argparse.Namespace) -> int:
+    added = add_entity(
+        args.config, args.input, args.format, args.name, args.domain,
+        args.source_ref, args.resource, args.output, args.dry_run,
+    )  # fmt: skip
+    if added.rendered is not None:
+        print(f"# add-entity dry run (no file written)\n# entity: {added.name}")
+        print(added.rendered)
+    else:
+        print(f"Entity added: {added.name} (format={added.format}, columns={added.columns})")  # fmt: skip
+        print(f"Config written: {added.output}")
+    return 0
+
+
 def _state(args: argparse.Namespace) -> int:
     if args.state_command == "reset" and not args.yes:
         raise FloeConfigError("state reset is destructive, rerun with --yes to confirm")
@@ -227,6 +242,14 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument(
         "--entities", action="extend", default=[], type=lambda v: v.split(",")
     )
+    add = commands.add_parser("add-entity")
+    add.add_argument("-c", "--config", required=True)
+    add.add_argument("--input", required=True)
+    add.add_argument("--format", choices=("csv", "json", "parquet"))
+    for flag in ("--name", "--domain", "--resource", "--output"):
+        add.add_argument(flag)
+    add.add_argument("--source", dest="source_ref")
+    add.add_argument("--dry-run", action="store_true")
     state = commands.add_parser("state").add_subparsers(dest="state_command", required=True)  # fmt: skip
     for name in ("inspect", "reset"):
         command = state.add_parser(name)
@@ -246,6 +269,8 @@ def main() -> int:
     try:
         if args.command == "manifest":
             return _manifest(args)
+        if args.command == "add-entity":
+            return _add_entity(args)
         if args.command == "state":
             return _state(args)
         return _run(args) if args.command == "run" else _validate(args)

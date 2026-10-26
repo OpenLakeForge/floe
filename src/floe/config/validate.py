@@ -1,5 +1,7 @@
 """Entity validation, ported from `config/validate.rs` (`validate_sink`, `validate_schema` and their helpers)."""
 
+import re
+
 from floe import __version__
 from floe.checks.normalize import output_names
 from floe.config.project import (
@@ -8,7 +10,7 @@ from floe.config.project import (
     config_version,
     validate_domains,
 )
-from floe.config.types import EntityConfig, WriteMode
+from floe.config.types import EntityConfig, WriteMode, with_partition_columns
 from floe.config.yaml import rust_debug
 from floe.errors import FloeConfigError
 from floe.pii import token_n
@@ -32,6 +34,8 @@ COLUMN_TYPES = ("string", "number", "boolean", "datetime", "date")
 SINK_FORMATS = ("parquet", "iceberg")
 PARQUET_COMPRESSIONS = ("snappy", "gzip", "zstd", "uncompressed")
 PARTITION_TRANSFORMS = ("identity", "year", "month", "day", "hour", "bucket")  # D12
+PARTITION_TOKENS = ("yyyy", "MM", "dd", "HH", "batch")  # D28
+PARTITION_TOKEN = re.compile(r"\{([^{}]*)\}")
 # D2 (#619): Iceberg accepts the merge modes; Rust 0.7 allows them for Delta (D1) and DuckDB (D1) only.
 SINK_WRITE_MODES: dict[str, tuple[WriteMode, ...]] = {
     "parquet": ("overwrite", "append"),
@@ -385,10 +389,13 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
 
 def validate_schema(entity: EntityConfig, version: str) -> None:
     schema = entity.schema_
-    if entity.source.format == "json" and len(schema.columns) > MAX_JSON_COLUMNS:
+    part = entity.source.partitioning  # D28: derived columns are not read from the file
+    derived = {part.date_column, part.batch_column} if part else set[str | None]()
+    inputs = [c for c in schema.columns if c.name not in derived]
+    if entity.source.format == "json" and len(inputs) > MAX_JSON_COLUMNS:
         raise _fail(
             entity,
-            f"schema.columns has {len(schema.columns)} entries which exceeds "
+            f"schema.columns has {len(inputs)} entries which exceeds "
             f"the JSON selector limit of {MAX_JSON_COLUMNS}",
         )
     strategy = schema.normalize_columns and schema.normalize_columns.strategy
@@ -412,7 +419,7 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
                     f"schema.mismatch.{field}={policy} is unsupported "
                     f"(allowed: {', '.join(allowed)})",
                 )
-    for index, column in enumerate(schema.columns):
+    for index, column in enumerate(inputs):
         if _canonical(column.column_type) not in _TYPE_NAMES:
             raise _fail(
                 entity,
@@ -486,6 +493,35 @@ def _check_source(entity: EntityConfig, config: RootConfig) -> None:
             )
         if _canonical(encoding) not in ("utf8", "lossyutf8"):
             raise _fail(entity, f"unsupported encoding: {encoding}")
+
+
+def _check_source_partitioning(entity: EntityConfig) -> None:
+    p = entity.source.partitioning
+    if p is None:
+        return
+    where, pattern = "source.partitioning", f"source.partitioning.pattern={p.pattern}"
+    tokens = PARTITION_TOKEN.findall(p.pattern)
+    if unknown := [t for t in tokens if t not in PARTITION_TOKENS]:
+        allowed = ", ".join(f"{{{t}}}" for t in PARTITION_TOKENS)
+        raise _fail(entity, f"{pattern} has unknown token {{{unknown[0]}}} (allowed: {allowed})")  # fmt: skip
+    if set("{}") & set(PARTITION_TOKEN.sub("", p.pattern)):
+        raise _fail(entity, f"{pattern} has an unmatched brace")
+    if repeated := [t for t in PARTITION_TOKENS if tokens.count(t) > 1]:
+        raise _fail(entity, f"{pattern} repeats token {{{repeated[0]}}}")
+    if not {"yyyy", "MM", "dd"} <= set(tokens):
+        raise _fail(entity, f"{pattern} must contain {{yyyy}}, {{MM}} and {{dd}}")
+    names = {c.name for c in entity.schema_.columns}
+    for field, name in (("date_column", p.date_column), ("batch_column", p.batch_column)):  # fmt: skip
+        if name is None:
+            continue
+        if not name.strip():
+            raise _fail(entity, f"{where}.{field} must not be empty")
+        if name in names:
+            raise _fail(entity, f"{where}.{field}={name} is already a column in schema.columns")  # fmt: skip
+    if p.batch_column is not None and "batch" not in tokens:
+        raise _fail(entity, f"{where}.batch_column requires {{batch}} in {where}.pattern")  # fmt: skip
+    if p.batch_column == p.date_column:
+        raise _fail(entity, f"{where}.batch_column={p.batch_column} must differ from {where}.date_column")  # fmt: skip
 
 
 def _check_state(entity: EntityConfig) -> None:
@@ -716,6 +752,8 @@ def validate_entities(config: RootConfig) -> None:
     ids: dict[str, int] = {}
     for index, entity in enumerate(config.entities):
         _check_source(entity, config)
+        _check_source_partitioning(entity)
+        entity = with_partition_columns(entity)
         _check_state(entity)
         _check_sink(entity, config)
         validate_schema(entity, config.version)

@@ -122,6 +122,10 @@ def load_yaml(path: Path) -> list[object]:
         raise FloeIoError("stream did not contain valid UTF-8") from e
     except ValueError as e:  # an embedded NUL in the path
         raise FloeIoError("file name contained an unexpected NUL byte") from e
+    return parse_yaml(text)
+
+
+def parse_yaml(text: str) -> list[object]:
     try:
         # Composing keeps `<<` an ordinary key and aliases plain copies; no PyYAML constructor runs.
         docs = cast(
