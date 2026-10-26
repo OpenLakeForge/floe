@@ -11,6 +11,10 @@ All notable changes to Floe are documented in this file.
 
 ## dagster-floe (unreleased)
 
+- **Iceberg entities carry a `floe/table` op tag (#924).** The value is the resolved
+  `catalog.namespace.table` from the manifest, so entities writing one table share it and other
+  tables don't. Advisory: set a Dagster `tag_concurrency_limits` entry on `floe/table` with
+  `applyLimitPerUniqueValue: true` and `limit: 1` to keep their runs apart. No manifest change.
 - **Manifest sinks may carry the Iceberg `partition_spec` (#911).** The bundled schema accepts
   `partition_spec` (`column`, `transform`, optional `num_buckets`) on a sink, so a run from the
   manifest creates the same partitioned table as the config run.
