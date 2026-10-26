@@ -21,6 +21,7 @@ from pyiceberg.manifest import DataFile
 from pyiceberg.table import Table, TableProperties
 from pyiceberg.table.snapshots import ancestors_of
 
+from floe.errors import FloeRunError
 from floe.iceberg.catalog import run_error
 from floe.state import (
     _backoff,  # pyright: ignore[reportPrivateUsage] -- one jittered backoff for every CAS retry
@@ -99,17 +100,22 @@ def write_table(
                 table.metadata, chunk, table.io, write_uuid, counter
             )
         ]
-    with run_error("rest iceberg commit failed"):
-        for attempt in range(COMMIT_ATTEMPTS):
-            if attempt:  # a conflict: the data files stay, only the transaction is rebuilt on the fresh table
-                _backoff(attempt - 1)
+    for attempt in range(COMMIT_ATTEMPTS):
+        if attempt:  # a conflict: the data files stay, only the transaction is rebuilt on the fresh table
+            _backoff(attempt - 1)
+            with run_error("rest iceberg table refresh failed"):
                 table.refresh()
-                if mode == "append" and find_committed(table, input_hash):
-                    return replace(write_result(table, [], small_file_threshold_bytes), already_committed=True)  # fmt: skip
-            replaced = [task.file for task in table.scan().plan_files()] if mode == "overwrite" else []  # fmt: skip
-            if not (data_files or replaced):
-                break
-            try:
+                seen = mode == "append" and find_committed(table, input_hash)
+            if seen:
+                return replace(write_result(table, [], small_file_threshold_bytes), already_committed=True)  # fmt: skip
+        replaced: list[DataFile] = []
+        if mode == "overwrite":
+            with run_error("iceberg overwrite scan failed"):
+                replaced = [task.file for task in table.scan().plan_files()]
+        if not (data_files or replaced):
+            break
+        try:
+            with run_error("rest iceberg commit failed"):
                 # PyIceberg retries a 409 itself (refresh, rebuild) and would skip the guard; in memory only, never sent
                 table.metadata = table.metadata.model_copy(update={"properties": {**table.properties, TableProperties.COMMIT_NUM_RETRIES: "0"}})  # fmt: skip
                 tx = table.transaction()
@@ -126,11 +132,13 @@ def write_table(
                     for data_file in data_files:
                         snap.append_data_file(data_file)
                 table = tx.commit_transaction()
-                break
-            except CommitFailedException:
-                pass
-        else:
-            raise CommitFailedException(f"commit conflicted {COMMIT_ATTEMPTS} times in a row")  # fmt: skip
+        except FloeRunError as e:
+            if not isinstance(e.__cause__, CommitFailedException):
+                raise
+            continue
+        break
+    else:
+        raise FloeRunError(f"rest iceberg commit failed: conflicted {COMMIT_ATTEMPTS} times in a row")  # fmt: skip
     return write_result(table, data_files, small_file_threshold_bytes)
 
 
