@@ -379,7 +379,7 @@ def entity_table(manifest: DagsterManifest, entity: ManifestEntity) -> str | Non
     if not catalog:
         return None
     namespace = entity.iceberg.get("namespace") or entity.domain or "default"
-    table = entity.iceberg.get("table") or entity.name
+    table = entity.iceberg.get("table") or entity.asset_key[-1]  # the run's unqualified name
     return ".".join(_ident(part) for part in (catalog, namespace, table))
 
 

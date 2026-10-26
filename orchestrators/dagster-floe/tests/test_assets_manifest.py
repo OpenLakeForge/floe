@@ -514,7 +514,7 @@ def _iceberg_manifest(tmp_path, entities, catalogs=None):
     data["entities"] = []
     for name, domain, iceberg in entities:
         entity = json.loads(json.dumps(template))
-        entity.update(name=name, domain=domain, asset_key=[domain or "default", name])
+        entity.update(name=name, domain=domain, asset_key=[domain or "default", name.split(".")[-1]])
         entity["sinks"]["accepted"].update(format="iceberg", iceberg=iceberg)
         data["entities"].append(entity)
     path = tmp_path / "manifest.json"
@@ -551,6 +551,15 @@ def test_table_tag_resolves_defaults_like_a_run(tmp_path) -> None:
     tags = _table_tags(path)
     assert tags["Orders"] == "rest.sales.orders"
     assert tags["explicit"] == "other.default.explicit"
+
+
+def test_table_tag_default_table_is_the_unqualified_entity_name(tmp_path) -> None:
+    path = _iceberg_manifest(
+        tmp_path,
+        [("sales.orders", "sales", {}), ("explicit", "sales", {"table": "orders"})],
+        catalogs={"default": "rest"},
+    )
+    assert set(_table_tags(path).values()) == {"rest.sales.orders"}
 
 
 def test_non_iceberg_entity_has_no_table_tag() -> None:
