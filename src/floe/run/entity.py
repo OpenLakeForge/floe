@@ -233,33 +233,41 @@ class _Plan:
         None  # the merge key's unique check; its duplicates are rejected even under warn (Rust `enforce_reject`)
     )
     derived: dict[str, list[pl.Expr]] = field(default_factory=dict[str, list[pl.Expr]])  # D28: by input URI  # fmt: skip
+    root: str | None = None  # D29: the source root, when `source.partitioning` is set
 
 
 def _archive(plan: _Plan, file: InputFile) -> str | None:
-    """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>` (Rust `archive_input`)."""
+    """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>` (Rust `archive_input`).
+
+    D29: with `source.partitioning`, its partition sub-path is kept: `<archive>/<entity>/yyyy/MM/dd/<batch>/<stem>__run-…`.
+    """
     if plan.archive is None:
         return None
     base, client = plan.archive
     if file.source_uri.startswith(f"{base}/"):
         return None  # D24: an archived input stays put
     # Rust: copy, then delete the source; the report shows a local target as a path
-    uri = archive_input_file(client, plan.run_id, plan.entity.name, lambda rel: f"{base}/{rel}", file)  # fmt: skip
+    sub = file.source_uri.removeprefix(f"{plan.root}/").rpartition("/")[0] if plan.root else ""  # fmt: skip
+    uri = archive_input_file(client, plan.run_id, plan.entity.name, lambda rel: f"{base}/{rel}", file, sub)  # fmt: skip
     return uri.removeprefix("local://")
 
 
 def _with_archived(e: EntityConfig, archive: tuple[str, StorageClient], source: Callable[[], ResolvedInputs]) -> ResolvedInputs:  # fmt: skip
-    """D24: a full refresh reads `<archive>/<entity>/` first (by name), then the source inputs; either may be empty, not both.
+    """D24: a full refresh reads `<archive>/<entity>/` first (by name; D29: in load order), then the source inputs; either may be empty, not both.
 
     Only "no inputs matched" counts as empty: any other listing error fails the refresh rather than rebuild from part of the inputs.
     """
     base, client = archive
+    p = e.source.partitioning
     path = e.name if base.startswith("local://") else f"{base}/{e.name}/"
     try:
-        old = resolve_inputs(Path(base.removeprefix("local://")), path, e.source.format, e.name, e.source.storage or "local", client)  # fmt: skip
+        old = resolve_inputs(Path(base.removeprefix("local://")), path, e.source.format, e.name, e.source.storage or "local", client, recursive=p is not None)  # fmt: skip
     except NoInputsError:
         return (
             source()
         )  # nothing archived: the source's "no input files matched" stands
+    if p is not None:  # D29: the archive keeps the partition sub-paths
+        old = in_load_order(p, e.name, f"{base}/{e.name}", old)
     try:
         new = source()
     except NoInputsError:  # no new source file: rebuild from the archive alone
@@ -607,9 +615,8 @@ def _derived(entity: EntityConfig, source_uri: str, archive: str | None, files: 
         return {}
     root, out = source_root(source_uri), dict[str, list[pl.Expr]]()
     for f in files:
-        if archive and f.source_uri.startswith(f"{archive}/"):  # a full refresh
-            raise FloeRunError(f"entity.name={entity.name} archived inputs keep their partition path only with D29 (#884): {f.source_uri}")  # fmt: skip
-        part = partition_of(p, entity.name, root, f.source_uri)
+        archived = archive and f.source_uri.startswith(f"{archive}/")  # D29: a full refresh  # fmt: skip
+        part = partition_of(p, entity.name, f"{archive}/{entity.name}" if archived else root, f.source_uri)  # fmt: skip
         out[f.source_uri] = [pl.lit(part.when).alias(p.date_column)]
         if p.batch_column:
             out[f.source_uri].append(
@@ -726,6 +733,7 @@ def _run_entity(
     location = archive_location(entity, config_dir, storages)
     if location and entity.incremental_mode in ("none", "archive"):
         plan.archive = location[0], storage_client(location[1])
+        plan.root = source_root(source_uri) if entity.source.partitioning else None
     if sink.write_mode in ("merge_scd1", "merge_scd2") and entity.schema_.primary_key:
         pk = [runtime.get(k.strip(), k.strip()) for k in entity.schema_.primary_key]
         plan.merge_key = (

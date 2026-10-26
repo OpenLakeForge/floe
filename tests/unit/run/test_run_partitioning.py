@@ -98,13 +98,30 @@ def test_a_file_outside_the_pattern_fails_the_run_before_any_entity_starts(tmp_p
     assert "run_started" in events and "entity_started" not in events
 
 
-def test_full_refresh_fails_on_archived_inputs_until_d29(tmp_path: Path) -> None:
+def test_d29_archive_keeps_the_partition_path_so_a_full_refresh_rederives_the_date(tmp_path: Path) -> None:  # fmt: skip
     put(tmp_path, "2026/10/24/a1b2/x.csv", "id\n1\n", 100)
     archive = "archive: {path: ./arch}"
     go(tmp_path, "incremental_mode: archive", archive)
+    [archived] = (tmp_path / "arch/o").rglob("*.csv")
+    rel = archived.relative_to(tmp_path / "arch/o").as_posix()
+    assert rel.startswith("2026/10/24/a1b2/x__run-") and rel.endswith(".csv")
+    assert report(tmp_path)["files"][0]["output"]["archived_path"] == str(archived)
     put(tmp_path, "2026/10/25/c3d4/y.csv", "id\n2\n", 200)
-    with pytest.raises(FloeRunError, match=r"archived inputs keep their partition path only with D29 \(#884\): local://.*/arch/o/x__run-"):  # fmt: skip
-        go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
+    go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
+    got = pl.read_parquet(tmp_path / "out/accepted")
+    assert got.rows() == [(1, date(2026, 10, 24), "a1b2"), (2, date(2026, 10, 25), "c3d4")]  # fmt: skip
+
+
+def test_d29_without_partitioning_the_archive_stays_flat(tmp_path: Path) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in/x.csv").write_text("id\n1\n")
+    path = tmp_path / "config.yml"
+    text = CONFIG.format(mode="incremental_mode: archive", archive="archive: {path: ./arch}")  # fmt: skip
+    path.write_text("\n".join(line for line in text.splitlines() if "partitioning:" not in line).replace("primary_key: [id, ingest_date]", "primary_key: [id]"))  # fmt: skip
+    run(path, parse_config(path, {}))
+    assert [p.parent for p in (tmp_path / "arch").rglob("*.csv")] == [
+        tmp_path / "arch/o"
+    ]
 
 
 def test_derived_columns_never_name_headerless_csv_fields(tmp_path: Path) -> None:
