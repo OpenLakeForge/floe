@@ -124,6 +124,14 @@ def test_d29_a_full_refresh_replays_archived_files_in_their_first_order(tmp_path
     assert names == ["x", "x0"]
 
 
+def test_d29_a_source_name_like_an_archived_one_keeps_its_name_order(tmp_path: Path) -> None:  # fmt: skip
+    put(tmp_path, "2026/10/24/a1b2/x__run-a__src-0123456789abcdef.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a1b2/x0.csv", "id\n1\n", 100)
+    go(tmp_path)
+    names = [f["input_file"].rsplit("/", 1)[1] for f in report(tmp_path)["files"]]
+    assert names == ["x0.csv", "x__run-a__src-0123456789abcdef.csv"]
+
+
 def test_d29_without_partitioning_the_archive_stays_flat(tmp_path: Path) -> None:
     (tmp_path / "in").mkdir()
     (tmp_path / "in/x.csv").write_text("id\n1\n")

@@ -49,10 +49,10 @@ def _mtime(file: InputFile) -> str:
     return _FRACTION.sub(lambda m: f".{(m[1] or '').ljust(9, '0')}Z", file.source_mtime or "")  # fmt: skip
 
 
-def in_load_order(p: SourcePartitioning, entity: str, root: str, inputs: ResolvedInputs) -> ResolvedInputs:  # fmt: skip
+def in_load_order(p: SourcePartitioning, entity: str, root: str, inputs: ResolvedInputs, archived: bool = False) -> ResolvedInputs:  # fmt: skip
     """By date, then batch (earliest modification time, then name), then file name; hash batches don't sort by name.
 
-    D29: an archived file sorts by its original name, so a full refresh replays the files in their first order.
+    D29: `archived` inputs sort by their original name, so a full refresh replays the files in their first order.
     """
     of = {f.source_uri: partition_of(p, entity, root, f.source_uri) for f in inputs.files}  # fmt: skip
     first: dict[Partition, str] = {}
@@ -61,7 +61,8 @@ def in_load_order(p: SourcePartitioning, entity: str, root: str, inputs: Resolve
 
     def key(f: InputFile) -> tuple[str, str, str, str]:
         part = of[f.source_uri]
-        return (part.when.isoformat(), first[part], part.batch or "", _ARCHIVED.sub("", f.source_name))  # fmt: skip
+        name = _ARCHIVED.sub("", f.source_name) if archived else f.source_name
+        return (part.when.isoformat(), first[part], part.batch or "", name)
 
     files = sorted(inputs.files, key=key)
     return ResolvedInputs(files, [f.source_uri for f in files], inputs.mode)
