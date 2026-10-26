@@ -100,12 +100,17 @@ def write_table(
                 table.metadata, chunk, table.io, write_uuid, counter
             )
         ]
+    base = (
+        table.metadata.current_snapshot_id
+    )  # only commits after it can be a rival's copy of this batch
     for attempt in range(COMMIT_ATTEMPTS):
         if attempt:  # a conflict: the data files stay, only the transaction is rebuilt on the fresh table
             _backoff(attempt - 1)
             with run_error("rest iceberg table refresh failed"):
                 table.refresh()
-                seen = mode == "append" and find_committed(table, input_hash)
+                seen = mode == "append" and find_committed(
+                    table, input_hash, after=base
+                )
             if seen:
                 return replace(write_result(table, [], small_file_threshold_bytes), already_committed=True)  # fmt: skip
         replaced: list[DataFile] = []
@@ -164,17 +169,23 @@ def write_result(
 
 
 def find_committed(
-    table: Table, input_hash: str, since: datetime | None = None
+    table: Table,
+    input_hash: str,
+    since: datetime | None = None,
+    after: int | None = None,
 ) -> bool | None:
     """Whether a snapshot ancestor carries `floe.input_hash` (#545); the metadata is in memory, no manifest I/O.
 
     The walk stops at snapshots older than `since`, the claim's `acquired_at`: a batch can't commit before its
-    claim. None when the history back to `since` was expired, so the answer is unknown.
+    claim. None when the history back to `since` was expired, so the answer is unknown. `after` is a snapshot id
+    that ends the walk: only the commits made since it count.
     """
     stop = None if since is None else since.timestamp() * 1000
     oldest = None
     for snapshot in ancestors_of(table.current_snapshot(), table.metadata):
-        if stop is not None and snapshot.timestamp_ms < stop:
+        if snapshot.snapshot_id == after or (
+            stop is not None and snapshot.timestamp_ms < stop
+        ):
             return False
         if (
             snapshot.summary is not None

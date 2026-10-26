@@ -134,3 +134,13 @@ def test_five_conflicts_in_a_row_fail_and_leave_no_partial_snapshot(catalog: Sha
     assert len(snapshots) == catalog.commits == 5  # only the rivals' five
     assert all(s.summary and s.summary[INPUT_HASH] == "rival" for s in snapshots)
     assert 1 not in ids(catalog)
+
+
+def test_a_reload_of_an_old_batch_is_not_mistaken_for_a_rival_s_copy(catalog: SharedCatalog) -> None:  # fmt: skip
+    """After `floe state reset` the same inputs (same hash) are loaded on purpose; only commits since the base count."""
+    write_table(catalog.load_table(IDENTIFIER), reader([1]), "append", "old", "mine")
+    mine = catalog.load_table(IDENTIFIER)
+    catalog.rivals = 1
+    result = write_table(mine, reader([1]), "append", "run", "mine")
+    assert not result.already_committed
+    assert ids(catalog) == [1, 1, 100]
