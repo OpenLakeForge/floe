@@ -389,3 +389,21 @@ def test_a_symlinked_manifest_resolves_paths_against_its_target(
     monkeypatch.chdir(tmp_path)
     assert floe(monkeypatch, "run", "--manifest", "link.json", "--run-id", "r") == 0
     assert list((work / "out/accepted/orders").glob("*.parquet"))
+
+
+@pytest.mark.parametrize("metadata", ["{}", "{project: null, owner: null}"])
+def test_an_empty_metadata_block_runs_and_is_reported(
+    metadata: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    by_config, by_manifest = copy_case("severity_warn", tmp_path / "c"), copy_case("severity_warn", tmp_path / "m")  # fmt: skip
+    for work in (by_config, by_manifest):
+        config = work / "config.yml"
+        config.write_text(config.read_text() + f"metadata: {metadata}\n")
+    monkeypatch.chdir(by_config)
+    assert floe(monkeypatch, "run", "-c", "config.yml", "--run-id", "r") == 0
+    monkeypatch.chdir(by_manifest)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 0
+    summary = "report/run_r/run.summary.json"
+    expected, actual = outputs(by_config)[summary], outputs(by_manifest)[summary]
+    assert actual["config"]["metadata"] == expected["config"]["metadata"]

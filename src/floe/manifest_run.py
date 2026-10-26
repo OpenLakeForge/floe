@@ -213,7 +213,7 @@ def load_manifest(path: Path) -> tuple[RootConfig, list[EntityConfig]]:
         entities = [_entity(e, _named_local(m)) for e in m["entities"]]
         report_base = m["report_base_uri"]
         meta = m.get("metadata")  # D20: dumped without its None fields
-        metadata = meta and ProjectMetadata.model_validate(dict.fromkeys(ProjectMetadata.model_fields) | meta)  # fmt: skip
+        metadata = None if meta is None else ProjectMetadata.model_validate(_omitted_as_none(ProjectMetadata, meta))  # fmt: skip
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         why = f"missing field `{e.args[0]}`" if isinstance(e, KeyError) else e
         raise FloeConfigError(f"manifest parse error: {why}") from e
