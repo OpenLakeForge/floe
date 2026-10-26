@@ -31,6 +31,7 @@ from floe.config.types import (
     SinkTarget,
     SourceConfig,
     SourceOptions,
+    SourcePartitioning,
     WriteMode,
 )
 from floe.config.yaml import (
@@ -266,6 +267,17 @@ def _storage(h: dict[object, object], ctx: str) -> str | None:
     return _or(storage, filesystem)
 
 
+def _partitioning(value: object) -> SourcePartitioning:
+    ctx = "source.partitioning"
+    h = yaml_hash(value, ctx)
+    validate_known_keys(h, ctx, tuple(SourcePartitioning.model_fields))
+    return SourcePartitioning(
+        pattern=get_string(h, "pattern", ctx),
+        date_column=get_string(h, "date_column", ctx),
+        batch_column=opt_string(h, "batch_column", ctx),
+    )
+
+
 def _source(value: object, ref: str | None, resource: str | None) -> SourceConfig:
     h = yaml_hash(value, "source")
     validate_known_keys(
@@ -278,6 +290,7 @@ def _source(value: object, ref: str | None, resource: str | None) -> SourceConfi
             "filesystem",
             "options",
             "cast_mode",
+            "partitioning",  # D28
         ),
     )
     fmt = get_string(h, "format", "source")
@@ -291,6 +304,7 @@ def _source(value: object, ref: str | None, resource: str | None) -> SourceConfi
         cast_mode=_or(opt_string(h, "cast_mode", "source"), "strict"),
         source_ref=ref,
         resource=resource,
+        partitioning=_partitioning(h["partitioning"]) if "partitioning" in h else None,
     )
 
 

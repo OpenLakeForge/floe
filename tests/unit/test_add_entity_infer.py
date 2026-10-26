@@ -95,7 +95,13 @@ def test_parquet_maps_types_as_rust_does(tmp_path: Path) -> None:
     entity, fmt = infer_entity(str(path), None, None, None, None, None)
     assert fmt == "parquet"
     assert entity["source"] == {"format": "parquet", "path": str(path)}
-    types = ["number"] * 4 + ["boolean", "string", "date", "datetime", "time"]
+    types = ["number"] * 4 + [
+        "boolean",
+        "string",
+        "date",
+        "datetime",
+        "string",
+    ]  # D27b: Rust writes `time`
     assert columns(entity) == [
         (n, t, True)
         for n, t in zip(

@@ -39,7 +39,10 @@ ROOT_KEYS = (
     *("version", "metadata", "storages", "filesystems", "catalogs", "env"),
     *("domains", "sources", "report", "lineage", "entities"),
 )
-SOURCE_KEYS = ("format", "path", "storage", "filesystem", "options", "cast_mode")
+SOURCE_KEYS = (
+    *("format", "path", "storage", "filesystem", "options", "cast_mode"),
+    "partitioning",  # D28
+)
 
 
 class ProjectMetadata(BaseModel):

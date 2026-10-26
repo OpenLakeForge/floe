@@ -66,11 +66,12 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_invalid(validator_for("domain_file"), {"defaults": {}})
         self.assert_invalid(validator_for("entity_file"), {"name": "orders"})
         for name in ("sources", "domains", "entity"):
-            self.assertEqual(
-                schemas["project"]["$defs"]["source_options"],
-                schemas[name]["$defs"]["source_options"],
-                f"{name} source option schema drifted from the project contract",
-            )
+            for definition in ("source_options", "source_partitioning"):
+                self.assertEqual(
+                    schemas["project"]["$defs"][definition],
+                    schemas[name]["$defs"][definition],
+                    f"{name} {definition} schema drifted from the project contract",
+                )
         self.assertEqual(
             schemas["project"]["$defs"]["source_definition"],
             schemas["sources"]["$defs"]["source_definition"],
@@ -112,7 +113,7 @@ class ConfigSchemaTest(unittest.TestCase):
         aliases = {"SourceConfig": {"source_ref": "ref"}, "StorageDefinition": {"fs_type": "type"}, "ColumnConfig": {"column_type": "type"}, "CatalogDefinition": {"type_config": "type"}}
         wire_extras = {
             "RootConfig": {"sources", "include", "filesystems"},
-            "DomainConfig": {"defaults"}, "SourceConfig": {"filesystem"},
+            "DomainConfig": {"defaults"}, "SourceConfig": {"filesystem", "partitioning"},  # D28: partitioning is Python-only
             "SinkTarget": {"filesystem"},
             "IcebergPartitionFieldConfig": {"num_buckets"},  # D12: Python-only, Rust 0.7 has no bucket transform
             "CatalogDefinition": {"region", "database", "create_database_if_missing", "allow_takeover", "uri", "credential", "warehouse", "oauth2_server_uri", "scope", "host", "catalog", "schema", "token", "create_schema_if_missing"},
@@ -1179,6 +1180,34 @@ class ConfigSchemaTest(unittest.TestCase):
         entity = {"name": "orders", "schema": {"columns": []}}
         self.assert_invalid(validator_for("entity_file"), {**entity, "source": {"format": "csv", "path": "in.csv", "resource": "orders"}})
         self.assert_valid(validator_for("entity_file"), {**entity, "source": {"ref": "crm", "resource": "orders"}})
+
+    def test_source_partitioning(self):  # D28: Python-only
+        partitioning = {"pattern": "year={yyyy}/{MM}/{dd}/{HH}/{batch}", "date_column": "ingest_date", "batch_column": "batch_id"}
+        cases = (
+            ({}, True),
+            ({"batch_column": None}, True),
+            ({"pattern": "{yyyy}{MM}{dd}", "batch_column": None}, True),
+            ({"pattern": "{yyyy}/{MM}/{dd}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{batch}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{dd}/{mm}/{batch}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{dd}/{batch}/{batch}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{dd}/{batch"}, False),
+            ({"date_column": " "}, False),
+            ({"batch_column": ""}, False),
+            ({"other": "x"}, False),
+        )
+        named = validator_for("sources_file")
+        for change, valid in cases:
+            with self.subTest(change=change):
+                block = {**partitioning, **change}
+                check = self.assert_valid if valid else self.assert_invalid
+                entity = complete_entity()
+                entity["source"]["partitioning"] = block
+                check(ROOT_VALIDATOR, {"version": "0.8", "entities": [entity]})
+                check(validator_for("entity_file"), entity)
+                check(validator_for("domain_file"), {"name": "sales", "defaults": {"source": {"partitioning": block}}})
+                check(named, {"sources": [{"name": "crm", "partitioning": block}]})
+        self.assert_valid(named, {"sources": [{"name": "crm", "partitioning": {"pattern": "{yyyy}/{MM}/{dd}"}}]})
 
     def test_inherited_schema_evolution(self):
         self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"schema_evolution": {"mode": "add_columns"}}}})
