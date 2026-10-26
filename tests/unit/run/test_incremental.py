@@ -245,3 +245,30 @@ def test_bare_source_filename_roots_the_state_in_the_config_dir(tmp_path: Path) 
         go(entity, tmp_path, "r2").report["files"][0]["skip_reason"]
         == "already_ingested"
     )
+
+
+def _overlap(tmp_path: Path, sink: str) -> Any:
+    setup(tmp_path, mode="archive")
+    (tmp_path / "in/orders.csv").unlink()
+    (tmp_path / "in/part-00000.parquet").write_bytes(b"input")
+    config = tmp_path / "config.yml"
+    text = config.read_text().replace("format: csv, path: ./in, options: {header: true, separator: \",\"}", "format: parquet, path: ./in/part-00000.parquet")  # fmt: skip
+    text = text.replace("path: ./out/accepted", f"path: {sink}")  # fmt: skip
+    text = text.replace("    sink:\n", "    sink:\n      write_mode: overwrite\n")
+    config.write_text(text.replace("      rejected:", "      archive: {path: ./arch}\n      rejected:"))  # fmt: skip
+    return parse_config(config).entities[0]
+
+
+def test_a_sink_over_the_source_fails_before_any_write(tmp_path: Path) -> None:
+    """#931 (D34): the input stays put, with its bytes, and nothing is archived or written."""
+    entity = _overlap(tmp_path, "./in")
+    with pytest.raises(FloeConfigError, match="lies under sink.accepted.path"):
+        go(entity, tmp_path, "r1")
+    assert (tmp_path / "in/part-00000.parquet").read_bytes() == b"input"
+    assert sorted(p.name for p in (tmp_path / "in").iterdir()) == ["part-00000.parquet"]  # fmt: skip
+    assert not (tmp_path / "arch").exists()
+
+
+def test_sibling_source_and_sink_dirs_still_run(tmp_path: Path) -> None:
+    entity = setup(tmp_path)
+    assert go(entity, tmp_path, "r1").report["results"]["files_total"] == 1

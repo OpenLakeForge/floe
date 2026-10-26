@@ -235,6 +235,14 @@ class _Plan:
     derived: dict[str, list[pl.Expr]] = field(default_factory=dict[str, list[pl.Expr]])  # D28: by input URI  # fmt: skip
 
 
+def _refuse_overlap(who: str, sink: str, inputs: list[InputFile]) -> None:
+    """D34: an input under the accepted Parquet sink would be deleted or re-read as one of its parts."""
+    root = sink.rstrip("/") + "/"
+    for f in inputs:
+        if f.source_uri.startswith(root):
+            raise FloeConfigError(f"{who} source file {f.source_uri} lies under sink.accepted.path {sink}; the sink would overwrite or re-read it")  # fmt: skip
+
+
 def _archive(plan: _Plan, file: InputFile) -> str | None:
     """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>` (Rust `archive_input`)."""
     if plan.archive is None:
@@ -758,6 +766,10 @@ def _run_entity(
     inputs = source()
     archive = plan.archive  # a full refresh lists it too
     plan.derived = _derived(entity, source_uri, archive and archive[0], inputs.files)
+    if (
+        target is None
+    ):  # D34 (#931): checked before the claim, so a refusal leaves nothing to release
+        _refuse_overlap(who, base, inputs.files)
     pending, files = inc.claim(inputs.files, emit)
     plan.input_hash = input_hash(entity, pending)
     frames: list[pl.DataFrame] = []
