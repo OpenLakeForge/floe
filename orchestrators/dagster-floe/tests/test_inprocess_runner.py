@@ -85,7 +85,7 @@ def test_concurrent_runs_keep_their_own_events(tmp_path) -> None:
     def run(name: str) -> None:
         work = _example(tmp_path / name)
         execution = load_manifest(str(work / "m.json")).execution
-        results[name] = InProcessRunner(FLOE).run_floe_entity(
+        results[name] = InProcessRunner("false").run_floe_entity(  # `false`: no subprocess fallback
             config_uri=str(work / "config.yml"), run_id=name, entity="sales.orders",
             execution=execution, manifest_uri=str(work / "m.json"),
         )
@@ -140,3 +140,25 @@ def test_an_in_process_run_posts_the_same_lineage_as_the_subprocess(tmp_path, mo
     finally:
         server.shutdown()
     assert [e[0] for e in local] == ["START", "START", "COMPLETE", "COMPLETE"]
+
+
+def test_an_execution_without_the_entity_selector_runs_what_the_cli_runs(tmp_path) -> None:
+    def run(cls: type[LocalRunner], name: str) -> list[str]:
+        work = tmp_path / name
+        shutil.copytree(EXAMPLE, work)
+        config = work / "config.yml"
+        config.write_text(config.read_text().replace("  - name: orders\n", "  - name: other\n    domain: sales\n    source: {format: csv, path: ./in/orders.csv, options: {header: true, separator: \",\"}}\n    sink: {accepted: {format: parquet, path: ./out/accepted/other}}\n    policy: {severity: warn}\n    schema: {columns: [{name: id, type: string}]}\n  - name: orders\n", 1))
+        cmd = [sys.executable, "-m", "floe", "manifest", "generate", "-c", "config.yml", "-o", "m.json"]
+        subprocess.run(cmd, cwd=work, check=True, capture_output=True)
+        manifest = json.loads((work / "m.json").read_text())
+        manifest["execution"]["per_entity_args"] = ["--quiet"]  # no `--entities`: the CLI runs every entity
+        (work / "m.json").write_text(json.dumps(manifest))
+        result = cls(FLOE).run_floe_entity(
+            config_uri=str(work / "config.yml"), run_id="r", entity="sales.orders",
+            execution=load_manifest(str(work / "m.json")).execution, manifest_uri=str(work / "m.json"),
+        )
+        return [e["name"] for e in parse_json_event_lines(result.stdout) if e["event"] == "entity_started"]
+
+    local = run(LocalRunner, "local")
+    assert sorted(local) == ["sales.orders", "sales.other"]
+    assert run(InProcessRunner, "in_process") == local

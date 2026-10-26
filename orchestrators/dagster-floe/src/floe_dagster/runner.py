@@ -178,6 +178,8 @@ class InProcessRunner(LocalRunner):
             or args[:2] != ["run", "--manifest"]
             or len(args) < 3
             or not set(args[3:]) <= known
+            or args.count("--entities") != 1
+            or args[args.index("--entities") + 1 :][:1] != [entity]  # it selects only `entity`
         ):
             return super().run_floe_entity(
                 config_uri, run_id, entity, log_format, execution,
