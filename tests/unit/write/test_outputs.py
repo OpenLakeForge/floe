@@ -10,16 +10,19 @@ CSV byte for byte).
 
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from floe.checks.cast import CAST_ERROR_MESSAGE, cast_column
 from floe.checks.rows import RowCheck, not_null_check, split_rows
 from floe.checks.unique import UniqueTracker
 from floe.config.types import SinkOptions, WriteMode
+from floe.errors import FloeError
 from floe.pii import PiiColumn, apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.orc import read_orc
@@ -190,3 +193,28 @@ def test_avro_and_orc_read(tmp_path: Path) -> None:
     [orc] = list(read_orc(CONFORMANCE / "orc_read/in/orc_read.orc"))
     emit(tmp_path, "orc_read", process(orc.df, columns, ["id", "qty"]))
     check("orc_read", tmp_path, ["orc_read"])
+
+
+@pytest.mark.parametrize("write", [write_accepted, write_rejected])
+def test_write_oserror_is_a_floe_error(
+    tmp_path: Path, write: Callable[..., object]
+) -> None:
+    """#878: a sink whose parent is a file fails like Rust's `io::Error`, not with a traceback."""
+    (tmp_path / "file").write_text("x")
+    with pytest.raises(FloeError, match=r"^Not a directory \(os error 20\)$"):
+        write(
+            pl.DataFrame({"id": ["1"]}), LOCAL, f"local://{tmp_path / 'file' / 'first'}"
+        )
+
+
+def test_write_oserror_without_errno_keeps_its_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Polars raises message-only `OSError`s (no errno): the cause must not become `None (os error None)`."""
+
+    def boom(*_: object, **__: object) -> None:
+        raise OSError("Read-only file system (os error 30)")
+
+    monkeypatch.setattr(pl.DataFrame, "write_csv", boom)
+    with pytest.raises(FloeError, match=r"^Read-only file system \(os error 30\)$"):
+        write_rejected(pl.DataFrame({"id": ["1"]}), LOCAL, f"local://{tmp_path}")
