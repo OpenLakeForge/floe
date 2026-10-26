@@ -586,10 +586,8 @@ class Incremental:
             since = min(datetime.fromisoformat(c.acquired_at) for c in claims.values())
             batch = [InputFile(u, "", "", c.size, c.mtime) for u, c in claims.items()]
             found = find_committed(table, input_hash(e, batch), since)
+            # fail closed; `run_entity` releases, which puts the dead runs' claims back so the next run fails too
             if found is None:
-                # fail closed, and put the dead runs' claims back so the next run fails too
-                if claimed := self._end():
-                    release(self.client, self.uri, self.run_id, claimed, self.expired)
                 raise FloeRunError(
                     f"entity.name={e.name} cannot tell whether a run that died after claiming its inputs at {since} "
                     "committed them: the table's snapshots since then were expired (retention floor: 7 days and at least "
@@ -626,8 +624,9 @@ class Incremental:
         return claimed
 
     def release(self) -> None:
+        """The dead runs' claims this run took over go back: the next run checks them again (#545)."""
         if claimed := self._end():
-            release(self.client, self.uri, self.run_id, claimed)
+            release(self.client, self.uri, self.run_id, claimed, self.expired)
 
     def finish(self, files: list[dict[str, Any]]) -> None:
         """Promote unless the entity failed or aborted (Rust commits on success, warnings and rejected)."""
@@ -818,6 +817,8 @@ def _run_entity(
         pending = [f for f in pending if f.source_uri not in skip]
     plan.input_hash = input_hash(entity, pending)
     frames: list[pl.DataFrame] = []
+    # #545: the snapshot's fingerprint names only the files it holds in full, never an aborted batch
+    complete: list[InputFile] = []
     skipped = len(files)
     downloader = None if isinstance(client, LocalClient) else client
     # Rust `localize_input`: a remote input is read from a local copy
@@ -836,6 +837,7 @@ def _run_entity(
             frames += kept
             if report["status"] == "aborted":
                 break
+            complete.append(f)
     files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
 
     table: dict[str, Any] | None = None
@@ -852,7 +854,7 @@ def _run_entity(
             write = write_accepted(pl.concat(frames), accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
         else:
             outputs = [plan.out_map.get(n, n) for n in names]
-            result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, plan.input_hash)  # fmt: skip
+            result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, input_hash(entity, complete))  # fmt: skip
             write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
                                   result.avg_file_size_mb, result.small_files_count)  # fmt: skip
     else:
