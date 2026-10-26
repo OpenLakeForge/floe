@@ -1,6 +1,6 @@
 """`floe add-entity` (Rust: `crates/floe-cli/tests/add_entity.rs`, `crates/floe-core/tests/unit/config/add_entity.rs`).
 
-JSON inputs are not ported yet (#852). Expected YAML was recorded from the Rust 0.7 binary.
+Expected YAML was recorded from the Rust 0.7 binary.
 """
 
 import datetime as dt
@@ -392,26 +392,31 @@ def test_add_entity_bootstraps_missing_config_file(floe: Run, tmp_path: Path) ->
 
 def test_add_entity_infers_name_from_file_uri_stem_by_default(
     floe: Run, tmp_path: Path
-) -> None:  # Rust uses a .json input; the stem logic is format-independent
-    config, input = tmp_path / "config.yml", tmp_path / "order_events.csv"
+) -> None:
+    config, input = tmp_path / "config.yml", tmp_path / "order_events.json"
     config.write_text('version: "0.2"\nentities: []\n')
-    input.write_text("id\n1\n")
+    input.write_text('[{"id":1}]')
     code, out, _ = add(floe, config, input.as_uri())
     assert (code, out.splitlines()[0]) == (
         0,
-        "Entity added: order_events (format=csv, columns=1)",
+        "Entity added: order_events (format=json, columns=1)",
     )
     assert entities(config)[0].name == "order_events"
 
 
-def test_add_entity_infers_format_from_extension_csv_and_parquet(
+def test_add_entity_infers_format_from_extension_csv_json_and_parquet(
     floe: Run, tmp_path: Path
 ) -> None:
     (tmp_path / "orders.csv").write_text("id\n1\n")
+    (tmp_path / "events.json").write_text('[{"id":1}]')
     pl.DataFrame({"employee_id": [1, 2], "active": [True, False]}).write_parquet(
         tmp_path / "employees.parquet"
     )
-    for name, fmt in (("orders.csv", "csv"), ("employees.parquet", "parquet")):
+    for name, fmt in (
+        ("orders.csv", "csv"),
+        ("events.json", "json"),
+        ("employees.parquet", "parquet"),
+    ):
         config = tmp_path / f"{fmt}.yml"
         assert add(floe, config, tmp_path / name)[0] == 0
         assert entities(config)[0].source.format == fmt
@@ -676,3 +681,122 @@ def test_add_entity_writes_parquet_time_as_string(floe: Run, tmp_path: Path) -> 
     assert add(floe, config, input)[0] == 0
     assert column(entities(config)[0], "at").column_type == "string"
     assert floe("validate", "-c", config)[0] == 0
+
+
+# JSON (D27a: Polars infers; same output as Rust on clean data)
+
+
+def test_add_entity_infers_json_top_level_keys_only(floe: Run, tmp_path: Path) -> None:
+    config, input = tmp_path / "config.yml", tmp_path / "orders.json"
+    config.write_text(BASE_CONFIG)
+    input.write_text(
+        '[\n  {"id": 1, "meta": {"source": "api"}, "tags": ["new"], "created_at": "2026-01-01T10:00:00Z"},\n'
+        '  {"id": 2, "meta": null, "tags": ["vip"], "created_at": "2026-01-02T10:00:00Z"}\n]'
+    )
+    code, out, _ = add(floe, config, input, "--format", "json")
+    assert code == 0
+    assert out.splitlines()[0] == "Entity added: orders (format=json, columns=4)"
+    assert "Note: nested JSON values inferred as string for top-level key(s): meta, tags" in out  # fmt: skip
+    assert floe("validate", "-c", config)[0] == 0
+    [entity] = entities(config)
+    assert (entity.name, entity.source.format) == ("orders", "json")
+    assert entity.source.options.json_mode == "array"
+    created_at = column(entity, "created_at")
+    assert (created_at.source, created_at.column_type) == ("created_at", "datetime")
+    meta = column(entity, "meta")
+    assert (meta.source, meta.column_type, meta.nullable) == ("meta", "string", True)
+    assert column(entity, "tags").column_type == "string"
+
+
+def json_columns(*cols: tuple[str, str, bool]) -> str:
+    return "".join(
+        f"        - name: {n}\n          source: {n}\n          type: {t}\n"
+        f"          nullable: {str(u).lower()}\n          unique: false\n"
+        for n, t, u in cols
+    )
+
+
+def json_entity(name: str, mode: str, notes: str, columns: str) -> str:
+    return (
+        f"# add-entity dry run (no file written)\n# entity: {name}\n{notes}"
+        f'version: "0.8"\nentities:\n  - name: {name}\n    source:\n      format: json\n'
+        f"      path: {name}.json\n      options:\n        json_mode: {mode}\n    sink:\n"
+        f"      accepted:\n        format: parquet\n        path: out/accepted/{name}/\n"
+        f"      rejected:\n        format: csv\n        path: out/rejected/{name}/\n"
+        "    policy:\n      severity: reject\n    schema:\n      mismatch:\n"
+        "        missing_columns: reject_file\n        extra_columns: ignore\n      columns:\n"
+        f"{columns}\n"
+    )
+
+
+def test_add_entity_json_array_matches_rust(
+    floe: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    Path("orders.json").write_text(
+        '[\n  {"id": 1, "meta": {"source": "api"}, "tags": ["new"], "created_at": "2026-01-01T10:00:00Z",'
+        ' "day": "2026-01-01", "ok": true, "amt": 1.5, "mixed": 1, "note": null},\n'
+        '  {"id": 2, "meta": null, "tags": ["vip"], "created_at": "2026-01-02T10:00:00Z",'
+        ' "day": "2026-01-02", "ok": false, "amt": 2, "mixed": "x"}\n]\n'
+    )
+    code, out, _ = add(floe, Path("c.yml"), "orders.json", "--dry-run")
+    assert code == 0
+    assert out == json_entity(
+        "orders",
+        "array",
+        "# note: json inference sampled 2 row(s) in array mode\n"
+        "# note: nested JSON values inferred as string for top-level key(s): meta, tags\n",
+        json_columns(
+            ("amt", "number", False),
+            ("created_at", "datetime", False),
+            ("day", "date", False),
+            ("id", "number", False),
+            ("meta", "string", True),
+            ("mixed", "string", False),
+            ("note", "string", True),
+            ("ok", "boolean", False),
+            ("tags", "string", False),
+        ),
+    )
+
+
+def test_add_entity_json_ndjson_mixed_kinds_become_string(
+    floe: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    Path("events.json").write_text(
+        '{"b": 1, "a": true, "when": "2026-01-01T10:00:00Z"}\n\n'
+        '{"b": true, "a": false, "c": [1], "when": "2026-01-02"}\n'
+    )
+    code, out, _ = add(floe, Path("c.yml"), "events.json", "--dry-run")
+    assert code == 0
+    assert out == json_entity(
+        "events",
+        "ndjson",
+        "# note: json inference sampled 2 row(s) in ndjson mode\n"
+        "# note: nested JSON values inferred as string for top-level key(s): c\n",
+        json_columns(
+            ("a", "boolean", False),
+            ("b", "string", False),  # int then bool: Polars' ndjson reader errors
+            ("c", "string", True),
+            ("when", "string", False),  # D27a: Rust `datetime` (date + datetime mix)
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "error"),
+    [
+        ("[]", "no json objects found in {path}"),
+        ("[1]", "expected top-level json objects inside array"),
+        ('{"a":1}\n[1]', "expected top-level json object at line 2"),
+        ("   ", "json input {path} is empty"),
+    ],
+)
+def test_add_entity_json_errors_match_rust(
+    floe: Run, tmp_path: Path, text: str, error: str
+) -> None:
+    input = tmp_path / "e.json"
+    input.write_text(text)
+    code, _, err = add(floe, tmp_path / "c.yml", input)
+    assert (code, err) == (1, f"Error: {error.format(path=input)}\n")

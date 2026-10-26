@@ -1,5 +1,7 @@
 """`floe add-entity`, ported from `crates/floe-core/src/add_entity.rs`: infer an entity from a sample file."""
 
+import io
+import json
 import math
 import os
 import re
@@ -103,8 +105,80 @@ def _floe_type(dtype: pl.DataType) -> str:
     return "number" if dtype.is_numeric() else "string"
 
 
-def _columns(fmt: str, path: str) -> tuple[Hash | None, list[Hash]]:
-    """(source options, schema columns), from Polars' own schema inference."""
+def _json_sample(path: str) -> tuple[str, list[dict[str, object]]]:
+    """Rust's JSON sampling: the `json_mode` and the first 200 top-level objects."""
+    try:
+        text = Path(path).read_bytes().decode()
+    except OSError as e:
+        raise FloeIoError(f"failed to read json at {path}: {_os(e)}") from e
+    except UnicodeDecodeError as e:
+        raise FloeIoError(f"failed to read json at {path}: stream did not contain valid UTF-8") from e  # fmt: skip
+    if not (head := text.lstrip()[:1]):
+        raise FloeConfigError(f"json input {path} is empty")
+    if head == "[":
+        try:
+            rows = json.loads(text)
+        except json.JSONDecodeError as e:
+            raise FloeIoError(f"json parse error: {e}") from e
+        if not isinstance(rows, list):
+            raise FloeConfigError("expected json array at root")
+        rows = cast("list[object]", rows)[:SAMPLE_ROWS]
+        if not all(isinstance(row, dict) for row in rows):
+            raise FloeConfigError("expected top-level json objects inside array")
+        return "array", cast("list[dict[str, object]]", rows)
+    objects: list[dict[str, object]] = []
+    for n, line in enumerate(text.split("\n"), 1):
+        if len(objects) >= SAMPLE_ROWS:
+            break
+        if not (line := line.strip()):
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise FloeIoError(f"json parse error at line {n}: {e}") from e
+        if not isinstance(row, dict):
+            raise FloeConfigError(f"expected top-level json object at line {n}")
+        objects.append(cast("dict[str, object]", row))
+    return "ndjson", objects
+
+
+def _read_json(rows: list[dict[str, object]]) -> pl.DataFrame:
+    """Polars' schema for the sampled objects; a key Polars can't type (mixed kinds) is read as text."""
+    text = "\n".join(map(json.dumps, rows))
+
+    def read(strings: list[str]) -> pl.DataFrame:
+        overrides = dict.fromkeys(strings, pl.String())
+        return pl.read_ndjson(io.StringIO(text), infer_schema_length=None, schema_overrides=overrides)  # fmt: skip
+
+    try:
+        return read([])
+    except pl.exceptions.PolarsError:
+        keys = list(dict.fromkeys(k for row in rows for k in row))
+        mixed: list[str] = []
+        for key in keys:
+            try:
+                read([k for k in keys if k != key])
+            except pl.exceptions.PolarsError:
+                mixed.append(key)
+        return read(mixed)
+
+
+def _temporal(column: pl.Series) -> pl.DataType:
+    """`Date` or `Datetime` when Polars parses every value of a text column, else `String`."""
+    values = column.drop_nulls()
+    for parse in (values.str.to_date, values.str.to_datetime):
+        try:
+            parsed = parse(strict=False)
+        except pl.exceptions.PolarsError:  # no format fits the first value
+            continue
+        if len(values) and parsed.null_count() == 0:
+            return parsed.dtype
+    return pl.String()
+
+
+def _columns(fmt: str, path: str) -> tuple[Hash | None, list[Hash], list[str]]:
+    """(source options, schema columns, notes), from Polars' own schema inference."""
+    notes: list[str] = []
     if fmt == "csv":
         separator = _sniff_separator(path)
         try:
@@ -125,25 +199,40 @@ def _columns(fmt: str, path: str) -> tuple[Hash | None, list[Hash]]:
         except pl.exceptions.PolarsError as e:
             raise FloeIoError(f"failed to read parquet schema at {path}: {e}") from e
         nullable, options = dict.fromkeys(schema, True), None
-    else:  # ponytail: Rust infers JSON by hand (dates in strings, mixed kinds); needs a decision, see #852
-        raise FloeConfigError(f"{fmt} inference is not supported yet for add-entity")
-    return options, [
-        {
-            "name": n,
-            "source": n,
-            "type": _floe_type(t),
-            "nullable": nullable[n],
-            "unique": False,
-        }
-        for n, t in schema.items()
-    ]
+    elif fmt == "json":  # D27a (#619): Polars types the values; Rust walks them by hand
+        mode, rows = _json_sample(path)
+        if not rows:
+            raise FloeConfigError(f"no json objects found in {path}")
+        df = _read_json(rows)
+        nullable = {c.name: c.null_count() > 0 for c in df.iter_columns()}
+        schema = {n: _temporal(df[n]) if t == pl.String else t for n, t in sorted(df.schema.items())}  # fmt: skip
+        options = cast(Hash, {"json_mode": mode})
+        notes.append(f"json inference sampled {len(rows)} row(s) in {mode} mode")
+        if nested := sorted({k for row in rows for k, v in row.items() if isinstance(v, (list, dict))}):  # fmt: skip
+            notes.append(f"nested JSON values inferred as string for top-level key(s): {', '.join(nested)}")  # fmt: skip
+    else:
+        raise FloeConfigError(f"unsupported add-entity format: {fmt} (allowed: csv, json, parquet)")  # fmt: skip
+    return (
+        options,
+        [
+            {
+                "name": n,
+                "source": n,
+                "type": _floe_type(t),
+                "nullable": nullable[n],
+                "unique": False,
+            }
+            for n, t in schema.items()
+        ],
+        notes,
+    )
 
 
 def infer_entity(
     input: str, fmt: str | None, name: str | None, domain: str | None,
     source_ref: str | None, resource: str | None,
-) -> tuple[Hash, str]:  # fmt: skip
-    """The entity generated for a sample file, and its format (Rust `infer_entity_from_input`)."""
+) -> tuple[Hash, str, list[str]]:  # fmt: skip
+    """The entity generated for a sample file, its format and notes (Rust `infer_entity_from_input`)."""
     name = _entity_name(input) if name is None else name
     if not name.strip():
         raise FloeConfigError("entity name must not be empty")
@@ -156,7 +245,7 @@ def infer_entity(
                 f"could not infer add-entity format from input {input} "
                 "(supported extensions: .csv, .json, .parquet); use --format"
             )
-    options, columns = _columns(fmt, path)
+    options, columns, notes = _columns(fmt, path)
     if not columns:
         raise FloeConfigError(f"no columns inferred from {path}")
     if source_ref is not None:
@@ -180,7 +269,7 @@ def infer_entity(
             "columns": columns,
         },
     }
-    return entity, fmt
+    return entity, fmt, notes
 
 
 class Added(NamedTuple):
@@ -189,6 +278,7 @@ class Added(NamedTuple):
     columns: int
     output: str
     rendered: str | None  # the YAML of a dry run
+    notes: list[str]
 
 
 _WORDS = {"true", "false", "True", "False", "TRUE", "FALSE", "null", "Null", "NULL", "~", "y", "Y", "n", "N"} | {
@@ -339,7 +429,7 @@ def add_entity(
 ) -> Added:  # fmt: skip
     if (source_ref is None) != (resource is None):
         raise FloeConfigError("--source and --resource must be provided together")
-    entity, fmt = infer_entity(input, fmt, name, domain, source_ref, resource)
+    entity, fmt, notes = infer_entity(input, fmt, name, domain, source_ref, resource)
     name = cast(str, entity["name"])
     columns = len(cast("list[object]", cast(Hash, entity["schema"])["columns"]))
 
@@ -371,7 +461,7 @@ def add_entity(
             raise FloeConfigError(f"generated entity file {output} failed validation: {e}") from e  # fmt: skip
         if not dry_run:
             _write_new(output, rendered)
-        return Added(name, fmt, columns, output, rendered if dry_run else None)
+        return Added(name, fmt, columns, output, rendered if dry_run else None, notes)
 
     if len(docs) > 1:
         raise FloeConfigError("YAML contains multiple documents; expected one")
@@ -406,4 +496,4 @@ def add_entity(
             Path(output).write_bytes(rendered.encode())
         except OSError as e:
             raise FloeIoError(f"failed to write config at {output}: {_os(e)}") from e
-    return Added(name, fmt, columns, output, rendered if dry_run else None)
+    return Added(name, fmt, columns, output, rendered if dry_run else None, notes)

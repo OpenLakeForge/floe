@@ -151,7 +151,8 @@ report: {path: ./report}
 def test_an_image_runtime_manifest_with_sources_and_metadata_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """D20: the manifest's `sources` and `metadata` blocks and work-root paths load and run."""
+    """D20: the manifest's `sources` and `metadata` blocks and work-root paths load and run;
+    the summary carries the project `metadata` as the config run's does (#873)."""
     by_config, by_manifest = copy_case("severity_warn", tmp_path / "c"), copy_case("severity_warn", tmp_path / "m")  # fmt: skip
     for work in (by_config, by_manifest):
         (work / "config.yml").write_text(NAMED)
@@ -167,7 +168,6 @@ def test_an_image_runtime_manifest_with_sources_and_metadata_runs(
     assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 0
     expected, actual = outputs(by_config), outputs(by_manifest)
     summary = "report/run_r/run.summary.json"
-    expected[summary]["config"].pop("metadata")  # ponytail: carried over by #873
     assert expected[summary]["config"].pop("path") == "<ROOT>/config.yml"
     assert actual[summary]["config"].pop("path") == "m.json"
     assert actual == expected
@@ -422,3 +422,38 @@ def test_run_manifest_api_raises_floe_io_error_on_a_missing_manifest(
     monkeypatch.chdir(tmp_path)
     with pytest.raises(api.FloeIoError, match=r"No such file or directory \(os error 2\)"):  # fmt: skip
         api.run_manifest("nope.json")
+
+
+def test_an_undecodable_manifest_is_a_parse_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import floe as api
+
+    monkeypatch.chdir(tmp_path)
+    Path("m.json").write_bytes(b"\xff")
+    with pytest.raises(
+        api.FloeConfigError, match="manifest parse error: 'utf-8' codec"
+    ):
+        api.run_manifest("m.json")
+    assert floe(monkeypatch, "run", "--manifest", "m.json") == 1
+    assert capsys.readouterr().err.startswith(
+        "Error: manifest parse error: 'utf-8' codec"
+    )
+
+
+@pytest.mark.parametrize("metadata", ["{}", "{project: null, owner: null}"])
+def test_an_empty_metadata_block_runs_and_is_reported(
+    metadata: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    by_config, by_manifest = copy_case("severity_warn", tmp_path / "c"), copy_case("severity_warn", tmp_path / "m")  # fmt: skip
+    for work in (by_config, by_manifest):
+        config = work / "config.yml"
+        config.write_text(config.read_text() + f"metadata: {metadata}\n")
+    monkeypatch.chdir(by_config)
+    assert floe(monkeypatch, "run", "-c", "config.yml", "--run-id", "r") == 0
+    monkeypatch.chdir(by_manifest)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 0
+    summary = "report/run_r/run.summary.json"
+    expected, actual = outputs(by_config)[summary], outputs(by_manifest)[summary]
+    assert actual["config"]["metadata"] == expected["config"]["metadata"]

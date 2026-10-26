@@ -171,10 +171,14 @@ def _add_entity(args: argparse.Namespace) -> int:
     )  # fmt: skip
     if added.rendered is not None:
         print(f"# add-entity dry run (no file written)\n# entity: {added.name}")
+        for note in added.notes:
+            print(f"# note: {note}")
         print(added.rendered)
     else:
         print(f"Entity added: {added.name} (format={added.format}, columns={added.columns})")  # fmt: skip
         print(f"Config written: {added.output}")
+        for note in added.notes:
+            print(f"Note: {note}")
     return 0
 
 
