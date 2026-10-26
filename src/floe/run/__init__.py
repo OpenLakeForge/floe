@@ -102,7 +102,9 @@ def run(
     run_id = run_id or started.replace(":", "-")
 
     def inputs(e: EntityConfig) -> ResolvedInputs:
-        return list_source(e, config_dir, *resolve_source(e, config_dir, root.storages))
+        return list_source(
+            e, config_dir, root.storages, *resolve_source(e, config_dir, root.storages)
+        )
 
     if dry_run:  # Rust: no events, no reports; the inputs are only listed
         scanned = {e.id: [f.source_uri for f in inputs(e).files] for e in selected}

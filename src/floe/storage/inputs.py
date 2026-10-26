@@ -72,12 +72,17 @@ def _glob_files(pattern: str) -> list[Path]:
     return [normalize_local_path(Path(p)) for p in found if Path(p).is_file()]
 
 
-def _visible(files: list[Path], root: Path) -> list[Path]:
-    """D23: drop anything under a `.floe` directory (the default state location), as the cloud listing does."""
+def _visible(files: list[Path], root: Path, exclude: Path | None) -> list[Path]:
+    """D23: drop anything under a `.floe` directory (the default state location), as the cloud listing does; D31: and under `exclude`."""
     root = normalize_local_path(
         root
     )  # the matches are normalised, so `..` in the root must be too
-    return [f for f in files if ".floe" not in f.relative_to(root).parts[:-1]]
+    return [
+        f
+        for f in files
+        if ".floe" not in f.relative_to(root).parts[:-1]
+        and not (exclude and f.is_relative_to(exclude))
+    ]
 
 
 def _local_files(
@@ -88,6 +93,7 @@ def _local_files(
     storage: str,
     glob_override: str | None,
     recursive: bool,
+    exclude: Path | None,
 ) -> tuple[list[Path], Literal["file", "directory"]]:
     def no_match(base: object, used: str) -> NoInputsError:
         return NoInputsError(
@@ -99,7 +105,7 @@ def _local_files(
         pattern = os.path.join(config_dir, raw)
         prefix = pattern[: next(i for i, c in enumerate(pattern) if c in "*?[")]
         root = Path(prefix) if prefix.endswith(os.sep) else Path(prefix).parent
-        files = _visible(sorted(set(_glob_files(pattern)), key=str), root)
+        files = _visible(sorted(set(_glob_files(pattern)), key=str), root, exclude)
         if not files:
             raise no_match(
                 os.path.dirname(pattern), os.path.basename(pattern)
@@ -123,7 +129,7 @@ def _local_files(
         for g in globs
     ]
     files = _visible(
-        sorted({f for p in patterns for f in _glob_files(p)}, key=str), base
+        sorted({f for p in patterns for f in _glob_files(p)}, key=str), base, exclude
     )
     if not files:
         raise no_match(base, ",".join(globs))
@@ -153,6 +159,7 @@ def _cloud_refs(
     entity: str,
     storage: str,
     location: str,
+    exclude: str | None,
 ) -> list[ObjectRef]:
     where = f"entity.name={entity} source.storage={storage}"
     first = _first_glob(key)
@@ -179,6 +186,7 @@ def _cloud_refs(
         for r in client.list(prefix)
         if (matcher is None or matcher.matches_with(r.key, _CLOUD))
         and not (r.key.startswith(".floe/") or "/.floe/" in r.key)
+        and not (exclude and r.uri.startswith(f"{exclude}/"))
         and r.uri.lower().endswith(lowered)
     ]
     if not refs:
@@ -201,15 +209,22 @@ def resolve_inputs(
     list_only: bool = False,
     recursive: bool = False,
     glob_override: str | None = None,
+    exclude: str | None = None,
 ) -> ResolvedInputs:
-    """`path` is the source path, or a full `s3://` URI for a remote storage."""
+    """`path` is the source path, or a full `s3://` URI for a remote storage; nothing under the `exclude` URI is listed (D31)."""
     files: list[InputFile] = []
     if path.startswith("s3://"):
         if client is None:
             raise FloeRunError("s3 storage client missing")
         bucket, key = parse_s3_uri(path)
         refs = _cloud_refs(
-            client, key, suffixes_for_format(fmt), entity, storage, f"bucket={bucket}"
+            client,
+            key,
+            suffixes_for_format(fmt),
+            entity,
+            storage,
+            f"bucket={bucket}",
+            exclude,
         )
         if not list_only:
             for r in refs:
@@ -226,8 +241,9 @@ def resolve_inputs(
         return ResolvedInputs(files, [r.uri for r in refs], "directory")
     if "://" in path:
         raise FloeConfigError(f"unsupported storage uri: {path}")
+    skip = Path(exclude.removeprefix("local://")) if exclude and exclude.startswith("local://") else None  # fmt: skip
     paths, mode = _local_files(
-        config_dir, path, fmt, entity, storage, glob_override, recursive
+        config_dir, path, fmt, entity, storage, glob_override, recursive, skip
     )
     uris = [client.resolve_uri(str(p)) if client else str(p) for p in paths]
     if not list_only:
