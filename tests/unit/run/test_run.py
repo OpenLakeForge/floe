@@ -204,6 +204,18 @@ def test_d31_full_refresh_reads_a_nested_archive_and_the_source_once(tmp_path: P
     assert out.summary["results"]["accepted_total"] == 3
 
 
+@pytest.mark.parametrize("fresh", [True, False])
+def test_d31_a_full_refresh_dry_run_lists_a_nested_archive(tmp_path: Path, fresh: bool) -> None:  # fmt: skip
+    """The preview lists what the full refresh reads: the archive, then the source (D24)."""
+    path = archived_once(tmp_path, "./in/arch")
+    if fresh:
+        (tmp_path / "in/b.csv").write_text("id\n3\n")
+    out = run(path, parse_config(path, {}), full_refresh=True, dry_run=True)
+    assert out.dry_run is not None
+    names = [Path(u).name.split("__")[0] for u in out.dry_run["d.o"]]
+    assert names == (["a", "b.csv"] if fresh else ["a"])
+
+
 def test_full_refresh_runs_from_the_archive_alone(tmp_path: Path) -> None:
     """D24: no new source file still rebuilds from the archived files."""
     path = archived_once(tmp_path)
