@@ -658,3 +658,4 @@ partitioning_two_days
 partitioning_hive_hour
 partitioning_unmatched
 precheck_header_order manifest
+config/val1_d28_date_column_clash_normalised

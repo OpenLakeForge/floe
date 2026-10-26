@@ -324,3 +324,15 @@ def test_d28_partitioning_errors(tmp_path: Path, block: str, message: str) -> No
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, f"{{{COLS}}}", partitioning=f", partitioning: {block}")
     assert str(err.value) == f"entity.name=orders {message}"
+
+
+def test_d28_a_derived_column_clashes_with_a_normalised_schema_column(tmp_path: Path) -> None:  # fmt: skip
+    """#913: `Ingest Date` normalises to `ingest_date`, the derived column's name."""
+    schema = "{columns: [{name: id, type: string}, {name: Ingest Date, type: string}], normalize_columns: {enabled: true}}"  # fmt: skip
+    part = ", partitioning: {pattern: '{yyyy}/{MM}/{dd}', date_column: ingest_date}"
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, schema, partitioning=part)
+    assert str(err.value) == (
+        "entity.name=orders source.partitioning.date_column=ingest_date "
+        "is already a column in schema.columns"
+    )
