@@ -116,22 +116,32 @@ def test_aborted_run_releases_its_claims(tmp_path: Path) -> None:
     assert go(entity, tmp_path, "r2").report["results"]["files_skipped"] == 0
 
 
-def test_an_abort_promotes_the_files_written_before_it(tmp_path: Path) -> None:
-    """#918 (#545 S5): a's rows are written before b aborts; once b is fixed, the rerun writes a's rows no second time."""
+@pytest.mark.parametrize("mode", ["append", "overwrite"])
+def test_an_abort_promotes_the_files_written_before_it(
+    tmp_path: Path, mode: str
+) -> None:
+    """#918 (#545 S5): a's rows are written before b aborts; once b is fixed, the rerun holds a's rows once.
+
+    `append` promotes a, so the rerun skips it; `overwrite` releases a, so the rerun rebuilds from both.
+    """
     setup(tmp_path, severity="abort")
     config = tmp_path / "config.yml"
-    config.write_text(config.read_text().replace("    sink:", "    sink:\n      write_mode: append"))  # fmt: skip
+    config.write_text(config.read_text().replace("    sink:", f"    sink:\n      write_mode: {mode}"))  # fmt: skip
     entity = parse_config(config).entities[0]
     (tmp_path / "in/orders.csv").unlink()
     (tmp_path / "in/a.csv").write_text("id\n1\n2\n")
     (tmp_path / "in/b.csv").write_text("id\nx\n")
     assert go(entity, tmp_path, "r1").aborted
-    after = state(tmp_path)
-    assert list(after["files"]) == [f"local://{tmp_path / 'in/a.csv'}"]
-    assert after["claims"] == {}
+    promoted = [f"local://{tmp_path / 'in/a.csv'}"] if mode == "append" else []
+    if promoted:
+        assert state(tmp_path)["files"].keys() == set(promoted)
+        assert state(tmp_path)["claims"] == {}
+    else:
+        assert not (tmp_path / "in/.floe/state/d/orders/state.json").exists()
     (tmp_path / "in/b.csv").write_text("id\n3\n")
     rerun = go(entity, tmp_path, "r2").report
-    assert [f.get("skip_reason") for f in rerun["files"]] == ["already_ingested", None]
+    skipped = ["already_ingested"] if promoted else [None]
+    assert [f.get("skip_reason") for f in rerun["files"]] == [*skipped, None]
     accepted = pl.read_parquet(tmp_path / "out/accepted/*.parquet")
     assert sorted(accepted["id"].to_list()) == [1, 2, 3]
 

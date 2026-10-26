@@ -614,10 +614,11 @@ class Incremental:
     def finish(self, files: list[dict[str, Any]]) -> None:
         """Promote unless the entity failed (Rust commits on success, warnings and rejected).
 
-        #918: an abort still writes the files before it (Rust 0.7), so it promotes those and releases the rest.
+        #918: an abort still writes the files before it (Rust 0.7), so it promotes those and releases the rest;
+        under `overwrite` it releases them all, as the retry rebuilds the output from every file.
         """
         status, _ = run_outcome([f["status"] for f in files])
-        if status == "failed":
+        if status == "failed" or (status == "aborted" and self.entity.sink.write_mode == "overwrite"):  # fmt: skip
             return self.release()
         if claimed := self._end():
             only = {f["input_file"] for f in files if f["status"] != "aborted"} if status == "aborted" else None  # fmt: skip
