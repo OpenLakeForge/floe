@@ -70,6 +70,8 @@ def copy_case(case: str, dest: Path) -> Path:
         "archive_mode",
         "xml",
         "example/standalone",
+        "partitioning_two_days",  # D28: the manifest carries source.partitioning
+        "partitioning_hive_hour",
     ],
 )
 def test_a_run_from_the_generated_manifest_matches_the_config_run(

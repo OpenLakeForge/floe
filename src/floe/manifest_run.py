@@ -115,6 +115,7 @@ def _entity(m: Json, named_local: bool) -> EntityConfig:
         "cast_mode": src.get("cast_mode") or "strict",
         "source_ref": src.get("ref"),
         "resource": src.get("resource"),
+        "partitioning": src.get("partitioning"),  # D28: validated when generated
     }
     sink = {
         "write_mode": write_mode,

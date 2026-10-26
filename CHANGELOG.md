@@ -11,6 +11,9 @@ All notable changes to Floe are documented in this file.
 
 ## dagster-floe (unreleased)
 
+- **Manifest entity sources may carry `partitioning` (D28, #883).** The bundled schema accepts
+  the `source.partitioning` block (`pattern`, `date_column`, `batch_column`) that `floe run
+  --manifest` honours.
 - **Entities sharing a named source depend on one `sources/<project>/<name>` asset (D20, #796).** When
   the manifest carries the `sources` index, every entity whose `source.ref` names an entry depends
   on one shared `sources/<project>/<name>` asset (group `sources`, the source's format and `uri`

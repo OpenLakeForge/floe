@@ -682,6 +682,31 @@
                   "object",
                   "null"
                 ]
+              },
+              "partitioning": {
+                "description": "D28: source.partitioning; absent when the source has none.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "pattern",
+                  "date_column"
+                ],
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "date_column": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "batch_column": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
               }
             }
           },

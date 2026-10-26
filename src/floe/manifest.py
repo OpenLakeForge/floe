@@ -190,10 +190,13 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
                 ref=entity.source.source_ref,
                 resource=entity.source.resource,
             )
-            | {
-                "cast_mode": entity.source.cast_mode,
-                "options": _sorted(entity.source.options),
-            },
+            | _put(
+                {
+                    "cast_mode": entity.source.cast_mode,
+                    "options": _sorted(entity.source.options),
+                },
+                partitioning=_sorted(entity.source.partitioning),  # D28
+            ),
             "sinks": {
                 "accepted": _sink(ctx, sink.accepted),
                 "rejected": sink.rejected and _sink(ctx, sink.rejected),
