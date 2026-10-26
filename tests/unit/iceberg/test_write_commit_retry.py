@@ -43,6 +43,7 @@ class SharedCatalog:
             0,
             "rival",
         )  # commits another handle lands just before ours, and their hash
+        self.rival_id: int | None = None  # the row they hold; default 100 + n
 
     def load_table(self, _: object) -> Table:
         return Table(
@@ -71,7 +72,11 @@ class SharedCatalog:
             n = self.rivals
             self.rivals = 0  # the rival's own commit meets no rival
             write_table(
-                rival, reader([100 + n]), "append", "other-run", self.rival_hash
+                rival,
+                reader([100 + n if self.rival_id is None else self.rival_id]),
+                "append",
+                "other-run",
+                self.rival_hash,
             )
             self.rivals = n
         for requirement in requirements:
@@ -144,3 +149,20 @@ def test_a_reload_of_an_old_batch_is_not_mistaken_for_a_rival_s_copy(catalog: Sh
     result = write_table(mine, reader([1]), "append", "run", "mine")
     assert not result.already_committed
     assert ids(catalog) == [1, 1, 100]
+
+
+def test_two_writers_with_one_key_on_one_base_commit_one_row(catalog: SharedCatalog) -> None:  # fmt: skip
+    """#549: both validated `unique` against the same snapshot; the one that loses the commit fails closed."""
+    mine = catalog.load_table(IDENTIFIER)
+    catalog.rivals, catalog.rival_id = 1, 7
+    with pytest.raises(FloeRunError, match=r"unique key \(id\) already committed"):
+        write_table(mine, reader([7]), "append", "run", "mine", unique_keys=[["id"]])
+    assert ids(catalog) == [7]
+    assert len(catalog.load_table(IDENTIFIER).metadata.snapshots) == 1
+
+
+def test_a_conflict_without_a_shared_key_still_recommits(catalog: SharedCatalog) -> None:  # fmt: skip
+    mine = catalog.load_table(IDENTIFIER)
+    catalog.rivals, catalog.rival_id = 1, 8
+    write_table(mine, reader([7]), "append", "run", "mine", unique_keys=[["id"]])
+    assert ids(catalog) == [7, 8]

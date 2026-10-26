@@ -5,19 +5,20 @@
 
 import itertools
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Literal
 
 import pyarrow as pa
+import pyarrow.parquet as pq
 from pyiceberg.exceptions import CommitFailedException
 from pyiceberg.io.pyarrow import (
     _check_pyarrow_schema_compatible,  # pyright: ignore[reportPrivateUsage] -- same check `Transaction.append` makes
     _dataframe_to_data_files,  # pyright: ignore[reportPrivateUsage] -- feeds one snapshot producer from many chunks
 )
-from pyiceberg.manifest import DataFile
+from pyiceberg.manifest import DataFile, DataFileContent, ManifestEntryStatus
 from pyiceberg.table import Table, TableProperties
 from pyiceberg.table.snapshots import ancestors_of
 
@@ -84,10 +85,13 @@ def write_table(
     input_hash: str,
     small_file_threshold_bytes: int = SMALL_FILE_THRESHOLD_BYTES,
     chunk_rows: int = CHUNK_ROWS,
+    unique_keys: Sequence[Sequence[str]] = (),
 ) -> IcebergWriteResult:
     """Data files are written chunk by chunk (partitioned tables split each chunk), then committed once.
 
     Overwrite replaces every existing file in the same snapshot. An append of no rows commits nothing.
+    On a conflict an append checks `unique_keys` (table column names) against the files added since the base
+    snapshot and fails closed, committing nothing, when a rival already holds a key (#549).
     """
     with run_error("iceberg data write failed"):
         _check_pyarrow_schema_compatible(table.schema(), reader.schema)
@@ -113,6 +117,8 @@ def write_table(
                 )
             if seen:
                 return replace(write_result(table, [], small_file_threshold_bytes), already_committed=True)  # fmt: skip
+            if mode == "append":
+                _revalidate_unique(table, base, data_files, unique_keys)
         replaced: list[DataFile] = []
         if mode == "overwrite":
             with run_error("iceberg overwrite scan failed"):
@@ -145,6 +151,65 @@ def write_table(
     else:
         raise FloeRunError(f"rest iceberg commit failed: conflicted {COMMIT_ATTEMPTS} times in a row")  # fmt: skip
     return write_result(table, data_files, small_file_threshold_bytes)
+
+
+def added_data_files(table: Table, since: int | None) -> list[DataFile]:
+    """Data files added by the snapshots after `since` (a DuckDB MERGE commits two)."""
+    files: list[DataFile] = []
+    snapshot = table.current_snapshot()
+    while snapshot is not None and snapshot.snapshot_id != since:
+        files += [
+            entry.data_file
+            for manifest in snapshot.manifests(table.io)
+            if manifest.added_snapshot_id == snapshot.snapshot_id
+            for entry in manifest.fetch_manifest_entry(table.io)
+            if entry.status == ManifestEntryStatus.ADDED
+            and entry.data_file.content == DataFileContent.DATA
+        ]
+        parent = snapshot.parent_snapshot_id
+        snapshot = None if parent is None else table.snapshot_by_id(parent)
+    return files
+
+
+def _keys(
+    table: Table, file: DataFile, key: Sequence[str]
+) -> Iterator[tuple[object, ...]]:
+    """The non-NULL key tuples of a data file; a file without a key column (evolved later) holds none."""
+    with table.io.new_input(file.file_path).open() as f:
+        schema = pq.read_schema(f)
+        if not set(key) <= set(schema.names):
+            return
+        f.seek(0)
+        rows = pq.read_table(f, columns=list(key))
+    yield from (k for k in zip(*(rows[c].to_pylist() for c in key)) if None not in k)
+
+
+def _revalidate_unique(
+    table: Table,
+    base: int | None,
+    data_files: list[DataFile],
+    unique_keys: Sequence[Sequence[str]],
+) -> None:
+    """Raise when a key of `data_files` is in a file a rival added since `base`.
+
+    ponytail: the rivals' keys sit in memory (cost follows the concurrent writes, not the history); a
+    float compares by Python equality, so NaN never collides and -0.0 equals 0.0, unlike the tracker's bits.
+    """
+    with run_error("iceberg unique revalidation failed"):
+        rival = added_data_files(table, base)
+        clash = next(
+            (
+                key
+                for key in unique_keys
+                if (held := {k for file in rival for k in _keys(table, file, key)})
+                and any(
+                    k in held for file in data_files for k in _keys(table, file, key)
+                )
+            ),
+            None,
+        )
+    if clash:
+        raise FloeRunError(f"unique key ({', '.join(clash)}) already committed by a concurrent run; nothing was committed, rerun to revalidate")  # fmt: skip
 
 
 def write_result(
