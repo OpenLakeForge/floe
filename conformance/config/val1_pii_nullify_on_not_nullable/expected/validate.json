@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders pii.columns[name=amt].strategy=nullify cannot be applied to a nullable=false column"
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "expected positive integer at lineage.max_failures"
+}

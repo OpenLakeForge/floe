@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "lineage.namespace must not be empty"
+}

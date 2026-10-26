@@ -11,6 +11,20 @@ All notable changes to Floe are documented in this file.
 
 ## dagster-floe (unreleased)
 
+- **Entities sharing a named source depend on one `sources/<project>/<name>` asset (D20, #796).** When
+  the manifest carries the `sources` index, every entity whose `source.ref` names an entry depends
+  on one shared `sources/<project>/<name>` asset (group `sources`, the source's format and `uri`
+  as metadata) instead of its own `<entity>_source` asset. `<project>` is the manifest's
+  `manifest_name`, else its `manifest_id`, so two manifests loaded together can both name a
+  source `crm`.
+- **Manifests may carry a `sources` index and project `metadata` (D20, #796).** The bundled
+  schema accepts both optional blocks: `sources` lists each named config source with its
+  format, resolved `uri` and consuming entities; `metadata` is the config's project metadata.
+- **Manifests are versioned by Floe release (D22, #798).** `load_manifest` accepts a
+  manifest whose `spec_version` (the Floe major.minor that generated it) is supported, `0.8`
+  for now, and rejects any other with a clear error. The `schema: "floe.manifest.v1"` field is
+  gone and the bundled schema is `floe.manifest.schema.json`; regenerate older manifests with
+  Floe 0.8.
 - **`load_floe_assets(domains=[...])` loads one domain slice of a project manifest (#510).**
   Only entities whose `domain` is listed are loaded; an unknown domain raises `ValueError`.
   Op names of entities with a domain are now derived from the full asset key

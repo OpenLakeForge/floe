@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "domains.defaults requires root.version >= \"0.3\""
+}

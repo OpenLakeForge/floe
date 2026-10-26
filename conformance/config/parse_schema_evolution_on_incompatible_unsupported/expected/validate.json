@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): unsupported value at schema.schema_evolution.on_incompatible: skip (allowed: fail)"
+}

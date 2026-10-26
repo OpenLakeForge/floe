@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "<ROOT>/domains/sales/orders.yml: entities[0] (entity.name=orders): policy.severity=loud is unsupported (allowed: warn, reject, abort)"
+}

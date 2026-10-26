@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "catalogs.definitions[0]: catalogs.definitions name=c has unsupported type=hive (supported: rest)"
+}

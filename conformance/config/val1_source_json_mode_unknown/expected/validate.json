@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders source.options.json_mode=lines is unsupported (allowed: array, ndjson)"
+}

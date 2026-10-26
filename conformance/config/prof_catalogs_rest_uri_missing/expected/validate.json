@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "profile.catalogs.definitions[0]: missing required field profile.catalogs.definitions.uri"
+}

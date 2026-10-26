@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.accepted.iceberg.catalog requires sink.accepted storage type s3 or gcs (got local)"
+}

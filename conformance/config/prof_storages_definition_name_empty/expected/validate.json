@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "profile.storages.definitions.name must not be empty"
+}

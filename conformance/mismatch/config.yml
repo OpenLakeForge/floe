@@ -1,0 +1,42 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: customers
+    domain: spike
+    source:
+      format: csv
+      path: "./in/customers.csv"
+      options:
+        header: true
+        separator: ";"
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/customers"
+      rejected:
+        format: csv
+        path: "./out/rejected/customers"
+    policy:
+      severity: reject
+    pii:
+      columns:
+        - name: phone
+          strategy: hash
+    schema:
+      primary_key: [tenant, code]
+      columns:
+        - name: tenant
+          type: string
+        - name: code
+          type: int64
+        - name: phone
+          type: string
+        - name: score
+          type: number
+        - name: signup
+          type: date
+        - name: missing_col
+          type: string
+report:
+  path: "./report"

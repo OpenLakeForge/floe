@@ -6,7 +6,7 @@ all supported options. See `example/config.yml` for a full working example.
 ## Structure at a glance
 
 ```yaml
-version: "0.2"
+version: "0.8"
 metadata: { ... }
 report:
   path: "/abs/or/relative/report/dir"
@@ -64,9 +64,10 @@ entities:
 ## Top-level fields
 
 - `version` (required)
-  - String used to validate config compatibility.
-  - Must be a numeric `major.minor` string such as `"0.1"`, `"0.2"`, or `"0.3"`.
-  - Minimum supported version is `"0.1"`.
+  - The minimum Floe release the config targets, as a numeric `major.minor`
+    string such as `"0.8"`.
+  - Floe accepts any version from `"0.1"` up to its own release (`"0.8"`) and
+    rejects a newer one. Older versions keep their semantics.
   - `schema.schema_evolution` requires `version >= "0.2"`.
   - `version >= "0.3"` qualifies entity identity with its domain (see Entity identity).
 - `metadata` (optional)
@@ -356,7 +357,7 @@ state file shape, and CAS behavior.
 - `accepted` (required)
   - `format`: `parquet`, `delta`, `iceberg`, or `duckdb`.
     - `delta`: Delta Lake transactional sink; optional Unity Catalog registration via `sink.accepted.delta`.
-    - `iceberg`: local/S3/GCS filesystem-catalog sink, with optional AWS Glue or REST catalog registration; append/overwrite supported; no schema evolution.
+    - `iceberg`: Iceberg table in a REST catalog; `sink.accepted.iceberg` with a catalog is required (0.8). See [Iceberg sink](sinks/iceberg.md).
     - `duckdb`: local `.duckdb` file or MotherDuck (`md:`) database; `overwrite`/`append`/`merge_scd1`/`merge_scd2` via native `MERGE INTO`. Configured via `sink.accepted.duckdb`. See [DuckDB sink](sinks/duckdb.md).
 - `path`: output directory for accepted records.
   - Supports `{{var}}` templating (see "Templating & domains").
@@ -434,8 +435,8 @@ state file shape, and CAS behavior.
       - `valid_from_column` (default `__floe_valid_from`)
       - `valid_to_column` (default `__floe_valid_to`)
       - Custom names must be non-empty, unique, and must not collide with business schema columns.
-  - `iceberg` (optional, `sink.accepted.format: iceberg`)
-    - Enables Iceberg catalog-specific options.
+  - `iceberg` (required for `sink.accepted.format: iceberg` in 0.8)
+    - Binds the sink to its REST catalog; a catalog-less Iceberg sink is rejected by `floe validate`.
     - `catalog` (optional)
       - Catalog name from `catalogs.definitions` (type `glue` or `rest`).
       - If omitted, `catalogs.default` is used when set.
@@ -493,6 +494,9 @@ state file shape, and CAS behavior.
 - `path`: directory where raw input files are archived after ingestion.
   - If omitted, archiving is disabled.
   - Supports `{{var}}` templating (see "Templating & domains").
+  - Prefer an archive location outside the source path (for example `s3://raw/archive/` next to
+    `s3://raw/crm/`). Nesting it under the source is safe: a normal run never lists the
+    archive as input, and `--full-refresh` reads it once, explicitly (D31).
 
 ### `pii` (optional)
 

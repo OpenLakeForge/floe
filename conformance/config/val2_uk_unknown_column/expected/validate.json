@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders schema.unique_keys[1][1]=zz references unknown schema column"
+}

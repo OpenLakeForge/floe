@@ -32,6 +32,10 @@ def complete_entity():
     }
 
 
+def profile_validator():
+    return YamlDraft202012Validator(yaml.safe_load((ROOT / "schemas/profile.schema.yaml").read_text()))
+
+
 def validator_for(branch):
     name = {"sources_file": "sources", "domain_file": "domains", "entity_file": "entity"}[branch]
     return YamlDraft202012Validator(yaml.safe_load((ROOT / f"schemas/{name}.schema.yaml").read_text()))
@@ -62,11 +66,12 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_invalid(validator_for("domain_file"), {"defaults": {}})
         self.assert_invalid(validator_for("entity_file"), {"name": "orders"})
         for name in ("sources", "domains", "entity"):
-            self.assertEqual(
-                schemas["project"]["$defs"]["source_options"],
-                schemas[name]["$defs"]["source_options"],
-                f"{name} source option schema drifted from the project contract",
-            )
+            for definition in ("source_options", "source_partitioning"):
+                self.assertEqual(
+                    schemas["project"]["$defs"][definition],
+                    schemas[name]["$defs"][definition],
+                    f"{name} {definition} schema drifted from the project contract",
+                )
         self.assertEqual(
             schemas["project"]["$defs"]["source_definition"],
             schemas["sources"]["$defs"]["source_definition"],
@@ -108,8 +113,9 @@ class ConfigSchemaTest(unittest.TestCase):
         aliases = {"SourceConfig": {"source_ref": "ref"}, "StorageDefinition": {"fs_type": "type"}, "ColumnConfig": {"column_type": "type"}, "CatalogDefinition": {"type_config": "type"}}
         wire_extras = {
             "RootConfig": {"sources", "include", "filesystems"},
-            "DomainConfig": {"defaults"}, "SourceConfig": {"filesystem"},
+            "DomainConfig": {"defaults"}, "SourceConfig": {"filesystem", "partitioning"},  # D28: partitioning is Python-only
             "SinkTarget": {"filesystem"},
+            "IcebergPartitionFieldConfig": {"num_buckets"},  # D12: Python-only, Rust 0.7 has no bucket transform
             "CatalogDefinition": {"region", "database", "create_database_if_missing", "allow_takeover", "uri", "credential", "warehouse", "oauth2_server_uri", "scope", "host", "catalog", "schema", "token", "create_schema_if_missing"},
         }
         for model, definition in bindings.items():
@@ -130,15 +136,10 @@ class ConfigSchemaTest(unittest.TestCase):
         for version in ("abc", "0.0", "0.3.1", "-1.0"):
             with self.subTest(version=version):
                 self.assert_invalid(ROOT_VALIDATOR, {"version": version, "entities": [fragment]})
-        for version in ("0.03", "01.0", "+1.+0"):
+        for version in ("0.03", "00.8", "+0.+08"):
             with self.subTest(version=version):
                 self.assert_valid(ROOT_VALIDATOR, {"version": version, "entities": [complete_entity()]})
-        self.assert_invalid(ROOT_VALIDATOR, {"version": "+0.+0", "entities": [complete_entity()]})
-        max_u64 = "18446744073709551615"
-        self.assert_valid(ROOT_VALIDATOR, {
-            "version": f"000{max_u64}.{max_u64}", "entities": [complete_entity()],
-        })
-        for version in ("18446744073709551616.0", "0.18446744073709551616", "0.1\n"):
+        for version in ("+0.+0", "0.9", "0.10", "01.0", "+1.+0", "0.1\n"):
             with self.subTest(version=version):
                 self.assert_invalid(ROOT_VALIDATOR, {"version": version, "entities": [complete_entity()]})
 
@@ -733,6 +734,37 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["source"]["format"] = "csv"
         self.assert_valid(ROOT_VALIDATOR, document)
 
+    def test_json_and_xml_selectors_are_not_blank(self):
+        # Rust: the selector is `source`, else `name`; blank is rejected for json/xml only.
+        blank = {
+            "source empty": {"name": "id", "type": "string", "source": ""},
+            "source blank": {"name": "id", "type": "string", "source": " "},
+            "name empty": {"name": "", "type": "string"},
+            "null source, name empty": {"name": "", "type": "string", "source": None},
+        }
+        fine = {"name empty, source set": {"name": "", "type": "string", "source": "a"}}
+
+        def document(fmt, column):
+            entity = complete_entity()
+            entity["source"]["format"] = fmt
+            if fmt == "xml":
+                entity["source"]["options"] = {"row_tag": "row"}
+            entity["schema"]["columns"] = [column]
+            return entity, {"version": "0.3", "entities": [entity]}
+
+        for fmt in ("json", "xml"):
+            for label, column in blank.items():
+                with self.subTest(fmt=fmt, case=label):
+                    entity, project = document(fmt, column)
+                    self.assert_invalid(ROOT_VALIDATOR, project)
+                    self.assert_invalid(validator_for("entity_file"), entity)
+                    self.assert_valid(ROOT_VALIDATOR, document("csv", column)[1])
+            for label, column in fine.items():
+                with self.subTest(fmt=fmt, case=label):
+                    entity, project = document(fmt, column)
+                    self.assert_valid(ROOT_VALIDATOR, project)
+                    self.assert_valid(validator_for("entity_file"), entity)
+
     def test_archive_conflict_is_checked_on_entity_fragments(self):
         entity = {
             "name": "orders", "domain": "sales", "incremental_mode": "file",
@@ -978,6 +1010,20 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["sink"]["accepted"]["partition_spec"][0]["transform"] = "bucket[16]"
         self.assert_invalid(ROOT_VALIDATOR, document)
         self.assert_invalid(validator_for("entity_file"), entity)
+        for field, valid in (
+            ({"column": "id", "transform": " Bucket ", "num_buckets": 16}, True),
+            ({"column": "id", "transform": "bucket"}, False),
+            ({"column": "id", "transform": "bucket", "num_buckets": 0}, False),
+            ({"column": "id", "transform": "bucket", "num_buckets": 1.5}, False),
+            ({"column": "id", "transform": "bucket", "num_buckets": "16"}, False),
+            ({"column": "id", "transform": "day", "num_buckets": 16}, False),
+            ({"column": "id", "num_buckets": 16}, False),
+        ):
+            with self.subTest(field=field):
+                entity["sink"]["accepted"]["partition_spec"][0] = field
+                check = self.assert_valid if valid else self.assert_invalid
+                check(ROOT_VALIDATOR, document)
+                check(validator_for("entity_file"), entity)
         entity["sink"]["accepted"]["partition_spec"][0] = {"column": " ", "transform": "year"}
         self.assert_invalid(ROOT_VALIDATOR, document)
         self.assert_invalid(validator_for("entity_file"), entity)
@@ -985,6 +1031,44 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["sink"]["accepted"].update(format="delta", partition_by=[" "])
         self.assert_invalid(ROOT_VALIDATOR, document)
         self.assert_invalid(validator_for("entity_file"), entity)
+
+    def test_duplicate_list_entries_match_runtime(self):
+        # Rust rejects repeated entries at validate time; uniqueItems only catches exact repeats
+        # (Rust also trims, lowercases partition_spec transforms and defaults them to identity).
+        merge = {"write_mode": "merge_scd1"}
+        spec = {"column": "id", "transform": "day"}
+        cases = {
+            "S8": ("schema", {"primary_key": ["id", "id"]}, None),
+            "S9": ("schema", {"unique_keys": [["id", "id"]]}, None),
+            "S10": ("sink", {"format": "delta", "partition_by": ["id", "id"]}, None),
+            "S11": ("sink", {"format": "delta", "merge": {"ignore_columns": ["amt", "amt"]}}, merge),
+            "S12": ("sink", {"format": "delta", "merge": {"compare_columns": ["amt", "amt"]}}, merge),
+            "S13": ("sink", {"format": "iceberg", "partition_spec": [spec, spec]}, None),
+        }
+        for case, (kind, fields, sink_extra) in cases.items():
+            with self.subTest(case):
+                entity = complete_entity()
+                entity["schema"]["primary_key"] = ["id"]
+                entity["schema"]["columns"].append({"name": "amt", "type": "number"})
+                if kind == "schema":
+                    entity["schema"].update(fields)
+                else:
+                    entity["sink"].update(sink_extra or {})
+                    entity["sink"]["accepted"].update(fields)
+                self.assert_invalid(ROOT_VALIDATOR, {"version": "0.3", "entities": [entity]})
+                self.assert_invalid(validator_for("entity_file"), entity)
+                if case != "S8":  # domain defaults cannot declare primary_key
+                    defaults = {"schema": fields} if kind == "schema" else {"sink": {**(sink_extra or {}), "accepted": fields}}
+                    self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": defaults})
+                    self.assert_invalid(
+                        ROOT_VALIDATOR,
+                        {"version": "0.3", "domains": [{"name": "sales", "defaults": defaults}]},
+                    )
+        # duplicate groups are only a warning in Rust
+        entity = complete_entity()
+        entity["schema"]["unique_keys"] = [["id"], ["id"]]
+        self.assert_valid(ROOT_VALIDATOR, {"version": "0.3", "entities": [entity]})
+        self.assert_valid(validator_for("entity_file"), entity)
 
     def test_merge_column_entries_are_not_blank(self):
         entity = complete_entity()
@@ -1097,6 +1181,34 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_invalid(validator_for("entity_file"), {**entity, "source": {"format": "csv", "path": "in.csv", "resource": "orders"}})
         self.assert_valid(validator_for("entity_file"), {**entity, "source": {"ref": "crm", "resource": "orders"}})
 
+    def test_source_partitioning(self):  # D28: Python-only
+        partitioning = {"pattern": "year={yyyy}/{MM}/{dd}/{HH}/{batch}", "date_column": "ingest_date", "batch_column": "batch_id"}
+        cases = (
+            ({}, True),
+            ({"batch_column": None}, True),
+            ({"pattern": "{yyyy}{MM}{dd}", "batch_column": None}, True),
+            ({"pattern": "{yyyy}/{MM}/{dd}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{batch}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{dd}/{mm}/{batch}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{dd}/{batch}/{batch}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{dd}/{batch"}, False),
+            ({"date_column": " "}, False),
+            ({"batch_column": ""}, False),
+            ({"other": "x"}, False),
+        )
+        named = validator_for("sources_file")
+        for change, valid in cases:
+            with self.subTest(change=change):
+                block = {**partitioning, **change}
+                check = self.assert_valid if valid else self.assert_invalid
+                entity = complete_entity()
+                entity["source"]["partitioning"] = block
+                check(ROOT_VALIDATOR, {"version": "0.8", "entities": [entity]})
+                check(validator_for("entity_file"), entity)
+                check(validator_for("domain_file"), {"name": "sales", "defaults": {"source": {"partitioning": block}}})
+                check(named, {"sources": [{"name": "crm", "partitioning": block}]})
+        self.assert_valid(named, {"sources": [{"name": "crm", "partitioning": {"pattern": "{yyyy}/{MM}/{dd}"}}]})
+
     def test_inherited_schema_evolution(self):
         self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"schema_evolution": {"mode": "add_columns"}}}})
         self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"schema_evolution": {"mode": "unknown"}}}})
@@ -1128,6 +1240,70 @@ class ConfigSchemaTest(unittest.TestCase):
             "version": "0.3", "entities": [complete_entity()], "env": {"vars": {"API_TOKEN": "value"}},
         })
 
+    def test_profile_rejects_what_rust_rejects(self):
+        validator = profile_validator()
+
+        def profile(**sections):
+            return {"apiVersion": "floe/v1", "kind": "EnvironmentProfile", "metadata": {"name": "dev"}, **sections}
+
+        def runner(**fields):
+            return profile(execution={"runner": fields})
+
+        k8s = {"type": "kubernetes_job", "image": "i", "namespace": "n"}
+        databricks = {
+            "type": "databricks_job",
+            "workspace_url": "u",
+            "existing_cluster_id": "c",
+            "config_uri": "f",
+            "python_file_uri": "p",
+            "auth": {"service_principal_oauth_ref": "r"},
+        }
+        too_big = 9223372036854775808
+        invalid = {
+            "S27 missing image": runner(type="kubernetes_job", namespace="n"),
+            "S27 missing namespace": runner(type="kubernetes_job", image="i"),
+            "S27 blank image": runner(**{**k8s, "image": " "}),
+            "S27 blank namespace": runner(**{**k8s, "namespace": " "}),
+            "S28 only type": runner(type="databricks_job"),
+            "S28 blank workspace_url": runner(**{**databricks, "workspace_url": " "}),
+            "S28 blank existing_cluster_id": runner(**{**databricks, "existing_cluster_id": " "}),
+            "S28 blank config_uri": runner(**{**databricks, "config_uri": " "}),
+            "S28 blank python_file_uri": runner(**{**databricks, "python_file_uri": " "}),
+            "S28 blank oauth ref": runner(**{**databricks, "auth": {"service_principal_oauth_ref": " "}}),
+            "S28 missing auth": runner(**{k: v for k, v in databricks.items() if k != "auth"}),
+            "S29": {**profile(), "metadata": {"name": " "}},
+            "S30": profile(catalogs={"definitions": [{"name": " ", "type": "rest", "uri": "u"}]}),
+            "S31 unclosed": profile(variables={"A": "${X"}),
+            "S31 empty": profile(variables={"A": "${}"}),
+            "S31 blank": profile(variables={"A": "a ${ } b"}),
+            "S31 unclosed after valid": profile(variables={"A": "${B}/${X"}),
+            "S32 max_concurrent_entities": profile(
+                execution={"runner": {"type": "local"}, "orchestration": {"max_concurrent_entities": too_big}}
+            ),
+            **{
+                f"S32 {field}": runner(type="local", **{field: too_big})
+                for field in ("timeout_seconds", "ttl_seconds_after_finished", "poll_interval_seconds")
+            },
+            "S32 memory_mb": runner(type="local", resources={"memory_mb": too_big}),
+        }
+        for name, document in invalid.items():
+            with self.subTest(name):
+                self.assert_invalid(validator, document)
+
+        valid = {
+            "kubernetes_job": runner(**k8s),
+            "databricks_job": runner(**databricks),
+            "cross-reference": profile(variables={"B": "x", "A": "${B}/y", "C": "$${B} $ {"}),
+            "i64 maximum": runner(type="local", timeout_seconds=9223372036854775807, resources={"memory_mb": 9223372036854775807}),
+            "image on local runner": runner(type="local", image="x"),
+        }
+        for name, document in valid.items():
+            with self.subTest(name):
+                self.assert_valid(validator, document)
+        for path in (ROOT / "example/profiles").glob("*.yml"):
+            with self.subTest(path.name):
+                self.assert_valid(validator, yaml.safe_load(path.read_text()))
+
     def assert_valid(self, validator, document):
         self.assertTrue(validator.is_valid(document), list(validator.iter_errors(document)))
 
@@ -1155,10 +1331,10 @@ class ConfigSchemaTest(unittest.TestCase):
                 "include": {"sources": "sources.yml"},
             },
         )
-        self.assert_invalid(ROOT_VALIDATOR, {"version": "1.0"})
+        self.assert_invalid(ROOT_VALIDATOR, {"version": "0.8"})
         self.assert_valid(
             ROOT_VALIDATOR,
-            {"version": "1.0", "entities": [complete_entity()]},
+            {"version": "0.8", "entities": [complete_entity()]},
         )
 
     def test_source_domain_and_entity_fragments(self):
@@ -1204,6 +1380,48 @@ class ConfigSchemaTest(unittest.TestCase):
             ROOT_VALIDATOR,
             {"version": "0.1", "entities": [complete], "domains": [{"name": "sales"}]},
         )
+
+    def test_profile_accepts_what_rust_accepts(self):
+        schema = yaml.safe_load((ROOT / "schemas/profile.schema.yaml").read_text())
+        Draft202012Validator.check_schema(schema)
+        validator = YamlDraft202012Validator(schema)
+
+        def profile(**extra):
+            return {"apiVersion": "floe/v1", "kind": "EnvironmentProfile", "metadata": {"name": "n"}, **extra}
+
+        def runner(**fields):
+            return profile(execution={"runner": {"type": "local", **fields}})
+
+        # Each case is accepted by `floe validate --profile` in Rust 0.7.0 (#584 S18-S26).
+        cases = {
+            "S18": profile(storages={"default": "loc", "definitions": [{"name": "loc", "type": "local"}]}),
+            "S19": profile(lineage={"url": "http://lineage.example", "namespace": "floe"}),
+            "S20": runner(env_parameters={"A": "b"}),
+            "S21": runner(job_name="daily"),
+            "S22 timeout_seconds": runner(timeout_seconds=0),
+            "S22 poll_interval_seconds": runner(poll_interval_seconds=0),
+            "S23": runner(resources={"memory_mb": 0}),
+            "S24": runner(secrets=[{"name": "", "secret_name": "", "key": ""}]),
+            "S25 image": runner(image=""),
+            "S25 namespace": runner(namespace=""),
+            "S26": profile(catalogs={"default": None, "definitions": [{"name": "r", "type": "rest", "uri": "u"}]}),
+        }
+        for name, document in cases.items():
+            with self.subTest(id=name):
+                self.assert_valid(validator, document)
+        self.assert_invalid(validator, runner(env_parameters={"A": 1}))
+        self.assert_invalid(validator, runner(job_name=1))
+        self.assert_invalid(validator, runner(timeout_seconds=-1))
+        self.assert_invalid(validator, runner(resources={"memory_mb": -1}))
+        for name in ("storages", "lineage"):
+            self.assertEqual(SCHEMA["properties"][name], schema["properties"][name])
+            self.assertEqual(
+                SCHEMA["$defs"][name], schema["$defs"][name],
+                f"profile {name} drifted from the project contract",
+            )
+        self.assertEqual(SCHEMA["$defs"]["storage_definition"], schema["$defs"]["storage_definition"])
+        for path in sorted((ROOT / "example/profiles").glob("*.yml")):
+            self.assert_valid(validator, yaml.safe_load(path.read_text()))
 
     def test_example_project_documents(self):
         self.assert_valid(ROOT_VALIDATOR, yaml.safe_load((ROOT / "example/project/config.yml").read_text()))

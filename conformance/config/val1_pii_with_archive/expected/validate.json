@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders pii: sink.archive copies the original unmasked source file to the archive sink; remove sink.archive or disable pii masking"
+}

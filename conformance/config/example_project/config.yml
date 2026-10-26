@@ -1,0 +1,13 @@
+version: "0.3"
+
+metadata:
+  project: "floe-project-example"
+  description: "A runnable multi-domain project"
+
+report:
+  path: "./report"
+
+include:
+  sources: sources.yml
+  domains:
+    - "domains/*/_domain.yml"

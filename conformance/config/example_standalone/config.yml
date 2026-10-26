@@ -1,0 +1,33 @@
+version: "0.3"
+
+domains:
+  - name: sales
+
+entities:
+  - name: orders
+    domain: sales
+    source:
+      format: csv
+      path: "./in/orders.csv"
+      options:
+        header: true
+        separator: ","
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/orders"
+      rejected:
+        format: csv
+        path: "./out/rejected/orders"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: string
+          nullable: false
+        - name: item
+          type: string
+
+report:
+  path: "./report"

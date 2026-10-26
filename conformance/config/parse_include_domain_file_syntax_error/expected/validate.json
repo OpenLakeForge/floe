@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "<ROOT>/domains/sales/_domain.yml: while parsing a flow sequence, expected ',' or ']' at byte 13 line 2 column 1"
+}

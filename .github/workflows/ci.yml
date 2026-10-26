@@ -41,6 +41,8 @@ jobs:
       core_config: ${{ steps.filter.outputs.core_config }}
       docs: ${{ steps.filter.outputs.docs }}
       floe_python: ${{ steps.filter.outputs.floe_python }}
+      python_core: ${{ steps.filter.outputs.python_core }}
+      conformance: ${{ steps.filter.outputs.conformance }}
       io_write_duckdb: ${{ steps.filter.outputs.io_write_duckdb }}
     steps:
       - uses: actions/checkout@v7
@@ -67,9 +69,11 @@ jobs:
               - ".github/workflows/ci.yml"
             floe_core:
               - "crates/floe-core/**"
+              - "Cargo.lock"
             core_code:
               - "crates/floe-core/src/**"
               - "crates/floe-core/Cargo.toml"
+              - "Cargo.lock"
             core_code_global:
               - "crates/floe-core/src/**"
               - "!crates/floe-core/src/io/**"
@@ -79,6 +83,7 @@ jobs:
               - "!crates/floe-core/src/config/**"
               - "!crates/floe-core/src/checks/**"
               - "crates/floe-core/Cargo.toml"
+              - "Cargo.lock"
             manifest:
               - "crates/floe-core/src/manifest/**"
               - "crates/floe-core/tests/unit/manifest/**"
@@ -90,6 +95,7 @@ jobs:
               - "crates/floe-core/tests/integration.rs"
             floe_cli:
               - "crates/floe-cli/**"
+              - "Cargo.lock"
             io_format:
               - "crates/floe-core/src/io/format.rs"
               - "crates/floe-core/tests/unit/io/format.rs"
@@ -131,6 +137,19 @@ jobs:
               - "README.md"
             floe_python:
               - "crates/floe-python/**"
+            python_core:
+              - "src/floe/**"
+              - "tests/**"
+              - "conformance/**"
+              - "pyproject.toml"
+              - "uv.lock"
+              - ".github/workflows/ci.yml"
+            conformance:
+              - "conformance/**"
+              - "src/floe/**"
+              - "pyproject.toml"
+              - "uv.lock"
+              - ".github/workflows/ci.yml"
             io_write_duckdb:
               - "crates/floe-core/src/io/write/duckdb.rs"
               - "crates/floe-core/src/io/write/duckdb/**"
@@ -156,6 +175,67 @@ jobs:
       - name: Install schema test dependencies
         run: python -m pip install jsonschema==4.26.0 PyYAML==6.0.2
       - run: python scripts/test_config_schema.py
+
+  python-lint:
+    needs: changes
+    if: needs.changes.outputs.python_core == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+
+  python-types:
+    needs: changes
+    if: needs.changes.outputs.python_core == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups
+      - run: uv run pyright
+
+  python-test:
+    needs: changes
+    # Gated per step, not per job: a skipped matrix job reports one `python-test`
+    # check, so the required `python-test (<version>)` checks would never report.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest supported (`requires-python`) and newest stable; uv.lock has wheels for both.
+        python-version: ["3.11", "3.15"]
+    steps:
+      - uses: actions/checkout@v7
+        if: needs.changes.outputs.python_core == 'true'
+      - uses: astral-sh/setup-uv@v7
+        if: needs.changes.outputs.python_core == 'true'
+      - run: uv sync --all-groups --python ${{ matrix.python-version }}
+        if: needs.changes.outputs.python_core == 'true'
+      - run: uv run --python ${{ matrix.python-version }} pytest
+        if: needs.changes.outputs.python_core == 'true'
+
+  conformance:
+    needs: changes
+    if: needs.changes.outputs.conformance == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups
+      # `record.py` downloads the v0.7.0 release binary into this directory.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/floe-conformance
+          key: floe-conformance-${{ hashFiles('conformance/record.py') }}
+      - name: Rust 0.7 matches the recorded cases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run python conformance/check.py --impl rust
+      - name: Python passes every listed case
+        run: uv run python conformance/check.py --impl python --cases-file conformance/python_passing.txt
 
   rustfmt:
     needs: changes

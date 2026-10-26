@@ -1,0 +1,39 @@
+version: '0.1'
+entities:
+- name: orders
+  source:
+    format: csv
+    path: in/orders.csv
+  sink:
+    accepted:
+      format: iceberg
+      path: out/accepted
+      iceberg:
+        catalog: c
+      merge:
+        ignore_columns:
+        - ' '
+    write_mode: merge_scd1
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string
+    - name: amt
+      type: number
+    primary_key:
+    - id
+storages:
+  default: s3
+  definitions:
+  - name: s3
+    type: s3
+    bucket: b
+    region: r
+catalogs:
+  default: c
+  definitions:
+  - name: c
+    type: rest
+    uri: http://catalog.example

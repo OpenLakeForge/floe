@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0]: missing required field entity.name"
+}

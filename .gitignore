@@ -10,6 +10,7 @@ Thumbs.db
 .venv-dagster/
 __pycache__/
 .pytest_cache/
+.coverage
 *.pyc
 .airflow/
 .claude/

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "catalogs.definitions must not be empty"
+}

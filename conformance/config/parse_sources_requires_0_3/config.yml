@@ -1,0 +1,19 @@
+version: '0.2'
+sources:
+- name: lake
+  format: csv
+  path: in/{{resource}}.csv
+entities:
+- name: orders
+  source:
+    ref: lake
+  sink:
+    accepted:
+      format: parquet
+      path: out/accepted
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string

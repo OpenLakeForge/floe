@@ -1,0 +1,34 @@
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata:
+  name: n
+  description: d
+  env: e
+  tags:
+  - t
+execution:
+  runner:
+    type: local
+    command: c
+    args:
+    - a
+    timeout_seconds: 5
+    ttl_seconds_after_finished: 1
+    poll_interval_seconds: 1
+    env:
+      A: b
+  orchestration:
+    max_concurrent_entities: 2
+    strategy: parallel
+variables:
+  A: b
+catalogs:
+  default: r
+  definitions:
+  - name: r
+    type: rest
+    uri: u
+validation:
+  strict: true
+storages:
+  default: l

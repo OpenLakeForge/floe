@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders schema.mismatch.missing_columns=drop is unsupported (allowed: reject_file, fill_nulls)"
+}

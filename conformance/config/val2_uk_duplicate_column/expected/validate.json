@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders schema.unique_keys[0] has duplicate column id"
+}

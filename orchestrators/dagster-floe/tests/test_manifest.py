@@ -12,6 +12,46 @@ from floe_dagster.manifest import (
 )
 
 
+@pytest.mark.parametrize("spec_version", ["0.2", "0.9", "1.0"])
+def test_manifest_rejects_unsupported_spec_version(tmp_path: Path, spec_version: str):
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    payload["spec_version"] = spec_version
+    manifest_path = tmp_path / "manifest.unsupported.json"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=f"spec_version {spec_version} is not supported"):
+        load_manifest(manifest_path)
+
+
+def test_manifest_rejects_rust_0_7_manifest(tmp_path: Path):
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    payload = {"schema": "floe.manifest.v1"} | json.loads(fixture.read_text(encoding="utf-8"))
+    payload["spec_version"] = "0.2"
+    manifest_path = tmp_path / "manifest.v1.json"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="spec_version 0.2 is not supported"):
+        load_manifest(manifest_path)
+
+
+def test_manifest_accepts_the_d20_sources_index_and_project_metadata(tmp_path: Path):
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    payload["metadata"] = {"project": "sales", "owner": "data", "tags": ["bronze"]}
+    payload["sources"] = [
+        {"name": "crm", "format": "csv", "uri": "s3://b/crm", "entities": ["sales.orders"]}
+    ]
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    load_manifest(manifest_path)
+
+    del payload["sources"][0]["entities"]
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="'entities' is a required property"):
+        load_manifest(manifest_path)
+
+
 def test_manifest_asset_keys_and_groups():
     fixture = Path(__file__).parent / "fixtures" / "manifest.json"
     manifest = load_manifest(fixture)

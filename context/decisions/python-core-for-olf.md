@@ -50,7 +50,7 @@ gates below pass.
 | Keep | Drop / freeze |
 |---|---|
 | Iceberg via Polaris REST | Delta + Unity, DuckDB/MotherDuck sinks, Glue |
-| Parquet rejected / quarantine output | CSV rejected output (later, on demand) |
+| CSV rejected output, Parquet accepted output (parity with Rust 0.7) | Parquet rejected output (post-0.8 feature) |
 | CSV, Parquet, JSON readers | XML, fixed-width, XLSX, ORC, Avro (port on demand) |
 | S3 + local storage | ADLS, GCS |
 | YAML contract, run report, manifest: byte-compatible | Homebrew / Scoop / native packages (#278) |
@@ -263,3 +263,5 @@ Phases 1–3 follow the usual `AGENTS.md` workflow: one sub-issue per PR, within
 - #545–#549, #556 and #560 carry over as design requirements for the Python core.
 - The spike PRs (#602, #605–#608, #610) are closed unmerged. Their code stays reachable through
   `refs/pull/<n>/head`.
+- Every accepted difference from Rust 0.7 is listed in the intentional-delta register of the master
+  issue (#619). Any other difference is a bug.

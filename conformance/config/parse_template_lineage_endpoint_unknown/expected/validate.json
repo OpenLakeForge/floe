@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "lineage.endpoint references unknown variable nope"
+}

@@ -6,7 +6,7 @@ For local setup of both Dagster and Airflow with isolated virtual environments, 
 - `orchestrators/LOCAL_DEV.md`
 
 Current model:
-- Parse-time reads Floe manifests (`floe.manifest.v1`), not Floe YAML.
+- Parse-time reads Floe manifests (`floe.manifest.schema.json`), not Floe YAML.
 - Supports single manifest and multi-manifest directory loading.
 - Builds one asset per entity and one job per manifest.
 - Runs Floe with manifest execution contract and JSON logs.
@@ -14,9 +14,12 @@ Current model:
 
 ## What Is Implemented
 
-- Manifest-first orchestration (`floe.manifest.v1`).
+- Manifest-first orchestration (`floe.manifest.schema.json`).
 - Strict schema validation at manifest load time.
 - Asset generation from `entities[]` (`asset_key`, `group_name` respected).
+- One upstream source asset per entity (`<entity>_source`), or one shared `sources/<project>/<name>` asset per
+  named source of the manifest `sources` index (group `sources`; `<project>` is `manifest_name`, else `manifest_id`).
+- Manifests load from a local path or a bucket URI (`s3://...`, `remote` extra; AWS default credential chain).
 - One Dagster job per manifest (stable job names).
 - Multi-manifest loading (`*.manifest.json`) with collision checks.
 - Local runner (`local_process`) support.
@@ -102,7 +105,7 @@ See [docs/lineage.md](../../docs/lineage.md) for the full lineage config referen
 
 ## Notes
 
-- This connector does **not** parse YAML directly; it consumes `floe.manifest.v1`.
+- This connector does **not** parse YAML directly; it consumes Floe manifests (`spec_version` `0.8`).
 - Connector logic lives under `src/floe_dagster/`; local wiring for demo lives in `example/definitions.py`.
 - For local development without an installed `floe` binary, you can point `LocalRunner` to a custom command, e.g.:
   - `LocalRunner(\"cargo run -p floe-cli --\")`

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.archive conflicts with incremental_mode=row; use incremental_mode=archive or remove sink.archive"
+}

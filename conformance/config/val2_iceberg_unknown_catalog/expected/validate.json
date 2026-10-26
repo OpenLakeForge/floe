@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.accepted.iceberg.catalog references unknown catalog zz"
+}

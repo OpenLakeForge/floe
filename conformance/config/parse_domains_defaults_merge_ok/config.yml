@@ -1,0 +1,20 @@
+version: '0.3'
+domains:
+- name: sales
+  defaults:
+    sink:
+      accepted:
+        format: parquet
+        path: out/accepted/{{domain.name}}/{{entity.name}}
+    policy:
+      severity: warn
+entities:
+- name: orders
+  domain: sales
+  source:
+    format: csv
+    path: in/orders.csv
+  schema:
+    columns:
+    - name: id
+      type: string

@@ -1,0 +1,6 @@
+customer_id,email,country_code,created_at
+CUST-001,ava@example.com,US,2024-01-05T10:15:30Z
+CUST-002,li@example.com,CA,2024-01-06T09:00:00Z
+CUST-003,marco@example.com,IT,2024-02-01T14:45:00Z
+CUST-004,,FR,2024-02-10T08:20:00Z
+CUST-005,sofia@example.com,,2024-02-12T12:00:00Z

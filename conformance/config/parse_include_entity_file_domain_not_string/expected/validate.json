@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "<ROOT>/domains/sales/orders.yml: expected string at entity.domain"
+}

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders pii: masking is not applied when policy.severity=abort because the raw file is written to sink.rejected without DataFrame processing"
+}

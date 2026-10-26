@@ -1,0 +1,4 @@
+sources:
+  - name: lake
+    format: csv
+    path: in/{{resource}}.csv

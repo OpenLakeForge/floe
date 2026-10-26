@@ -67,3 +67,15 @@ No `#[allow(clippy::...)]` suppressions except where the lint is demonstrably wr
 - Prefer standard library solutions over new dependencies for simple problems.
 - When adding a dependency, pin it to a compatible minor version range in `Cargo.toml`.
 - Avoid async runtimes in `floe-core` — the storage providers own their own `tokio::Runtime` instance and call `block_on` internally. The core library is sync from the caller's perspective.
+
+## Python (`src/floe/`)
+
+Applies to the Python core (`src/floe/`, Python >= 3.11, managed with `uv`). The Rust rules above stay until cutover. Context: `context/decisions/python-core-for-olf.md`.
+
+- **Types:** `pyright` runs in strict mode. No `Any`, no untyped defs, no `# type: ignore` without an inline reason.
+- **Lint/format:** `ruff check` and `ruff format --check` must pass. No `# noqa` without an inline reason.
+- **Config models:** pydantic, hand-ported from `crates/floe-core/src/config/parse.rs` and `validate.rs`, including error messages. Never generate them from `schemas/`, and never validate configs at runtime against the JSON Schema (master issue #619, "Config contract").
+- **Errors:** typed exceptions mirroring the `FloeError` kinds (`crates/floe-python/python/floe/_floe.pyi:9-13`): `FloeError` base, then `FloeConfigError`, `FloeRunError`, `FloeStorageError`, `FloeIoError`. Keep the Rust messages byte-identical.
+- **Data paths:** no per-row Python loops. Use Polars or DuckDB expressions.
+- **Dependencies:** only those approved in #619; anything else needs approval on the issue first.
+- **Comments:** same rule as Rust (none by default). Mark a deliberate shortcut with a `ponytail:` comment naming the ceiling and the upgrade path.

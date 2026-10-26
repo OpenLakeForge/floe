@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders pii.columns[name=amt].strategy=drop is not supported with format=iceberg because the sink enforces the full declared schema"
+}

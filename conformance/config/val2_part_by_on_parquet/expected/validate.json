@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.accepted.partition_by is only supported for sink.accepted.format=delta"
+}

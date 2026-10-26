@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): source.ref=river is not a declared source (available: lake)"
+}

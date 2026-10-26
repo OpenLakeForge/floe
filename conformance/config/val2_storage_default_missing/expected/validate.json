@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "storages.default is required when storages is set"
+}

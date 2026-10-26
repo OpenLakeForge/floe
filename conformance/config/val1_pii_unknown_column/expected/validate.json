@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders pii.columns: zz is not an unknown schema column"
+}

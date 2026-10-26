@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.accepted.merge.ignore_columns[0] must not be empty"
+}

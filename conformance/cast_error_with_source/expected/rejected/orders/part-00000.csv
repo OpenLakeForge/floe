@@ -1,0 +1,2 @@
+id,quantity,__floe_row_index,__floe_errors
+2,,1,"[{""rule"":""cast_error"",""column"":""qty"",""source"":""qty"",""message"":""invalid value for target type""}]"

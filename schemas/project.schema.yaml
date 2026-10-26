@@ -119,10 +119,10 @@ allOf:
 properties:
   version:
     type: string
-    pattern: '^\+?0*(?:[0-9]{1,19}|0[0-9]{19}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|18446744073709550[0-9]{3}|18446744073709551[0-5][0-9]{2}|1844674407370955160[0-9]{1}|1844674407370955161[0-4][0-9]{0}|18446744073709551615)\.\+?0*(?:[0-9]{1,19}|0[0-9]{19}|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|18446744073709550[0-9]{3}|18446744073709551[0-5][0-9]{2}|1844674407370955160[0-9]{1}|1844674407370955161[0-4][0-9]{0}|18446744073709551615)(?![\s\S])'
-    description: Numeric major.minor version; each component is parsed as u64, with optional leading plus signs and zeroes.
-    not:
-      pattern: ^\+?0+\.\+?0+$
+    pattern: '^\+?0+\.\+?0*[1-8](?![\s\S])'
+    description: Minimum Floe release the config targets, as numeric major.minor (e.g. "0.8"), with optional
+      leading plus signs and zeroes. It must not be newer than this Floe release (0.8); 0.1 to 0.3 keep their
+      config semantics.
   metadata:
     $ref: '#/$defs/project_metadata'
   storages:
@@ -302,6 +302,53 @@ $defs:
             properties:
               columns:
                 maxItems: 1024
+                items:
+                  description: Selector is source, else name; blank is rejected. Selector grammar is not checked.
+                  if:
+                    required:
+                    - source
+                    properties:
+                      source:
+                        type: string
+                  then:
+                    properties:
+                      source:
+                        pattern: \S
+                  else:
+                    properties:
+                      name:
+                        pattern: \S
+    - if:
+        required:
+        - source
+        properties:
+          source:
+            required:
+            - format
+            properties:
+              format:
+                const: xml
+      then:
+        properties:
+          schema:
+            properties:
+              columns:
+                items:
+                  description: Selector is source, else name; blank is rejected. Selector grammar is not checked.
+                  if:
+                    required:
+                    - source
+                    properties:
+                      source:
+                        type: string
+                  then:
+                    properties:
+                      source:
+                        pattern: \S
+                  else:
+                    properties:
+                      name:
+                        pattern: \S
     - if:
         required:
         - sink
@@ -388,6 +435,8 @@ $defs:
         - 'null'
       options:
         $ref: '#/$defs/source_options'
+      partitioning:
+        $ref: '#/$defs/source_partitioning'
       cast_mode:
         type:
         - string
@@ -478,6 +527,39 @@ $defs:
                 pattern: \S
               value_tag:
                 pattern: \S
+  source_partitioning:
+    description: 'D28: match each input''s directory path, relative to the source root, against pattern; add date_column (and batch_column) to every row.'
+    type: object
+    additionalProperties: false
+    properties:
+      pattern:
+        type: string
+        allOf:
+        - pattern: ^(?:[^{}]|\{(?:yyyy|MM|dd|HH|batch)\})*$
+        - pattern: \{yyyy\}
+        - pattern: \{MM\}
+        - pattern: \{dd\}
+        - not:
+            pattern: (\{[A-Za-z]+\})[\s\S]*\1
+      date_column:
+        type: string
+        pattern: \S
+      batch_column:
+        type:
+        - string
+        - 'null'
+        pattern: \S
+    if:
+      required:
+      - batch_column
+      - pattern
+      properties:
+        batch_column:
+          type: string
+    then:
+      properties:
+        pattern:
+          pattern: \{batch\}
   source_options:
     type: object
     additionalProperties: false
@@ -665,6 +747,8 @@ $defs:
       duckdb:
         $ref: '#/$defs/duckdb'
       partition_by:
+        uniqueItems: true
+        description: Entries must be unique; this catches exact repeats only, Rust also compares trimmed values.
         type:
         - array
         - 'null'
@@ -673,6 +757,8 @@ $defs:
           pattern: \S
         minItems: 1
       partition_spec:
+        uniqueItems: true
+        description: Entries must be unique; this catches exact repeats only, Rust also compares trimmed columns, lowercases transforms and treats a missing transform as identity.
         type: array
         items:
           $ref: '#/$defs/partition_field'
@@ -801,6 +887,8 @@ $defs:
     additionalProperties: false
     properties:
       ignore_columns:
+        uniqueItems: true
+        description: Entries must be unique; this catches exact repeats only, Rust also compares trimmed values.
         type:
         - array
         - 'null'
@@ -808,6 +896,8 @@ $defs:
           type: string
           pattern: \S
       compare_columns:
+        uniqueItems: true
+        description: Entries must be unique; this catches exact repeats only, Rust also compares trimmed values.
         type:
         - array
         - 'null'
@@ -904,9 +994,27 @@ $defs:
         type:
         - string
         - 'null'
-        pattern: ^\s*(?:[iI][dD][eE][nN][tT][iI][tT][yY]|[yY][eE][aA][rR]|[mM][oO][nN][tT][hH]|[dD][aA][yY]|[hH][oO][uU][rR])\s*$
+        pattern: ^\s*(?:[iI][dD][eE][nN][tT][iI][tT][yY]|[yY][eE][aA][rR]|[mM][oO][nN][tT][hH]|[dD][aA][yY]|[hH][oO][uU][rR]|[bB][uU][cC][kK][eE][tT])\s*$
+      num_buckets:
+        description: Required with transform bucket (Iceberg bucket(n), delta D12), forbidden with any other transform.
+        type: integer
+        minimum: 1
     required:
     - column
+    if:
+      required:
+      - transform
+      properties:
+        transform:
+          type: string
+          pattern: ^\s*[bB][uU][cC][kK][eE][tT]\s*$
+    then:
+      required:
+      - num_buckets
+    else:
+      not:
+        required:
+        - num_buckets
   sink_rejected_fragment:
     type: object
     additionalProperties: false
@@ -972,6 +1080,8 @@ $defs:
       schema_evolution:
         $ref: '#/$defs/schema_evolution'
       primary_key:
+        uniqueItems: true
+        description: Entries must be unique; this catches exact repeats only, Rust also compares trimmed values.
         type:
         - array
         - 'null'
@@ -986,6 +1096,8 @@ $defs:
         minItems: 1
         items:
           type: array
+          uniqueItems: true
+          description: Columns within one key must be unique; this catches exact repeats only, Rust also compares trimmed values. The outer list may repeat groups (a warning in Rust).
           minItems: 1
           items:
             type: string
@@ -1251,6 +1363,8 @@ $defs:
         - 'null'
       options:
         $ref: '#/$defs/source_options'
+      partitioning:
+        $ref: '#/$defs/source_partitioning'
       cast_mode:
         type:
         - string
@@ -1756,6 +1870,8 @@ $defs:
         minItems: 1
         items:
           type: array
+          uniqueItems: true
+          description: Columns within one key must be unique; this catches exact repeats only, Rust also compares trimmed values. The outer list may repeat groups (a warning in Rust).
           minItems: 1
           items:
             type: string
@@ -1792,6 +1908,8 @@ $defs:
         - 'null'
       options:
         $ref: '#/$defs/source_options'
+      partitioning:
+        $ref: '#/$defs/source_partitioning'
       cast_mode:
         type:
         - string

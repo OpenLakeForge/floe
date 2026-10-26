@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "profile.execution.runner.namespace is required for kubernetes_job"
+}

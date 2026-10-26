@@ -1,0 +1,16 @@
+version: '0.1'
+entities:
+- name: o
+  source:
+    format: csv
+    path: in.csv
+  sink:
+    accepted:
+      format: parquet
+      path: o
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string
