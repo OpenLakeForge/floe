@@ -22,6 +22,7 @@ from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import OpenLineageObserver
 from floe.manifest import Options, build_manifest
+from floe.manifest_run import load_manifest
 from floe.run import run, select_entities
 from floe.run.entity import state_uri
 from floe.state import dump_state, read_state, reset
@@ -80,28 +81,37 @@ def _validate(args: argparse.Namespace) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
-    if args.manifest is not None:
-        raise FloeConfigError("floe run --manifest is not supported yet")
-    if args.config is None:
-        raise FloeConfigError("one of --config or --manifest is required")
     run_id = args.run_id or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S.%fZ")
     console = Console(args.log_format, run_id)
-    profile = parse_profile(_realpath(args.profile)) if args.profile else None
-    try:  # Rust logs a missing config without `run_started`
-        path = _realpath(args.config)
-    except FloeError as e:
-        console.failed(e, None)
-        raise
-    try:
-        root = _load(path, profile)
-    except FloeError as e:
-        console.failed(e, str(path))
-        raise
-    lineage = (
-        OpenLineageObserver(root.lineage, root.entities, str(path))
-        if root.lineage
-        else None
-    )
+    if args.manifest is not None:  # Rust ignores `-p` here: the manifest is compiled
+        try:  # Rust logs a manifest that fails to load after a `run_started`
+            if "://" in args.manifest:  # ponytail: S3 in `floe run` is #834
+                raise FloeConfigError(f"remote manifest is not supported yet (#834): {args.manifest}")  # fmt: skip
+            root, observed = load_manifest(_realpath(args.manifest))
+        except FloeIoError as e:  # Rust: a bare io error, logged with code `error`
+            console.failed(FloeError(str(e)), args.manifest)
+            raise
+        except FloeError as e:
+            console.failed(e, args.manifest)
+            raise
+        path = Path(args.manifest)  # the report keeps it as typed, as Rust's does
+        job = ""  # Rust names the lineage job `floe-run` (or `job_name`)
+    elif args.config is None:
+        raise FloeConfigError("one of --config or --manifest is required")
+    else:
+        profile = parse_profile(_realpath(args.profile)) if args.profile else None
+        try:  # Rust logs a missing config without `run_started`
+            path = _realpath(args.config)
+        except FloeError as e:
+            console.failed(e, None)
+            raise
+        try:
+            root = _load(path, profile)
+        except FloeError as e:
+            console.failed(e, str(path))
+            raise
+        observed, job = root.entities, str(path)
+    lineage = OpenLineageObserver(root.lineage, observed, job) if root.lineage else None
 
     def observe(event: dict[str, Any]) -> None:
         console(event)
@@ -109,8 +119,9 @@ def _run(args: argparse.Namespace) -> int:
             lineage(event)
 
     try:
-        # after the observer: lineage sees a config that fails validation
-        validate_config(root)
+        if args.manifest is None:  # a manifest was validated when it was generated
+            # after the observer: lineage sees a config that fails validation
+            validate_config(root)
         outcome = run(
             path, root, run_id=run_id, entities=args.entities, dry_run=args.dry_run,
             full_refresh=args.full_refresh, observer=observe,
@@ -176,10 +187,14 @@ def _add_entity(args: argparse.Namespace) -> int:
     )  # fmt: skip
     if added.rendered is not None:
         print(f"# add-entity dry run (no file written)\n# entity: {added.name}")
+        for note in added.notes:
+            print(f"# note: {note}")
         print(added.rendered)
     else:
         print(f"Entity added: {added.name} (format={added.format}, columns={added.columns})")  # fmt: skip
         print(f"Config written: {added.output}")
+        for note in added.notes:
+            print(f"Note: {note}")
     return 0
 
 

@@ -96,7 +96,8 @@ def run(
     selected = select_entities(root, entities)
     if full_refresh:
         selected = [_refresh(e) for e in selected]
-    config_dir = normalize_local_path(path.parent)
+    # a symlinked manifest or config: paths are relative to its target
+    config_dir = normalize_local_path(path.resolve().parent)
     report_uri, report_storage = resolve_path(root.storages, config_dir, root.report.storage, root.report.path, "report.storage")  # fmt: skip
     report_path = report_uri.removeprefix("local://")
     run_id = run_id or started.replace(":", "-")
