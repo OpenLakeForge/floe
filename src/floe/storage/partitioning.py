@@ -93,8 +93,11 @@ def window(p: SourcePartitioning, entity: str, root: str, state: EntityState | N
 
 
 def listing_start(p: SourcePartitioning, start: date) -> str | None:
-    """D30: the pattern up to `{dd}` for `start`, a path every later day sorts after; None when the date does not lead the pattern."""
-    head = p.pattern.strip("/").partition("{dd}")[0]
+    """D30: the pattern up to `{dd}` for the day before `start`, which `start` and every later day sort after; None when the date does not lead the pattern.
+
+    The day before, not `start`: SeaweedFS treats `StartAfter` as a directory marker and skips that whole directory.
+    """
+    head, start = p.pattern.strip("/").partition("{dd}")[0], start - timedelta(days=1)
     if "{batch}" in head or "{HH}" in head or not 0 <= head.find("{yyyy}") < head.find("{MM}"):  # fmt: skip
         return None
     return head.replace("{yyyy}", f"{start.year:04d}").replace("{MM}", f"{start.month:02d}") + f"{start.day:02d}"  # fmt: skip

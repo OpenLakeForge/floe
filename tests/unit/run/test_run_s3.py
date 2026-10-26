@@ -318,7 +318,7 @@ def test_d30_an_s3_file_mode_run_starts_after_the_window(tmp_path: Path, s3: Mem
 
     monkeypatch.setattr(s3, "list", spy)
     go(tmp_path, config)
-    assert ("in/", "in/2026/10/23") in calls
+    assert ("in/", "in/2026/10/22") in calls
     report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
     assert [f["input_file"] for f in report["files"] if f["status"] == "success"] == ["s3://b/in/2026/10/24/b/x.csv"]  # fmt: skip
     state = json.loads(s3.objects["s3://b/in/.floe/state/d/orders/state.json"])

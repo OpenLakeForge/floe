@@ -363,7 +363,7 @@ state file shape, and CAS behavior.
     until D29 (#884).
   - With `incremental_mode: file` (D30), the state also keeps a **watermark**: the latest
     partition date ingested. A run lists only from `watermark - lookback_days` (default `1`): S3
-    starts the listing after that date's prefix, a local source skips older directories. Inside
+    starts the listing after the previous day's prefix, a local source skips older directories. Inside
     that window the per-file state still decides, so a new batch on the same day is picked up.
     Any claim still in the state holds the window back to its date, so a crashed run's files are
     retried. The window needs the date at the front of `pattern` (`{yyyy}`, `{MM}`, `{dd}`, no
