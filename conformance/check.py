@@ -111,6 +111,10 @@ def check_case(
         if proc.returncode and not is_validate(case):
             actual["exit_code"] = f"{proc.returncode}\n"
     expected = load_expected(case, impl)
+    if (
+        expected.get("exit_code") == "0\n"
+    ):  # an `expected_python/exit_code` of 0: Python succeeds where Rust failed
+        del expected["exit_code"]
     if not with_manifest:
         expected.pop("manifest.json", None)
     for name in sorted(set(expected) | set(actual)):

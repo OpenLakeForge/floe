@@ -4,6 +4,7 @@
 # ^ pyarrow ships no type stubs
 
 from collections.abc import Collection, Sequence
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -337,3 +338,16 @@ def test_a_merge_key_column_cannot_be_added_by_evolution(tmp_path: Path, catalog
     with pytest.raises(FloeRunError, match="iceberg schema evolution failed: merge key columns cannot be added: qty$"):  # fmt: skip
         run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, emit=NO_EVENTS, catalogs=root.catalogs)  # fmt: skip
     assert rows(catalog) == [(1, "a")]
+
+
+def test_d28_partition_spec_on_the_derived_date(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    (tmp_path / "in/2026/10/24/a1").mkdir(parents=True)
+    (tmp_path / "in/2026/10/24/a1/orders.csv").write_text("id,name\n1,a\n")
+    config(tmp_path, partition="partition_spec: [{column: ingest_date, transform: day}]")  # fmt: skip
+    text = (tmp_path / "config.yml").read_text().replace('separator: ","}', 'separator: ","}\n      partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: ingest_date}')  # fmt: skip
+    (tmp_path / "config.yml").write_text(text)
+    root = parse_config(tmp_path / "config.yml")
+    run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, emit=NO_EVENTS, catalogs=root.catalogs)  # fmt: skip
+    table = catalog.tables["sales.orders"]
+    assert [(f.name, str(f.transform)) for f in table.spec().fields] == [("ingest_date_day", "day")]  # fmt: skip
+    assert rows(catalog) == [(1, "a", date(2026, 10, 24))]

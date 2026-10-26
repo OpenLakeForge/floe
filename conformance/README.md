@@ -85,7 +85,7 @@ skips them and `check.py --impl rust` prints `skip` for them.
 - Only `out/accepted` and `out/rejected` are captured; `record.py` fails on a case that produces neither, unless its
   last run passes `--log-format json`: then stdout's event lines are captured too, in `expected/events.jsonl` (`ts_ms` masked).
 - Parquet dates and timestamps are compared as Arrow-rendered text, so years outside 1..9999 (which Python's `date` cannot hold) work.
-- A run's non-zero exit code is recorded in `expected/exit_code` (e.g. `2` for an aborted run) and compared; no file means 0. Codes other than 0 and 2 fail recording, except on a `--log-format json` run.
+- A run's non-zero exit code is recorded in `expected/exit_code` (e.g. `2` for an aborted run) and compared; no file means 0. Codes other than 0 and 2 fail recording, except on a `--log-format json` run. An `expected_python/exit_code` of `0` marks a Python-only feature that succeeds where Rust 0.7 fails its `--log-format json` run (D28 `partitioning_*`).
 - `manifest.json`: `floe_version`, `manifest_id` and `manifest_revision` are masked (the version string and the
   absolute paths feed them) and the temp dir holding the work dir is `<ROOT>` (so `../` paths mask too); every other byte is compared, key order included.
   D22 (#798): `check.py` also drops `schema` and masks `spec_version` on both sides at compare time, so the Rust 0.7

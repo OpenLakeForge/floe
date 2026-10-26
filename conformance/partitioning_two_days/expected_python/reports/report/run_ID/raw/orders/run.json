@@ -1,0 +1,160 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "raw.orders"
+  },
+  "source": {
+    "format": "csv",
+    "path": "local://<ROOT>/in",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ","
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "directory",
+      "file_count": 2,
+      "files": [
+        "local://<ROOT>/in/2026/10/24/f9e8/orders.csv",
+        "local://<ROOT>/in/2026/10/25/a1b2/orders.csv"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/orders"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/orders"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/orders",
+    "table_root_uri": "local://<ROOT>/out/accepted/orders",
+    "write_mode": "overwrite",
+    "accepted_rows": 4,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 1546,
+    "avg_file_size_mb": 0.0014743804931640625,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "unique_constraints": [
+    {
+      "columns": [
+        "id",
+        "ingest_date"
+      ],
+      "duplicates_count": 1,
+      "batch_duplicates_count": 1,
+      "affected_rows_count": 1,
+      "action": "reject_rows",
+      "status_effect": "rows_rejected",
+      "samples": [
+        {
+          "values": {
+            "id": "2",
+            "ingest_date": "2026-10-24"
+          },
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "results": {
+    "files_total": 2,
+    "files_skipped": 0,
+    "rows_total": 5,
+    "accepted_total": 4,
+    "rejected_total": 1,
+    "warnings_total": 0,
+    "errors_total": 1
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/2026/10/24/f9e8/orders.csv",
+      "status": "rejected",
+      "row_count": 3,
+      "accepted_count": 2,
+      "rejected_count": 1,
+      "mismatch": {
+        "declared_columns_count": 4,
+        "input_columns_count": 2,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/orders",
+        "rejected_path": "<ROOT>/out/rejected/orders/part-00000.csv",
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 1,
+        "warnings": 0,
+        "rules": [
+          {
+            "rule": "unique",
+            "severity": "reject",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "[id,ingest_date]",
+                "violations": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input_file": "local://<ROOT>/in/2026/10/25/a1b2/orders.csv",
+      "status": "success",
+      "row_count": 2,
+      "accepted_count": 2,
+      "rejected_count": 0,
+      "mismatch": {
+        "declared_columns_count": 4,
+        "input_columns_count": 2,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/orders",
+        "rejected_path": null,
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 0,
+        "warnings": 0,
+        "rules": []
+      }
+    }
+  ]
+}
