@@ -219,6 +219,7 @@ class _Plan:
         default_factory=set[str]
     )  # files the precheck settles (unreadable header, rejected or aborted mismatch); Rust settles them before it reads any file
     archive: tuple[str, StorageClient] | None = None  # Rust `archive_enabled()`
+    to_archive: list[InputFile] = field(default_factory=list[InputFile])  # fmt: skip  # moved after the sink commit (#914)
     run_id: str = ""
     rejected: tuple[str, StorageClient] | None = None  # `sink.rejected` URI and client
     table: Table | None = (
@@ -333,7 +334,8 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     if mismatch.rejected or mismatch.aborted:
         plan.prechecked.add(uri)
         raw = _copy_raw(plan, path, "abort" if mismatch.aborted else "reject", file.source_name)  # fmt: skip
-        return file_report(entity, uri, 0, 0, [], mismatch, raw, _archive(plan, file)), []  # fmt: skip
+        plan.to_archive.append(file)
+        return file_report(entity, uri, 0, 0, [], mismatch, raw), []
 
     rows, bad_total, forced_total = 0, 0, 0
     masks: dict[tuple[str, str, str], list[pl.Series]] = {}
@@ -377,10 +379,8 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
         rejected_path = _copy_raw(plan, path, "abort", file.source_name)
     if bad_total and entity.sink.rejected and severity != "reject":
         errors_path = _error_report(plan, file.source_stem, errors)
-    archived = _archive(
-        plan, file
-    )  # Rust: after the rejected outputs, before the rows reach the sink
-    out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path, archived, errors_path, forced_total)  # fmt: skip
+    plan.to_archive.append(file)
+    out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path, None, errors_path, forced_total)  # fmt: skip
     return out, [] if out["status"] == "aborted" else [_output(plan, df) for df in accepted]  # fmt: skip
 
 
@@ -755,6 +755,10 @@ def _run_entity(
                                   result.avg_file_size_mb, result.small_files_count)  # fmt: skip
     else:
         write = AcceptedWrite(0, [], 0, 0.0, 0)
+    # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source (Rust archives before)
+    by_uri = {r["input_file"]: r for r in files}
+    for f in plan.to_archive:
+        by_uri[f.source_uri]["output"]["archived_path"] = _archive(plan, f)
     unique = [_report_names(r, key, runtime) for r, key in zip(plan.tracker.results(), keys, strict=True)]  # fmt: skip
     report = build_report(
         entity,
