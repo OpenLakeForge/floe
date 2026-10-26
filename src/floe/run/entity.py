@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
+from functools import partial
 from itertools import chain
 from pathlib import Path
 from typing import Any
@@ -59,11 +60,13 @@ from floe.report.summary import run_outcome
 from floe.run.events import NO_EVENTS, Emitter
 from floe.state import (
     CLAIM_TTL_SECONDS,
+    EntityState,
     FileState,
     Loaded,
     claim_all,
     claim_inputs,
     promote,
+    read_state,
     release,
     renew,
 )
@@ -77,7 +80,14 @@ from floe.storage.inputs import (
     suffixes_for_format,
 )
 from floe.storage.local import LocalClient
-from floe.storage.partitioning import in_load_order, partition_of, source_root
+from floe.storage.partitioning import (
+    advance,
+    in_load_order,
+    listing_start,
+    partition_of,
+    source_root,
+    window,
+)
 from floe.storage.paths import normalize_local_path
 from floe.storage.resolve import resolve_path, storage_client
 from floe.storage.s3 import S3Client
@@ -532,6 +542,7 @@ class Incremental:
         self.claimed: Loaded | None = None
         # the file reports, set once the sink step is done (#915)
         self.committed: list[dict[str, Any]] | None = None
+        self.advance: Callable[[EntityState, list[str]], None] | None = None  # D30
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -581,7 +592,7 @@ class Incremental:
         if status in ("failed", "aborted"):
             return self.release()
         if claimed := self._end():
-            promote(self.client, self.uri, self.run_id, claimed, self.full_refresh)
+            promote(self.client, self.uri, self.run_id, claimed, self.full_refresh, self.advance)  # fmt: skip
 
 
 def resolve_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None) -> tuple[str, LocalClient | S3Client]:  # fmt: skip
@@ -622,17 +633,30 @@ def list_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig
     """The source inputs; a local path keeps its globs relative to the config.
 
     D31: the archive is never listed as source input; only a full refresh reads it, explicitly (D24).
+    D30: `file` mode with partitioning lists only from the state's window.
     """
     src, archive = entity.source, archive_location(entity, config_dir, storages)
-    p = src.partitioning
+    p, root, state = src.partitioning, source_root(uri), None
+    if p and entity.incremental_mode == "file" and not full_refresh:
+        at, state_client = state_uri(entity, config_dir, storages)
+        state = read_state(state_client, at, entity.name)
+    start = window(p, entity.name, root, state) if p else None
+    after = listing_start(p, start) if p and start else None
 
     def source() -> ResolvedInputs:
         inputs = resolve_inputs(
             config_dir, src.path if uri.startswith("local://") else uri, src.format, entity.name,
             src.storage or "local", client, glob_override=src.options.glob, exclude=archive and archive[0],
             recursive=bool(src.options.recursive) or p is not None,  # D28: partitioning lists recursively
+            after=f"{root}/{after}" if after else "",
         )  # fmt: skip
-        return in_load_order(p, entity.name, source_root(uri), inputs) if p else inputs
+        if not p:
+            return inputs
+        inputs = in_load_order(p, entity.name, root, inputs, start)
+        if start is None or state is None:
+            return inputs
+        late = f"entity.name={entity.name} incremental_mode=file lists source.partitioning dates from {start} (watermark {state.watermark}, lookback_days {p.lookback_days}); a late file in an older day is not ingested until --full-refresh"  # fmt: skip
+        return replace(inputs, warning=late)
 
     if full_refresh and archive and entity.incremental_mode in ("none", "archive"):
         return _with_archived(entity, (archive[0], storage_client(archive[1])), source)
@@ -755,6 +779,10 @@ def _run_entity(
         )
 
     inputs = source()
+    if inputs.warning:  # D30
+        emit("log", log_level="warn", code=None, message=inputs.warning, entity=entity.name, input=None)  # fmt: skip
+    if entity.source.partitioning and entity.incremental_mode == "file":
+        inc.advance = partial(advance, entity.source.partitioning, entity.name, source_root(source_uri))  # fmt: skip
     archive = plan.archive  # a full refresh lists it too
     plan.derived = _derived(entity, source_uri, archive and archive[0], inputs.files)
     pending, files = inc.claim(inputs.files, emit)

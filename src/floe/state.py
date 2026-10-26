@@ -43,6 +43,7 @@ class EntityState:
     updated_at: str | None
     files: dict[str, FileState]
     claims: dict[str, Claim]
+    watermark: str | None = None  # D30: the latest partition date ingested (ISO)
 
 
 class Loaded(NamedTuple):
@@ -70,6 +71,8 @@ def dump_state(state: EntityState) -> bytes:
         "files": {k: asdict(v) for k, v in sorted(state.files.items())},
         "claims": {k: asdict(v) for k, v in sorted(state.claims.items())},
     }
+    if state.watermark:  # D30: additive, absent without partitioning
+        doc["watermark"] = state.watermark
     return json.dumps(doc, indent=2, ensure_ascii=False).encode()
 
 
@@ -84,6 +87,7 @@ def parse_state(entity: str, body: bytes) -> EntityState:
             {k: Claim(**v) for k, v in doc.get("claims", {}).items()}
             if schema != SCHEMA_V1
             else {},
+            doc.get("watermark"),
         )
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         raise FloeConfigError(f"entity.name={entity} invalid state file: {e}") from e
@@ -209,7 +213,7 @@ def _mutate(
         )
         mutate(loaded.state, ours)
         state = loaded.state
-        if state.files or state.claims:
+        if state.files or state.claims or state.watermark:
             done = _persist(client, uri, loaded) is not None
         else:  # Rust deletes an emptied state
             done = client.delete_conditional(uri, loaded.version)
@@ -226,18 +230,22 @@ def promote(
     run_id: str,
     claimed: Loaded,
     full_refresh: bool = False,
+    advance: Callable[[EntityState, list[str]], None] | None = None,
 ) -> None:
-    """A full refresh replaces `files` with this run's (Rust `promote_full_refresh_claimed_entity_state`)."""
+    """A full refresh replaces `files` with this run's (Rust `promote_full_refresh_claimed_entity_state`); `advance` gets the promoted URIs (D30)."""
 
     def apply(state: EntityState, ours: set[str]) -> None:
         processed_at = _now()
         if full_refresh:
             state.files.clear()
-        for u in [
+        promoted = [
             u for u, c in state.claims.items() if c.run_id == run_id and u in ours
-        ]:
+        ]
+        for u in promoted:
             c = state.claims.pop(u)
             state.files[u] = FileState(processed_at, c.size, c.mtime)
+        if advance:
+            advance(state, promoted)
         state.updated_at = processed_at
 
     _mutate(client, uri, claimed, apply)

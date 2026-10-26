@@ -84,13 +84,13 @@ class LocalClient:
     def resolve_uri(self, path: str) -> str:
         return f"local://{normalize_local_path(Path.cwd() / path)}"
 
-    def list(self, prefix: str) -> list[ObjectRef]:
+    def list(self, prefix: str, start_after: str = "") -> list[ObjectRef]:
         p = Path(prefix)
         if p.is_file():
             return [ObjectRef(self.resolve_uri(prefix), prefix, None, None)]
         if not p.exists():
             return []
-        keys = [str(c) for c in p.iterdir() if c.is_file()]
+        keys = [str(c) for c in p.iterdir() if c.is_file() and str(c) > start_after]
         return sorted(
             (ObjectRef(self.resolve_uri(k), k, None, None) for k in keys),
             key=lambda r: r.uri,

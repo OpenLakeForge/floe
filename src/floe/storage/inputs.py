@@ -48,6 +48,7 @@ class ResolvedInputs:
     files: list[InputFile]
     listed: list[str]
     mode: Literal["file", "directory"]
+    warning: str | None = None  # D30: the listing window, logged once per run
 
 
 def suffixes_for_format(fmt: str) -> list[str]:
@@ -94,6 +95,7 @@ def _local_files(
     glob_override: str | None,
     recursive: bool,
     exclude: Path | None,
+    after: str = "",
 ) -> tuple[list[Path], Literal["file", "directory"]]:
     def no_match(base: object, used: str) -> NoInputsError:
         return NoInputsError(
@@ -125,7 +127,8 @@ def _local_files(
     if not base.is_dir():
         raise no_match(base, ",".join(globs))
     patterns = [
-        os.path.join(base, "**", g) if recursive else os.path.join(base, g)
+        os.path.join(d, "**", g) if recursive else os.path.join(d, g)
+        for d in (_window_dirs(base, after) if after else [base])
         for g in globs
     ]
     files = _visible(
@@ -134,6 +137,14 @@ def _local_files(
     if not files:
         raise no_match(base, ",".join(globs))
     return files, "directory"
+
+
+def _window_dirs(base: Path, after: str) -> list[Path]:
+    """D30: the directories at the depth of `after` (relative to `base`) that do not sort before it; older ones are never walked."""
+    dirs = [base]
+    for _ in after.split("/"):
+        dirs = sorted(d for p in dirs for d in p.iterdir() if d.is_dir() and (r := d.relative_to(base).as_posix()) >= after[: len(r)])  # fmt: skip
+    return dirs
 
 
 _REMOTE_SCHEMES = ("s3://", "gs://", "gcs://", "abfs://", "abfss://", "az://")
@@ -160,6 +171,7 @@ def _cloud_refs(
     storage: str,
     location: str,
     exclude: str | None,
+    after: str = "",
 ) -> list[ObjectRef]:
     where = f"entity.name={entity} source.storage={storage}"
     first = _first_glob(key)
@@ -183,7 +195,7 @@ def _cloud_refs(
     lowered = tuple(s.lower() for s in suffixes)
     refs = [
         r
-        for r in client.list(prefix)
+        for r in client.list(prefix, after)
         if (matcher is None or matcher.matches_with(r.key, _CLOUD))
         and not (r.key.startswith(".floe/") or "/.floe/" in r.key)
         and not (exclude and r.uri.startswith(f"{exclude}/"))
@@ -210,8 +222,12 @@ def resolve_inputs(
     recursive: bool = False,
     glob_override: str | None = None,
     exclude: str | None = None,
+    after: str = "",
 ) -> ResolvedInputs:
-    """`path` is the source path, or a full `s3://` URI for a remote storage; nothing under the `exclude` URI is listed (D31)."""
+    """`path` is the source path, or a full `s3://` URI for a remote storage; nothing under the `exclude` URI is listed (D31).
+
+    D30: `after`, a URI, skips what sorts before it: S3 `StartAfter`, or local directories never walked.
+    """
     files: list[InputFile] = []
     if path.startswith("s3://"):
         if client is None:
@@ -225,6 +241,7 @@ def resolve_inputs(
             storage,
             f"bucket={bucket}",
             exclude,
+            parse_s3_uri(after)[1] if after else "",
         )
         if not list_only:
             for r in refs:
@@ -242,9 +259,12 @@ def resolve_inputs(
     if "://" in path:
         raise FloeConfigError(f"unsupported storage uri: {path}")
     skip = Path(exclude.removeprefix("local://")) if exclude and exclude.startswith("local://") else None  # fmt: skip
+    start = Path(after.removeprefix("local://")) if after.startswith("local://") else None  # fmt: skip
+    base = normalize_local_path(config_dir / path)
     paths, mode = _local_files(
-        config_dir, path, fmt, entity, storage, glob_override, recursive, skip
-    )
+        config_dir, path, fmt, entity, storage, glob_override, recursive, skip,
+        start.relative_to(base).as_posix() if start and start.is_relative_to(base) else "",
+    )  # fmt: skip
     uris = [client.resolve_uri(str(p)) if client else str(p) for p in paths]
     if not list_only:
         for p, uri in zip(paths, uris, strict=True):

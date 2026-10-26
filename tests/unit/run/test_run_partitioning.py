@@ -146,3 +146,60 @@ def test_an_xml_derived_column_is_declared_whatever_its_name(tmp_path: Path) -> 
     assert pl.read_parquet(tmp_path / "out/accepted").rows() == [
         (1, date(2026, 10, 24))
     ]
+
+
+def state_of(tmp_path: Path) -> Any:
+    [path] = (tmp_path / "in/.floe").rglob("state.json")
+    return json.loads(path.read_text())
+
+
+def test_d30_file_mode_lists_from_the_watermark_minus_lookback_and_prunes_the_state(tmp_path: Path) -> None:  # fmt: skip
+    for day in range(1, 25):
+        put(tmp_path, f"2026/10/{day:02d}/b{day:02d}/x.csv", f"id\n{day}\n", 100 + day)
+    go(tmp_path, "incremental_mode: file")
+    assert state_of(tmp_path)["watermark"] == "2026-10-24"
+    put(
+        tmp_path, "2026/10/24/c3d4/y.csv", "id\n99\n", 200
+    )  # a second batch on the last day
+    put(
+        tmp_path, "2026/10/05/stray.csv", "id\n1\n", 200
+    )  # never walked: it would fail the pattern
+    events: list[dict[str, Any]] = []
+    go(tmp_path, "incremental_mode: file", observer=events.append)
+    r = report(tmp_path)
+    listed = [u.split("/in/")[1] for u in r["source"]["resolved_inputs"]["files"]]
+    assert listed == ["2026/10/23/b23/x.csv", "2026/10/24/b24/x.csv", "2026/10/24/c3d4/y.csv"]  # fmt: skip
+    assert [f["status"] for f in r["files"]] == ["skipped", "skipped", "success"]
+    state = state_of(tmp_path)
+    assert sorted(u.split("/in/")[1] for u in state["files"]) == listed
+    assert state["watermark"] == "2026-10-24"
+    [warn] = [e for e in events if e["event"] == "log"]
+    assert (warn["log_level"], warn["entity"]) == ("warn", "o")
+    assert "dates from 2026-10-23 (watermark 2026-10-24, lookback_days 1)" in warn["message"]  # fmt: skip
+
+
+def test_d30_a_late_file_waits_for_a_full_refresh(tmp_path: Path) -> None:
+    put(tmp_path, "2026/10/23/a/x.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n2\n", 100)
+    go(tmp_path, "incremental_mode: file")
+    put(tmp_path, "2026/10/20/late/x.csv", "id\n3\n", 200)
+    go(tmp_path, "incremental_mode: file")
+    assert {f["status"] for f in report(tmp_path)["files"]} == {"skipped"}
+    go(tmp_path, "incremental_mode: file", full_refresh=True)
+    assert sorted(pl.read_parquet(tmp_path / "out/accepted")["id"]) == [1, 2, 3]
+    state = state_of(tmp_path)  # the refresh prunes the late day again
+    assert sorted(u.split("/in/")[1] for u in state["files"]) == ["2026/10/23/a/x.csv", "2026/10/24/a/x.csv"]  # fmt: skip
+
+
+def test_d30_a_claim_holds_the_window_open(tmp_path: Path) -> None:
+    """A crashed run's claim on an older day keeps that day listed, so its files are retried, not lost."""
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n1\n", 100)
+    go(tmp_path, "incremental_mode: file")
+    [path] = (tmp_path / "in/.floe").rglob("state.json")
+    state = json.loads(path.read_text())
+    put(tmp_path, "2026/10/10/dead/x.csv", "id\n2\n", 100)
+    dead = f"local://{tmp_path}/in/2026/10/10/dead/x.csv"
+    state["claims"][dead] = {"run_id": "dead", "acquired_at": "2026-01-01T00:00:00Z", "expires_at": "2026-01-01T01:00:00Z"}  # fmt: skip
+    path.write_text(json.dumps(state))
+    go(tmp_path, "incremental_mode: file")
+    assert [f["input_file"] for f in report(tmp_path)["files"] if f["status"] == "success"] == [dead]  # fmt: skip
