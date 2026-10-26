@@ -231,6 +231,13 @@ def run_in_copy(
             ["--profile", "profile.yml"] if (case / "profile.yml").exists() else []
         )
         args = ["validate", "-c", "config.yml", *profile]
+    if (
+        case / "manifest_run"
+    ).exists():  # run from the manifest this implementation generates
+        generate = ["manifest", "generate", "-c", "config.yml", "-o", "manifest.json"]
+        env = {**os.environ, "FLOE_RUNTIME": "cli"}
+        subprocess.run([*cmd, *generate], cwd=work, check=True, capture_output=True, env=env)  # fmt: skip
+        args = ["run", "--manifest", "manifest.json"]
     # optional `runs`: a run count, or one line of extra `run` args per run (`-` for none); only the last run's report is kept
     marker = case / "runs"
     text = marker.read_text().strip() if marker.exists() else "1"

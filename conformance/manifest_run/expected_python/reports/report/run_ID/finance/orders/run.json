@@ -1,0 +1,144 @@
+{
+  "spec_version": "0.8",
+  "entity": {
+    "name": "finance.orders"
+  },
+  "source": {
+    "format": "csv",
+    "path": "local://<ROOT>/in/finance",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ","
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "directory",
+      "file_count": 1,
+      "files": [
+        "local://<ROOT>/in/finance/orders.csv"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/finance_orders"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/finance_orders"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "warn"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/finance_orders",
+    "table_root_uri": "local://<ROOT>/out/accepted/finance_orders",
+    "write_mode": "overwrite",
+    "accepted_rows": 3,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 828,
+    "avg_file_size_mb": 0.000789642333984375,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "unique_constraints": [
+    {
+      "columns": [
+        "id"
+      ],
+      "duplicates_count": 1,
+      "batch_duplicates_count": 1,
+      "affected_rows_count": 1,
+      "action": "warn",
+      "status_effect": "warning",
+      "samples": [
+        {
+          "values": {
+            "id": "1"
+          },
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 3,
+    "accepted_total": 3,
+    "rejected_total": 0,
+    "warnings_total": 2,
+    "errors_total": 0
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/finance/orders.csv",
+      "status": "success",
+      "row_count": 3,
+      "accepted_count": 3,
+      "rejected_count": 0,
+      "mismatch": {
+        "declared_columns_count": 2,
+        "input_columns_count": 2,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/finance_orders",
+        "rejected_path": null,
+        "errors_path": "<ROOT>/out/rejected/finance_orders/orders_reject_errors.json",
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 0,
+        "warnings": 2,
+        "rules": [
+          {
+            "rule": "cast_error",
+            "severity": "warn",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "amount",
+                "violations": 1,
+                "target_type": "float64"
+              }
+            ]
+          },
+          {
+            "rule": "unique",
+            "severity": "warn",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "id",
+                "violations": 1
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
