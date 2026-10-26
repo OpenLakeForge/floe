@@ -442,6 +442,23 @@ def test_a_retry_skips_the_batch_a_dead_run_committed(tmp_path: Path, catalog: L
     assert list(json.loads(state.read_text())["files"]) == [file["input_file"]]
 
 
+def test_an_aborted_batch_is_not_skipped_as_committed(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    """#545: abort stops at b.csv after a.csv; that partial commit must not mark the whole set done."""
+    (tmp_path / "in").mkdir()
+    for name, body in [("a", "1,a"), ("b", "x,b"), ("c", "3,c")]:
+        (tmp_path / "in" / f"{name}.csv").write_text(f"id,name\n{body}\n")
+    root = config(tmp_path, mode="append", severity="abort")
+
+    def go() -> dict[str, Any]:
+        return run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, catalogs=root.catalogs).report  # fmt: skip
+
+    assert [f["status"] for f in go()["files"]] == ["success", "aborted"]
+    assert rows(catalog) == [(1, "a")]
+    again = go()["files"]
+    assert "already_committed" not in [f.get("skip_reason") for f in again]
+    assert "aborted" in [f["status"] for f in again]
+
+
 def test_find_committed_walks_back_to_the_claim(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
     run(tmp_path, "id,name\n1,a\n", mode="append")
     run(tmp_path, "id,name\n2,bb\n", mode="append")

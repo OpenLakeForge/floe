@@ -797,6 +797,8 @@ def _run_entity(
         pending = []
     plan.input_hash = input_hash(entity, pending)
     frames: list[pl.DataFrame] = []
+    # #545: the snapshot's fingerprint names only the files it holds in full, never an aborted batch
+    complete: list[InputFile] = []
     skipped = len(files)
     downloader = None if isinstance(client, LocalClient) else client
     # Rust `localize_input`: a remote input is read from a local copy
@@ -815,6 +817,7 @@ def _run_entity(
             frames += kept
             if report["status"] == "aborted":
                 break
+            complete.append(f)
     files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
 
     table: dict[str, Any] | None = None
@@ -831,7 +834,7 @@ def _run_entity(
             write = write_accepted(pl.concat(frames), accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
         else:
             outputs = [plan.out_map.get(n, n) for n in names]
-            result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, plan.input_hash)  # fmt: skip
+            result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, input_hash(entity, complete))  # fmt: skip
             write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
                                   result.avg_file_size_mb, result.small_files_count)  # fmt: skip
     else:
