@@ -2,7 +2,6 @@
 
 import io
 import json
-from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -275,8 +274,8 @@ def test_d30_release_restores_dead_claims_and_keeps_its_own_expired(tmp_path: Pa
 
 
 def test_d30_release_never_restores_a_claim_this_run_promoted_and_pruned(tmp_path: Path) -> None:  # fmt: skip
-    """#545 + D30: the guard promotes a dead run's batch (10-10, 10-24) and pruning drops 10-10 from `files`;
-    a later failure must not put 10-10's dead claim back, or the next retry's batch is 10-10 alone and re-appends it.
+    """#545: the guard promotes a dead run's batch (10-10, 10-24); if 10-10 later leaves `files` (pruning, #949),
+    a failure must not put its dead claim back, or the next retry's batch is 10-10 alone and re-appends it.
     """
     uri, client = str(tmp_path / "state.json"), LocalClient()
     old, new, extra = _input("10-10"), _input("10-24"), _input("10-25")
@@ -293,22 +292,6 @@ def test_d30_release_never_restores_a_claim_this_run_promoted_and_pruned(tmp_pat
     state = read_state(client, uri, "sales")
     assert state is not None
     assert (list(state.files), list(state.claims)) == (["10-24"], [])
-
-
-def test_d30_an_expired_claim_is_never_passed_by_the_window(tmp_path: Path) -> None:
-    """`before` sees the state with its expired claims, so a dead run's file older than the window is retried."""
-    uri, client, f = str(tmp_path / "state.json"), LocalClient(), _input("f")
-    old = EntityState("sales", None, {}, {"f": _claim("crashed", "2000-01-01T01:00:00Z")})  # fmt: skip
-    client.write_conditional(uri, None, dump_state(old))
-
-    def before(state: EntityState) -> Callable[[str], bool]:
-        held = set(
-            state.claims
-        )  # the window, as `before_window` computes it: from every claim
-        return lambda u: u not in held
-
-    outcome = claim_inputs(client, uri, "sales", "run-b", [f], before)
-    assert outcome.pending == [f]
 
 
 def test_release_drops_own_claims_only(tmp_path: Path) -> None:

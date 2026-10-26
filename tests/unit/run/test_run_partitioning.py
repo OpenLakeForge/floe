@@ -1,6 +1,5 @@
 """D28: `floe run` on a `source.partitioning` layout (local; S3 is in test_run_s3.py)."""
 
-import importlib
 import json
 import os
 from datetime import date
@@ -15,7 +14,6 @@ from floe.errors import FloeRunError
 from floe.run import entity as entity_module  # `floe.run` is the public function
 from floe.run import run
 
-run_module = importlib.import_module("floe.run")
 CONFIG = """\
 version: "0.3"
 domains:
@@ -223,7 +221,7 @@ def state_of(tmp_path: Path) -> Any:
     return json.loads(path.read_text())
 
 
-def test_d30_file_mode_lists_from_the_watermark_minus_lookback_and_prunes_the_state(tmp_path: Path) -> None:  # fmt: skip
+def test_d30_file_mode_lists_from_the_watermark_minus_lookback(tmp_path: Path) -> None:  # fmt: skip
     for day in range(1, 25):
         put(tmp_path, f"2026/10/{day:02d}/b{day:02d}/x.csv", f"id\n{day}\n", 100 + day)
     go(tmp_path, "incremental_mode: file")
@@ -241,7 +239,7 @@ def test_d30_file_mode_lists_from_the_watermark_minus_lookback_and_prunes_the_st
     assert listed == ["2026/10/23/b23/x.csv", "2026/10/24/b24/x.csv", "2026/10/24/c3d4/y.csv"]  # fmt: skip
     assert [f["status"] for f in r["files"]] == ["skipped", "skipped", "success"]
     state = state_of(tmp_path)
-    assert sorted(u.split("/in/")[1] for u in state["files"]) == listed
+    assert len(state["files"]) == 25  # no pruning yet (#949)
     assert state["watermark"] == "2026-10-24"
     [warn] = [e for e in events if e["event"] == "log"]
     assert (warn["log_level"], warn["entity"]) == ("warn", "o")
@@ -257,8 +255,7 @@ def test_d30_a_late_file_waits_for_a_full_refresh(tmp_path: Path) -> None:
     assert {f["status"] for f in report(tmp_path)["files"]} == {"skipped"}
     go(tmp_path, "incremental_mode: file", full_refresh=True)
     assert sorted(pl.read_parquet(tmp_path / "out/accepted")["id"]) == [1, 2, 3]
-    state = state_of(tmp_path)  # the refresh prunes the late day again
-    assert sorted(u.split("/in/")[1] for u in state["files"]) == ["2026/10/23/a/x.csv", "2026/10/24/a/x.csv"]  # fmt: skip
+    assert state_of(tmp_path)["watermark"] == "2026-10-24"
 
 
 def test_d30_a_claim_holds_the_window_open(tmp_path: Path) -> None:
@@ -297,32 +294,32 @@ def test_d30_a_failed_run_keeps_an_older_day_listed_for_its_retry(tmp_path: Path
     assert [f["input_file"] for f in report(tmp_path)["files"] if f["status"] == "success"] == [old]  # fmt: skip
 
 
-def test_d30_a_stale_listing_does_not_reclaim_a_pruned_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
-    """A run that listed before another moved the watermark checks the window again when it claims."""
-    put(tmp_path, "2026/10/10/a/x.csv", "id\n1\n", 100)
-    put(tmp_path, "2026/10/24/a/x.csv", "id\n2\n", 100)
-    go(tmp_path, "incremental_mode: file")
-    assert all("/10/10/" not in u for u in state_of(tmp_path)["files"])
-    real = run_module.list_source
-
-    def unwindowed(
-        *a: Any,
-    ) -> Any:  # the whole source, as listed before the watermark moved
-        return real(*a[:-1], True)
-
-    monkeypatch.setattr(run_module, "list_source", unwindowed)
-    go(tmp_path, "incremental_mode: file")
-    assert [f["status"] for f in report(tmp_path)["files"]] == ["skipped"]
-
-
-def test_d30_a_full_refresh_keeps_the_watermark_until_it_promotes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+def test_d30_a_failed_full_refresh_clears_the_watermark(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """The next run lists everything once, so an older file a dead run had claimed is still retried."""
     put(tmp_path, "2026/10/24/a/x.csv", "id\n1\n", 100)
     go(tmp_path, "incremental_mode: file")
+    put(tmp_path, "2026/10/10/old/x.csv", "id\n2\n", 100)
     with monkeypatch.context() as m:
         m.setattr(entity_module, "_run_file", boom)
         with pytest.raises(FloeRunError, match="boom"):
             go(tmp_path, "incremental_mode: file", full_refresh=True)
+    assert "watermark" not in state_of(tmp_path)
+    go(tmp_path, "incremental_mode: file")
+    r = report(tmp_path)
+    assert [(f["input_file"].split("/in/")[1], f["status"]) for f in r["files"]] == [("2026/10/24/a/x.csv", "skipped"), ("2026/10/10/old/x.csv", "success")]  # fmt: skip
     assert state_of(tmp_path)["watermark"] == "2026-10-24"
+
+
+def test_d30_raising_lookback_days_does_not_reingest(tmp_path: Path) -> None:
+    put(tmp_path, "2026/10/20/a/x.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n2\n", 100)
+    go(tmp_path, "incremental_mode: file")
+    path = tmp_path / "config.yml"
+    path.write_text(path.read_text().replace("batch_column: batch_id}", "batch_column: batch_id, lookback_days: 7}"))  # fmt: skip
+    run(path, parse_config(path, {}))
+    r = report(tmp_path)
+    assert [u.split("/in/")[1] for u in r["source"]["resolved_inputs"]["files"]] == ["2026/10/20/a/x.csv", "2026/10/24/a/x.csv"]  # fmt: skip
+    assert [f["status"] for f in r["files"]] == ["skipped", "skipped"]
 
 
 def test_d30_a_nested_glob_override_keeps_its_meaning(tmp_path: Path) -> None:

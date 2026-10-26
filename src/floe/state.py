@@ -137,9 +137,7 @@ def claim_inputs(
     entity: str,
     run_id: str,
     inputs: list[InputFile],
-    before: Callable[[EntityState], Callable[[str], bool]] | None = None,
 ) -> ClaimOutcome:
-    """D30: `before(state)` tells the files another run's watermark has passed since this run listed; they are not claimed."""
     if not inputs:
         return ClaimOutcome([], None, [], [], {})
     for attempt in range(CAS_RETRIES):
@@ -148,9 +146,6 @@ def claim_inputs(
         loaded = _load(client, uri, entity)
         state = loaded.state
         now = datetime.now(UTC)
-        passed = (
-            before(state) if before else None
-        )  # D30: expired claims still hold the window open
         expired = {u: c for u, c in state.claims.items() if not _is_live(c, now)}
         state.claims = {u: c for u, c in state.claims.items() if u not in expired}
         pending: list[InputFile] = []
@@ -158,8 +153,6 @@ def claim_inputs(
         processed: list[tuple[InputFile, FileState]] = []
         acquired_at, expires_at = _now(), _now(CLAIM_TTL_SECONDS)
         for f in inputs:
-            if passed and passed(f.source_uri):
-                continue
             if f.source_uri in state.files:
                 processed.append((f, state.files[f.source_uri]))
             elif f.source_uri in state.claims:
@@ -200,7 +193,8 @@ def claim_all(
             f.source_uri: Claim(run_id, acquired_at, expires_at, f.source_size, f.source_mtime)
             for f in inputs
         }  # fmt: skip
-        fresh = Loaded(EntityState(entity, acquired_at, loaded.state.files, claims, loaded.state.watermark), loaded.version)  # fmt: skip
+        # D30: no watermark until the refresh promotes, so a failed one leaves the next run listing everything
+        fresh = Loaded(EntityState(entity, acquired_at, loaded.state.files, claims), loaded.version)  # fmt: skip
         version = _persist(client, uri, fresh)
         if version is not None:
             return Loaded(fresh.state, version)

@@ -375,8 +375,9 @@ state file shape, and CAS behavior.
   - A file landing in a day older than the window is not ingested. Floe can't see it (it is not
     listed), so every run that lists from a watermark logs one warning naming the window. A
     `--full-refresh` lists everything and picks it up.
-  - The watermark moves only forward, when a run promotes its files. In the same state write, file
-    entries older than the new window are dropped, so the state stays bounded.
+  - The watermark moves only forward, when a run promotes its files, in the same state write. A
+    failed `--full-refresh` clears it, so the next run lists everything once. Per-file entries are
+    kept, so the state grows as in plain `file` mode; pruning them is #949.
 
 ### `sink` (required)
 

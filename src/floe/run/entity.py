@@ -85,7 +85,6 @@ from floe.storage.inputs import (
 from floe.storage.local import LocalClient
 from floe.storage.partitioning import (
     advance,
-    before_window,
     in_load_order,
     listing_start,
     partition_of,
@@ -563,7 +562,6 @@ class Incremental:
         # the file reports, set once the sink step is done (#915)
         self.committed: list[dict[str, Any]] | None = None
         self.advance: Callable[[EntityState, list[str]], None] | None = None  # D30
-        self.before: Callable[[EntityState], Callable[[str], bool]] | None = None  # D30
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -576,7 +574,7 @@ class Incremental:
         if self.full_refresh:
             self._hold(claim_all(self.client, self.uri, e.name, self.run_id, inputs))
             return inputs, []
-        got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs, self.before)  # fmt: skip
+        got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs)
         reports = skipped_reports(e, got.already_processed, got.active_claims)
         _emit_skipped(emit, e.name, reports)
         self.expired = got.expired
@@ -846,10 +844,7 @@ def _run_entity(
         emit("log", log_level="warn", code=None, message=inputs.warning, entity=entity.name, input=None)  # fmt: skip
     if entity.source.partitioning and entity.incremental_mode == "file":
         dated = entity.source.partitioning, entity.name, source_root(source_uri)
-        inc.advance, inc.before = (
-            partial(advance, *dated),
-            partial(before_window, *dated),
-        )
+        inc.advance = partial(advance, *dated)
     archive = plan.archive  # a full refresh lists it too
     plan.derived = _derived(entity, source_uri, archive and archive[0], inputs.files)
     pending, files = inc.claim(inputs.files, emit)

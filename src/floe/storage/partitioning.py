@@ -1,7 +1,6 @@
 """D28: `source.partitioning`, the date and batch of each input from its directory, and the load order."""
 
 import re
-from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import NamedTuple
 
@@ -108,14 +107,10 @@ def listing_start(p: SourcePartitioning, start: date) -> str | None:
 
 
 def advance(p: SourcePartitioning, entity: str, root: str, state: EntityState, promoted: list[str]) -> None:  # fmt: skip
-    """D30, on promote: the watermark moves to the latest date promoted, never back; file entries before the new window are dropped."""
-    days = [d.isoformat() for u in promoted if (d := _dated(p, entity, root, u))]
+    """D30, on promote: the watermark moves to the latest date promoted, never back (#949 will prune `files`).
+
+    Without one (a first run, or after a failed full refresh), every file in the state counts.
+    """
+    known = promoted if state.watermark else [*promoted, *state.files]
+    days = [d.isoformat() for u in known if (d := _dated(p, entity, root, u))]
     state.watermark = max([state.watermark or "", *days]) or None
-    if (start := window(p, entity, root, state)) is not None:
-        state.files = {u: f for u, f in state.files.items() if (d := _dated(p, entity, root, u)) is None or d >= start}  # fmt: skip
-
-
-def before_window(p: SourcePartitioning, entity: str, root: str, state: EntityState) -> Callable[[str], bool]:  # fmt: skip
-    """D30, on claim: whether a file is dated before the state's current window (another run moved the watermark past it)."""
-    start = window(p, entity, root, state)
-    return lambda uri: start is not None and (d := _dated(p, entity, root, uri)) is not None and d < start  # fmt: skip
