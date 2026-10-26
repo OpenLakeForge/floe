@@ -322,3 +322,70 @@ def test_a_missing_manifest_is_logged_after_run_started_with_code_error(
         "run_started run_id=r config=nope.json report_base=disabled",
         "log level=error code=error No such file or directory (os error 2)",
     ]  # Rust 0.7, byte for byte
+
+
+def test_a_rest_catalog_loads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    catalogs = "catalogs:\n  default: rest\n  definitions:\n    - {name: rest, type: rest, uri: http://catalog, warehouse: wh}\n"  # fmt: skip
+    root, _ = load_manifest(manifest(tmp_path, monkeypatch, QUALIFIED + catalogs))
+    assert root.catalogs and root.catalogs.definitions[0].uri == "http://catalog"
+
+
+def test_an_option_block_omitting_an_optional_field_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rust's `Option`: an omitted `extra_columns` is `None`, not a malformed `mismatch`."""
+    by_config, by_manifest = copy_case("mismatch_reject_file", tmp_path / "c"), copy_case("mismatch_reject_file", tmp_path / "m")  # fmt: skip
+    monkeypatch.chdir(by_config)
+    code = floe(monkeypatch, "run", "-c", "config.yml", "--run-id", "r")
+    monkeypatch.chdir(by_manifest)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    doc = json.loads(Path("m.json").read_text())
+    assert doc["entities"][0]["schema"]["mismatch"].pop("extra_columns", None) is None
+    Path("m.json").write_text(json.dumps(doc))
+    assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == code
+    expected, actual = outputs(by_config), outputs(by_manifest)
+    assert actual["out/accepted/orders"] == []  # the file is rejected
+    for out in (expected, actual):
+        out["report/run_r/run.summary.json"]["config"].pop("path")
+    assert actual == expected
+
+
+EXPLICIT_LOCAL = """\
+version: "0.3"
+storages:
+  default: lake
+  definitions:
+    - {name: lake, type: s3, bucket: b, region: eu-west-1}
+    - {name: local, type: local}
+entities:
+  - name: orders
+    source: {format: csv, storage: local, path: ./in, options: {header: true, separator: ","}}
+    sink:
+      accepted: {format: parquet, storage: local, path: ./out/accepted/orders}
+    policy: {severity: warn}
+    schema: {columns: [{name: id, type: int64}]}
+report: {path: ./report, storage: local}
+"""
+
+
+def test_an_explicit_local_storage_survives_a_remote_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = copy_case("severity_warn", tmp_path / "w")
+    monkeypatch.chdir(work)
+    (work / "config.yml").write_text(EXPLICIT_LOCAL)
+    assert floe(monkeypatch, "run", "-c", "config.yml") == 0
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    assert floe(monkeypatch, "run", "--manifest", "m.json") == 0
+
+
+def test_a_symlinked_manifest_resolves_paths_against_its_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = copy_case("severity_warn", tmp_path / "w")
+    monkeypatch.chdir(work)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    (tmp_path / "link.json").symlink_to(work / "m.json")
+    monkeypatch.chdir(tmp_path)
+    assert floe(monkeypatch, "run", "--manifest", "link.json", "--run-id", "r") == 0
+    assert list((work / "out/accepted/orders").glob("*.parquet"))

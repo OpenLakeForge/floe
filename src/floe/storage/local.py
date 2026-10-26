@@ -108,6 +108,14 @@ class LocalClient:
         except OSError as e:
             raise FloeStorageError(f"local copy failed from {src} to {dst}: {e}") from e
 
+    def write(self, uri: str, body: bytes) -> None:
+        path = _path(uri)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(body)
+        except OSError as e:
+            raise FloeStorageError(f"local write failed for {path}: {e}") from e
+
     def delete(self, uri: str) -> None:
         path = _path(uri)
         try:

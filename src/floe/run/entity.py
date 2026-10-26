@@ -1,6 +1,7 @@
 """One entity run: inputs, per-file checks, split, outputs, `run.json` (Rust: `run/entity/*.rs`, local sources and sinks)."""
 
-import shutil
+import io
+import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -70,14 +71,21 @@ from floe.storage.archive import archive_input_file
 from floe.storage.inputs import (
     InputFile,
     ResolvedInputs,
+    localize_input,
     resolve_inputs,
     suffixes_for_format,
 )
 from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
-from floe.storage.resolve import require_local
+from floe.storage.resolve import require_local, resolve_path, storage_client
+from floe.storage.s3 import S3Client
 from floe.storage.types import StorageClient
-from floe.write.outputs import AcceptedWrite, write_accepted, write_rejected
+from floe.write.outputs import (
+    AcceptedWrite,
+    part_uris,
+    write_accepted,
+    write_rejected,
+)
 
 Chunks = Iterator[tuple[int, pl.DataFrame, pl.Series | None]]  # fmt: skip  # offset, frame, ragged rows
 
@@ -165,29 +173,30 @@ def _failed_file(
     return out
 
 
-def _rejected_dir(entity: EntityConfig, config_dir: Path, severity: str) -> Path:
-    if entity.sink.rejected is None:
+def _rejected(plan: "_Plan", severity: str) -> tuple[str, StorageClient]:
+    """The rejected sink's URI and client."""
+    if plan.rejected is None:
         raise FloeConfigError(f"sink.rejected is required for {severity} severity")
-    return normalize_local_path(config_dir / entity.sink.rejected.path)
+    return plan.rejected
 
 
-def _copy_raw(entity: EntityConfig, config_dir: Path, source: Path, severity: str) -> str:  # fmt: skip
-    target = _rejected_dir(entity, config_dir, severity) / source.name
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, target)
-    return str(target)
+def _put(plan: "_Plan", severity: str, name: str, body: bytes) -> str:
+    """Write `<rejected>/<name>`; the report shows a local target as a path, as Rust."""
+    base, client = _rejected(plan, severity)
+    uri = f"{base.rstrip('/')}/{name}"
+    client.write(uri, body)
+    return uri.removeprefix("local://")
 
 
-def _error_report(
-    config_dir: Path, entity: EntityConfig, stem: str, rows: list[tuple[int, str]]
-) -> str:
+def _copy_raw(plan: "_Plan", source: Path, severity: str, name: str) -> str:
+    # ponytail: the raw file is read into memory for the put; stream it (upload_file) if rejected files get large
+    return _put(plan, severity, name, source.read_bytes())
+
+
+def _error_report(plan: "_Plan", stem: str, rows: list[tuple[int, str]]) -> str:
     """`<stem>_reject_errors.json`, Rust's `write_error_report`."""
-    target = _rejected_dir(entity, config_dir, entity.policy.severity)
-    target.mkdir(parents=True, exist_ok=True)
-    path = target / f"{stem}_reject_errors.json"
     items = ",".join(f'{{"row_index":{i},"errors":{e}}}' for i, e in rows)
-    path.write_text(f"[{items}]")
-    return str(path)
+    return _put(plan, plan.entity.policy.severity, f"{stem}_reject_errors.json", f"[{items}]".encode())  # fmt: skip
 
 
 @dataclass
@@ -207,6 +216,7 @@ class _Plan:
     rejected_writes: int = 0
     archive_dir: Path | None = None  # Rust `archive_enabled()`
     run_id: str = ""
+    rejected: tuple[str, StorageClient] | None = None  # `sink.rejected` URI and client
     table: Table | None = (
         None  # the Iceberg target whose keys seed the tracker (append)
     )
@@ -215,12 +225,11 @@ class _Plan:
     )
 
 
-def _archive(plan: _Plan, uri: str, path: Path) -> str | None:
+def _archive(plan: _Plan, file: InputFile) -> str | None:
     """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>` (Rust `archive_input`)."""
     archive = plan.archive_dir
-    if archive is None or path.is_relative_to(archive):
+    if archive is None or Path(file.source_uri.removeprefix("local://")).is_relative_to(archive):  # fmt: skip
         return None  # D24: an archived input stays put
-    file = InputFile(uri, path.name, path.stem, None, None)
     return archive_input_file(LocalClient(), plan.run_id, plan.entity.name, lambda rel: str(archive / rel), file)  # fmt: skip
 
 
@@ -282,9 +291,9 @@ def _typed(
     return typed, [*required, *cast_checks, *plan.tracker.check(typed)]
 
 
-def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
-    """The file's report and its accepted frames (none when it aborted the run)."""
-    entity = plan.entity
+def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
+    """The file's report and its accepted frames (none when it aborted the run); `path` is the local copy."""
+    entity, uri = plan.entity, file.source_uri
     severity = entity.policy.severity
     declared = declared_names(entity)
     chunks = _chunks(entity, path, plan.names)
@@ -294,7 +303,7 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
         # Rust skips the raw copy under PII: the file cannot be masked
         plan.tracker.restore(keys)  # the unreadable file leaves no keys behind
         keep = entity.pii is None and entity.sink.rejected is not None
-        raw = _copy_raw(entity, plan.config_dir, path, severity) if keep else None
+        raw = _copy_raw(plan, path, severity, file.source_name) if keep else None
         return _failed_file(entity, uri, len(declared), mismatch, err, raw), []
 
     try:
@@ -307,10 +316,8 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
         return failed(err, None)
     mismatch = plan_mismatch(entity, declared, probe)
     if mismatch.rejected or mismatch.aborted:
-        raw = _copy_raw(
-            entity, plan.config_dir, path, "abort" if mismatch.aborted else "reject"
-        )
-        return file_report(entity, uri, 0, 0, [], mismatch, raw, _archive(plan, uri, path)), []  # fmt: skip
+        raw = _copy_raw(plan, path, "abort" if mismatch.aborted else "reject", file.source_name)  # fmt: skip
+        return file_report(entity, uri, 0, 0, [], mismatch, raw, _archive(plan, file)), []  # fmt: skip
 
     rows, bad_total, forced_total = 0, 0, 0
     masks: dict[tuple[str, str, str], list[pl.Series]] = {}
@@ -347,27 +354,30 @@ def _run_file(plan: _Plan, uri: str, path: Path) -> tuple[dict[str, Any], list[p
         if mode == "overwrite" and plan.rejected_writes:
             mode = "append"
         plan.rejected_writes += 1
-        target = _rejected_dir(entity, plan.config_dir, "reject")
-        written = write_rejected(_output(plan, pl.concat(rejected)), target, mode)
-        rejected_path = str(written)
+        target, client = _rejected(plan, "reject")
+        written = write_rejected(_output(plan, pl.concat(rejected)), client, target, mode)  # fmt: skip
+        rejected_path = written.removeprefix("local://")
     elif bad_total and severity == "abort":
-        rejected_path = _copy_raw(entity, plan.config_dir, path, "abort")
+        rejected_path = _copy_raw(plan, path, "abort", file.source_name)
     if bad_total and entity.sink.rejected and severity != "reject":
-        stem = path.stem
-        errors_path = _error_report(plan.config_dir, entity, stem, errors)
+        errors_path = _error_report(plan, file.source_stem, errors)
     archived = _archive(
-        plan, uri, path
+        plan, file
     )  # Rust: after the rejected outputs, before the rows reach the sink
     out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path, archived, errors_path, forced_total)  # fmt: skip
     return out, [] if out["status"] == "aborted" else [_output(plan, df) for df in accepted]  # fmt: skip
 
 
-def _seed_unique(plan: _Plan, base: Path, columns: list[str]) -> None:
+def _seed_unique(plan: _Plan, client: StorageClient, base: str, columns: list[str]) -> None:  # fmt: skip
     """Append mode: the keys already in the sink's parts count as seen (Rust `seed_unique_tracker_for_append`)."""
+    if not columns:
+        return  # no unique keys: never read the history
     stored = {n: plan.out_map.get(n, n) for n in columns}  # the sink holds output names
-    for part in sorted(base.glob("part-*.parquet")):
+    for uri in part_uris(client, base.rstrip("/"), "parquet"):
+        part = uri.removeprefix("local://")
         try:  # only the key columns are read
-            keys = pl.read_parquet(part, columns=list(stored.values()))
+            body = client.read(uri)
+            keys = pl.read_parquet(io.BytesIO(body.body if body else b""), columns=list(stored.values()))  # fmt: skip
         except pl.exceptions.PolarsError as err:
             raise FloeRunError(f"entity.name={plan.entity.name} cannot seed unique keys from {part}: {err}") from err  # fmt: skip
         plan.tracker.seed(keys.rename({v: k for k, v in stored.items()}))
@@ -539,6 +549,22 @@ class Incremental:
             promote(self.client, self.uri, self.run_id, claimed, self.full_refresh)
 
 
+def resolve_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None) -> tuple[str, LocalClient | S3Client]:  # fmt: skip
+    """`source.path` as a URI, and the client of its storage."""
+    src = entity.source
+    uri, definition = resolve_path(storages, config_dir, src.storage, src.path, f"entity.name={entity.name} source.storage")  # fmt: skip
+    return uri, storage_client(definition)
+
+
+def list_source(entity: EntityConfig, config_dir: Path, uri: str, client: StorageClient) -> ResolvedInputs:  # fmt: skip
+    """The source inputs; a local path keeps its globs relative to the config."""
+    src = entity.source
+    return resolve_inputs(
+        config_dir, src.path if uri.startswith("local://") else uri, src.format, entity.name,
+        src.storage or "local", client, recursive=bool(src.options.recursive), glob_override=src.options.glob,
+    )  # fmt: skip
+
+
 def run_entity(
     entity: EntityConfig,
     config_dir: Path,
@@ -548,12 +574,21 @@ def run_entity(
     emit: Emitter = NO_EVENTS,
     full_refresh: bool = False,
     catalogs: CatalogsConfig | None = None,
+    listed: ResolvedInputs | None = None,
 ) -> EntityRun:
     """Run one entity with local sources and local or Iceberg sinks; `config_dir` is absolute and normalised."""
     inc = Incremental(entity, config_dir, emit.run_id, full_refresh)
     try:
         run = _run_entity(
-            entity, config_dir, spec_version, formatter, storages, emit, inc, catalogs
+            entity,
+            config_dir,
+            spec_version,
+            formatter,
+            storages,
+            emit,
+            inc,
+            catalogs,
+            listed,
         )
     except BaseException:
         inc.release()  # a failed entity leaves no claims behind
@@ -571,6 +606,7 @@ def _run_entity(
     emit: Emitter,
     inc: Incremental,
     catalogs: CatalogsConfig | None,
+    listed: ResolvedInputs | None,
 ) -> EntityRun:
     src, sink = entity.source, entity.sink
     if sink.accepted.format not in ("parquet", "iceberg"):
@@ -579,13 +615,16 @@ def _run_entity(
     if iceberg and sink.write_mode == "merge_scd2":  # #654
         raise FloeRunError(f"entity.name={entity.name} sink.write_mode={sink.write_mode} is not yet supported for iceberg")  # fmt: skip
     who = f"entity.name={entity.name}"
-    require_local(storages, src.storage, f"{who} source.storage")
+    source_uri, client = resolve_source(entity, config_dir, storages)
     target = resolve_target(storages, catalogs, config_dir, entity) if iceberg else None
-    if target is None:  # PyIceberg writes the table's files, not Floe's storage clients
-        require_local(storages, sink.accepted.storage, f"{who} sink.accepted.storage")
-    if sink.rejected:
-        require_local(storages, sink.rejected.storage, f"{who} sink.rejected.storage")
-    # sink.archive.storage must equal source.storage (validated), so the source check covers it
+    # PyIceberg writes an Iceberg table's files, not Floe's storage clients
+    base, accepted = resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"{who} sink.accepted.storage")  # fmt: skip
+    rejected = sink.rejected and resolve_path(storages, config_dir, sink.rejected.storage, sink.rejected.path, f"{who} sink.rejected.storage")  # fmt: skip
+    # sink.archive.storage must equal source.storage (validated), as must the default state
+    if sink.archive:
+        require_local(storages, src.storage, f"{who} sink.archive.storage", "sink.archive")  # fmt: skip
+    if entity.incremental_mode == "file":
+        require_local(storages, src.storage, f"{who} source.storage", "incremental_mode=file")  # fmt: skip
     strategy = resolve_strategy(entity.schema_)
     columns = entity.schema_.columns
     names = source_names(columns, strategy)
@@ -607,7 +646,7 @@ def _run_entity(
             for c in columns
             if (n := c.name if c.source else normalize_name(c.name, strategy)) != c.name
         },
-        run_id=emit.run_id,
+        run_id=emit.run_id, rejected=rejected and (rejected[0], storage_client(rejected[1])),
     )  # fmt: skip
     if sink.archive and entity.incremental_mode in ("none", "archive"):
         plan.archive_dir = normalize_local_path(config_dir / sink.archive.path)
@@ -616,36 +655,48 @@ def _run_entity(
         plan.merge_key = (
             pk[0] if len(pk) == 1 else f"[{','.join(pk)}]"
         )  # the tracker's check name
-    base = normalize_local_path(config_dir / sink.accepted.path)
+    accepted_client = storage_client(accepted)
     if sink.write_mode == "append" and target is None:
-        _seed_unique(plan, base, sorted({runtime.get(c, c) for k in keys for c in k}))
+        _seed_unique(
+            plan,
+            accepted_client,
+            base,
+            sorted({runtime.get(c, c) for k in keys for c in k}),
+        )
     elif sink.write_mode == "append" and target is not None and keys:
         plan.table = existing_table(
             target
         )  # Rust `seed_unique_tracker`; no table, nothing to seed
-    client = LocalClient()
 
     def source() -> ResolvedInputs:
-        return resolve_inputs(
-            config_dir, src.path, src.format, entity.name, src.storage or "local", client,
-            recursive=bool(src.options.recursive), glob_override=src.options.glob,
-        )  # fmt: skip
+        # `listed`: the run's pre-check already listed the source (#864)
+        return (
+            listed
+            if listed is not None
+            else list_source(entity, config_dir, source_uri, client)
+        )
 
     archive = plan.archive_dir
     inputs = _with_archived(plan, archive, source) if inc.full_refresh and archive else source()  # fmt: skip
     pending, files = inc.claim(inputs.files, emit)
     frames: list[pl.DataFrame] = []
-    for f in pending:
-        emit("file_started", entity=entity.name, input=f.source_uri)
-        timer = time.monotonic()
-        report, kept = _run_file(plan, f.source_uri, Path(f.source_uri.removeprefix("local://")))  # fmt: skip
-        emit("file_finished", entity=entity.name, input=f.source_uri, status=report["status"],
-             rows=report["row_count"], accepted=report["accepted_count"],
-             rejected=report["rejected_count"], elapsed_ms=int((time.monotonic() - timer) * 1000))  # fmt: skip
-        files.append(report)
-        frames += kept
-        if report["status"] == "aborted":
-            break
+    downloader = None if isinstance(client, LocalClient) else client
+    # Rust `localize_input`: a remote input is read from a local copy
+    with tempfile.TemporaryDirectory(prefix="floe-") as temp_dir:
+        for f in pending:
+            emit("file_started", entity=entity.name, input=f.source_uri)
+            timer = time.monotonic()
+            local = localize_input(f, downloader, Path(temp_dir))
+            report, kept = _run_file(plan, f, local.local_path)
+            if local.is_ephemeral:
+                local.local_path.unlink()
+            emit("file_finished", entity=entity.name, input=f.source_uri, status=report["status"],
+                 rows=report["row_count"], accepted=report["accepted_count"],
+                 rejected=report["rejected_count"], elapsed_ms=int((time.monotonic() - timer) * 1000))  # fmt: skip
+            files.append(report)
+            frames += kept
+            if report["status"] == "aborted":
+                break
 
     table: dict[str, Any] | None = None
     merge: dict[str, Any] | None = None
@@ -658,7 +709,7 @@ def _run_entity(
         )
         frames = frames or [_output(plan, empty)]
         if target is None:
-            write = write_accepted(pl.concat(frames), base, sink.write_mode, sink.accepted.options)  # fmt: skip
+            write = write_accepted(pl.concat(frames), accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
         else:
             outputs = [plan.out_map.get(n, n) for n in names]
             result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, input_hash(entity, pending))  # fmt: skip
@@ -666,7 +717,6 @@ def _run_entity(
                                   result.avg_file_size_mb, result.small_files_count)  # fmt: skip
     else:
         write = AcceptedWrite(0, [], 0, 0.0, 0)
-    rejected = sink.rejected and normalize_local_path(config_dir / sink.rejected.path)
     unique = [_report_names(r, key, runtime) for r, key in zip(plan.tracker.results(), keys, strict=True)]  # fmt: skip
     report = build_report(
         entity,
@@ -674,9 +724,9 @@ def _run_entity(
         inputs,
         files,
         write,
-        source_uri=f"local://{normalize_local_path(config_dir / src.path)}",
-        accepted_uri=target.accepted_uri if target else f"local://{base}",
-        rejected_uri=f"local://{rejected}" if rejected else None,
+        source_uri=source_uri,
+        accepted_uri=target.accepted_uri if target else base,
+        rejected_uri=rejected[0] if rejected else None,
         unique=unique,
         table_root_uri=target.location if target and table else None,
         table=table,

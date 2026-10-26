@@ -7,7 +7,7 @@ Rust, a malformed option block is dropped and an unknown enum value falls back t
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast, get_args
 
 from pydantic import BaseModel, ValidationError
 
@@ -41,10 +41,29 @@ _CLOUD = ("s3://", "gs://", "gcs://", "az://", "abfss://", "abfs://")
 _WRITE_MODES = ("overwrite", "append", "merge_scd1", "merge_scd2")
 
 
+def _omitted_as_none(model: type[BaseModel], value: object) -> object:
+    """Rust's `Option`: an omitted nullable field is `None`, in nested blocks too."""
+    if not isinstance(value, dict):
+        return value
+    filled = dict(cast(Json, value))
+    for name, field in model.model_fields.items():
+        args = get_args(field.annotation)
+        nested = next((a for a in args if isinstance(a, type) and issubclass(a, BaseModel)), None)  # fmt: skip
+        if name in filled and nested:
+            filled[name] = _omitted_as_none(nested, filled[name])
+        elif name not in filled and field.is_required() and type(None) in args:
+            filled[name] = None
+    return filled
+
+
 def _lenient(model: type[_M], value: object) -> _M | None:
     """`serde_json::from_value(v).ok()`."""
     try:
-        return None if value is None else model.model_validate(value)
+        return (
+            None
+            if value is None
+            else model.model_validate(_omitted_as_none(model, value))
+        )
     except ValidationError:
         return None
 
@@ -53,15 +72,16 @@ def _pick(value: str | None, allowed: tuple[str, ...], default: str) -> str:
     return value if value in allowed else default
 
 
-def _storage(name: str) -> str | None:
-    return None if name == "local" else name
+def _storage(name: str, named_local: bool) -> str | None:
+    """`local` is the implicit storage, unless a definition is named so (Rust drops it either way)."""
+    return None if name == "local" and not named_local else name
 
 
-def _sink(t: Json, write_mode: str) -> Json:
+def _sink(t: Json, write_mode: str, named_local: bool) -> Json:
     return {
         "format": t["format"],
         "path": t["path"],
-        "storage": _storage(t["storage"]),
+        "storage": _storage(t["storage"], named_local),
         "options": _lenient(SinkOptions, t.get("options")),
         "merge": _lenient(MergeOptions, t.get("merge")),
         "iceberg": _lenient(IcebergSinkOptions, t.get("iceberg")),
@@ -89,14 +109,14 @@ def _schema(s: Json) -> Json:
     }
 
 
-def _entity(m: Json) -> EntityConfig:
+def _entity(m: Json, named_local: bool) -> EntityConfig:
     src, sinks = m["source"], m["sinks"]
     write_mode = _pick(m.get("write_mode"), _WRITE_MODES, "overwrite")
     rejected, archive = sinks.get("rejected"), sinks.get("archive")
     source = {
         "format": src["format"],
         "path": src["path"],
-        "storage": _storage(src["storage"]),
+        "storage": _storage(src["storage"], named_local),
         "options": _lenient(SourceOptions, src.get("options")) or SourceOptions(),
         "cast_mode": src.get("cast_mode") or "strict",
         "source_ref": src.get("ref"),
@@ -104,12 +124,12 @@ def _entity(m: Json) -> EntityConfig:
     }
     sink = {
         "write_mode": write_mode,
-        "accepted": _sink(sinks["accepted"], write_mode),
-        "rejected": rejected and _sink(rejected, write_mode),
+        "accepted": _sink(sinks["accepted"], write_mode, named_local),
+        "rejected": rejected and _sink(rejected, write_mode, named_local),
         "archive": archive
         and {
             "path": archive["path"],
-            "storage": _storage(archive["storage"]),
+            "storage": _storage(archive["storage"], named_local),
         },
     }
     incremental = _pick(m.get("incremental_mode"), ("archive", "file", "row"), "none")
@@ -150,7 +170,8 @@ def _storage_def(d: Json) -> Json:
 
 
 def _catalog_def(d: Json) -> Json:
-    return {k: v for k, v in d.items() if k != "type_config"} | d["type_config"]
+    rest = {k: v for k, v in d["type_config"].items() if k != "type"}  # D1: REST only
+    return {k: v for k, v in d.items() if k != "type_config"} | rest
 
 
 def _report(base: str, storages: StoragesConfig | None) -> ReportConfig:
@@ -177,12 +198,19 @@ def _lineage_entity(entity: EntityConfig, m: Json) -> EntityConfig:
     return entity.model_copy(update={"source": source, "sink": sink.model_copy(update=update)})  # fmt: skip
 
 
+def _named_local(m: Json) -> bool:
+    try:
+        return any(d["name"] == "local" for d in m["storages"]["definitions"])
+    except (KeyError, TypeError):  # no storages; a malformed block fails in `_section`
+        return False
+
+
 def load_manifest(path: Path) -> tuple[RootConfig, list[EntityConfig]]:
     """The run's config, and the entities its lineage observes."""
     try:
         m = json.loads(path.read_text())
         spec = m["spec_version"]
-        entities = [_entity(e) for e in m["entities"]]
+        entities = [_entity(e, _named_local(m)) for e in m["entities"]]
         report_base = m["report_base_uri"]
         meta = m.get("metadata")  # D20: dumped without its None fields
         metadata = meta and ProjectMetadata.model_validate(dict.fromkeys(ProjectMetadata.model_fields) | meta)  # fmt: skip
