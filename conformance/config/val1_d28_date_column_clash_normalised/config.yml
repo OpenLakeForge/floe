@@ -1,0 +1,26 @@
+version: '0.1'
+entities:
+- name: orders
+  source:
+    format: csv
+    path: in
+    options:
+      recursive: true
+    partitioning:
+      pattern: '{yyyy}/{MM}/{dd}/{batch}'
+      date_column: ingest_date
+      batch_column: batch_id
+  sink:
+    accepted:
+      format: parquet
+      path: out/accepted
+  policy:
+    severity: warn
+  schema:
+    normalize_columns:
+      enabled: true
+    columns:
+    - name: id
+      type: string
+    - name: Ingest Date
+      type: number

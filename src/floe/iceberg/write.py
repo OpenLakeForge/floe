@@ -7,6 +7,7 @@ import itertools
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Literal
 
@@ -17,6 +18,7 @@ from pyiceberg.io.pyarrow import (
 )
 from pyiceberg.manifest import DataFile
 from pyiceberg.table import Table
+from pyiceberg.table.snapshots import ancestors_of
 
 from floe.iceberg.catalog import run_error
 
@@ -131,3 +133,26 @@ def write_result(
         avg_file_size_mb=sum(sizes) / len(sizes) / _BYTES_PER_MIB if sizes else None,
         small_files_count=sum(s < small_file_threshold_bytes for s in sizes),
     )
+
+
+def find_committed(
+    table: Table, input_hash: str, since: datetime | None = None
+) -> bool | None:
+    """Whether a snapshot ancestor carries `floe.input_hash` (#545); the metadata is in memory, no manifest I/O.
+
+    The walk stops at snapshots older than `since`, the claim's `acquired_at`: a batch can't commit before its
+    claim. None when the history back to `since` was expired, so the answer is unknown.
+    """
+    stop = None if since is None else since.timestamp() * 1000
+    oldest = None
+    for snapshot in ancestors_of(table.current_snapshot(), table.metadata):
+        if stop is not None and snapshot.timestamp_ms < stop:
+            return False
+        if (
+            snapshot.summary is not None
+            and snapshot.summary.get(INPUT_HASH) == input_hash
+        ):
+            return True
+        oldest = snapshot
+    expired = oldest is not None and oldest.parent_snapshot_id is not None
+    return None if stop is not None and expired else False
