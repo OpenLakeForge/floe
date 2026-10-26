@@ -503,3 +503,65 @@ def test_qualified_op_name_colliding_with_domainless_name_raises(tmp_path) -> No
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError, match="'sales.accounts' and 'sales__accounts'"):
         build_floe_asset_defs(manifest_path=str(manifest_path), runner=_NoopRunner())
+
+
+# ── floe/table concurrency tag (#924) ──────────────────────────────────────────
+
+def _iceberg_manifest(tmp_path, entities, catalogs=None):
+    data = json.loads(FIXTURE.read_text())
+    template = data["entities"][0]
+    data["catalogs"] = catalogs
+    data["entities"] = []
+    for name, domain, iceberg in entities:
+        entity = json.loads(json.dumps(template))
+        entity.update(name=name, domain=domain, asset_key=[domain or "default", name.split(".")[-1]])
+        entity["sinks"]["accepted"].update(format="iceberg", iceberg=iceberg)
+        data["entities"].append(entity)
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def _table_tags(path):
+    asset_defs, _sources, _entities = build_floe_asset_defs(manifest_path=str(path), runner=_NoopRunner())
+    return {a.op.name.split("__")[-1]: a.op.tags.get("floe/table") for a in asset_defs}
+
+
+def test_entities_on_one_table_share_a_table_tag_and_other_tables_do_not(tmp_path) -> None:
+    target = {"catalog": "rest", "namespace": "sales", "table": "orders"}
+    path = _iceberg_manifest(
+        tmp_path,
+        [
+            ("orders_eu", "sales", target),
+            ("orders_us", "sales", target),
+            ("returns", "sales", {**target, "table": "returns"}),
+        ],
+    )
+    tags = _table_tags(path)
+    assert tags["orders_eu"] == tags["orders_us"] == "rest.sales.orders"
+    assert tags["returns"] == "rest.sales.returns"
+
+
+def test_table_tag_resolves_defaults_like_a_run(tmp_path) -> None:
+    path = _iceberg_manifest(
+        tmp_path,
+        [("Orders", "sales", {}), ("explicit", None, {"catalog": "other"})],
+        catalogs={"default": "rest"},
+    )
+    tags = _table_tags(path)
+    assert tags["Orders"] == "rest.sales.orders"
+    assert tags["explicit"] == "other.default.explicit"
+
+
+def test_table_tag_default_table_is_the_unqualified_entity_name(tmp_path) -> None:
+    path = _iceberg_manifest(
+        tmp_path,
+        [("sales.orders", "sales", {}), ("explicit", "sales", {"table": "orders"})],
+        catalogs={"default": "rest"},
+    )
+    assert set(_table_tags(path).values()) == {"rest.sales.orders"}
+
+
+def test_non_iceberg_entity_has_no_table_tag() -> None:
+    asset_def, _entity = _get_asset_def(FIXTURE, "employees")
+    assert "floe/table" not in asset_def.op.tags
