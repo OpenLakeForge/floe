@@ -146,3 +146,21 @@ def test_an_xml_derived_column_is_declared_whatever_its_name(tmp_path: Path) -> 
     assert pl.read_parquet(tmp_path / "out/accepted").rows() == [
         (1, date(2026, 10, 24))
     ]
+
+
+@pytest.mark.parametrize(("extra", "status"), [("ignore", "success"), ("reject_file", "rejected")])  # fmt: skip
+def test_a_file_column_named_like_the_normalised_derived_column(tmp_path: Path, extra: str, status: str) -> None:  # fmt: skip
+    """#913: the derived column comes from the path; the file's own `ingest_date` is an extra column, per policy."""
+    put(tmp_path, "2026/10/24/a1b2/x.csv", "id,ingest_date\n1,1999-01-01\n", 100)
+    text = CONFIG.format(mode="", archive="").replace("date_column: ingest_date", "date_column: IngestDate")  # fmt: skip
+    text = text.replace("primary_key: [id, ingest_date]", f"normalize_columns: {{enabled: true, strategy: snake_case}}\n      mismatch: {{extra_columns: {extra}}}")  # fmt: skip
+    path = tmp_path / "config.yml"
+    path.write_text(text)
+    run(path, parse_config(path, {}))
+    (f,) = report(tmp_path)["files"]
+    assert (f["status"], f["mismatch"]["extra_columns"]) == (status, ["ingest_date"])
+    assert (f["mismatch"]["declared_columns_count"], f["mismatch"]["input_columns_count"]) == (3, 2)  # fmt: skip
+    if status == "success":
+        got = pl.read_parquet(tmp_path / "out/accepted")
+        assert got.rows() == [(1, date(2026, 10, 24), "a1b2")]
+        assert got.columns == ["id", "IngestDate", "batch_id"]

@@ -280,10 +280,13 @@ def _output(plan: _Plan, df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _typed(
-    plan: _Plan, raw: pl.DataFrame, mismatch: MismatchOutcome
+    plan: _Plan, raw: pl.DataFrame, mismatch: MismatchOutcome, derived: list[pl.Expr]
 ) -> tuple[pl.DataFrame, list[RowCheck]]:
     entity, src = plan.entity, plan.entity.source
-    df = apply_mismatch(normalize_columns(raw, plan.strategy), mismatch)
+    # D28 (#913): the derived columns join after the file's own columns are normalised and matched
+    df = apply_mismatch(normalize_columns(raw, plan.strategy), mismatch).with_columns(
+        derived
+    )
     df = df.select(
         pl.col(n) if n in df.columns else pl.lit(None, pl.String).alias(n)
         for n in plan.names
@@ -319,13 +322,11 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     entity, uri = plan.entity, file.source_uri
     severity = entity.policy.severity
     derived = plan.derived.get(uri, [])
-    added = [e.meta.output_name() for e in derived]
-    # D28: the derived columns come last; they are declared, whatever their name, but not in the file
-    derived_names = [normalize_name(n, plan.strategy) for n in added]
-    declared = [
-        n for n in declared_names(entity) if n not in derived_names
-    ] + derived_names
-    chunks = _chunks(entity, path, plan.names[: len(plan.names) - len(derived)])
+    # D28: the derived columns come last in the schema and are not in the file
+    file_names = plan.names[: len(plan.names) - len(derived)]
+    derived = [e.alias(n) for e, n in zip(derived, plan.names[len(file_names) :], strict=True)]  # fmt: skip
+    declared = [n for n in declared_names(entity) if n not in plan.names[len(file_names) :]]  # fmt: skip
+    chunks = _chunks(entity, path, file_names)
     keys = plan.tracker.snapshot()
 
     def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
@@ -333,7 +334,7 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
         plan.tracker.restore(keys)  # the unreadable file leaves no keys behind
         keep = entity.pii is None and entity.sink.rejected is not None
         raw = _copy_raw(plan, path, severity, file.source_name) if keep else None
-        return _failed_file(entity, uri, len(declared), mismatch, err, raw), []
+        return _failed_file(entity, uri, len(declared) + len(derived), mismatch, err, raw), []  # fmt: skip
 
     try:
         if entity.source.format == "xml":
@@ -344,9 +345,9 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     except FloeIoError as err:
         plan.prechecked.add(uri)  # Rust `run_precheck` settles an unreadable header too
         return failed(err, None)
-    mismatch = plan_mismatch(entity, declared, probe + added)
-    if derived:  # D28: the input columns are the file's own
-        mismatch.report["input_columns_count"] = len(probe)
+    mismatch = plan_mismatch(entity, declared, probe)
+    # D28: the derived columns are declared (through partitioning), not input columns
+    mismatch.report["declared_columns_count"] += len(derived)
     if mismatch.rejected or mismatch.aborted:
         plan.prechecked.add(uri)
         raw = _copy_raw(plan, path, "abort" if mismatch.aborted else "reject", file.source_name)  # fmt: skip
@@ -360,7 +361,7 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     errors: list[tuple[int, str]] = []
     try:
         for offset, raw_df, ragged in chain(first, chunks):
-            typed, checks = _typed(plan, raw_df.with_columns(derived), mismatch)
+            typed, checks = _typed(plan, raw_df, mismatch, derived)
             if ragged is not None and ragged.any():
                 checks.insert(0, RowCheck("csv_read_error", "", RAGGED_MESSAGE, ragged))
             good, bad = split_rows(typed, checks, plan.formatter, plan.sources)

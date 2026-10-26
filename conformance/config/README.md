@@ -1,6 +1,6 @@
 # Config conformance cases (`floe validate`)
 
-636 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
+637 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
 v0.7.0 release binary. See [../README.md](../README.md) for recording, checking and the delta mechanism.
 
 ## Layout
@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 5 D12, 1 D13, 2 D21, 4 D26, 14 D28, 1 D33.
+18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 5 D12, 1 D13, 2 D21, 4 D26, 15 D28, 1 D33.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -131,6 +131,7 @@ implementation exists yet; each is derived as its row says.
 | `val1_d28_batch_column_without_token` | D28 | `entity.name=orders source.partitioning.batch_column requires {batch} in source.partitioning.pattern` | As above. |
 | `val1_d28_batch_column_same_as_date` | D28 | `entity.name=orders source.partitioning.batch_column=ingest_date must differ from source.partitioning.date_column` | As above. |
 | `val1_d28_date_column_clash` | D28 | `entity.name=orders source.partitioning.date_column=amt is already a column in schema.columns` | As above; a derived column must not clash with `schema.columns`. |
+| `val1_d28_date_column_clash_normalised` | D28 | `entity.name=orders source.partitioning.date_column=ingest_date is already a column in schema.columns` | As above, after `normalize_columns` (#913): `Ingest Date` normalises to `ingest_date`. |
 | `div_S13_ctrl` | D33 | ok; `expected_python/manifest.json` | D33 (#911): the manifest carries the Iceberg sink's `partition_spec`, so `run --manifest` keeps it; Rust 0.7 drops it (`manifest/reconstruct.rs:388`). The validate outcome is unchanged; only the manifest differs, by the `partition_spec` block. |
 
 ## #584 divergences
