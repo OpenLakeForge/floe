@@ -227,6 +227,21 @@ def test_promote_moves_own_claims_to_files(tmp_path: Path) -> None:
     assert again.pending == [] and again.already_processed[0][0] == a
 
 
+def test_promote_only_some_keeps_the_other_claims(tmp_path: Path) -> None:
+    """#545: a retry promotes a dead run's committed batch first; its other inputs stay claimed."""
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    outcome = claim_inputs(client, uri, "sales", "run-a", [_input("a"), _input("b")])
+    assert outcome.claimed is not None
+    promote(client, uri, "run-a", outcome.claimed, only={"a"})
+    state = read_state(client, uri, "sales")
+    assert state is not None
+    assert (list(state.files), list(state.claims)) == (["a"], ["b"])
+    promote(client, uri, "run-a", outcome.claimed)  # a stale version: the CAS retries
+    state = read_state(client, uri, "sales")
+    assert state is not None
+    assert (sorted(state.files), state.claims) == (["a", "b"], {})
+
+
 def test_release_drops_own_claims_only(tmp_path: Path) -> None:
     uri, client = str(tmp_path / "state.json"), LocalClient()
     claim_inputs(client, uri, "sales", "run-b", [_input("b")])
