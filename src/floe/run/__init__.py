@@ -104,8 +104,8 @@ def run(
 
     def inputs(e: EntityConfig) -> ResolvedInputs:
         return list_source(
-            e, config_dir, root.storages, *resolve_source(e, config_dir, root.storages)
-        )
+            e, config_dir, root.storages, *resolve_source(e, config_dir, root.storages), full_refresh
+        )  # fmt: skip
 
     if dry_run:  # Rust: no events, no reports; the inputs are only listed
         scanned = {e.id: [f.source_uri for f in inputs(e).files] for e in selected}
