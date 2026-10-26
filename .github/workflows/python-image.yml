@@ -49,4 +49,4 @@ jobs:
       - name: DuckDB extensions load offline
         run: |
           docker run --rm --network none --entrypoint python "$IMAGE" -c \
-            "import duckdb; c=duckdb.connect(); [c.execute(f'LOAD {e}') for e in ('iceberg','httpfs','aws')]"
+            "import duckdb; c=duckdb.connect(); [c.execute(f'LOAD {e}') for e in ('avro','iceberg','httpfs','aws')]"

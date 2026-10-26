@@ -73,7 +73,7 @@ Cloud credentials should be provided via environment variables or runtime identi
 
 `ghcr.io/openlakeforge/floe-python` runs the Python core (`python:3.11-slim`, locked venv, non-root
 user, entrypoint `floe`). It ships alongside the Rust images above; tags are `<version>` and `latest`.
-The DuckDB `iceberg`, `httpfs` and `aws` extensions are preinstalled for the pinned `duckdb`, so
+The DuckDB `avro` (needed by `iceberg`), `iceberg`, `httpfs` and `aws` extensions are preinstalled for the pinned `duckdb`, so
 merges work without network access to the extension repository.
 
 ```bash

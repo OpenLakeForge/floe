@@ -28,6 +28,6 @@ WORKDIR /work
 
 # Extensions land in ~floe/.duckdb/extensions/<version>/<platform>, matching the pinned duckdb.
 # Fails the build if any extension cannot be fetched.
-RUN python -c "import duckdb; c=duckdb.connect(); [c.execute(f'INSTALL {e}') for e in ('iceberg','httpfs','aws')]"
+RUN python -c "import duckdb; c=duckdb.connect(); [c.execute(f'INSTALL {e}') for e in ('avro','iceberg','httpfs','aws')]"
 
 ENTRYPOINT ["floe"]
