@@ -280,7 +280,7 @@ def release(client: StorageClient, uri: str, run_id: str, claimed: Loaded, resto
         mine = {u: c for u, c in state.claims.items() if c.run_id == run_id and u in ours}  # fmt: skip
         state.claims = {u: c for u, c in state.claims.items() if u not in mine}
         for u, c in (restore or {}).items():
-            if u not in state.files:
+            if u in mine:  # not one it promoted: D30 may have pruned it
                 state.claims.setdefault(u, c)
         for u, c in mine.items() if expire else ():
             c.expires_at = c.acquired_at

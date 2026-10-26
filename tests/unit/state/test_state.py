@@ -274,6 +274,27 @@ def test_d30_release_restores_dead_claims_and_keeps_its_own_expired(tmp_path: Pa
     assert state.claims["g"].expires_at == state.claims["g"].acquired_at  # expired
 
 
+def test_d30_release_never_restores_a_claim_this_run_promoted_and_pruned(tmp_path: Path) -> None:  # fmt: skip
+    """#545 + D30: the guard promotes a dead run's batch (10-10, 10-24) and pruning drops 10-10 from `files`;
+    a later failure must not put 10-10's dead claim back, or the next retry's batch is 10-10 alone and re-appends it.
+    """
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    old, new, extra = _input("10-10"), _input("10-24"), _input("10-25")
+    dead = {u: _claim("dead", "2000-01-01T01:00:00Z") for u in ("10-10", "10-24")}
+    client.write_conditional(uri, None, dump_state(EntityState("sales", None, {}, dead)))  # fmt: skip
+    outcome = claim_inputs(client, uri, "sales", "run-b", [old, new, extra])
+    assert outcome.claimed is not None and set(outcome.expired) == set(dead)
+
+    def prune(state: EntityState, promoted: list[str]) -> None:
+        state.files.pop("10-10", None)  # older than the new window
+
+    promote(client, uri, "run-b", outcome.claimed, only={"10-10", "10-24"}, advance=prune)  # fmt: skip
+    release(client, uri, "run-b", outcome.claimed, outcome.expired)  # 10-25 failed
+    state = read_state(client, uri, "sales")
+    assert state is not None
+    assert (list(state.files), list(state.claims)) == (["10-24"], [])
+
+
 def test_d30_an_expired_claim_is_never_passed_by_the_window(tmp_path: Path) -> None:
     """`before` sees the state with its expired claims, so a dead run's file older than the window is retried."""
     uri, client, f = str(tmp_path / "state.json"), LocalClient(), _input("f")
