@@ -37,7 +37,7 @@ from floe.checks.rows import (
     split_rows,
 )
 from floe.checks.unique import UniqueResult, UniqueTracker, resolve_unique_keys
-from floe.config.storage import CatalogsConfig, StoragesConfig
+from floe.config.storage import CatalogsConfig, StorageDefinition, StoragesConfig
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
 from floe.iceberg.sink import (
@@ -241,12 +241,12 @@ def _archive(plan: _Plan, file: InputFile) -> str | None:
     return uri.removeprefix("local://")
 
 
-def _with_archived(plan: _Plan, archive: tuple[str, StorageClient], source: Callable[[], ResolvedInputs]) -> ResolvedInputs:  # fmt: skip
+def _with_archived(e: EntityConfig, archive: tuple[str, StorageClient], source: Callable[[], ResolvedInputs]) -> ResolvedInputs:  # fmt: skip
     """D24: a full refresh reads `<archive>/<entity>/` first (by name), then the source inputs; either may be empty, not both.
 
     Only "no inputs matched" counts as empty: any other listing error fails the refresh rather than rebuild from part of the inputs.
     """
-    e, (base, client) = plan.entity, archive
+    base, client = archive
     path = e.name if base.startswith("local://") else f"{base}/{e.name}/"
     try:
         old = resolve_inputs(Path(base.removeprefix("local://")), path, e.source.format, e.name, e.source.storage or "local", client)  # fmt: skip
@@ -576,13 +576,32 @@ def resolve_source(entity: EntityConfig, config_dir: Path, storages: StoragesCon
     return uri, storage_client(definition)
 
 
-def list_source(entity: EntityConfig, config_dir: Path, uri: str, client: StorageClient) -> ResolvedInputs:  # fmt: skip
-    """The source inputs; a local path keeps its globs relative to the config."""
-    src = entity.source
-    return resolve_inputs(
-        config_dir, src.path if uri.startswith("local://") else uri, src.format, entity.name,
-        src.storage or "local", client, recursive=bool(src.options.recursive), glob_override=src.options.glob,
-    )  # fmt: skip
+def archive_location(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None) -> tuple[str, StorageDefinition | None] | None:  # fmt: skip
+    """`sink.archive` as a URI (no trailing `/`) and its storage definition."""
+    archive, src = entity.sink.archive, entity.source
+    if archive is None:
+        return None
+    uri, definition = resolve_path(storages, config_dir, archive.storage or src.storage, archive.path, f"entity.name={entity.name} sink.archive.storage")  # fmt: skip
+    return uri.rstrip("/"), definition
+
+
+def list_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None, uri: str, client: StorageClient, full_refresh: bool = False) -> ResolvedInputs:  # fmt: skip
+    """The source inputs; a local path keeps its globs relative to the config.
+
+    D31: the archive is never listed as source input; only a full refresh reads it, explicitly (D24).
+    """
+    src, archive = entity.source, archive_location(entity, config_dir, storages)
+
+    def source() -> ResolvedInputs:
+        return resolve_inputs(
+            config_dir, src.path if uri.startswith("local://") else uri, src.format, entity.name,
+            src.storage or "local", client, recursive=bool(src.options.recursive), glob_override=src.options.glob,
+            exclude=archive and archive[0],
+        )  # fmt: skip
+
+    if full_refresh and archive and entity.incremental_mode in ("none", "archive"):
+        return _with_archived(entity, (archive[0], storage_client(archive[1])), source)
+    return source()
 
 
 def run_entity(
@@ -628,7 +647,7 @@ def _run_entity(
     catalogs: CatalogsConfig | None,
     listed: ResolvedInputs | None,
 ) -> EntityRun:
-    src, sink = entity.source, entity.sink
+    sink = entity.sink
     if sink.accepted.format not in ("parquet", "iceberg"):
         raise FloeRunError(f"entity.name={entity.name} unsupported sink format: {sink.accepted.format}")  # fmt: skip
     iceberg = sink.accepted.format == "iceberg"
@@ -663,9 +682,9 @@ def _run_entity(
         },
         run_id=emit.run_id, rejected=rejected and (rejected[0], storage_client(rejected[1])),
     )  # fmt: skip
-    if sink.archive and entity.incremental_mode in ("none", "archive"):
-        uri, definition = resolve_path(storages, config_dir, sink.archive.storage or src.storage, sink.archive.path, f"{who} sink.archive.storage")  # fmt: skip
-        plan.archive = uri.rstrip("/"), storage_client(definition)
+    location = archive_location(entity, config_dir, storages)
+    if location and entity.incremental_mode in ("none", "archive"):
+        plan.archive = location[0], storage_client(location[1])
     if sink.write_mode in ("merge_scd1", "merge_scd2") and entity.schema_.primary_key:
         pk = [runtime.get(k.strip(), k.strip()) for k in entity.schema_.primary_key]
         plan.merge_key = (
@@ -689,11 +708,12 @@ def _run_entity(
         return (
             listed
             if listed is not None
-            else list_source(entity, config_dir, source_uri, client)
+            else list_source(
+                entity, config_dir, storages, source_uri, client, inc.full_refresh
+            )
         )
 
-    archive = plan.archive
-    inputs = _with_archived(plan, archive, source) if inc.full_refresh and archive else source()  # fmt: skip
+    inputs = source()
     pending, files = inc.claim(inputs.files, emit)
     frames: list[pl.DataFrame] = []
     skipped = len(files)

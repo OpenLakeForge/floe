@@ -153,12 +153,13 @@ def test_a_raising_observer_does_not_abort_the_run(tmp_path: Path) -> None:
     assert [e["name"] for e in out.summary["entities"]] == ["d.a", "d.b"]
 
 
-def archived_once(tmp_path: Path) -> Path:
-    """An archive-mode entity whose first run archived `a.csv` (2 rows)."""
+def archived_once(tmp_path: Path, archive: str = "./arch", mode: str = "archive") -> Path:  # fmt: skip
+    """An entity (`archive` mode, or `none` with `sink.archive`) whose first run archived `a.csv` (2 rows)."""
     (tmp_path / "in").mkdir()
     (tmp_path / "in/a.csv").write_text("id\n1\n2\n")
     text = ENTITY.format(name="o", mode="append").replace("./in/o.csv", "./in")
-    text = text.replace("    sink:\n", "    incremental_mode: archive\n    sink:\n      archive: {path: ./arch}\n")  # fmt: skip
+    text = text.replace('separator: ","}', 'separator: ",", recursive: true}')
+    text = text.replace("    sink:\n", f"    incremental_mode: {mode}\n    sink:\n      archive: {{path: {archive}}}\n")  # fmt: skip
     path = tmp_path / "config.yml"
     path.write_text(f'version: "0.3"\ndomains:\n  - name: d\nentities:\n{text}report: {{path: ./report}}\n')  # fmt: skip
     run(path, parse_config(path, {}))
@@ -181,6 +182,38 @@ def test_full_refresh_reingests_archived_files(tmp_path: Path) -> None:
         "a",
         "b",
     ]
+
+
+@pytest.mark.parametrize("mode", ["archive", "none"])
+def test_d31_a_normal_run_never_lists_a_nested_archive(tmp_path: Path, mode: str) -> None:  # fmt: skip
+    """D31: an archive under a recursive source is not input again (it would duplicate `a.csv`'s rows)."""
+    path = archived_once(tmp_path, "./in/arch", mode)
+    (tmp_path / "in/b.csv").write_text("id\n3\n")
+    out = run(path, parse_config(path, {}))
+    assert rows(tmp_path, "o") == 3
+    report = json.loads(max(tmp_path.glob("report/run_*/d/o/run.json")).read_text())
+    assert [Path(f["input_file"]).name for f in report["files"]] == ["b.csv"]
+    assert out.summary["results"]["accepted_total"] == 1
+
+
+def test_d31_full_refresh_reads_a_nested_archive_and_the_source_once(tmp_path: Path) -> None:  # fmt: skip
+    path = archived_once(tmp_path, "./in/arch")
+    (tmp_path / "in/b.csv").write_text("id\n3\n")
+    out = run(path, parse_config(path, {}), full_refresh=True)
+    assert rows(tmp_path, "o") == 3
+    assert out.summary["results"]["accepted_total"] == 3
+
+
+@pytest.mark.parametrize("fresh", [True, False])
+def test_d31_a_full_refresh_dry_run_lists_a_nested_archive(tmp_path: Path, fresh: bool) -> None:  # fmt: skip
+    """The preview lists what the full refresh reads: the archive, then the source (D24)."""
+    path = archived_once(tmp_path, "./in/arch")
+    if fresh:
+        (tmp_path / "in/b.csv").write_text("id\n3\n")
+    out = run(path, parse_config(path, {}), full_refresh=True, dry_run=True)
+    assert out.dry_run is not None
+    names = [Path(u).name.split("__")[0] for u in out.dry_run["d.o"]]
+    assert names == (["a", "b.csv"] if fresh else ["a"])
 
 
 def test_full_refresh_runs_from_the_archive_alone(tmp_path: Path) -> None:
