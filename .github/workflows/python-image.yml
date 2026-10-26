@@ -1,0 +1,52 @@
+name: Python image
+
+# Builds Dockerfile.python and smoke-tests it (#926). Publishing is in release.yml.
+on:
+  pull_request:
+    paths:
+      - "Dockerfile.python"
+      - "src/floe/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/python-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: floe-python:ci
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile.python
+          load: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=python-image
+          cache-to: type=gha,mode=max,scope=python-image
+      - name: floe --version
+        run: docker run --rm "$IMAGE" --version
+      - name: floe validate
+        run: docker run --rm -v "$PWD/example:/work/example:ro" "$IMAGE" validate -c /work/example/standalone/config.yml
+      - name: floe run
+        run: |
+          set -euo pipefail
+          cp -r example/standalone "$RUNNER_TEMP/standalone"
+          chmod -R a+rwX "$RUNNER_TEMP/standalone"
+          docker run --rm -v "$RUNNER_TEMP/standalone:/work" "$IMAGE" run -c /work/config.yml
+          test -n "$(ls "$RUNNER_TEMP"/standalone/out/accepted/orders)"
+      - name: DuckDB extensions load offline
+        run: |
+          docker run --rm --network none --entrypoint python "$IMAGE" -c \
+            "import duckdb; c=duckdb.connect(); [c.execute(f'LOAD {e}') for e in ('iceberg','httpfs','aws')]"

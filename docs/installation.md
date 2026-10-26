@@ -69,6 +69,19 @@ docker run --rm -v "$PWD:/work" ghcr.io/openlakeforge/floe:latest run -c /work/e
 
 Cloud credentials should be provided via environment variables or runtime identity — not baked into the image.
 
+### Python image
+
+`ghcr.io/openlakeforge/floe-python` runs the Python core (`python:3.11-slim`, locked venv, non-root
+user, entrypoint `floe`). It ships alongside the Rust images above; tags are `<version>` and `latest`.
+The DuckDB `iceberg`, `httpfs` and `aws` extensions are preinstalled for the pinned `duckdb`, so
+merges work without network access to the extension repository.
+
+```bash
+docker run --rm -v "$PWD:/work" ghcr.io/openlakeforge/floe-python:latest run -c /work/config.yml
+```
+
+Build locally with `docker build -f Dockerfile.python -t floe-python .`.
+
 ## DuckDB support (companion distribution)
 
 The default `floe` CLI, Docker image, and PyPI wheel are **lean**: they include the
