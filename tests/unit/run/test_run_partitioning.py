@@ -119,3 +119,30 @@ def test_derived_columns_never_name_headerless_csv_fields(tmp_path: Path) -> Non
         "rejected",
         ["extra_column_2"],
     )
+
+
+XML = """\
+version: "0.3"
+entities:
+  - name: o
+    source:
+      format: xml
+      path: ./in
+      options: {row_tag: row}
+      partitioning: {pattern: "{yyyy}/{MM}/{dd}", date_column: ingest.date}
+    sink: {accepted: {format: parquet, path: ./out/accepted}, rejected: {format: csv, path: ./out/rejected}}
+    policy: {severity: reject}
+    schema: {columns: [{name: id, type: int64}]}
+report: {path: ./report}
+"""
+
+
+def test_an_xml_derived_column_is_declared_whatever_its_name(tmp_path: Path) -> None:
+    """A derived name is an output column, not an XML selector: `ingest.date` is not taken for a nested one."""
+    put(tmp_path, "2026/10/24/x.xml", "<root><row><id>1</id></row></root>", 100)
+    path = tmp_path / "config.yml"
+    path.write_text(XML)
+    run(path, parse_config(path, {}))
+    assert pl.read_parquet(tmp_path / "out/accepted").rows() == [
+        (1, date(2026, 10, 24))
+    ]
