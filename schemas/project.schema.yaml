@@ -435,6 +435,8 @@ $defs:
         - 'null'
       options:
         $ref: '#/$defs/source_options'
+      partitioning:
+        $ref: '#/$defs/source_partitioning'
       cast_mode:
         type:
         - string
@@ -525,6 +527,39 @@ $defs:
                 pattern: \S
               value_tag:
                 pattern: \S
+  source_partitioning:
+    description: 'D28: match each input''s directory path, relative to the source root, against pattern; add date_column (and batch_column) to every row.'
+    type: object
+    additionalProperties: false
+    properties:
+      pattern:
+        type: string
+        allOf:
+        - pattern: ^(?:[^{}]|\{(?:yyyy|MM|dd|HH|batch)\})*$
+        - pattern: \{yyyy\}
+        - pattern: \{MM\}
+        - pattern: \{dd\}
+        - not:
+            pattern: (\{[A-Za-z]+\})[\s\S]*\1
+      date_column:
+        type: string
+        pattern: \S
+      batch_column:
+        type:
+        - string
+        - 'null'
+        pattern: \S
+    if:
+      required:
+      - batch_column
+      - pattern
+      properties:
+        batch_column:
+          type: string
+    then:
+      properties:
+        pattern:
+          pattern: \{batch\}
   source_options:
     type: object
     additionalProperties: false
@@ -1328,6 +1363,8 @@ $defs:
         - 'null'
       options:
         $ref: '#/$defs/source_options'
+      partitioning:
+        $ref: '#/$defs/source_partitioning'
       cast_mode:
         type:
         - string
@@ -1871,6 +1908,8 @@ $defs:
         - 'null'
       options:
         $ref: '#/$defs/source_options'
+      partitioning:
+        $ref: '#/$defs/source_partitioning'
       cast_mode:
         type:
         - string

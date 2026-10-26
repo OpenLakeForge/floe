@@ -36,6 +36,7 @@ domains:
 entities:
   - name: orders
     domain: d
+    incremental_mode: file
     source: {{format: csv, path: in/, storage: lake, options: {{header: true, separator: ","}}}}
     sink:
       accepted: {{format: parquet, path: out/accepted, storage: lake}}
@@ -54,7 +55,7 @@ def s3(monkeypatch: pytest.MonkeyPatch) -> S3Client:
     return S3Client(BUCKET, "us-east-1", os.environ["FLOE_S3_ENDPOINT"], True)
 
 
-def test_csv_on_s3_to_parquet_on_s3_with_the_report_on_s3(
+def test_csv_on_s3_to_parquet_on_s3_then_an_incremental_skip(
     s3: S3Client, tmp_path: Path
 ) -> None:
     prefix = f"it-{uuid.uuid4().hex}"
@@ -76,3 +77,6 @@ def test_csv_on_s3_to_parquet_on_s3_with_the_report_on_s3(
     assert [f["input_file"] for f in report["files"]] == [
         f"s3://{BUCKET}/{prefix}/in/a.csv"
     ]
+    again = run(config, parse_config(config), run_id="r2")
+    assert again.summary["results"]["files_skipped"] == 1
+    assert s3.read(s3.resolve_uri(f"{prefix}/in/.floe/state/d/orders/state.json"))

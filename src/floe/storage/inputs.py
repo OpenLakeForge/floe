@@ -23,6 +23,10 @@ _SUFFIXES = {
 }
 
 
+class NoInputsError(FloeRunError):
+    """No input file or object matched the source; any other listing error is not this."""
+
+
 @dataclass(frozen=True)
 class InputFile:
     source_uri: str
@@ -85,8 +89,8 @@ def _local_files(
     glob_override: str | None,
     recursive: bool,
 ) -> tuple[list[Path], Literal["file", "directory"]]:
-    def no_match(base: object, used: str) -> FloeRunError:
-        return FloeRunError(
+    def no_match(base: object, used: str) -> NoInputsError:
+        return NoInputsError(
             f"entity.name={entity} source.storage={storage} no input files matched "
             f"(base_path={base}, glob={used}, recursive={str(recursive).lower()})"
         )
@@ -179,7 +183,7 @@ def _cloud_refs(
     ]
     if not refs:
         used = "glob=<none>" if matcher is None else f"glob={key}"
-        raise FloeRunError(
+        raise NoInputsError(
             f"{where} no input objects matched ({location}, prefix={prefix}, "
             f"{used}, suffixes={','.join(suffixes)})"
         )

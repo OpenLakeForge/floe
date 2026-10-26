@@ -40,8 +40,8 @@ from floe.run.events import (
     SchemaEvolutionAppliedEvent,
 )
 from floe.state import dump_state, read_state, reset
-from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
+from floe.storage.types import StorageClient
 
 _observer: Callable[[RunEvent], None] | None = None
 
@@ -202,27 +202,30 @@ def extract_config_env_vars(config_path: str) -> dict[str, str]:
     return _env_vars(Path(config_path))
 
 
-def _state(config_path: str, entity_name: str) -> tuple[str, str, str]:
+def _state(config_path: str, entity_name: str) -> tuple[str, str, str, StorageClient]:
     path, root = _load(config_path)
     [entity] = _run.select_entities(root, [entity_name])
-    return entity.name, entity.incremental_mode, state_uri(entity, normalize_local_path(path.parent))  # fmt: skip
+    uri, client = state_uri(entity, normalize_local_path(path.parent), root.storages)
+    return entity.name, entity.incremental_mode, uri, client
 
 
 def inspect_entity_state(config_path: str, entity_name: str) -> dict[str, Any]:
-    name, mode, uri = _state(config_path, entity_name)
-    state = read_state(LocalClient(), uri, name)
+    name, mode, uri, client = _state(config_path, entity_name)
+    state = read_state(client, uri, name)
     return {
         "entity_name": name,
         "incremental_mode": mode,
         "path_uri": uri,
-        "path_local": uri.removeprefix("local://"),
+        "path_local": uri.removeprefix("local://")
+        if uri.startswith("local://")
+        else None,
         "state": json.loads(dump_state(state)) if state else None,
     }
 
 
 def reset_entity_state(config_path: str, entity_name: str) -> bool:
-    name, _, uri = _state(config_path, entity_name)
-    return reset(LocalClient(), uri, name)
+    name, _, uri, client = _state(config_path, entity_name)
+    return reset(client, uri, name)
 
 
 def set_observer(callback: Callable[[RunEvent], None]) -> bool:
