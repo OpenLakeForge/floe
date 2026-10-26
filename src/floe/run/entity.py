@@ -216,6 +216,9 @@ class _Plan:
     tracker: UniqueTracker
     pii_map: dict[str, str]
     rejected_writes: int = 0
+    prechecked: set[str] = field(
+        default_factory=set[str]
+    )  # files the precheck settles (unreadable header, rejected or aborted mismatch); Rust settles them before it reads any file
     archive: tuple[str, StorageClient] | None = None  # Rust `archive_enabled()`
     run_id: str = ""
     rejected: tuple[str, StorageClient] | None = None  # `sink.rejected` URI and client
@@ -332,11 +335,13 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
             first = [next(chunks)]
             probe = list(first[0][1].columns)
     except FloeIoError as err:
+        plan.prechecked.add(uri)  # Rust `run_precheck` settles an unreadable header too
         return failed(err, None)
     mismatch = plan_mismatch(entity, declared, probe + added)
     if derived:  # D28: the input columns are the file's own
         mismatch.report["input_columns_count"] = len(probe)
     if mismatch.rejected or mismatch.aborted:
+        plan.prechecked.add(uri)
         raw = _copy_raw(plan, path, "abort" if mismatch.aborted else "reject", file.source_name)  # fmt: skip
         return file_report(entity, uri, 0, 0, [], mismatch, raw, _archive(plan, file)), []  # fmt: skip
 
@@ -746,6 +751,7 @@ def _run_entity(
     plan.derived = _derived(entity, source_uri, archive and archive[0], inputs.files)
     pending, files = inc.claim(inputs.files, emit)
     frames: list[pl.DataFrame] = []
+    skipped = len(files)
     downloader = None if isinstance(client, LocalClient) else client
     # Rust `localize_input`: a remote input is read from a local copy
     with tempfile.TemporaryDirectory(prefix="floe-") as temp_dir:
@@ -763,6 +769,7 @@ def _run_entity(
             frames += kept
             if report["status"] == "aborted":
                 break
+    files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
 
     table: dict[str, Any] | None = None
     merge: dict[str, Any] | None = None

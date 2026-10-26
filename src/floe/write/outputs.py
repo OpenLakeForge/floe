@@ -4,13 +4,15 @@ import io
 import math
 import re
 import uuid
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import count
 
 import polars as pl
 
 from floe.config.types import SinkOptions, WriteMode
+from floe.errors import FloeError, FloeStorageError
 from floe.storage.paths import parse_s3_uri
 from floe.storage.types import StorageClient
 
@@ -18,6 +20,21 @@ DEFAULT_MAX_SIZE_PER_FILE = 256 * 1024 * 1024
 MAX_REPORTED_PARTS = 50
 _MIB = 1024 * 1024
 _PART = re.compile(r"part-.+")
+
+
+@contextmanager
+def _os_errors() -> Generator[None]:
+    """An `OSError` while writing becomes a bare `FloeError`: Rust surfaces a raw `io::Error` here, which logs with code `error`."""
+    try:
+        yield
+    except (
+        OSError,
+        FloeStorageError,
+    ) as e:  # the storage client wraps the OSError; Rust prints the bare io::Error
+        os = e if isinstance(e, OSError) else e.__cause__
+        if not isinstance(os, OSError):
+            raise
+        raise FloeError(f"{os.strerror} (os error {os.errno})" if os.errno is not None else str(os)) from os  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -72,14 +89,15 @@ def write_accepted(
         kwargs["row_group_size"] = options.row_group_size
     files: list[str] = []
     sizes: list[int] = []
-    for chunk in [df.slice(i, rows) for i in range(0, df.height, rows)] or [df]:
-        name = next(names)
-        # ponytail: a part is held in memory (≤ max_size_per_file) before the put; stream multipart uploads if that is too much
-        body = io.BytesIO()
-        chunk.write_parquet(body, **kwargs)  # pyright: ignore[reportArgumentType]  # ponytail: kwargs loses the compression Literal; validated by the config
-        client.write(f"{base}/{name}", body.getvalue())
-        files.append(name)
-        sizes.append(body.tell())
+    with _os_errors():
+        for chunk in [df.slice(i, rows) for i in range(0, df.height, rows)] or [df]:
+            name = next(names)
+            # ponytail: a part is held in memory (≤ max_size_per_file) before the put; stream multipart uploads if that is too much
+            body = io.BytesIO()
+            chunk.write_parquet(body, **kwargs)  # pyright: ignore[reportArgumentType]  # ponytail: kwargs loses the compression Literal; validated by the config
+            client.write(f"{base}/{name}", body.getvalue())
+            files.append(name)
+            sizes.append(body.tell())
     total = sum(sizes)
     return AcceptedWrite(
         len(files),
@@ -92,7 +110,8 @@ def write_accepted(
 
 def write_rejected(df: pl.DataFrame, client: StorageClient, base: str, mode: WriteMode = "overwrite") -> str:  # fmt: skip
     """Write the rejected frame from `split_rows` as one CSV part under `base`; returns its URI."""
-    base = base.rstrip("/")
-    uri = f"{base}/{next(_part_names(client, base, mode, 'csv'))}"
-    client.write(uri, df.write_csv().encode())
+    with _os_errors():
+        base = base.rstrip("/")
+        uri = f"{base}/{next(_part_names(client, base, mode, 'csv'))}"
+        client.write(uri, df.write_csv().encode())
     return uri
