@@ -164,6 +164,43 @@ def test_claim_skips_active_claims_from_other_runs(tmp_path: Path) -> None:
     assert {u: c.run_id for u, c in state.claims.items()} == {f.source_uri: "run-a"}
 
 
+def test_merge_barrier_skips_the_entity_while_another_run_holds_a_live_claim(
+    tmp_path: Path,
+) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    a, b = _input("local:///in/a.csv"), _input("local:///in/b.csv")
+    claim_inputs(client, uri, "sales", "run-a", [a])
+    # a newer file the live run never claimed is still held back (S7)
+    got = claim_inputs(client, uri, "sales", "run-b", [b], barrier=True)
+    assert got.pending == []
+    assert got.claimed is None
+    assert got.active_claims == [b.source_uri]
+    state = read_state(client, uri, "sales")
+    assert state is not None
+    assert {u: c.run_id for u, c in state.claims.items()} == {a.source_uri: "run-a"}
+
+
+def test_without_the_barrier_other_files_are_claimed_beside_a_live_claim(
+    tmp_path: Path,
+) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    a, b = _input("local:///in/a.csv"), _input("local:///in/b.csv")
+    claim_inputs(client, uri, "sales", "run-a", [a])  # append: order doesn't matter
+    got = claim_inputs(client, uri, "sales", "run-b", [b])
+    assert got.pending == [b]
+    assert got.active_claims == []
+
+
+def test_merge_barrier_ignores_expired_claims(tmp_path: Path) -> None:
+    uri, client, f = str(tmp_path / "state.json"), LocalClient(), _input()
+    old = EntityState(
+        "sales", None, {}, {f.source_uri: _claim("crashed", "2000-01-01T01:00:00Z")}
+    )
+    client.write_conditional(uri, None, dump_state(old))
+    got = claim_inputs(client, uri, "sales", "run-b", [f], barrier=True)
+    assert got.pending == [f]
+
+
 def test_claim_removes_expired_claims_before_acquiring(tmp_path: Path) -> None:
     uri, client, f = str(tmp_path / "state.json"), LocalClient(), _input()
     old = EntityState(
