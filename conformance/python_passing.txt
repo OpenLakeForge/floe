@@ -637,6 +637,7 @@ config/val1_version_d21_newer_minor
 archive_mode
 config/val2_d26_iceberg_no_catalog
 unresolved_inputs
+write_oserror
 mismatch_file_order manifest
 config/parse_d28_date_column_missing
 config/parse_d28_named_source_ok

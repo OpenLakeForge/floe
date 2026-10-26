@@ -242,6 +242,30 @@ def test_full_refresh_reads_an_archive_nested_in_the_source_once(tmp_path: Path,
     assert out.summary["results"]["accepted_total"] == 1
 
 
+@pytest.mark.parametrize("mode", ["archive", "none"])
+def test_d31_a_normal_run_never_lists_a_nested_s3_archive(tmp_path: Path, s3: MemS3, mode: str) -> None:  # fmt: skip
+    """D31: the source prefix also lists `in/archive/`; those objects are not input again."""
+    config = ARCHIVE.replace("path: archive/,", "path: in/archive/,").replace("incremental_mode: archive", f"incremental_mode: {mode}")  # fmt: skip
+    config = config.replace("    sink:\n", "    sink:\n      write_mode: append\n")
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    go(tmp_path, config)
+    s3.write("s3://b/in/b.csv", b"id\n2\n")
+    out = go(tmp_path, config)
+    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    assert [f["input_file"] for f in report["files"]] == ["s3://b/in/b.csv"]
+    assert report["source"]["resolved_inputs"]["files"] == ["s3://b/in/b.csv"]
+    assert out.summary["results"]["accepted_total"] == 1
+
+
+def test_d31_full_refresh_reads_a_nested_s3_archive_and_the_source_once(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    config = ARCHIVE.replace("path: archive/,", "path: in/archive/,")
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    go(tmp_path, config)
+    s3.write("s3://b/in/b.csv", b"id\n2\n")
+    out = full_refresh(tmp_path, config)
+    assert out.summary["results"]["accepted_total"] == 2
+
+
 def test_inspect_entity_state_reads_the_s3_state(tmp_path: Path, s3: MemS3) -> None:
     s3.write("s3://b/in/a.csv", b"id\n1\n")
     config = SINKS.replace("    domain: d\n", "    domain: d\n    incremental_mode: file\n", 1)  # fmt: skip

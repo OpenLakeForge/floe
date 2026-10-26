@@ -494,6 +494,9 @@ state file shape, and CAS behavior.
 - `path`: directory where raw input files are archived after ingestion.
   - If omitted, archiving is disabled.
   - Supports `{{var}}` templating (see "Templating & domains").
+  - Prefer an archive location outside the source path (for example `s3://raw/archive/` next to
+    `s3://raw/crm/`). Nesting it under the source is safe: a normal run never lists the
+    archive as input, and `--full-refresh` reads it once, explicitly (D31).
 
 ### `pii` (optional)
 
