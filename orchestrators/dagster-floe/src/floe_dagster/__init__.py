@@ -7,9 +7,10 @@ from .definitions import (
     build_runner_from_env,
     resolve_execution_config,
 )
-from .runner import LocalRunner
+from .runner import InProcessRunner, LocalRunner
 
 __all__ = [
+    "InProcessRunner",
     "LocalRunner",
     "build_definitions",
     "build_definitions_from_manifest_dir",

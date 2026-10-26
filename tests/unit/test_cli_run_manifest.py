@@ -408,6 +408,56 @@ def test_a_symlinked_manifest_resolves_paths_against_its_target(
     assert list((work / "out/accepted/orders").glob("*.parquet"))
 
 
+def test_run_manifest_api_matches_the_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import floe as api
+
+    by_cli, by_api = copy_case("manifest_run", tmp_path / "c"), copy_case("manifest_run", tmp_path / "a")  # fmt: skip
+    for work in (by_cli, by_api):
+        monkeypatch.chdir(work)
+        assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    monkeypatch.chdir(by_cli)
+    code = floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r")
+    monkeypatch.chdir(by_api)
+    events: list[str] = []
+    api.set_observer(lambda e: events.append(e["event"]))
+    try:
+        outcome = api.run_manifest("m.json", run_id="r")
+    finally:
+        api.clear_observer()
+    assert outcome.summary["run"]["exit_code"] == code
+    assert (events[0], events[-1]) == ("run_started", "run_finished")
+    assert outputs(by_api) == outputs(by_cli)
+
+
+def test_run_manifest_api_raises_floe_io_error_on_a_missing_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import floe as api
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(api.FloeIoError, match=r"No such file or directory \(os error 2\)"):  # fmt: skip
+        api.run_manifest("nope.json")
+
+
+def test_an_undecodable_manifest_is_a_parse_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import floe as api
+
+    monkeypatch.chdir(tmp_path)
+    Path("m.json").write_bytes(b"\xff")
+    with pytest.raises(
+        api.FloeConfigError, match="manifest parse error: 'utf-8' codec"
+    ):
+        api.run_manifest("m.json")
+    assert floe(monkeypatch, "run", "--manifest", "m.json") == 1
+    assert capsys.readouterr().err.startswith(
+        "Error: manifest parse error: 'utf-8' codec"
+    )
+
+
 @pytest.mark.parametrize("metadata", ["{}", "{project: null, owner: null}"])
 def test_an_empty_metadata_block_runs_and_is_reported(
     metadata: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

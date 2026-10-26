@@ -14,6 +14,11 @@ All notable changes to Floe are documented in this file.
 - **Manifest entity sources may carry `partitioning` (D28, #883).** The bundled schema accepts
   the `source.partitioning` block (`pattern`, `date_column`, `batch_column`) that `floe run
   --manifest` honours.
+- **Floe runs in-process when the Python core is installed (#902).** `build_runner_from_env()`
+  now returns an `InProcessRunner` when `floe.run_manifest` is importable: a local
+  `floe run --manifest` execution runs through the Python API, with the same events, `RunResult`,
+  asset metadata and OpenLineage events as the subprocess. In-process runs are serialized within a
+  process. Set `FLOE_RUNNER=local` to keep the `floe` subprocess (`LocalRunner`).
 - **Entities sharing a named source depend on one `sources/<project>/<name>` asset (D20, #796).** When
   the manifest carries the `sources` index, every entity whose `source.ref` names an entry depends
   on one shared `sources/<project>/<name>` asset (group `sources`, the source's format and `uri`

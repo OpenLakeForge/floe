@@ -9,15 +9,19 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import suppress
 from http.client import HTTPConnection, HTTPMessage, HTTPResponse, HTTPSConnection
+from pathlib import Path
 from typing import IO, Any
 from urllib.parse import urlsplit
 
-from floe.config.project import LineageConfig
+from floe.config.project import LineageConfig, RootConfig
 from floe.config.types import EntityConfig
+from floe.config.validate import validate_config
+from floe.errors import FloeError
 from floe.lineage.events import Datasets, EventBuilder, event_type, resolve_api_key
+from floe.run import RunOutcome, run
 
 RETRY_DELAYS_S = (0.0, 0.1, 0.5)
 
@@ -215,3 +219,42 @@ class OpenLineageObserver:
             return e.code == 429 or e.code >= 500
         except Exception:  # noqa: BLE001 -- the text may carry the token; never let it reach a thread hook
             return True
+
+
+def run_with_lineage(
+    path: Path,
+    root: RootConfig,
+    observed: Sequence[EntityConfig],
+    job: str,
+    observer: Callable[[dict[str, Any]], None],
+    *,
+    validate: bool,
+    run_id: str | None,
+    entities: Sequence[str],
+    dry_run: bool,
+    full_refresh: bool,
+) -> RunOutcome:
+    """`run`, posting OpenLineage events when the config has a `lineage` block (Rust: the CLI run path)."""
+    lineage = OpenLineageObserver(root.lineage, observed, job) if root.lineage else None
+
+    def observe(event: dict[str, Any]) -> None:
+        try:
+            observer(event)
+        finally:  # a failing user observer never drops a lineage event
+            if lineage:
+                lineage(event)
+
+    try:
+        if validate:  # after the observer: lineage sees a config that fails validation
+            validate_config(root)
+        return run(
+            path, root, run_id=run_id, entities=entities, dry_run=dry_run,
+            full_refresh=full_refresh, observer=observe,
+        )  # fmt: skip
+    except FloeError:
+        if lineage:
+            try:
+                lineage.fail_run()
+            except Exception as e:  # noqa: BLE001 -- lineage must not mask the run error
+                _warn(str(e))
+        raise
