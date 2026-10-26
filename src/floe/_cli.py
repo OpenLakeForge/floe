@@ -5,6 +5,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from floe import __version__
 from floe._cli_output import Console, run_output
 from floe.add_entity import add_entity
 from floe.config.parse import parse_config
@@ -208,6 +209,7 @@ def _state(args: argparse.Namespace) -> int:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="floe")
+    parser.add_argument("--version", action="version", version=f"floe {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     validate = commands.add_parser("validate")
     run = commands.add_parser("run")
