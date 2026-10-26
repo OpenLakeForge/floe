@@ -659,5 +659,7 @@ unresolved_inputs_dot
 partitioning_two_days
 partitioning_hive_hour
 partitioning_unmatched
+partitioning_archive_full_refresh
 partitioning_file_watermark
 precheck_header_order manifest
+config/val1_d28_date_column_clash_normalised

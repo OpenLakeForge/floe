@@ -56,6 +56,7 @@ class ClaimOutcome(NamedTuple):
     claimed: Loaded | None
     active_claims: list[str]
     already_processed: list[tuple[InputFile, FileState]]
+    expired: dict[str, Claim]  # dropped claims of dead runs, by URI (#545 retry guard)
 
 
 def _now(offset_s: int = 0) -> str:
@@ -140,7 +141,7 @@ def claim_inputs(
 ) -> ClaimOutcome:
     """D30: `before(state)` tells the files another run's watermark has passed since this run listed; they are not claimed."""
     if not inputs:
-        return ClaimOutcome([], None, [], [])
+        return ClaimOutcome([], None, [], [], {})
     for attempt in range(CAS_RETRIES):
         if attempt:
             _backoff(attempt - 1)
@@ -149,8 +150,9 @@ def claim_inputs(
         now = datetime.now(UTC)
         passed = (
             before(state) if before else None
-        )  # expired claims still hold the window open
-        state.claims = {u: c for u, c in state.claims.items() if _is_live(c, now)}
+        )  # D30: expired claims still hold the window open
+        expired = {u: c for u, c in state.claims.items() if not _is_live(c, now)}
+        state.claims = {u: c for u, c in state.claims.items() if u not in expired}
         pending: list[InputFile] = []
         active: list[str] = []
         processed: list[tuple[InputFile, FileState]] = []
@@ -163,18 +165,23 @@ def claim_inputs(
             elif f.source_uri in state.claims:
                 active.append(f.source_uri)
             else:
+                # a dead run's batch can't have committed before its first claim (#545): keep that bound
+                was = expired.get(f.source_uri)
+                since = was.acquired_at if was else acquired_at
                 state.claims[f.source_uri] = Claim(
-                    run_id, acquired_at, expires_at, f.source_size, f.source_mtime
+                    run_id, since, expires_at, f.source_size, f.source_mtime
                 )
                 pending.append(f)
         if not pending:
             if not active:
                 _persist(client, uri, loaded)
-            return ClaimOutcome([], None, active, processed)
+            return ClaimOutcome([], None, active, processed, expired)
         state.updated_at = acquired_at
         version = _persist(client, uri, loaded)
         if version is not None:
-            return ClaimOutcome(pending, Loaded(state, version), active, processed)
+            return ClaimOutcome(
+                pending, Loaded(state, version), active, processed, expired
+            )
     raise FloeConfigError(
         f"entity.name={entity} incremental state update conflicted after {CAS_RETRIES} retries"
     )
@@ -237,16 +244,21 @@ def promote(
     run_id: str,
     claimed: Loaded,
     full_refresh: bool = False,
+    only: set[str] | None = None,
     advance: Callable[[EntityState, list[str]], None] | None = None,
 ) -> None:
-    """A full refresh replaces `files` with this run's (Rust `promote_full_refresh_claimed_entity_state`); `advance` gets the promoted URIs (D30)."""
+    """A full refresh replaces `files` with this run's (Rust `promote_full_refresh_claimed_entity_state`); `only` limits the URIs.
+
+    `advance` (D30) gets the promoted URIs, in the same state write.
+    """
 
     def apply(state: EntityState, ours: set[str]) -> None:
         processed_at = _now()
         if full_refresh:
             state.files.clear()
+        mine = ours if only is None else ours & only
         promoted = [
-            u for u, c in state.claims.items() if c.run_id == run_id and u in ours
+            u for u, c in state.claims.items() if c.run_id == run_id and u in mine
         ]
         for u in promoted:
             c = state.claims.pop(u)
@@ -258,15 +270,21 @@ def promote(
     _mutate(client, uri, claimed, apply)
 
 
-def release(client: StorageClient, uri: str, run_id: str, claimed: Loaded, expire: bool = False) -> None:  # fmt: skip
-    """`expire` (D30) keeps the claims, already expired, so they hold the listing window open until a run claims the files again."""
+def release(client: StorageClient, uri: str, run_id: str, claimed: Loaded, restore: dict[str, Claim] | None = None, expire: bool = False) -> None:  # fmt: skip
+    """`restore`: the dead runs' expired claims this run took over, put back as they were (#545).
+
+    `expire` (D30): this run's other claims stay, expired, so they hold the listing window open until a run claims the files again.
+    """
 
     def apply(state: EntityState, ours: set[str]) -> None:
-        mine = {u for u, c in state.claims.items() if c.run_id == run_id and u in ours}
-        for u in mine:
-            state.claims[u].expires_at = state.claims[u].acquired_at
-        if not expire:
-            state.claims = {u: c for u, c in state.claims.items() if u not in mine}
+        mine = {u: c for u, c in state.claims.items() if c.run_id == run_id and u in ours}  # fmt: skip
+        state.claims = {u: c for u, c in state.claims.items() if u not in mine}
+        for u, c in (restore or {}).items():
+            if u not in state.files:
+                state.claims.setdefault(u, c)
+        for u, c in mine.items() if expire else ():
+            c.expires_at = c.acquired_at
+            state.claims.setdefault(u, c)
         state.updated_at = _now()
 
     _mutate(client, uri, claimed, apply)

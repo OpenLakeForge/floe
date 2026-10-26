@@ -303,6 +303,17 @@ def test_d28_a_partitioned_s3_source_loads_by_date_with_derived_columns(tmp_path
     assert report["source"]["resolved_inputs"]["files"] == ["s3://b/in/2026/10/24/bb/x.csv", "s3://b/in/2026/10/25/aa/x.csv"]  # fmt: skip
 
 
+def test_d29_the_s3_archive_keeps_the_partition_path_for_a_full_refresh(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
+    s3.write("s3://b/in/2026/10/24/a1b2/x.csv", b"id\n1\n")
+    go(tmp_path, config)
+    [archived] = parts(s3, "s3://b/archive/")
+    assert archived.startswith("s3://b/archive/orders/2026/10/24/a1b2/x__run-r1__src-")
+    full_refresh(tmp_path, config)
+    [part] = parts(s3, "s3://b/out/accepted/")
+    assert pl.read_parquet(s3.objects[part]).rows() == [(1, date(2026, 10, 24))]
+
+
 def test_d30_an_s3_file_mode_run_starts_after_the_window(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     config = SINKS.replace("    domain: d\n", "    domain: d\n    incremental_mode: file\n", 1).replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
     for day in (20, 23, 24):

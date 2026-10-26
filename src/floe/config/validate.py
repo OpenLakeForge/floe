@@ -3,7 +3,7 @@
 import re
 
 from floe import __version__
-from floe.checks.normalize import output_names
+from floe.checks.normalize import normalize_name, output_names
 from floe.config.project import (
     LineageConfig,
     RootConfig,
@@ -510,13 +510,17 @@ def _check_source_partitioning(entity: EntityConfig) -> None:
         raise _fail(entity, f"{pattern} repeats token {{{repeated[0]}}}")
     if not {"yyyy", "MM", "dd"} <= set(tokens):
         raise _fail(entity, f"{pattern} must contain {{yyyy}}, {{MM}} and {{dd}}")
-    names = {c.name for c in entity.schema_.columns}
+    # #913: also the names after normalize_columns (the input names and the output names)
+    nc, columns = entity.schema_.normalize_columns, entity.schema_.columns
+    strategy = (nc.strategy or "snake_case") if nc and nc.enabled else None
+    names = {c.name for c in columns} | set(output_names(columns, strategy))
+    inputs = {normalize_name(c.source or c.name, strategy) for c in columns}
     for field, name in (("date_column", p.date_column), ("batch_column", p.batch_column)):  # fmt: skip
         if name is None:
             continue
         if not name.strip():
             raise _fail(entity, f"{where}.{field} must not be empty")
-        if name in names:
+        if name in names or normalize_name(name, strategy) in inputs:
             raise _fail(entity, f"{where}.{field}={name} is already a column in schema.columns")  # fmt: skip
     if p.batch_column is not None and "batch" not in tokens:
         raise _fail(entity, f"{where}.batch_column requires {{batch}} in {where}.pattern")  # fmt: skip

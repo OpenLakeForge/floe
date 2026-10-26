@@ -166,6 +166,23 @@ If a file URI is already in `files` but its size or mtime changed, Floe emits an
 `incremental_file_changed` warning and still skips it. The URI is the identity;
 Floe does not automatically reprocess changed files.
 
+## Retries Of An Append
+
+An Iceberg `append` stamps each snapshot with `floe.input_hash`, a fingerprint of the
+entity and its input files (URI, size, mtime). Before reading any file, a run checks it:
+
+- `file` mode: when the run takes over a dead run's expired claims, it looks for the
+  fingerprint of its pending files in the table's snapshots since that claim. On a match,
+  the files are reported `skipped` with `skip_reason: already_committed` and promoted.
+- Other modes (`archive`, `none`, `row`): the same check against the whole input set, over
+  the whole retained history, so a rerun of exactly the same files is skipped too. Only exactly
+  the same set matches: if new files arrived since the run that died, its rows are appended
+  again. Retry before new files land, or use `file` mode.
+
+Snapshot expiry must keep at least 7 days and 10 snapshots. If the snapshots since a dead
+run's claim were expired, Floe can't tell whether that run committed: the run fails and
+asks for `floe state reset`.
+
 ## CAS And Concurrent Runs
 
 Remote state uses compare-and-swap (CAS) writes so two runners cannot silently

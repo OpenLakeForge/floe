@@ -353,14 +353,17 @@ state file shape, and CAS behavior.
   - Every row gets `date_column`, a `date`, or a `datetime` when the pattern has `{HH}`. With
     `batch_column`, it also gets the `{batch}` folder name as a `string`. Both are ordinary columns
     for keys, merges and `partition_spec` (for example `{column: ingest_date, transform: day}`).
-    They must not also be in `schema.columns`.
+    They must not also be in `schema.columns`, before or after `normalize_columns`. A file column
+    with the same name is an extra column, handled by `schema.mismatch.extra_columns`; the value
+    from the path is what is kept.
   - Inputs are listed recursively, whatever `options.recursive` says. They load by date, then by
     batch (earliest file modification time first, then name), then by file name.
     `resolved_inputs` in the report lists them in that order.
   - A listed file whose directory doesn't match, or whose date is invalid (month 13), fails the
     run before any entity starts. The error names the file and the pattern.
-  - The archive doesn't keep the partition path yet, so `--full-refresh` fails on archived inputs
-    until D29 (#884).
+  - In archive mode, an input is archived under its partition path:
+    `<archive>/<entity>/yyyy/MM/dd/<batch>/<stem>__run-…__src-….<ext>` (D29). A `--full-refresh`
+    reads the archive recursively and derives the same date and batch from those paths.
   - With `incremental_mode: file` (D30), the state also keeps a **watermark**: the latest
     partition date ingested. A run lists only from `watermark - lookback_days` (default `1`): S3
     starts the listing after the previous day's prefix, a local source skips older directories. Inside
