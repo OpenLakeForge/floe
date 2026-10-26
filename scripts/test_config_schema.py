@@ -1195,6 +1195,10 @@ class ConfigSchemaTest(unittest.TestCase):
             ({"date_column": " "}, False),
             ({"batch_column": ""}, False),
             ({"other": "x"}, False),
+            ({"lookback_days": 0}, True),  # D30
+            ({"lookback_days": 7}, True),
+            ({"lookback_days": -1}, False),
+            ({"lookback_days": "1"}, False),
         )
         named = validator_for("sources_file")
         for change, valid in cases:
