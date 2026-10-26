@@ -1,0 +1,35 @@
+version: "0.3"
+domains:
+  - name: raw
+entities:
+  - name: orders
+    domain: raw
+    incremental_mode: file
+    source:
+      format: csv
+      path: "./in"
+      options:
+        header: true
+        separator: ","
+      partitioning:
+        pattern: "{yyyy}/{MM}/{dd}/{batch}"
+        date_column: ingest_date
+        batch_column: batch_id
+        lookback_days: 1
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/orders"
+      rejected:
+        format: csv
+        path: "./out/rejected/orders"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: int64
+        - name: name
+          type: string
+report:
+  path: "./report"

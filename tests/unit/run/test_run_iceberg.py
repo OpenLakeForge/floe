@@ -413,7 +413,7 @@ def dead_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Callable[
     def go(run_id: str) -> dict[str, Any]:
         return run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, emit=Emitter(None, run_id), catalogs=root.catalogs).report  # fmt: skip
 
-    def killed(*_: object) -> None:
+    def killed(*_: object, **__: object) -> None:
         raise FloeRunError("killed")
 
     promote = entity_module.promote

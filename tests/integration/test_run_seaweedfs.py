@@ -110,3 +110,33 @@ def test_d28_a_partitioned_s3_source_loads_by_date_with_derived_columns(
         f"s3://{BUCKET}/{prefix}/in/2026/10/24/a1b2/x.csv",
         f"s3://{BUCKET}/{prefix}/in/2026/10/25/c3d4/y.csv",
     ]
+
+
+def test_d30_file_mode_lists_the_s3_source_from_the_window(
+    s3: S3Client, tmp_path: Path
+) -> None:
+    prefix = f"it-{uuid.uuid4().hex}"
+    for day in (20, 23, 24):
+        s3.write(s3.resolve_uri(f"{prefix}/in/2026/10/{day}/a/x.csv"), b"id\n1\n")
+    partitioning = 'partitioning: {{pattern: "{{yyyy}}/{{MM}}/{{dd}}/{{batch}}", date_column: ingest_date}}, '  # fmt: skip
+    config = tmp_path / "config.yml"
+    config.write_text(
+        CONFIG.replace("storage: lake, options:", f"storage: lake, {partitioning}options:")
+        .format(bucket=BUCKET, endpoint=os.environ["FLOE_S3_ENDPOINT"], prefix=prefix)
+    )  # fmt: skip
+    run(config, parse_config(config), run_id="r1")
+    s3.write(s3.resolve_uri(f"{prefix}/in/2026/10/24/b/x.csv"), b"id\n2\n")
+    run(config, parse_config(config), run_id="r2")
+    stored = s3.read(s3.resolve_uri(f"{prefix}/runs/run_r2/d/orders/run.json"))
+    assert stored is not None
+    root = f"s3://{BUCKET}/{prefix}/in/2026/10"
+    report = json.loads(stored.body)
+    assert report["source"]["resolved_inputs"]["files"] == [
+        f"{root}/23/a/x.csv",
+        f"{root}/24/a/x.csv",
+        f"{root}/24/b/x.csv",
+    ]
+    assert [f["status"] for f in report["files"]] == ["skipped", "skipped", "success"]
+    state = s3.read(s3.resolve_uri(f"{prefix}/in/.floe/state/d/orders/state.json"))
+    assert state is not None
+    assert json.loads(state.body)["watermark"] == "2026-10-24"
