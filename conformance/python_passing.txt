@@ -454,6 +454,7 @@ config/val2_uk_legacy_unique_warns_ok manifest
 config/val2_uk_ok manifest
 config/val2_uk_unknown_column manifest
 example/standalone manifest
+manifest_run manifest
 mismatch manifest
 mismatch_abort manifest
 mismatch_reject_file manifest

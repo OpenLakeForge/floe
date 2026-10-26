@@ -16,6 +16,7 @@ conformance/<case>/
 ├── runs              optional: number of runs (default 1), or one line of extra `run` args per run (`-` for none,
 │                     e.g. `-` then `--full-refresh`); only the last run is captured, state carries over
 ├── delta.yml         optional: intentional deltas of this case, e.g. `[D9]`
+├── manifest_run      optional marker: generate `manifest.json` from `config.yml`, then run `floe run --manifest manifest.json`
 └── expected_python/  optional: only the `expected/` files that differ for Python
 ```
 
@@ -92,5 +93,7 @@ skips them and `check.py --impl rust` prints `skip` for them.
   recordings (`floe.manifest.v1`, the config version) stay as recorded; `tests/unit/test_manifest.py` checks Python's value.
   D20 (#796): `check.py` also drops the Python-only `sources` index and project `metadata` at compare time;
   `tests/unit/test_manifest.py` checks their content.
+  A manifest run reports the manifest's `spec_version` (the Floe version), so `manifest_run` carries a `[D22]`
+  `expected_python/` for its report files.
   Python's profile fields (`-p`) and remote `-o` are not covered yet (#635, storage clients).
 - Key order in reports is kept: it is part of the contract.

@@ -1,0 +1,57 @@
+version: "0.3"
+domains:
+  - name: sales
+  - name: finance
+entities:
+  - name: orders
+    domain: sales
+    incremental_mode: file
+    source:
+      format: csv
+      path: "./in/sales"
+      options:
+        header: true
+        separator: ","
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/sales_orders"
+      rejected:
+        format: csv
+        path: "./out/rejected/sales_orders"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          type: int64
+        - name: name
+          type: string
+          nullable: false
+  - name: orders
+    domain: finance
+    source:
+      format: csv
+      path: "./in/finance"
+      options:
+        header: true
+        separator: ","
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/finance_orders"
+      rejected:
+        format: csv
+        path: "./out/rejected/finance_orders"
+    policy:
+      severity: warn
+    schema:
+      unique_keys:
+        - [id]
+      columns:
+        - name: id
+          type: int64
+        - name: amount
+          type: float64
+report:
+  path: "./report"
