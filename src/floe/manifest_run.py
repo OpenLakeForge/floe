@@ -31,6 +31,7 @@ from floe.config.types import (
     SinkTarget,
     SourceConfig,
     SourceOptions,
+    SourcePartitioning,
 )
 from floe.config.validate import FLOE_VERSION
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
@@ -121,6 +122,9 @@ def _entity(m: Json, named_local: bool) -> EntityConfig:
         "cast_mode": src.get("cast_mode") or "strict",
         "source_ref": src.get("ref"),
         "resource": src.get("resource"),
+        "partitioning": _omitted_as_none(
+            SourcePartitioning, src.get("partitioning")
+        ),  # D28: validated when generated, so not lenient
     }
     sink = {
         "write_mode": write_mode,
