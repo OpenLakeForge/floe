@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from floe._cli_output import Console, run_output
+from floe.add_entity import add_entity
 from floe.config.parse import parse_config
 from floe.config.profile import (
     API_VERSION,
@@ -24,7 +25,6 @@ from floe.manifest import Options, build_manifest
 from floe.run import run, select_entities
 from floe.run.entity import state_uri
 from floe.state import dump_state, read_state, reset
-from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path, parse_s3_uri
 from floe.storage.s3 import S3Client
 
@@ -169,19 +169,34 @@ def _manifest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_entity(args: argparse.Namespace) -> int:
+    added = add_entity(
+        args.config, args.input, args.format, args.name, args.domain,
+        args.source_ref, args.resource, args.output, args.dry_run,
+    )  # fmt: skip
+    if added.rendered is not None:
+        print(f"# add-entity dry run (no file written)\n# entity: {added.name}")
+        print(added.rendered)
+    else:
+        print(f"Entity added: {added.name} (format={added.format}, columns={added.columns})")  # fmt: skip
+        print(f"Config written: {added.output}")
+    return 0
+
+
 def _state(args: argparse.Namespace) -> int:
     if args.state_command == "reset" and not args.yes:
         raise FloeConfigError("state reset is destructive, rerun with --yes to confirm")
     profile = parse_profile(_realpath(args.profile)) if args.profile else None
     path = _realpath(args.config)
-    [entity] = select_entities(_load(path, profile), [args.entity])
-    uri = state_uri(entity, normalize_local_path(path.parent))
+    root = _load(path, profile)
+    [entity] = select_entities(root, [args.entity])
+    uri, client = state_uri(entity, normalize_local_path(path.parent), root.storages)
     if args.state_command == "reset":
-        removed = reset(LocalClient(), uri, entity.name)
+        removed = reset(client, uri, entity.name)
         print(f"Entity: {entity.name}\nState path: {uri}")
         print(f"State reset: {'removed state object' if removed else 'no state object found'}")  # fmt: skip
         return 0
-    state = read_state(LocalClient(), uri, entity.name)
+    state = read_state(client, uri, entity.name)
     print(f"Entity: {entity.name}\nIncremental mode: {entity.incremental_mode}\nState path: {uri}")  # fmt: skip
     if state is None:
         print("State exists: no\nTracked files: 0\nActive claims: 0")
@@ -227,6 +242,14 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument(
         "--entities", action="extend", default=[], type=lambda v: v.split(",")
     )
+    add = commands.add_parser("add-entity")
+    add.add_argument("-c", "--config", required=True)
+    add.add_argument("--input", required=True)
+    add.add_argument("--format", choices=("csv", "json", "parquet"))
+    for flag in ("--name", "--domain", "--resource", "--output"):
+        add.add_argument(flag)
+    add.add_argument("--source", dest="source_ref")
+    add.add_argument("--dry-run", action="store_true")
     state = commands.add_parser("state").add_subparsers(dest="state_command", required=True)  # fmt: skip
     for name in ("inspect", "reset"):
         command = state.add_parser(name)
@@ -246,6 +269,8 @@ def main() -> int:
     try:
         if args.command == "manifest":
             return _manifest(args)
+        if args.command == "add-entity":
+            return _add_entity(args)
         if args.command == "state":
             return _state(args)
         return _run(args) if args.command == "run" else _validate(args)

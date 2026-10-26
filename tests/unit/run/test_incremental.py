@@ -113,13 +113,16 @@ def test_row_mode_reprocesses_like_rust_0_7(tmp_path: Path) -> None:
 )
 def test_default_state_location(tmp_path: Path, src: str, expected: str) -> None:
     entity = setup(tmp_path, src=src)
-    assert entity_module.state_uri(entity, tmp_path) == f"local://{tmp_path / expected}"
+    assert (
+        entity_module.state_uri(entity, tmp_path)[0] == f"local://{tmp_path / expected}"
+    )
 
 
 def test_state_path_is_local_and_relative_to_the_config(tmp_path: Path) -> None:
     entity = setup(tmp_path, state="state: {path: s/x.json}")
     assert (
-        entity_module.state_uri(entity, tmp_path) == f"local://{tmp_path / 's/x.json'}"
+        entity_module.state_uri(entity, tmp_path)[0]
+        == f"local://{tmp_path / 's/x.json'}"
     )
     remote = setup(tmp_path, state="state: {path: 's3://b/x.json'}")
     with pytest.raises(FloeConfigError, match="must be a local path"):

@@ -1,6 +1,6 @@
 # Config conformance cases (`floe validate`)
 
-621 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
+636 cases. Each is a config (and optionally a profile) with the outcome of `floe validate` recorded from the Rust
 v0.7.0 release binary. See [../README.md](../README.md) for recording, checking and the delta mechanism.
 
 ## Layout
@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 5 D12, 1 D13, 2 D21, 4 D26.
+18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 5 D12, 1 D13, 2 D21, 4 D26, 14 D28.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -117,6 +117,20 @@ implementation exists yet; each is derived as its row says.
 | `val2_d26_iceberg_no_catalog` | D26 | `entity.name=orders sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8` | D26 (#844): an Iceberg sink requires a REST catalog in 0.8; Rust 0.7 accepts a catalog-less one and writes a filesystem table. Checked after every other rule, so a config Rust rejects keeps its message. Wording is the Python run-time error (`iceberg/sink.py` `resolve_target`). |
 | `val2_part_spec_ok` | D26 | `entity.name=orders sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8` | As `val2_d26_iceberg_no_catalog`; the sink has no `iceberg` block. |
 | `val2_part_spec_same_column_other_transform_ok` | D26 | `entity.name=orders sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8` | As above. |
+| `val1_d28_partitioning_ok` | D28 | ok | D28 (#883): Python accepts `source.partitioning` (`pattern`, `date_column`, `batch_column`); Rust 0.7 rejects the key (`unknown field source.partitioning`). |
+| `val1_d28_partitioning_hour_hive_ok` | D28 | ok | As above; Hive-style literals around the tokens and `{HH}`, no `batch_column`. |
+| `val2_d28_partition_spec_day_ok` | D28 | ok | As above; the derived `ingest_date` is a schema column for `partition_spec` (`transform: day`) and the merge `primary_key`. |
+| `parse_d28_named_source_ok` | D28 | ok | As above, on a named source (`unknown field sources.partitioning` in Rust 0.7). |
+| `parse_d28_unknown_key` | D28 | `entities[0] (entity.name=orders): unknown field source.partitioning.timezone` | As above; parse.rs's `unknown field` wording. |
+| `parse_d28_date_column_missing` | D28 | `entities[0] (entity.name=orders): missing required field source.partitioning.date_column` | As above; parse.rs's `missing required field` wording. |
+| `val1_d28_pattern_unknown_token` | D28 | `entity.name=orders source.partitioning.pattern={yyyy}/{MM}/{dd}/{mm}/{batch} has unknown token {mm} (allowed: {yyyy}, {MM}, {dd}, {HH}, {batch})` | As above; tokens are case-sensitive. Wording follows validate.rs `is unsupported (allowed: ...)`. |
+| `val1_d28_pattern_unmatched_brace` | D28 | `entity.name=orders source.partitioning.pattern={yyyy}/{MM}/{dd}/{batch has an unmatched brace` | As above. |
+| `val1_d28_pattern_repeated_token` | D28 | `entity.name=orders source.partitioning.pattern={yyyy}/{MM}/{dd}/{batch}/{batch} repeats token {batch}` | As above. |
+| `val1_d28_pattern_missing_day` | D28 | `entity.name=orders source.partitioning.pattern={yyyy}/{MM}/{batch} must contain {yyyy}, {MM} and {dd}` | As above. |
+| `val1_d28_date_column_empty` | D28 | `entity.name=orders source.partitioning.date_column must not be empty` | As above; validate.rs `must not be empty` wording. |
+| `val1_d28_batch_column_without_token` | D28 | `entity.name=orders source.partitioning.batch_column requires {batch} in source.partitioning.pattern` | As above. |
+| `val1_d28_batch_column_same_as_date` | D28 | `entity.name=orders source.partitioning.batch_column=ingest_date must differ from source.partitioning.date_column` | As above. |
+| `val1_d28_date_column_clash` | D28 | `entity.name=orders source.partitioning.date_column=amt is already a column in schema.columns` | As above; a derived column must not clash with `schema.columns`. |
 
 ## #584 divergences
 

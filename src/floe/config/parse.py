@@ -10,7 +10,7 @@ from floe.config.include import assemble_includes
 from floe.config.project import RootConfig, parse_root
 from floe.config.types import EntityConfig
 from floe.config.vars import build_env_vars, replace_placeholders
-from floe.config.yaml import load_single_doc
+from floe.config.yaml import load_single_doc, yaml_array, yaml_hash
 from floe.errors import FloeConfigError
 
 Vars = Mapping[str, str]
@@ -123,10 +123,18 @@ def _apply_templates(
     )
 
 
-def parse_config(path: Path, profile_vars: Vars | None = None) -> RootConfig:
-    """Load a config and its includes, then apply the template pass."""
+def parse_config(
+    path: Path, profile_vars: Vars | None = None, extra_entity: object = None
+) -> RootConfig:
+    """Load a config and its includes, then apply the template pass.
+
+    `extra_entity` is appended to the entities, so `add-entity` validates an entity before writing it.
+    """
     doc = load_single_doc(path)
     config_files = [path]
     origins = assemble_includes(doc, path.parent, config_files)
+    if extra_entity is not None:
+        entities = yaml_hash(doc, "root").setdefault("entities", [])
+        yaml_array(entities, "entities").append(extra_entity)
     config = parse_root(doc, origins).model_copy(update={"config_files": config_files})
     return _apply_templates(config, path.parent, profile_vars or {})

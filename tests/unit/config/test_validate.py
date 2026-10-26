@@ -19,6 +19,7 @@ def check(
     fmt: str = "csv",
     sink: str = "{accepted: {format: parquet, path: out}}",
     catalogs: str = "",
+    partitioning: str = "",
 ) -> None:
     path = tmp_path / "config.yml"
     path.write_text(
@@ -27,7 +28,7 @@ def check(
         version: "{version}"
         entities:
         - name: orders
-          source: {{format: {fmt}, path: in.csv}}
+          source: {{format: {fmt}, path: in.csv{partitioning}}}
           sink: {sink}
           policy: {{severity: warn}}
           schema: {schema}
@@ -242,3 +243,84 @@ def test_d26_iceberg_requires_catalog(tmp_path: Path) -> None:
         "entity.name=orders sink.accepted.format=iceberg requires "
         "sink.accepted.iceberg with a catalog in 0.8"
     )
+
+
+PART = (
+    ", partitioning: {pattern: 'raw/{yyyy}/{MM}/{dd}/{batch}',"
+    " date_column: ingest_date, batch_column: batch_id}"
+)
+
+
+def test_d28_derived_columns_are_schema_columns(tmp_path: Path) -> None:
+    sink = (
+        "{write_mode: merge_scd1, accepted: {format: iceberg, path: out, iceberg: {},"
+        " partition_spec: [{column: ingest_date, transform: day}, {column: batch_id}]}}"
+    )
+    schema = f"{{{COLS}, primary_key: [id, ingest_date], unique_keys: [[batch_id]]}}"
+    check(tmp_path, schema, sink=sink, catalogs=CATALOG, partitioning=PART)
+
+
+def test_d28_derived_columns_are_not_json_selectors(tmp_path: Path) -> None:
+    columns = ", ".join(f"{{name: c{i}, type: string}}" for i in range(1024))
+    part = ", partitioning: {pattern: '{yyyy}/{MM}/{dd}', date_column: 'ingest]date'}"
+    check(tmp_path, f"{{columns: [{columns}]}}", fmt="json", partitioning=part)
+
+
+def test_d28_derived_columns_need_partitioning(tmp_path: Path) -> None:
+    sink = "{accepted: {format: iceberg, path: out, iceberg: {}, partition_spec: [{column: ingest_date, transform: day}]}}"
+    with pytest.raises(FloeConfigError, match="column=ingest_date references unknown"):
+        check(tmp_path, f"{{{COLS}}}", sink=sink, catalogs=CATALOG)
+
+
+@pytest.mark.parametrize(
+    ("block", "message"),
+    [
+        (
+            "{pattern: '{yyyy}/{MM}/{dd}/{mm}', date_column: d}",
+            (
+                "source.partitioning.pattern={yyyy}/{MM}/{dd}/{mm} has unknown token {mm} "
+                "(allowed: {yyyy}, {MM}, {dd}, {HH}, {batch})"
+            ),
+        ),
+        (
+            "{pattern: '{yyyy}/{MM}/{dd}/{batch', date_column: d}",
+            "source.partitioning.pattern={yyyy}/{MM}/{dd}/{batch has an unmatched brace",
+        ),
+        (
+            "{pattern: '{yyyy}/{MM}/{batch}/{batch}/{dd}', date_column: d}",
+            "source.partitioning.pattern={yyyy}/{MM}/{batch}/{batch}/{dd} repeats token {batch}",
+        ),
+        (
+            "{pattern: '{yyyy}/{MM}/{batch}', date_column: d}",
+            "source.partitioning.pattern={yyyy}/{MM}/{batch} must contain {yyyy}, {MM} and {dd}",
+        ),
+        (
+            "{pattern: '{yyyy}/{MM}/{dd}', date_column: ' '}",
+            "source.partitioning.date_column must not be empty",
+        ),
+        (
+            "{pattern: '{yyyy}/{MM}/{dd}/{batch}', date_column: d, batch_column: ''}",
+            "source.partitioning.batch_column must not be empty",
+        ),
+        (
+            "{pattern: '{yyyy}/{MM}/{dd}', date_column: d, batch_column: b}",
+            "source.partitioning.batch_column requires {batch} in source.partitioning.pattern",
+        ),
+        (
+            "{pattern: '{yyyy}/{MM}/{dd}/{batch}', date_column: d, batch_column: d}",
+            "source.partitioning.batch_column=d must differ from source.partitioning.date_column",
+        ),
+        (
+            "{pattern: '{yyyy}/{MM}/{dd}', date_column: amt}",
+            "source.partitioning.date_column=amt is already a column in schema.columns",
+        ),
+        (
+            "{pattern: '{yyyy}/{MM}/{dd}/{batch}', date_column: d, batch_column: id}",
+            "source.partitioning.batch_column=id is already a column in schema.columns",
+        ),
+    ],
+)
+def test_d28_partitioning_errors(tmp_path: Path, block: str, message: str) -> None:
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", partitioning=f", partitioning: {block}")
+    assert str(err.value) == f"entity.name=orders {message}"
