@@ -352,7 +352,9 @@ state file shape, and CAS behavior.
   - Every row gets `date_column`, a `date`, or a `datetime` when the pattern has `{HH}`. With
     `batch_column`, it also gets the `{batch}` folder name as a `string`. Both are ordinary columns
     for keys, merges and `partition_spec` (for example `{column: ingest_date, transform: day}`).
-    They must not also be in `schema.columns`.
+    They must not also be in `schema.columns`, before or after `normalize_columns`. A file column
+    with the same name is an extra column, handled by `schema.mismatch.extra_columns`; the value
+    from the path is what is kept.
   - Inputs are listed recursively, whatever `options.recursive` says. They load by date, then by
     batch (earliest file modification time first, then name), then by file name.
     `resolved_inputs` in the report lists them in that order.

@@ -169,6 +169,13 @@ Per-file status:
 - `rejected`: Rows were rejected and written to the rejected output.
 - `aborted`: The file triggered abort behavior.
 - `failed`: Technical error (I/O, parsing, unexpected failure).
+- `skipped`: The file was not read. `skip_reason` says why:
+  - `already_ingested`: `incremental_mode: file` state already holds the file.
+  - `already_ingested_changed`: the same, but its size or mtime changed (with a warning).
+  - `active_claim`: another live run has claimed the file.
+  - `already_committed` (0.8): an `append` to Iceberg retried a batch whose rows a dead run
+    already committed (the snapshot's `floe.input_hash` matches), so the file is marked done
+    without being read or written again. See [Incremental](incremental.md#retries-of-an-append).
 
 Run status:
 - `success`: All files succeeded.

@@ -55,6 +55,7 @@ class ClaimOutcome(NamedTuple):
     claimed: Loaded | None
     active_claims: list[str]
     already_processed: list[tuple[InputFile, FileState]]
+    expired: dict[str, Claim]  # dropped claims of dead runs, by URI (#545 retry guard)
 
 
 def _now(offset_s: int = 0) -> str:
@@ -134,14 +135,15 @@ def claim_inputs(
     inputs: list[InputFile],
 ) -> ClaimOutcome:
     if not inputs:
-        return ClaimOutcome([], None, [], [])
+        return ClaimOutcome([], None, [], [], {})
     for attempt in range(CAS_RETRIES):
         if attempt:
             _backoff(attempt - 1)
         loaded = _load(client, uri, entity)
         state = loaded.state
         now = datetime.now(UTC)
-        state.claims = {u: c for u, c in state.claims.items() if _is_live(c, now)}
+        expired = {u: c for u, c in state.claims.items() if not _is_live(c, now)}
+        state.claims = {u: c for u, c in state.claims.items() if u not in expired}
         pending: list[InputFile] = []
         active: list[str] = []
         processed: list[tuple[InputFile, FileState]] = []
@@ -152,18 +154,23 @@ def claim_inputs(
             elif f.source_uri in state.claims:
                 active.append(f.source_uri)
             else:
+                # a dead run's batch can't have committed before its first claim (#545): keep that bound
+                was = expired.get(f.source_uri)
+                since = was.acquired_at if was else acquired_at
                 state.claims[f.source_uri] = Claim(
-                    run_id, acquired_at, expires_at, f.source_size, f.source_mtime
+                    run_id, since, expires_at, f.source_size, f.source_mtime
                 )
                 pending.append(f)
         if not pending:
             if not active:
                 _persist(client, uri, loaded)
-            return ClaimOutcome([], None, active, processed)
+            return ClaimOutcome([], None, active, processed, expired)
         state.updated_at = acquired_at
         version = _persist(client, uri, loaded)
         if version is not None:
-            return ClaimOutcome(pending, Loaded(state, version), active, processed)
+            return ClaimOutcome(
+                pending, Loaded(state, version), active, processed, expired
+            )
     raise FloeConfigError(
         f"entity.name={entity} incremental state update conflicted after {CAS_RETRIES} retries"
     )
@@ -243,13 +250,18 @@ def promote(
     _mutate(client, uri, claimed, apply)
 
 
-def release(client: StorageClient, uri: str, run_id: str, claimed: Loaded) -> None:
+def release(client: StorageClient, uri: str, run_id: str, claimed: Loaded, restore: dict[str, Claim] | None = None) -> None:  # fmt: skip
+    """`restore`: the dead runs' expired claims this run took over, put back as they were (#545)."""
+
     def apply(state: EntityState, ours: set[str]) -> None:
         state.claims = {
             u: c
             for u, c in state.claims.items()
             if not (c.run_id == run_id and u in ours)
         }
+        for u, c in (restore or {}).items():
+            if u not in state.files:
+                state.claims.setdefault(u, c)
         state.updated_at = _now()
 
     _mutate(client, uri, claimed, apply)
