@@ -344,6 +344,7 @@ state file shape, and CAS behavior.
         pattern: "{yyyy}/{MM}/{dd}/{batch}"   # or "year={yyyy}/month={MM}/day={dd}"
         date_column: ingest_date               # required
         batch_column: batch_id                 # optional
+        lookback_days: 1                       # optional, file mode (D30)
     ```
   - `pattern` is matched against each input's directory, relative to the source root (the
     part of `path` before any glob). The match is on the whole directory; the file name is free.
@@ -360,6 +361,19 @@ state file shape, and CAS behavior.
     run before any entity starts. The error names the file and the pattern.
   - The archive doesn't keep the partition path yet, so `--full-refresh` fails on archived inputs
     until D29 (#884).
+  - With `incremental_mode: file` (D30), the state also keeps a **watermark**: the latest
+    partition date ingested. A run lists only from `watermark - lookback_days` (default `1`): S3
+    starts the listing after that date's prefix, a local source skips older directories. Inside
+    that window the per-file state still decides, so a new batch on the same day is picked up.
+    Any claim still in the state holds the window back to its date, so a crashed run's files are
+    retried. The window needs the date at the front of `pattern` (`{yyyy}`, `{MM}`, `{dd}`, no
+    `{batch}` or `{HH}` before `{dd}`); with another pattern the whole source is listed and older
+    files are dropped after listing.
+  - A file landing in a day older than the window is not ingested. Floe can't see it (it is not
+    listed), so every run that lists from a watermark logs one warning naming the window. A
+    `--full-refresh` lists everything and picks it up.
+  - The watermark moves only forward, when a run promotes its files. In the same state write, file
+    entries older than the new window are dropped, so the state stays bounded.
 
 ### `sink` (required)
 

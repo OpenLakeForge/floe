@@ -659,4 +659,5 @@ unresolved_inputs_dot
 partitioning_two_days
 partitioning_hive_hour
 partitioning_unmatched
+partitioning_file_watermark
 precheck_header_order manifest
