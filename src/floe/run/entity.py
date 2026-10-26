@@ -116,7 +116,7 @@ def _chunks(entity: EntityConfig, path: Path, names: list[str]) -> Chunks:
         case "xlsx":
             yield 0, read_xlsx(path, src.options), None
         case "xml":
-            for x in read_xml(path, src.options, entity.schema_.columns):
+            for x in read_xml(path, src.options, entity.schema_.columns[: len(names)]):
                 yield x.offset, x.df, None
         case other:
             raise FloeRunError(
@@ -309,8 +309,9 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     entity, uri = plan.entity, file.source_uri
     severity = entity.policy.severity
     declared = declared_names(entity)
-    chunks = _chunks(entity, path, plan.names)
     derived = plan.derived.get(uri, [])
+    # D28: the derived columns come last and are not in the file
+    chunks = _chunks(entity, path, plan.names[: len(plan.names) - len(derived)])
     keys = plan.tracker.snapshot()
 
     def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip

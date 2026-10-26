@@ -105,3 +105,17 @@ def test_full_refresh_fails_on_archived_inputs_until_d29(tmp_path: Path) -> None
     put(tmp_path, "2026/10/25/c3d4/y.csv", "id\n2\n", 200)
     with pytest.raises(FloeRunError, match=r"archived inputs keep their partition path only with D29 \(#884\): local://.*/arch/o/x__run-"):  # fmt: skip
         go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
+
+
+def test_derived_columns_never_name_headerless_csv_fields(tmp_path: Path) -> None:
+    """An extra field of a headerless file stays an extra column; it is not taken for `ingest_date`."""
+    put(tmp_path, "2026/10/24/a1b2/x.csv", "1,unexpected\n", 100)
+    path = tmp_path / "config.yml"
+    text = CONFIG.format(mode="", archive="").replace("header: true", "header: false")
+    path.write_text(text.replace("      primary_key:", "      mismatch: {extra_columns: reject_file}\n      primary_key:"))  # fmt: skip
+    run(path, parse_config(path, {}))
+    (f,) = report(tmp_path)["files"]
+    assert (f["status"], f["mismatch"]["extra_columns"]) == (
+        "rejected",
+        ["extra_column_2"],
+    )
