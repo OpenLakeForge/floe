@@ -6,21 +6,25 @@
 import itertools
 import uuid
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Literal
 
 import pyarrow as pa
+from pyiceberg.exceptions import CommitFailedException
 from pyiceberg.io.pyarrow import (
     _check_pyarrow_schema_compatible,  # pyright: ignore[reportPrivateUsage] -- same check `Transaction.append` makes
     _dataframe_to_data_files,  # pyright: ignore[reportPrivateUsage] -- feeds one snapshot producer from many chunks
 )
 from pyiceberg.manifest import DataFile
-from pyiceberg.table import Table
+from pyiceberg.table import Table, TableProperties
 from pyiceberg.table.snapshots import ancestors_of
 
 from floe.iceberg.catalog import run_error
+from floe.state import (
+    _backoff,  # pyright: ignore[reportPrivateUsage] -- one jittered backoff for every CAS retry
+)
 
 WriteMode = Literal["overwrite", "append"]
 
@@ -32,6 +36,7 @@ SMALL_FILE_THRESHOLD_BYTES = 16 * 1024 * 1024
 _BYTES_PER_MIB = 1024 * 1024
 _REPORTED_FILE_PATHS = 50
 CHUNK_ROWS = 1_000_000
+COMMIT_ATTEMPTS = 5
 
 
 @dataclass(frozen=True)
@@ -43,6 +48,9 @@ class IcebergWriteResult:
     total_bytes_written: int
     avg_file_size_mb: float | None
     small_files_count: int
+    already_committed: bool = (
+        False  # a conflict showed another run committed this batch (#545)
+    )
 
 
 def _chunks(reader: pa.RecordBatchReader, chunk_rows: int) -> Iterator[pa.Table]:
@@ -91,26 +99,38 @@ def write_table(
                 table.metadata, chunk, table.io, write_uuid, counter
             )
         ]
-    replaced: list[DataFile] = []
-    if mode == "overwrite":
-        with run_error("iceberg overwrite scan failed"):
-            replaced = [task.file for task in table.scan().plan_files()]
-    if data_files or replaced:
-        with run_error("rest iceberg commit failed"):
-            tx = table.transaction()
-            update = tx.update_snapshot(
-                snapshot_properties={RUN_ID: run_id, INPUT_HASH: input_hash}
-            )
-            with (
-                update.overwrite()
-                if mode == "overwrite"
-                else update.fast_append() as snap
-            ):
-                for old in replaced:
-                    snap.delete_data_file(old)
-                for data_file in data_files:
-                    snap.append_data_file(data_file)
-            table = tx.commit_transaction()
+    with run_error("rest iceberg commit failed"):
+        for attempt in range(COMMIT_ATTEMPTS):
+            if attempt:  # a conflict: the data files stay, only the transaction is rebuilt on the fresh table
+                _backoff(attempt - 1)
+                table.refresh()
+                if mode == "append" and find_committed(table, input_hash):
+                    return replace(write_result(table, [], small_file_threshold_bytes), already_committed=True)  # fmt: skip
+            replaced = [task.file for task in table.scan().plan_files()] if mode == "overwrite" else []  # fmt: skip
+            if not (data_files or replaced):
+                break
+            try:
+                # PyIceberg retries a 409 itself (refresh, rebuild) and would skip the guard; in memory only, never sent
+                table.metadata = table.metadata.model_copy(update={"properties": {**table.properties, TableProperties.COMMIT_NUM_RETRIES: "0"}})  # fmt: skip
+                tx = table.transaction()
+                update = tx.update_snapshot(
+                    snapshot_properties={RUN_ID: run_id, INPUT_HASH: input_hash}
+                )
+                with (
+                    update.overwrite()
+                    if mode == "overwrite"
+                    else update.fast_append() as snap
+                ):
+                    for old in replaced:
+                        snap.delete_data_file(old)
+                    for data_file in data_files:
+                        snap.append_data_file(data_file)
+                table = tx.commit_transaction()
+                break
+            except CommitFailedException:
+                pass
+        else:
+            raise CommitFailedException(f"commit conflicted {COMMIT_ATTEMPTS} times in a row")  # fmt: skip
     return write_result(table, data_files, small_file_threshold_bytes)
 
 

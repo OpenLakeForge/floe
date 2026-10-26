@@ -838,6 +838,9 @@ def _run_entity(
             result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, input_hash(entity, complete))  # fmt: skip
             write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
                                   result.avg_file_size_mb, result.small_files_count)  # fmt: skip
+            if result.already_committed:  # #920: the commit conflicted and the guard found this batch in the table
+                done = {f.source_uri for f in complete}
+                files[:] = [skipped_report(r["input_file"], "already_committed") if r["input_file"] in done else r for r in files]  # fmt: skip
     else:
         write = AcceptedWrite(0, [], 0, 0.0, 0)
     inc.committed = files  # #915: from here on a failure promotes the written files
