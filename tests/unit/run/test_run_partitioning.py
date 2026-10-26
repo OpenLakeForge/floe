@@ -112,6 +112,18 @@ def test_d29_archive_keeps_the_partition_path_so_a_full_refresh_rederives_the_da
     assert got.rows() == [(1, date(2026, 10, 24), "a1b2"), (2, date(2026, 10, 25), "c3d4")]  # fmt: skip
 
 
+def test_d29_a_full_refresh_replays_archived_files_in_their_first_order(tmp_path: Path) -> None:  # fmt: skip
+    """`x.csv` loads before `x0.csv`, though `x0__run-…` sorts before `x__run-…`: the first duplicate key wins both times."""
+    put(tmp_path, "2026/10/24/a1b2/x.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a1b2/x0.csv", "id\n1\n", 100)
+    archive = "archive: {path: ./arch}"
+    go(tmp_path, "incremental_mode: archive", archive)
+    assert [f["rejected_count"] for f in report(tmp_path)["files"]] == [0, 1]
+    go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
+    names = [f["input_file"].rsplit("/", 1)[1].split("__run-")[0] for f in report(tmp_path)["files"]]  # fmt: skip
+    assert names == ["x", "x0"]
+
+
 def test_d29_without_partitioning_the_archive_stays_flat(tmp_path: Path) -> None:
     (tmp_path / "in").mkdir()
     (tmp_path / "in/x.csv").write_text("id\n1\n")
