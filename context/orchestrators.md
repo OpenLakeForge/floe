@@ -161,7 +161,9 @@ Each `@asset` function, when materialized:
 
 ### Runner
 
-`LocalRunner` (in `runner.py`) is the default runner. It invokes the CLI as a subprocess and returns a `RunResult(stdout, stderr, exit_code)`.
+`InProcessRunner` (in `runner.py`) is the default when the `floe` Python core is importable (`build_runner_from_env`; `FLOE_RUNNER=local` opts out). It runs a local `floe run --manifest` execution through `floe.run_manifest` in the Dagster process, renders the observed events as the same NDJSON stdout, and turns a `FloeError` into exit code 1 with the message on stderr. In-process runs are serialized by a lock, because `floe.set_observer` is process-global. Anything else (a timeout, `defaults.env`/`workdir`, extra CLI flags, a non-`local_process` runner) falls back to `LocalRunner`.
+
+`LocalRunner` invokes the CLI as a subprocess and returns a `RunResult(stdout, stderr, exit_code)`.
 
 `LocalRunner` also handles routing to `kubernetes_job` and `databricks_job` runner types by delegating to `kubernetes_runner.py` and `databricks_runner.py` respectively.
 
