@@ -133,7 +133,9 @@ def claim_inputs(
     entity: str,
     run_id: str,
     inputs: list[InputFile],
+    barrier: bool = False,
 ) -> ClaimOutcome:
+    """`barrier` (merge modes, #545 S7): while another run's claim is live, every input waits as `active_claim`."""
     if not inputs:
         return ClaimOutcome([], None, [], [], {})
     for attempt in range(CAS_RETRIES):
@@ -144,6 +146,8 @@ def claim_inputs(
         now = datetime.now(UTC)
         expired = {u: c for u, c in state.claims.items() if not _is_live(c, now)}
         state.claims = {u: c for u, c in state.claims.items() if u not in expired}
+        # only live claims are left, and none is ours
+        blocked = barrier and bool(state.claims)
         pending: list[InputFile] = []
         active: list[str] = []
         processed: list[tuple[InputFile, FileState]] = []
@@ -151,7 +155,7 @@ def claim_inputs(
         for f in inputs:
             if f.source_uri in state.files:
                 processed.append((f, state.files[f.source_uri]))
-            elif f.source_uri in state.claims:
+            elif blocked or f.source_uri in state.claims:
                 active.append(f.source_uri)
             else:
                 # a dead run's batch can't have committed before its first claim (#545): keep that bound

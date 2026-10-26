@@ -563,7 +563,7 @@ class Incremental:
         if self.full_refresh:
             self._hold(claim_all(self.client, self.uri, e.name, self.run_id, inputs))
             return inputs, []
-        got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs)
+        got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs, e.sink.write_mode.startswith("merge"))  # fmt: skip
         reports = skipped_reports(e, got.already_processed, got.active_claims)
         _emit_skipped(emit, e.name, reports)
         self.expired = got.expired
