@@ -275,6 +275,7 @@ def _partitioning(value: object) -> SourcePartitioning:
         pattern=get_string(h, "pattern", ctx),
         date_column=get_string(h, "date_column", ctx),
         batch_column=opt_string(h, "batch_column", ctx),
+        lookback_days=_or(opt_u32(h, "lookback_days", ctx), 1),
     )
 
 
