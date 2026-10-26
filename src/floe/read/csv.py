@@ -81,7 +81,9 @@ def _columns(path: Path, args: _Args, declared: Sequence[str]) -> list[str]:
     try:
         probe = args.scan(path, n_rows=0 if args.has_header else 1).collect()
     except (pl.exceptions.PolarsError, OSError) as err:
-        raise FloeIoError(f"csv header read failed: {err}") from err
+        # Rust's polars prints the error kind: `no data: empty CSV`
+        kind = "no data: " if isinstance(err, pl.exceptions.NoDataError) else ""
+        raise FloeIoError(f"csv header read failed: {kind}{err}") from err
     if args.has_header:
         return probe.columns
     names = list(declared[: probe.width])

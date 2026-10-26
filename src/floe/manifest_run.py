@@ -11,7 +11,13 @@ from typing import Any, TypeVar, cast, get_args
 
 from pydantic import BaseModel, ValidationError
 
-from floe.config.project import LineageConfig, ReportConfig, RootConfig, config_version
+from floe.config.project import (
+    LineageConfig,
+    ProjectMetadata,
+    ReportConfig,
+    RootConfig,
+    config_version,
+)
 from floe.config.storage import CatalogsConfig, StoragesConfig
 from floe.config.types import (
     EntityConfig,
@@ -210,6 +216,8 @@ def load_manifest(path: Path) -> tuple[RootConfig, list[EntityConfig]]:
         spec = m["spec_version"]
         entities = [_entity(e, _named_local(m)) for e in m["entities"]]
         report_base = m["report_base_uri"]
+        meta = m.get("metadata")  # D20: dumped without its None fields
+        metadata = None if meta is None else ProjectMetadata.model_validate(_omitted_as_none(ProjectMetadata, meta))  # fmt: skip
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         why = f"missing field `{e.args[0]}`" if isinstance(e, KeyError) else e
         raise FloeConfigError(f"manifest parse error: {why}") from e
@@ -223,7 +231,7 @@ def load_manifest(path: Path) -> tuple[RootConfig, list[EntityConfig]]:
     storages = _section(StoragesConfig, m, "storages", _storage_def)
     root = RootConfig(
         version=spec,
-        metadata=None,
+        metadata=metadata,
         storages=storages,
         catalogs=_section(CatalogsConfig, m, "catalogs", _catalog_def),
         env=None,

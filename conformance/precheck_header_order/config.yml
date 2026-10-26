@@ -1,0 +1,28 @@
+version: "0.3"
+entities:
+  - name: orders
+    source:
+      format: csv
+      path: "./in"
+      options:
+        header: true
+        separator: ","
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/orders"
+      rejected:
+        format: csv
+        path: "./out/rejected/orders"
+    policy:
+      severity: reject
+    schema:
+      mismatch:
+        missing_columns: reject_file
+      columns:
+        - name: id
+          type: string
+        - name: name
+          type: string
+report:
+  path: "./report"
