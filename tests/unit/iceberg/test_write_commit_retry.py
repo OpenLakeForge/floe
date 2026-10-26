@@ -4,12 +4,15 @@
 # ^ pyarrow ships no type stubs
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from pyiceberg.catalog import Catalog
 from pyiceberg.io import load_file_io
+from pyiceberg.manifest import DataFile
 from pyiceberg.partitioning import PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.table import CommitTableResponse, Table
@@ -179,3 +182,13 @@ def test_a_key_the_rival_since_overwrote_away_does_not_block(catalog: SharedCata
     catalog.rivals, catalog.rival_id, catalog.then_overwrite = 1, 7, 8
     write_table(mine, reader([7]), "append", "run", "mine", unique_keys=[["id"]])
     assert ids(catalog) == [7, 8]
+
+
+def test_float_keys_compare_by_bits_as_the_tracker_does(catalog: SharedCatalog, tmp_path: Path) -> None:  # fmt: skip
+    path = tmp_path / "f.parquet"
+    pq.write_table(pa.table({"x": pa.array([float("nan"), -0.0, 0.0, None])}), path)
+    file = cast("DataFile", SimpleNamespace(file_path=str(path)))
+    keys = list(write_module._keys(catalog.load_table(IDENTIFIER), file, ["x"]))  # pyright: ignore[reportPrivateUsage]
+    assert len(keys) == 3 and len(set(keys)) == 3  # NULL dropped; -0.0 and 0.0 differ
+    again = set(write_module._keys(catalog.load_table(IDENTIFIER), file, ["x"]))  # pyright: ignore[reportPrivateUsage]
+    assert keys[0] in again  # NaN matches NaN

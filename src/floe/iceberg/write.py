@@ -181,7 +181,14 @@ def _keys(
             return
         f.seek(0)
         rows = pq.read_table(f, columns=list(key))
-    yield from (k for k in zip(*(rows[c].to_pylist() for c in key)) if None not in k)
+    columns = [
+        # the tracker's float key: bit patterns, so NaN matches NaN and -0.0 differs from 0.0
+        col.combine_chunks().cast(pa.float64()).view(pa.uint64())
+        if pa.types.is_floating(col.type)
+        else col
+        for col in (rows[c] for c in key)
+    ]
+    yield from (k for k in zip(*(c.to_pylist() for c in columns)) if None not in k)
 
 
 def _revalidate_unique(
@@ -192,8 +199,8 @@ def _revalidate_unique(
 ) -> None:
     """Raise when a key of `data_files` is in a file a rival added since `base`.
 
-    ponytail: the rivals' keys sit in memory (cost follows the concurrent writes, not the history); a
-    row-level deletes are not applied, so a deleted rival row still fails closed; a float compares by Python equality, so NaN never collides and -0.0 equals 0.0, unlike the tracker's bits.
+    ponytail: the rivals' keys sit in memory (cost follows the concurrent writes, not the history);
+    row-level deletes are not applied, so a deleted rival row still fails closed.
     """
     with run_error("iceberg unique revalidation failed"):
         live = {task.file.file_path for task in table.scan().plan_files()}
