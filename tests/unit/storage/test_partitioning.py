@@ -68,8 +68,7 @@ def test_an_invalid_date_fails() -> None:
     with pytest.raises(FloeRunError) as err:
         partition_of(STD, "orders", ROOT, uri)
     assert str(err.value) == (
-        f"entity.name=orders input {uri} has an invalid source.partitioning date: "
-        "month must be in 1..12"
+        f"entity.name=orders input {uri} has an invalid source.partitioning date: 2026-13-01"
     )
 
 

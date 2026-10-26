@@ -35,8 +35,11 @@ def partition_of(p: SourcePartitioning, entity: str, root: str, uri: str) -> Par
     hour = match.groupdict().get("HH")
     try:
         when = datetime(int(match["yyyy"]), int(match["MM"]), int(match["dd"]), int(hour or 0))  # fmt: skip
-    except ValueError as err:
-        raise FloeRunError(f"entity.name={entity} input {uri} has an invalid source.partitioning date: {err}") from err  # fmt: skip
+    except (
+        ValueError
+    ) as err:  # the date as written: Python's own wording varies by version
+        written = f"{match['yyyy']}-{match['MM']}-{match['dd']}" + (f"T{hour}" if hour is not None else "")  # fmt: skip
+        raise FloeRunError(f"entity.name={entity} input {uri} has an invalid source.partitioning date: {written}") from err  # fmt: skip
     return Partition(when if hour is not None else when.date(), match.groupdict().get("batch"))  # fmt: skip
 
 
