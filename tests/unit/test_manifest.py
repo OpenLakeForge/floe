@@ -457,3 +457,27 @@ def test_profile_execution_shapes_the_runner_and_orchestration(
     runner = {"type": rust["runner"]["type"]} | rust["runner"]  # `type` comes first
     runners = {"default": "default", "definitions": {"default": runner}}
     assert json.dumps(manifest["runners"]) == json.dumps(runners)  # key order too
+
+
+def test_d28_the_entity_source_carries_its_partitioning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = D20_PROJECT.replace(
+        "source: {format: csv, path: ./in/x.csv}",
+        'source: {format: csv, path: ./in, partitioning: {pattern: "{yyyy}/{MM}/{dd}", date_column: day}}',
+    )
+    entities = {
+        e["name"]: e for e in manifest_of(tmp_path, monkeypatch, config)["entities"]
+    }
+    assert entities["d.inline"]["source"]["partitioning"] == {
+        "batch_column": None,
+        "date_column": "day",
+        "pattern": "{yyyy}/{MM}/{dd}",
+    }
+    assert "partitioning" not in entities["d.orders"]["source"]
+    root = Path(__file__).resolve().parents[2]
+    schema = json.loads(
+        (root / "orchestrators/schemas/floe.manifest.schema.json").read_text()
+    )
+    source = schema["properties"]["entities"]["items"]["properties"]["source"]
+    assert set(entities["d.inline"]["source"]) <= set(source["properties"])
