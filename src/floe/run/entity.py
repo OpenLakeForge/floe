@@ -576,10 +576,8 @@ class Incremental:
                 return []  # new inputs, or a reload after `floe state reset`
             since = min(datetime.fromisoformat(a) for a in stale)
         found = find_committed(table, input_hash(e, pending), since)
+        # fail closed; `run_entity` releases, which puts the dead run's claims back so the next run fails too
         if found is None:
-            # fail closed, and put the dead run's claims back so the next run fails too
-            if claimed := self._end():
-                release(self.client, self.uri, self.run_id, claimed, self.expired)
             raise FloeRunError(
                 f"entity.name={e.name} cannot tell whether a run that died after claiming its inputs at {since} "
                 "committed them: the table's snapshots since then were expired (retention floor: 7 days and at least "
@@ -608,8 +606,9 @@ class Incremental:
         return claimed
 
     def release(self) -> None:
+        """The dead runs' claims this run took over go back: the next run checks them again (#545)."""
         if claimed := self._end():
-            release(self.client, self.uri, self.run_id, claimed)
+            release(self.client, self.uri, self.run_id, claimed, self.expired)
 
     def finish(self, files: list[dict[str, Any]]) -> None:
         """Promote unless the entity failed or aborted (Rust commits on success, warnings and rejected)."""

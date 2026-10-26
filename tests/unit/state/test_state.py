@@ -177,6 +177,8 @@ def test_claim_removes_expired_claims_before_acquiring(tmp_path: Path) -> None:
     state = read_state(client, uri, "sales")
     assert state is not None
     assert [c.run_id for c in state.claims.values()] == ["run-b"]
+    # a retry killed now must leave the dead run's bound for the next one (#545)
+    assert state.claims[f.source_uri].acquired_at == "2000-01-01T00:00:00Z"
     assert (
         outcome.claimed is not None
     )  # #545: a fail-closed run puts the dead run's claim back

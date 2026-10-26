@@ -426,6 +426,14 @@ def test_a_retry_skips_the_batch_a_dead_run_committed(tmp_path: Path, catalog: L
     for claim in doc["claims"].values():
         claim["expires_at"] = "2000-01-01T00:00:00Z"
     state.write_text(json.dumps(doc))
+
+    def broken(*_: object) -> None:
+        raise FloeRunError("catalog down")
+
+    monkeypatch.setattr(entity_module, "find_committed", broken)
+    with pytest.raises(FloeRunError, match="catalog down"):
+        go("failed-retry")  # its release puts the dead run's claims back
+    monkeypatch.setattr(entity_module, "find_committed", find_committed)
     report = go("retry")
     assert rows(catalog) == [(1, "a"), (2, "b")]
     assert not (tmp_path / "out" / "rejected").exists()

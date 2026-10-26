@@ -154,8 +154,11 @@ def claim_inputs(
             elif f.source_uri in state.claims:
                 active.append(f.source_uri)
             else:
+                # a dead run's batch can't have committed before its first claim (#545): keep that bound
+                was = expired.get(f.source_uri)
+                since = was.acquired_at if was else acquired_at
                 state.claims[f.source_uri] = Claim(
-                    run_id, acquired_at, expires_at, f.source_size, f.source_mtime
+                    run_id, since, expires_at, f.source_size, f.source_mtime
                 )
                 pending.append(f)
         if not pending:
@@ -257,7 +260,8 @@ def release(client: StorageClient, uri: str, run_id: str, claimed: Loaded, resto
             if not (c.run_id == run_id and u in ours)
         }
         for u, c in (restore or {}).items():
-            state.claims.setdefault(u, c)
+            if u not in state.files:
+                state.claims.setdefault(u, c)
         state.updated_at = _now()
 
     _mutate(client, uri, claimed, apply)
