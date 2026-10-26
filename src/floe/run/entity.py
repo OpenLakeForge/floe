@@ -238,12 +238,12 @@ def _archive(plan: _Plan, file: InputFile) -> str | None:
     return uri.removeprefix("local://")
 
 
-def _with_archived(plan: _Plan, archive: tuple[str, StorageClient], source: Callable[[], ResolvedInputs]) -> ResolvedInputs:  # fmt: skip
+def _with_archived(e: EntityConfig, archive: tuple[str, StorageClient], source: Callable[[], ResolvedInputs]) -> ResolvedInputs:  # fmt: skip
     """D24: a full refresh reads `<archive>/<entity>/` first (by name), then the source inputs; either may be empty, not both.
 
     Only "no inputs matched" counts as empty: any other listing error fails the refresh rather than rebuild from part of the inputs.
     """
-    e, (base, client) = plan.entity, archive
+    base, client = archive
     path = e.name if base.startswith("local://") else f"{base}/{e.name}/"
     try:
         old = resolve_inputs(Path(base.removeprefix("local://")), path, e.source.format, e.name, e.source.storage or "local", client)  # fmt: skip
@@ -580,14 +580,23 @@ def archive_location(entity: EntityConfig, config_dir: Path, storages: StoragesC
     return uri.rstrip("/"), definition
 
 
-def list_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None, uri: str, client: StorageClient) -> ResolvedInputs:  # fmt: skip
-    """The source inputs; a local path keeps its globs relative to the config. D31: the archive is never listed (a full refresh reads it through `_with_archived`)."""
+def list_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None, uri: str, client: StorageClient, full_refresh: bool = False) -> ResolvedInputs:  # fmt: skip
+    """The source inputs; a local path keeps its globs relative to the config.
+
+    D31: the archive is never listed as source input; only a full refresh reads it, explicitly (D24).
+    """
     src, archive = entity.source, archive_location(entity, config_dir, storages)
-    return resolve_inputs(
-        config_dir, src.path if uri.startswith("local://") else uri, src.format, entity.name,
-        src.storage or "local", client, recursive=bool(src.options.recursive), glob_override=src.options.glob,
-        exclude=archive and archive[0],
-    )  # fmt: skip
+
+    def source() -> ResolvedInputs:
+        return resolve_inputs(
+            config_dir, src.path if uri.startswith("local://") else uri, src.format, entity.name,
+            src.storage or "local", client, recursive=bool(src.options.recursive), glob_override=src.options.glob,
+            exclude=archive and archive[0],
+        )  # fmt: skip
+
+    if full_refresh and archive and entity.incremental_mode in ("none", "archive"):
+        return _with_archived(entity, (archive[0], storage_client(archive[1])), source)
+    return source()
 
 
 def run_entity(
@@ -694,11 +703,12 @@ def _run_entity(
         return (
             listed
             if listed is not None
-            else list_source(entity, config_dir, storages, source_uri, client)
+            else list_source(
+                entity, config_dir, storages, source_uri, client, inc.full_refresh
+            )
         )
 
-    archive = plan.archive
-    inputs = _with_archived(plan, archive, source) if inc.full_refresh and archive else source()  # fmt: skip
+    inputs = source()
     pending, files = inc.claim(inputs.files, emit)
     frames: list[pl.DataFrame] = []
     downloader = None if isinstance(client, LocalClient) else client
