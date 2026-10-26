@@ -136,7 +136,9 @@ def claim_inputs(
     entity: str,
     run_id: str,
     inputs: list[InputFile],
+    before: Callable[[EntityState], Callable[[str], bool]] | None = None,
 ) -> ClaimOutcome:
+    """D30: `before(state)` tells the files another run's watermark has passed since this run listed; they are not claimed."""
     if not inputs:
         return ClaimOutcome([], None, [], [])
     for attempt in range(CAS_RETRIES):
@@ -145,12 +147,17 @@ def claim_inputs(
         loaded = _load(client, uri, entity)
         state = loaded.state
         now = datetime.now(UTC)
+        passed = (
+            before(state) if before else None
+        )  # expired claims still hold the window open
         state.claims = {u: c for u, c in state.claims.items() if _is_live(c, now)}
         pending: list[InputFile] = []
         active: list[str] = []
         processed: list[tuple[InputFile, FileState]] = []
         acquired_at, expires_at = _now(), _now(CLAIM_TTL_SECONDS)
         for f in inputs:
+            if passed and passed(f.source_uri):
+                continue
             if f.source_uri in state.files:
                 processed.append((f, state.files[f.source_uri]))
             elif f.source_uri in state.claims:
@@ -186,7 +193,7 @@ def claim_all(
             f.source_uri: Claim(run_id, acquired_at, expires_at, f.source_size, f.source_mtime)
             for f in inputs
         }  # fmt: skip
-        fresh = Loaded(EntityState(entity, acquired_at, loaded.state.files, claims), loaded.version)  # fmt: skip
+        fresh = Loaded(EntityState(entity, acquired_at, loaded.state.files, claims, loaded.state.watermark), loaded.version)  # fmt: skip
         version = _persist(client, uri, fresh)
         if version is not None:
             return Loaded(fresh.state, version)
@@ -251,13 +258,15 @@ def promote(
     _mutate(client, uri, claimed, apply)
 
 
-def release(client: StorageClient, uri: str, run_id: str, claimed: Loaded) -> None:
+def release(client: StorageClient, uri: str, run_id: str, claimed: Loaded, expire: bool = False) -> None:  # fmt: skip
+    """`expire` (D30) keeps the claims, already expired, so they hold the listing window open until a run claims the files again."""
+
     def apply(state: EntityState, ours: set[str]) -> None:
-        state.claims = {
-            u: c
-            for u, c in state.claims.items()
-            if not (c.run_id == run_id and u in ours)
-        }
+        mine = {u for u, c in state.claims.items() if c.run_id == run_id and u in ours}
+        for u in mine:
+            state.claims[u].expires_at = state.claims[u].acquired_at
+        if not expire:
+            state.claims = {u: c for u, c in state.claims.items() if u not in mine}
         state.updated_at = _now()
 
     _mutate(client, uri, claimed, apply)

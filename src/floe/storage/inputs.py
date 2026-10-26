@@ -128,7 +128,12 @@ def _local_files(
         raise no_match(base, ",".join(globs))
     patterns = [
         os.path.join(d, "**", g) if recursive else os.path.join(d, g)
-        for d in (_window_dirs(base, after) if after else [base])
+        # D30: a glob override with a `/` keeps its meaning only from `base`, so it gets the after-listing filter alone
+        for d in (
+            _window_dirs(base, after)
+            if after and "/" not in (glob_override or "")
+            else [base]
+        )
         for g in globs
     ]
     files = _visible(

@@ -82,6 +82,7 @@ from floe.storage.inputs import (
 from floe.storage.local import LocalClient
 from floe.storage.partitioning import (
     advance,
+    before_window,
     in_load_order,
     listing_start,
     partition_of,
@@ -543,6 +544,7 @@ class Incremental:
         # the file reports, set once the sink step is done (#915)
         self.committed: list[dict[str, Any]] | None = None
         self.advance: Callable[[EntityState, list[str]], None] | None = None  # D30
+        self.before: Callable[[EntityState], Callable[[str], bool]] | None = None  # D30
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -555,7 +557,7 @@ class Incremental:
         if self.full_refresh:
             self._hold(claim_all(self.client, self.uri, e.name, self.run_id, inputs))
             return inputs, []
-        got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs)
+        got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs, self.before)  # fmt: skip
         reports = skipped_reports(e, got.already_processed, got.active_claims)
         for r in reports:
             emit("file_finished", entity=e.name, input=r["input_file"], status="skipped",
@@ -584,7 +586,8 @@ class Incremental:
 
     def release(self) -> None:
         if claimed := self._end():
-            release(self.client, self.uri, self.run_id, claimed)
+            # D30: an older day's released file stays listed for a retry
+            release(self.client, self.uri, self.run_id, claimed, self.advance is not None and not self.full_refresh)  # fmt: skip
 
     def finish(self, files: list[dict[str, Any]]) -> None:
         """Promote unless the entity failed or aborted (Rust commits on success, warnings and rejected)."""
@@ -782,7 +785,11 @@ def _run_entity(
     if inputs.warning:  # D30
         emit("log", log_level="warn", code=None, message=inputs.warning, entity=entity.name, input=None)  # fmt: skip
     if entity.source.partitioning and entity.incremental_mode == "file":
-        inc.advance = partial(advance, entity.source.partitioning, entity.name, source_root(source_uri))  # fmt: skip
+        dated = entity.source.partitioning, entity.name, source_root(source_uri)
+        inc.advance, inc.before = (
+            partial(advance, *dated),
+            partial(before_window, *dated),
+        )
     archive = plan.archive  # a full refresh lists it too
     plan.derived = _derived(entity, source_uri, archive and archive[0], inputs.files)
     pending, files = inc.claim(inputs.files, emit)

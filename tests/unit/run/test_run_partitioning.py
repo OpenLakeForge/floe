@@ -1,5 +1,6 @@
 """D28: `floe run` on a `source.partitioning` layout (local; S3 is in test_run_s3.py)."""
 
+import importlib
 import json
 import os
 from datetime import date
@@ -11,8 +12,10 @@ import pytest
 
 from floe.config.parse import parse_config
 from floe.errors import FloeRunError
+from floe.run import entity as entity_module  # `floe.run` is the public function
 from floe.run import run
 
+run_module = importlib.import_module("floe.run")
 CONFIG = """\
 version: "0.3"
 domains:
@@ -203,3 +206,63 @@ def test_d30_a_claim_holds_the_window_open(tmp_path: Path) -> None:
     path.write_text(json.dumps(state))
     go(tmp_path, "incremental_mode: file")
     assert [f["input_file"] for f in report(tmp_path)["files"] if f["status"] == "success"] == [dead]  # fmt: skip
+
+
+def boom(*_: object) -> None:
+    raise FloeRunError("boom")
+
+
+def test_d30_a_failed_run_keeps_an_older_day_listed_for_its_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """The run holding the window open fails and releases; its released claim, expired, still holds it open."""
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n1\n", 100)
+    go(tmp_path, "incremental_mode: file")
+    [path] = (tmp_path / "in/.floe").rglob("state.json")
+    state = json.loads(path.read_text())
+    put(tmp_path, "2026/10/10/old/x.csv", "id\n2\n", 100)
+    old = f"local://{tmp_path}/in/2026/10/10/old/x.csv"
+    state["claims"][old] = {"run_id": "dead", "acquired_at": "2026-01-01T00:00:00Z", "expires_at": "2026-01-01T01:00:00Z"}  # fmt: skip
+    path.write_text(json.dumps(state))
+    with monkeypatch.context() as m:
+        m.setattr(entity_module, "_run_file", boom)
+        with pytest.raises(FloeRunError, match="boom"):
+            go(tmp_path, "incremental_mode: file")
+    go(tmp_path, "incremental_mode: file")
+    assert [f["input_file"] for f in report(tmp_path)["files"] if f["status"] == "success"] == [old]  # fmt: skip
+
+
+def test_d30_a_stale_listing_does_not_reclaim_a_pruned_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """A run that listed before another moved the watermark checks the window again when it claims."""
+    put(tmp_path, "2026/10/10/a/x.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n2\n", 100)
+    go(tmp_path, "incremental_mode: file")
+    assert all("/10/10/" not in u for u in state_of(tmp_path)["files"])
+    real = run_module.list_source
+
+    def unwindowed(
+        *a: Any,
+    ) -> Any:  # the whole source, as listed before the watermark moved
+        return real(*a[:-1], True)
+
+    monkeypatch.setattr(run_module, "list_source", unwindowed)
+    go(tmp_path, "incremental_mode: file")
+    assert [f["status"] for f in report(tmp_path)["files"]] == ["skipped"]
+
+
+def test_d30_a_full_refresh_keeps_the_watermark_until_it_promotes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n1\n", 100)
+    go(tmp_path, "incremental_mode: file")
+    with monkeypatch.context() as m:
+        m.setattr(entity_module, "_run_file", boom)
+        with pytest.raises(FloeRunError, match="boom"):
+            go(tmp_path, "incremental_mode: file", full_refresh=True)
+    assert state_of(tmp_path)["watermark"] == "2026-10-24"
+
+
+def test_d30_a_nested_glob_override_keeps_its_meaning(tmp_path: Path) -> None:
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n1\n", 100)
+    path = tmp_path / "config.yml"
+    path.write_text(CONFIG.format(mode="incremental_mode: file", archive="").replace('separator: ","}', 'separator: ",", glob: "2026/**/*.csv"}'))  # fmt: skip
+    run(path, parse_config(path, {}))
+    put(tmp_path, "2026/10/24/b/x.csv", "id\n2\n", 200)
+    run(path, parse_config(path, {}))
+    assert [f["status"] for f in report(tmp_path)["files"]] == ["skipped", "success"]
