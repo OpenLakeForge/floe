@@ -612,12 +612,20 @@ class Incremental:
             release(self.client, self.uri, self.run_id, claimed, self.expired)
 
     def finish(self, files: list[dict[str, Any]]) -> None:
-        """Promote unless the entity failed or aborted (Rust commits on success, warnings and rejected)."""
+        """Promote unless the entity failed (Rust commits on success, warnings and rejected).
+
+        #918: an abort still writes the files before it (Rust 0.7), so it promotes those and releases the rest.
+        """
         status, _ = run_outcome([f["status"] for f in files])
-        if status in ("failed", "aborted"):
+        if status == "failed":
             return self.release()
         if claimed := self._end():
-            promote(self.client, self.uri, self.run_id, claimed, self.full_refresh)
+            only = {f["input_file"] for f in files if f["status"] != "aborted"} if status == "aborted" else None  # fmt: skip
+            promote(
+                self.client, self.uri, self.run_id, claimed, self.full_refresh, only
+            )
+            if only is not None:
+                release(self.client, self.uri, self.run_id, claimed, self.expired)
 
 
 def resolve_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None) -> tuple[str, LocalClient | S3Client]:  # fmt: skip
