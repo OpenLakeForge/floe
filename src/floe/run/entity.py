@@ -308,9 +308,13 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     """The file's report and its accepted frames (none when it aborted the run); `path` is the local copy."""
     entity, uri = plan.entity, file.source_uri
     severity = entity.policy.severity
-    declared = declared_names(entity)
     derived = plan.derived.get(uri, [])
-    # D28: the derived columns come last and are not in the file
+    added = [e.meta.output_name() for e in derived]
+    # D28: the derived columns come last; they are declared, whatever their name, but not in the file
+    derived_names = [normalize_name(n, plan.strategy) for n in added]
+    declared = [
+        n for n in declared_names(entity) if n not in derived_names
+    ] + derived_names
     chunks = _chunks(entity, path, plan.names[: len(plan.names) - len(derived)])
     keys = plan.tracker.snapshot()
 
@@ -329,7 +333,7 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
             probe = list(first[0][1].columns)
     except FloeIoError as err:
         return failed(err, None)
-    mismatch = plan_mismatch(entity, declared, probe + [e.meta.output_name() for e in derived])  # fmt: skip
+    mismatch = plan_mismatch(entity, declared, probe + added)
     if derived:  # D28: the input columns are the file's own
         mismatch.report["input_columns_count"] = len(probe)
     if mismatch.rejected or mismatch.aborted:
