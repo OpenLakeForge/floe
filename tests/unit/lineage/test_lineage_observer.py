@@ -420,6 +420,63 @@ def test_cli_config_failing_validation_emits_start_then_fail(
     assert [b["eventType"] for b in server.bodies] == ["START", "FAIL"]
 
 
+def _lineage(server: Server) -> list[tuple[Any, ...]]:
+    """Each event without its uuids and times."""
+
+    def names(datasets: list[dict[str, Any]]) -> list[str]:
+        return [d["name"] for d in datasets]
+
+    events = [(b["eventType"], b["job"]["name"], names(b.get("inputs", [])), names(b.get("outputs", []))) for b in server.bodies]  # fmt: skip
+    server.requests.clear()
+    return events
+
+
+@pytest.mark.parametrize(
+    ("file", "code", "failing_observer"),
+    [("orders.csv", 0, False), ("missing.csv", 1, False), ("orders.csv", 0, True)],
+)
+def test_api_run_manifest_posts_the_same_lineage_as_the_cli(
+    file: str,
+    code: int,
+    failing_observer: bool,
+    server: Server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import floe
+
+    def generate(work: Path) -> None:
+        (work / "in").mkdir(parents=True)
+        (work / "in/orders.csv").write_text("id\n1\n")
+        (work / "orders.yml").write_text(CLI_CONFIG.format(url=server.url, file=file))
+        monkeypatch.chdir(work)
+        monkeypatch.setattr(sys, "argv", ["floe", "manifest", "generate", "-c", "orders.yml", "-o", "m.json"])  # fmt: skip
+        assert main() == 0
+
+    generate(tmp_path / "cli")
+    monkeypatch.setattr(sys, "argv", ["floe", "run", "--manifest", "m.json"])
+    assert main() == code
+    by_cli = _lineage(server)
+    generate(tmp_path / "api")
+
+    def boom(event: floe.RunEvent) -> None:
+        raise RuntimeError("user observer")
+
+    # its error is swallowed, as before; lineage still gets every event
+    if failing_observer:
+        floe.set_observer(boom)
+    try:
+        assert floe.run_manifest("m.json").summary["run"]["exit_code"] == code
+    except floe.FloeError:
+        assert code == 1
+    finally:
+        floe.clear_observer()
+    assert _lineage(server) == by_cli
+    assert by_cli[0][0] == "START" and by_cli[-1][0] == (
+        "COMPLETE" if code == 0 else "FAIL"
+    )
+
+
 def test_lineage_endpoint_down_never_fails_the_run(
     server: Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

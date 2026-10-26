@@ -26,6 +26,8 @@ from floe.errors import (
     FloeRunError,
     FloeStorageError,
 )
+from floe.lineage.observer import run_with_lineage
+from floe.manifest_run import load_manifest
 from floe.report.summary import id_path
 from floe.run.entity import state_uri
 from floe.run.events import (
@@ -167,8 +169,35 @@ def run(
     validate_config(root)
     out = _run.run(
         path, root, run_id=run_id, entities=entities or [], dry_run=dry_run,
-        full_refresh=full_refresh, observer=lambda e: _observer and _observer(cast(RunEvent, e)),
+        full_refresh=full_refresh, observer=_emit,
     )  # fmt: skip
+    return _outcome(root, entities, out)
+
+
+def run_manifest(
+    manifest_path: str,
+    entities: list[str] | None = None,
+    dry_run: bool = False,
+    run_id: str | None = None,
+    full_refresh: bool = False,
+) -> RunOutcome:
+    """`floe run --manifest`, OpenLineage included; the manifest was validated when it was generated."""
+    root, observed = load_manifest(Path(manifest_path))
+    out = run_with_lineage(
+        Path(manifest_path), root, observed, "", _emit, validate=False, run_id=run_id,
+        entities=entities or [], dry_run=dry_run, full_refresh=full_refresh,
+    )  # fmt: skip
+    return _outcome(root, entities, out)
+
+
+def _emit(event: dict[str, Any]) -> None:
+    if _observer:
+        _observer(cast(RunEvent, event))
+
+
+def _outcome(
+    root: _Root, entities: list[str] | None, out: _run.RunOutcome
+) -> RunOutcome:
     base = out.summary["report"]["path"]
     if out.dry_run is None:
         return RunOutcome(out.run_id, base, False, out.summary, out.entity_reports)
@@ -246,5 +275,5 @@ __all__ = [
     "FloeConfigError", "FloeError", "FloeIoError", "FloeRunError", "FloeStorageError", "LogEvent", "RootConfig",
     "RunEvent", "RunFinishedEvent", "RunOutcome", "RunStartedEvent", "SchemaEvolutionAppliedEvent", "__version__",
     "clear_observer", "extract_config_env_vars", "inspect_entity_state", "load_config", "reset_entity_state", "run",
-    "set_observer", "validate",
+    "run_manifest", "set_observer", "validate",
 ]  # fmt: skip
