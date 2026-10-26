@@ -1,0 +1,132 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "orders"
+  },
+  "source": {
+    "format": "csv",
+    "path": "local://<ROOT>/in",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ","
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "directory",
+      "file_count": 2,
+      "files": [
+        "local://<ROOT>/in/a.csv",
+        "local://<ROOT>/in/b.csv"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/orders"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/orders"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/orders",
+    "table_root_uri": "local://<ROOT>/out/accepted/orders",
+    "write_mode": "overwrite",
+    "accepted_rows": 1,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 694,
+    "avg_file_size_mb": 0.0006618499755859375,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "results": {
+    "files_total": 2,
+    "files_skipped": 0,
+    "rows_total": 1,
+    "accepted_total": 1,
+    "rejected_total": 0,
+    "warnings_total": 0,
+    "errors_total": 1
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/b.csv",
+      "status": "rejected",
+      "row_count": 0,
+      "accepted_count": 0,
+      "rejected_count": 0,
+      "mismatch": {
+        "declared_columns_count": 2,
+        "input_columns_count": 1,
+        "missing_columns": [
+          "name"
+        ],
+        "extra_columns": [],
+        "mismatch_action": "rejected_file",
+        "error": {
+          "rule": "schema_mismatch",
+          "message": "entity.name=orders schema mismatch: missing=1 extra=0"
+        }
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/orders",
+        "rejected_path": "<ROOT>/out/rejected/orders/b.csv",
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 1,
+        "warnings": 0,
+        "rules": []
+      }
+    },
+    {
+      "input_file": "local://<ROOT>/in/a.csv",
+      "status": "success",
+      "row_count": 1,
+      "accepted_count": 1,
+      "rejected_count": 0,
+      "mismatch": {
+        "declared_columns_count": 2,
+        "input_columns_count": 2,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/orders",
+        "rejected_path": null,
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 0,
+        "warnings": 0,
+        "rules": []
+      }
+    }
+  ]
+}
