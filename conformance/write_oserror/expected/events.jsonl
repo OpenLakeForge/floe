@@ -1,0 +1,7 @@
+{"schema": "floe.log.v1", "level": "info", "event": "run_started", "run_id": "<volatile>", "config": "<ROOT>/config.yml", "report_base": "<ROOT>/report", "ts_ms": "<volatile>"}
+{"schema": "floe.log.v1", "level": "info", "event": "entity_started", "run_id": "<volatile>", "name": "first", "ts_ms": "<volatile>"}
+{"schema": "floe.log.v1", "level": "info", "event": "file_started", "run_id": "<volatile>", "entity": "first", "input": "local://<ROOT>/in/first.csv", "ts_ms": "<volatile>"}
+{"schema": "floe.log.v1", "level": "info", "event": "file_finished", "run_id": "<volatile>", "entity": "first", "input": "local://<ROOT>/in/first.csv", "status": "success", "rows": 1, "accepted": 1, "rejected": 0, "elapsed_ms": "<volatile>", "ts_ms": "<volatile>"}
+{"schema": "floe.log.v1", "level": "error", "event": "entity_finished", "run_id": "<volatile>", "name": "first", "status": "failed", "files": 0, "files_skipped": 0, "rows": 0, "accepted": 0, "rejected": 0, "warnings": 0, "errors": 0, "ts_ms": "<volatile>"}
+{"schema": "floe.log.v1", "level": "error", "event": "log", "run_id": "<volatile>", "log_level": "error", "code": "error", "message": "Not a directory (os error 20)", "entity": null, "input": null, "ts_ms": "<volatile>"}
+{"schema": "floe.log.v1", "level": "error", "event": "run_finished", "run_id": "<volatile>", "status": "failed", "exit_code": 1, "files": 0, "files_skipped": 0, "rows": 0, "accepted": 0, "rejected": 0, "warnings": 0, "errors": 1, "summary_uri": null, "ts_ms": "<volatile>"}
