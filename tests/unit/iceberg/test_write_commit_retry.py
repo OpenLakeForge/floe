@@ -44,6 +44,9 @@ class SharedCatalog:
             "rival",
         )  # commits another handle lands just before ours, and their hash
         self.rival_id: int | None = None  # the row they hold; default 100 + n
+        self.then_overwrite: int | None = (
+            None  # a second rival commit replacing the table with this row
+        )
 
     def load_table(self, _: object) -> Table:
         return Table(
@@ -78,6 +81,9 @@ class SharedCatalog:
                 "other-run",
                 self.rival_hash,
             )
+            if self.then_overwrite is not None:
+                row, self.then_overwrite = self.then_overwrite, None
+                write_table(self.load_table(IDENTIFIER), reader([row]), "overwrite", "other-run", "x")  # fmt: skip
             self.rivals = n
         for requirement in requirements:
             requirement.validate(
@@ -164,5 +170,12 @@ def test_two_writers_with_one_key_on_one_base_commit_one_row(catalog: SharedCata
 def test_a_conflict_without_a_shared_key_still_recommits(catalog: SharedCatalog) -> None:  # fmt: skip
     mine = catalog.load_table(IDENTIFIER)
     catalog.rivals, catalog.rival_id = 1, 8
+    write_table(mine, reader([7]), "append", "run", "mine", unique_keys=[["id"]])
+    assert ids(catalog) == [7, 8]
+
+
+def test_a_key_the_rival_since_overwrote_away_does_not_block(catalog: SharedCatalog) -> None:  # fmt: skip
+    mine = catalog.load_table(IDENTIFIER)
+    catalog.rivals, catalog.rival_id, catalog.then_overwrite = 1, 7, 8
     write_table(mine, reader([7]), "append", "run", "mine", unique_keys=[["id"]])
     assert ids(catalog) == [7, 8]

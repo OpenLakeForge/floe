@@ -193,10 +193,11 @@ def _revalidate_unique(
     """Raise when a key of `data_files` is in a file a rival added since `base`.
 
     ponytail: the rivals' keys sit in memory (cost follows the concurrent writes, not the history); a
-    float compares by Python equality, so NaN never collides and -0.0 equals 0.0, unlike the tracker's bits.
+    row-level deletes are not applied, so a deleted rival row still fails closed; a float compares by Python equality, so NaN never collides and -0.0 equals 0.0, unlike the tracker's bits.
     """
     with run_error("iceberg unique revalidation failed"):
-        rival = added_data_files(table, base)
+        live = {task.file.file_path for task in table.scan().plan_files()}
+        rival = [f for f in added_data_files(table, base) if f.file_path in live]
         clash = next(
             (
                 key
