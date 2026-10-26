@@ -766,9 +766,8 @@ def _run_entity(
     inputs = source()
     archive = plan.archive  # a full refresh lists it too
     plan.derived = _derived(entity, source_uri, archive and archive[0], inputs.files)
-    if (
-        target is None
-    ):  # D34 (#931): checked before the claim, so a refusal leaves nothing to release
+    # D34 (#931): same store only (a bucket name repeats across endpoints); before the claim, so a refusal leaves nothing to release
+    if target is None and getattr(client, "endpoint", None) == getattr(accepted_client, "endpoint", None):  # fmt: skip
         _refuse_overlap(who, base, inputs.files)
     pending, files = inc.claim(inputs.files, emit)
     plan.input_hash = input_hash(entity, pending)

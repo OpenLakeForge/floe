@@ -67,6 +67,7 @@ class S3Client:
                 response_checksum_validation="when_required",
             ),
         )
+        self.endpoint: str = self._client.meta.endpoint_url  # pyright: ignore[reportUnknownMemberType]  # identifies the store behind a bucket name
 
     def resolve_uri(self, path: str) -> str:
         key = path.lstrip("/")

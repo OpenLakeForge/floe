@@ -13,7 +13,7 @@ import pytest
 import floe
 import floe.storage.resolve as resolve_module
 from floe.config.parse import parse_config
-from floe.errors import FloeRunError
+from floe.errors import FloeConfigError, FloeRunError
 from floe.run import run
 from floe.storage.paths import parse_s3_uri
 from floe.storage.s3 import temp_path_for_key
@@ -26,6 +26,7 @@ class MemS3:
 
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
+        self.endpoint: str | None = None
 
     def resolve_uri(self, path: str) -> str:
         return f"s3://b/{path.lstrip('/')}"
@@ -301,3 +302,34 @@ def test_d28_a_partitioned_s3_source_loads_by_date_with_derived_columns(tmp_path
     assert got.rows() == [(2, date(2026, 10, 24), "bb"), (1, date(2026, 10, 25), "aa")]
     report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
     assert report["source"]["resolved_inputs"]["files"] == ["s3://b/in/2026/10/24/bb/x.csv", "s3://b/in/2026/10/25/aa/x.csv"]  # fmt: skip
+
+
+@pytest.mark.parametrize(("sink_endpoint", "refused"), [("http://a", True), ("http://b", False)])  # fmt: skip
+def test_a_sink_over_an_s3_source_is_refused_only_on_the_same_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sink_endpoint: str, refused: bool) -> None:  # fmt: skip
+    """#931 (D34): `s3://b/in` on two endpoints is two stores."""
+    stores: dict[str, MemS3] = {}
+
+    def client(_bucket: str, _region: str, endpoint: str, *_: object) -> MemS3:
+        stores.setdefault(endpoint, MemS3()).endpoint = endpoint
+        return stores[endpoint]
+
+    monkeypatch.setattr(resolve_module, "S3Client", client, raising=False)
+    src = MemS3()
+    src.endpoint = "http://a"
+    stores["http://a"] = src
+    src.write("s3://b/in/part-00000.parquet", b"input")
+    defs = "".join(f"    - {{name: {n}, type: s3, bucket: b, region: us-east-1, endpoint: {e}}}\n" for n, e in (("src", "http://a"), ("dst", sink_endpoint)))  # fmt: skip
+    config = CONFIG.replace(
+        "    - {name: lake, type: s3, bucket: b, region: us-east-1}\n", defs
+    )
+    config = config.replace("path: in/, storage: lake, options: {header: true, separator: \",\"}", "path: in/part-00000.parquet, storage: src").replace("format: csv, path: in/", "format: parquet, path: in/")  # fmt: skip
+    config = config.replace("path: ./out/accepted}", "path: in, storage: dst}").replace("storage: lake}", "storage: src}")  # fmt: skip
+    config = config.replace(
+        "format: csv, path: ./out/rejected}", "format: csv, path: ./out/rejected}"
+    )
+    if refused:
+        with pytest.raises(FloeConfigError, match="lies under sink.accepted.path"):
+            go(tmp_path, config)
+        assert src.objects == {"s3://b/in/part-00000.parquet": b"input"}
+    else:
+        go(tmp_path, config)
