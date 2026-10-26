@@ -8,6 +8,7 @@ writers are both stale when they commit.
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingTypeStubs=false
 # ^ pyarrow ships no type stubs
 
+import datetime as dt
 import json
 import re
 import threading
@@ -31,13 +32,26 @@ from pyiceberg.table.update import (
     TableUpdate,
     update_table_metadata,
 )
-from pyiceberg.types import LongType, NestedField, StringType
+from pyiceberg.types import (
+    BooleanType,
+    LongType,
+    NestedField,
+    StringType,
+    TimestampType,
+)
 
 import floe.iceberg.merge as merge_module
 from floe.config.storage import CatalogDefinition
 from floe.errors import FloeRunError
 from floe.iceberg.catalog import open_catalog, open_duckdb
-from floe.iceberg.merge import MergeResult, merge_scd1, run_merge, scd1_sql, stage_batch
+from floe.iceberg.merge import (
+    MergeResult,
+    merge_scd1,
+    merge_scd2,
+    run_merge,
+    scd1_sql,
+    stage_batch,
+)
 
 SCHEMA = Schema(
     NestedField(1, "id", LongType(), required=True), NestedField(2, "v", StringType())
@@ -171,10 +185,10 @@ def reader(*rows: tuple[int, str]) -> pa.RecordBatchReader:  # pyright: ignore[r
     return pa.RecordBatchReader.from_batches(ARROW, [batch])
 
 
-def new_table(definition: CatalogDefinition) -> Table:
+def new_table(definition: CatalogDefinition, schema: Schema = SCHEMA) -> Table:
     catalog = open_catalog(definition)
     catalog.create_namespace("ns")
-    return catalog.create_table(("ns", "t"), SCHEMA)
+    return catalog.create_table(("ns", "t"), schema)
 
 
 def race(definition: CatalogDefinition, writers: list[Any]) -> list[Any]:
@@ -265,3 +279,37 @@ def test_five_conflicts_in_a_row_fail_the_merge(
         merge_scd1(con, table, reader((7, "x")), ["id"])
     assert catalog.commits == [409] * 5
     assert rows(table) == []
+
+
+def test_each_scd2_attempt_stamps_its_own_time(
+    server: tuple[RestCatalog, CatalogDefinition], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalog, definition = server
+    system = ["is_current", "valid_from", "valid_to"]
+    table = new_table(
+        definition,
+        Schema(
+            *SCHEMA.fields,
+            NestedField(3, system[0], BooleanType()),
+            NestedField(4, system[1], TimestampType()),
+            NestedField(5, system[2], TimestampType()),
+        ),
+    )
+    catalog.reject = 99
+    monkeypatch.setattr(merge_module, "_backoff", no_backoff)
+    stamps: list[dt.datetime] = []
+    scd2_sql = merge_module.scd2_sql
+
+    def spy(*args: Any) -> Any:
+        stamps.append(args[-1])
+        return scd2_sql(*args)
+
+    monkeypatch.setattr(merge_module, "scd2_sql", spy)
+    with (
+        open_duckdb(definition) as con,
+        pytest.raises(FloeRunError, match="conflicted 5 times in a row"),
+    ):
+        merge_scd2(con, table, reader((7, "x")), ["id"], system_columns=system)
+    assert (
+        len(stamps) == 5
+    )  # a retry reusing the first attempt's time could close a rival's newer version
