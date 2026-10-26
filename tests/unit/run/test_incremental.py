@@ -219,6 +219,22 @@ def test_archive_follows_rust_archive_enabled(tmp_path: Path, mode: str, moved: 
         assert archived is None
 
 
+def test_a_failed_parquet_write_leaves_the_input_unarchived(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#914: archiving waits for the sink commit, so a failed write loses no rows."""
+    setup(tmp_path, mode="archive")
+    config = tmp_path / "config.yml"
+    config.write_text(config.read_text().replace("      rejected:", "      archive: {path: ./arch}\n      rejected:"))  # fmt: skip
+
+    def boom(*_: Any) -> None:
+        raise FloeRunError("commit failed")
+
+    monkeypatch.setattr(entity_module, "write_accepted", boom)
+    with pytest.raises(FloeRunError, match="commit failed"):
+        go(parse_config(config).entities[0], tmp_path, "r1")
+    assert (tmp_path / "in/orders.csv").exists()
+    assert not (tmp_path / "arch").exists()
+
+
 def test_bare_source_filename_roots_the_state_in_the_config_dir(tmp_path: Path) -> None:
     """#813: `orders.csv` gets the same default state as `./orders.csv`, not one under the file."""
     entity = setup(tmp_path, src="orders.csv")

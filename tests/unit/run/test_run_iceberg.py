@@ -207,6 +207,26 @@ def test_append_adds_rows(tmp_path: Path, catalog: LocalCatalog) -> None:
     assert report["accepted_output"]["table_version"] == 2
 
 
+@pytest.mark.parametrize("mode", ["overwrite", "append"])
+def test_a_failed_commit_leaves_the_input_unarchived(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch, mode: str) -> None:  # fmt: skip
+    """#914: archiving waits for the Iceberg commit, so a failed commit loses no rows."""
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
+    config(tmp_path, mode=mode)
+    path = tmp_path / "config.yml"
+    path.write_text(path.read_text().replace("      rejected:", "      archive: {path: ./arch}\n      rejected:"))  # fmt: skip
+    root = parse_config(path)
+
+    def boom(*_: object) -> None:
+        raise FloeRunError("commit failed")
+
+    monkeypatch.setattr(catalog, "commit_table", boom)
+    with pytest.raises(FloeRunError, match="commit failed"):
+        run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, catalogs=root.catalogs)  # fmt: skip
+    assert (tmp_path / "in/orders.csv").exists()
+    assert not (tmp_path / "arch").exists()
+
+
 def test_append_rejects_keys_already_in_the_table(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
     run(tmp_path, "id,name\n1,a\n", mode="append")
     (tmp_path / "in" / "b.csv").write_text("id,name\n2,x\n")  # read before orders.csv

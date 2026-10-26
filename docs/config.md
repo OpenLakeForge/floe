@@ -400,10 +400,10 @@ state file shape, and CAS behavior.
         accepted buffer to the sink whenever the accumulated estimated
         in-memory size meets this threshold (or at end of entity). The
         first flush uses the configured `write_mode`; subsequent flushes
-        within the same run are forced to `append`. A file's archive
-        call (when `sink.archive` is enabled) always runs before its
-        rows are added to the buffer, so a file's accepted data only
-        ever reaches the sink after that file's archive has succeeded.
+        within the same run are forced to `append`. Inputs are archived
+        (when `sink.archive` is enabled) only after the sink commit
+        succeeds, so an input is never archived unless its rows were
+        written; if the commit fails, the inputs stay in the source.
       - **Partial-output trade-off (applies to all non-merge sinks)**:
         because flushes commit synchronously while Phase B is still
         iterating inputs, a failure on a *later* file (read /
