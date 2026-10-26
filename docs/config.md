@@ -360,8 +360,9 @@ state file shape, and CAS behavior.
     `resolved_inputs` in the report lists them in that order.
   - A listed file whose directory doesn't match, or whose date is invalid (month 13), fails the
     run before any entity starts. The error names the file and the pattern.
-  - The archive doesn't keep the partition path yet, so `--full-refresh` fails on archived inputs
-    until D29 (#884).
+  - In archive mode, an input is archived under its partition path:
+    `<archive>/<entity>/yyyy/MM/dd/<batch>/<stem>__run-…__src-….<ext>` (D29). A `--full-refresh`
+    reads the archive recursively and derives the same date and batch from those paths.
 
 ### `sink` (required)
 

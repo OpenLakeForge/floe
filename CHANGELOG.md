@@ -14,6 +14,9 @@ All notable changes to Floe are documented in this file.
 - **Manifest sinks may carry the Iceberg `partition_spec` (#911).** The bundled schema accepts
   `partition_spec` (`column`, `transform`, optional `num_buckets`) on a sink, so a run from the
   manifest creates the same partitioned table as the config run.
+- **Manifest `source.partitioning` may carry `lookback_days` (D30, #885).** The bundled schema
+  accepts the non-negative integer that bounds a `file`-mode run's listing to the watermark minus
+  that many days.
 - **Manifest entity sources may carry `partitioning` (D28, #883).** The bundled schema accepts
   the `source.partitioning` block (`pattern`, `date_column`, `batch_column`) that `floe run
   --manifest` honours.

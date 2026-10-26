@@ -472,6 +472,7 @@ def test_d28_the_entity_source_carries_its_partitioning(
     assert entities["d.inline"]["source"]["partitioning"] == {
         "batch_column": None,
         "date_column": "day",
+        "lookback_days": 1,  # D30
         "pattern": "{yyyy}/{MM}/{dd}",
     }
     assert "partitioning" not in entities["d.orders"]["source"]
