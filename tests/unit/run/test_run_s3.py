@@ -3,6 +3,7 @@
 import hashlib
 import io
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -289,3 +290,14 @@ def test_the_s3_source_is_listed_once_per_run(tmp_path: Path, s3: MemS3, monkeyp
     monkeypatch.setattr(s3, "list", counted)
     go(tmp_path)
     assert prefixes == ["in/"]
+
+
+def test_d28_a_partitioned_s3_source_loads_by_date_with_derived_columns(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    config = CONFIG.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day, batch_column: batch}}')  # fmt: skip
+    s3.write("s3://b/in/2026/10/25/aa/x.csv", b"id\n1\n")
+    s3.write("s3://b/in/2026/10/24/bb/x.csv", b"id\n2\n")
+    go(tmp_path, config)
+    got = pl.read_parquet(tmp_path / "out/accepted")
+    assert got.rows() == [(2, date(2026, 10, 24), "bb"), (1, date(2026, 10, 25), "aa")]
+    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    assert report["source"]["resolved_inputs"]["files"] == ["s3://b/in/2026/10/24/bb/x.csv", "s3://b/in/2026/10/25/aa/x.csv"]  # fmt: skip

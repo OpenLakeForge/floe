@@ -654,4 +654,7 @@ config/val1_d28_pattern_unknown_token
 config/val1_d28_pattern_unmatched_brace
 config/val2_d28_partition_spec_day_ok
 unresolved_inputs_dot
+partitioning_two_days
+partitioning_hive_hour
+partitioning_unmatched
 precheck_header_order manifest
