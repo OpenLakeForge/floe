@@ -13,6 +13,9 @@ All notable changes to Floe are documented in this file.
   (`ghcr.io/openlakeforge/floe-python` is no longer published). The Rust core moved to the
   archived OpenLakeForge/floe-rust repository: 0.8 publishes no Rust binaries, no `floe-core`
   or `floe-cli` crates, no `floe-duckdb` companion and no Homebrew or Scoop update.
+- **`merge_scd2` on Iceberg sinks in `floe run` (#997).** `floe validate` already accepted it; the run
+  now creates the table with the SCD2 system columns, closes changed current rows and inserts their new
+  versions, and reports `inserted_count`, `updated_count`, `closed_count` and `unchanged_count`.
 - **Clearer config error messages (#704).** Wording only; the same configs are accepted and rejected:
   - `<ctx>.storage and <ctx>.storage are mutually exclusive` now names `<ctx>.filesystem`;
   - an unknown key at the root of an included sources file is `unknown field root.<key>` (was `sources file.<key>`);
