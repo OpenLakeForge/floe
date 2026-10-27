@@ -11,6 +11,7 @@ import pytest
 
 from floe.config.parse import parse_config
 from floe.errors import FloeRunError
+from floe.run import entity as entity_module  # `floe.run` is the public function
 from floe.run import run
 
 CONFIG = """\
@@ -98,13 +99,62 @@ def test_a_file_outside_the_pattern_fails_the_run_before_any_entity_starts(tmp_p
     assert "run_started" in events and "entity_started" not in events
 
 
-def test_full_refresh_fails_on_archived_inputs_until_d29(tmp_path: Path) -> None:
+def test_d29_archive_keeps_the_partition_path_so_a_full_refresh_rederives_the_date(tmp_path: Path) -> None:  # fmt: skip
     put(tmp_path, "2026/10/24/a1b2/x.csv", "id\n1\n", 100)
     archive = "archive: {path: ./arch}"
     go(tmp_path, "incremental_mode: archive", archive)
+    [archived] = (tmp_path / "arch/o").rglob("*.csv")
+    rel = archived.relative_to(tmp_path / "arch/o").as_posix()
+    assert rel.startswith("2026/10/24/a1b2/x__run-") and rel.endswith(".csv")
+    assert report(tmp_path)["files"][0]["output"]["archived_path"] == str(archived)
     put(tmp_path, "2026/10/25/c3d4/y.csv", "id\n2\n", 200)
-    with pytest.raises(FloeRunError, match=r"archived inputs keep their partition path only with D29 \(#884\): local://.*/arch/o/x__run-"):  # fmt: skip
-        go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
+    go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
+    got = pl.read_parquet(tmp_path / "out/accepted")
+    assert got.rows() == [(1, date(2026, 10, 24), "a1b2"), (2, date(2026, 10, 25), "c3d4")]  # fmt: skip
+
+
+def test_d29_a_full_refresh_replays_archived_files_in_their_first_order(tmp_path: Path) -> None:  # fmt: skip
+    """`x.csv` loads before `x0.csv`, though `x0__run-…` sorts before `x__run-…`: the first duplicate key wins both times."""
+    put(tmp_path, "2026/10/24/a1b2/x.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a1b2/x0.csv", "id\n1\n", 100)
+    archive = "archive: {path: ./arch}"
+    go(tmp_path, "incremental_mode: archive", archive)
+    assert [f["rejected_count"] for f in report(tmp_path)["files"]] == [0, 1]
+    go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
+    names = [f["input_file"].rsplit("/", 1)[1].split("__run-")[0] for f in report(tmp_path)["files"]]  # fmt: skip
+    assert names == ["x", "x0"]
+
+
+def test_d29_a_source_name_like_an_archived_one_keeps_its_name_order(tmp_path: Path) -> None:  # fmt: skip
+    put(tmp_path, "2026/10/24/a1b2/x__run-a__src-0123456789abcdef.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a1b2/x0.csv", "id\n1\n", 100)
+    go(tmp_path)
+    names = [f["input_file"].rsplit("/", 1)[1] for f in report(tmp_path)["files"]]
+    assert names == ["x0.csv", "x__run-a__src-0123456789abcdef.csv"]
+
+
+def test_d29_a_full_refresh_strips_only_the_archive_suffix(tmp_path: Path) -> None:
+    """An original name that already holds `__run-…__src-…` keeps it: the replay order is the first run's."""
+    put(tmp_path, "2026/10/24/a1b2/x__run-a__src-0123456789abcdef.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a1b2/x0.csv", "id\n1\n", 100)
+    archive = "archive: {path: ./arch}"
+    go(tmp_path, "incremental_mode: archive", archive)
+    go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
+    names = [f["input_file"].rsplit("/", 1)[1] for f in report(tmp_path)["files"]]
+    assert names[0].startswith("x0__run-")
+    assert names[1].startswith("x__run-a__src-0123456789abcdef__run-")
+
+
+def test_d29_without_partitioning_the_archive_stays_flat(tmp_path: Path) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in/x.csv").write_text("id\n1\n")
+    path = tmp_path / "config.yml"
+    text = CONFIG.format(mode="incremental_mode: archive", archive="archive: {path: ./arch}")  # fmt: skip
+    path.write_text("\n".join(line for line in text.splitlines() if "partitioning:" not in line).replace("primary_key: [id, ingest_date]", "primary_key: [id]"))  # fmt: skip
+    run(path, parse_config(path, {}))
+    assert [p.parent for p in (tmp_path / "arch").rglob("*.csv")] == [
+        tmp_path / "arch/o"
+    ]
 
 
 def test_derived_columns_never_name_headerless_csv_fields(tmp_path: Path) -> None:
@@ -164,3 +214,119 @@ def test_a_file_column_named_like_the_normalised_derived_column(tmp_path: Path, 
         got = pl.read_parquet(tmp_path / "out/accepted")
         assert got.rows() == [(1, date(2026, 10, 24), "a1b2")]
         assert got.columns == ["id", "IngestDate", "batch_id"]
+
+
+def state_of(tmp_path: Path) -> Any:
+    [path] = (tmp_path / "in/.floe").rglob("state.json")
+    return json.loads(path.read_text())
+
+
+def test_d30_file_mode_lists_from_the_watermark_minus_lookback(tmp_path: Path) -> None:  # fmt: skip
+    for day in range(1, 25):
+        put(tmp_path, f"2026/10/{day:02d}/b{day:02d}/x.csv", f"id\n{day}\n", 100 + day)
+    go(tmp_path, "incremental_mode: file")
+    assert state_of(tmp_path)["watermark"] == "2026-10-24"
+    put(
+        tmp_path, "2026/10/24/c3d4/y.csv", "id\n99\n", 200
+    )  # a second batch on the last day
+    put(
+        tmp_path, "2026/10/05/stray.csv", "id\n1\n", 200
+    )  # never walked: it would fail the pattern
+    events: list[dict[str, Any]] = []
+    go(tmp_path, "incremental_mode: file", observer=events.append)
+    r = report(tmp_path)
+    listed = [u.split("/in/")[1] for u in r["source"]["resolved_inputs"]["files"]]
+    assert listed == ["2026/10/23/b23/x.csv", "2026/10/24/b24/x.csv", "2026/10/24/c3d4/y.csv"]  # fmt: skip
+    assert [f["status"] for f in r["files"]] == ["skipped", "skipped", "success"]
+    state = state_of(tmp_path)
+    assert len(state["files"]) == 25  # no pruning yet (#949)
+    assert state["watermark"] == "2026-10-24"
+    [warn] = [e for e in events if e["event"] == "log"]
+    assert (warn["log_level"], warn["entity"]) == ("warn", "o")
+    assert "dates from 2026-10-23 (watermark 2026-10-24, lookback_days 1)" in warn["message"]  # fmt: skip
+
+
+def test_d30_a_late_file_waits_for_a_full_refresh(tmp_path: Path) -> None:
+    put(tmp_path, "2026/10/23/a/x.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n2\n", 100)
+    go(tmp_path, "incremental_mode: file")
+    put(tmp_path, "2026/10/20/late/x.csv", "id\n3\n", 200)
+    go(tmp_path, "incremental_mode: file")
+    assert {f["status"] for f in report(tmp_path)["files"]} == {"skipped"}
+    go(tmp_path, "incremental_mode: file", full_refresh=True)
+    assert sorted(pl.read_parquet(tmp_path / "out/accepted")["id"]) == [1, 2, 3]
+    assert state_of(tmp_path)["watermark"] == "2026-10-24"
+
+
+def test_d30_a_claim_holds_the_window_open(tmp_path: Path) -> None:
+    """A crashed run's claim on an older day keeps that day listed, so its files are retried, not lost."""
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n1\n", 100)
+    go(tmp_path, "incremental_mode: file")
+    [path] = (tmp_path / "in/.floe").rglob("state.json")
+    state = json.loads(path.read_text())
+    put(tmp_path, "2026/10/10/dead/x.csv", "id\n2\n", 100)
+    dead = f"local://{tmp_path}/in/2026/10/10/dead/x.csv"
+    state["claims"][dead] = {"run_id": "dead", "acquired_at": "2026-01-01T00:00:00Z", "expires_at": "2026-01-01T01:00:00Z"}  # fmt: skip
+    path.write_text(json.dumps(state))
+    go(tmp_path, "incremental_mode: file")
+    assert [f["input_file"] for f in report(tmp_path)["files"] if f["status"] == "success"] == [dead]  # fmt: skip
+
+
+def boom(*_: object) -> None:
+    raise FloeRunError("boom")
+
+
+def test_d30_a_failed_run_keeps_an_older_day_listed_for_its_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """The run holding the window open fails and releases; its released claim, expired, still holds it open."""
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n1\n", 100)
+    go(tmp_path, "incremental_mode: file")
+    [path] = (tmp_path / "in/.floe").rglob("state.json")
+    state = json.loads(path.read_text())
+    put(tmp_path, "2026/10/10/old/x.csv", "id\n2\n", 100)
+    old = f"local://{tmp_path}/in/2026/10/10/old/x.csv"
+    state["claims"][old] = {"run_id": "dead", "acquired_at": "2026-01-01T00:00:00Z", "expires_at": "2026-01-01T01:00:00Z"}  # fmt: skip
+    path.write_text(json.dumps(state))
+    with monkeypatch.context() as m:
+        m.setattr(entity_module, "_run_file", boom)
+        with pytest.raises(FloeRunError, match="boom"):
+            go(tmp_path, "incremental_mode: file")
+    go(tmp_path, "incremental_mode: file")
+    assert [f["input_file"] for f in report(tmp_path)["files"] if f["status"] == "success"] == [old]  # fmt: skip
+
+
+def test_d30_a_failed_full_refresh_clears_the_watermark(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """The next run lists everything once, so an older file a dead run had claimed is still retried."""
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n1\n", 100)
+    go(tmp_path, "incremental_mode: file")
+    put(tmp_path, "2026/10/10/old/x.csv", "id\n2\n", 100)
+    with monkeypatch.context() as m:
+        m.setattr(entity_module, "_run_file", boom)
+        with pytest.raises(FloeRunError, match="boom"):
+            go(tmp_path, "incremental_mode: file", full_refresh=True)
+    assert "watermark" not in state_of(tmp_path)
+    go(tmp_path, "incremental_mode: file")
+    r = report(tmp_path)
+    assert [(f["input_file"].split("/in/")[1], f["status"]) for f in r["files"]] == [("2026/10/24/a/x.csv", "skipped"), ("2026/10/10/old/x.csv", "success")]  # fmt: skip
+    assert state_of(tmp_path)["watermark"] == "2026-10-24"
+
+
+def test_d30_raising_lookback_days_does_not_reingest(tmp_path: Path) -> None:
+    put(tmp_path, "2026/10/20/a/x.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n2\n", 100)
+    go(tmp_path, "incremental_mode: file")
+    path = tmp_path / "config.yml"
+    path.write_text(path.read_text().replace("batch_column: batch_id}", "batch_column: batch_id, lookback_days: 7}"))  # fmt: skip
+    run(path, parse_config(path, {}))
+    r = report(tmp_path)
+    assert [u.split("/in/")[1] for u in r["source"]["resolved_inputs"]["files"]] == ["2026/10/20/a/x.csv", "2026/10/24/a/x.csv"]  # fmt: skip
+    assert [f["status"] for f in r["files"]] == ["skipped", "skipped"]
+
+
+def test_d30_a_nested_glob_override_keeps_its_meaning(tmp_path: Path) -> None:
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n1\n", 100)
+    path = tmp_path / "config.yml"
+    path.write_text(CONFIG.format(mode="incremental_mode: file", archive="").replace('separator: ","}', 'separator: ",", glob: "2026/**/*.csv"}'))  # fmt: skip
+    run(path, parse_config(path, {}))
+    put(tmp_path, "2026/10/24/b/x.csv", "id\n2\n", 200)
+    run(path, parse_config(path, {}))
+    assert [f["status"] for f in report(tmp_path)["files"]] == ["skipped", "success"]

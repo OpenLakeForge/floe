@@ -1,0 +1,125 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "raw.orders"
+  },
+  "source": {
+    "format": "csv",
+    "path": "local://<ROOT>/in",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ","
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "directory",
+      "file_count": 2,
+      "files": [
+        "local://<ROOT>/in/2026/10/23/b2/orders.csv",
+        "local://<ROOT>/in/2026/10/24/c3/orders.csv"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/orders"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/orders"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/orders",
+    "table_root_uri": "local://<ROOT>/out/accepted/orders",
+    "write_mode": "overwrite",
+    "accepted_rows": 0,
+    "files_written": 0,
+    "parts_written": 0,
+    "total_bytes_written": null,
+    "avg_file_size_mb": null,
+    "small_files_count": null
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "results": {
+    "files_total": 2,
+    "files_skipped": 2,
+    "rows_total": 0,
+    "accepted_total": 0,
+    "rejected_total": 0,
+    "warnings_total": 0,
+    "errors_total": 0
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/2026/10/23/b2/orders.csv",
+      "status": "skipped",
+      "row_count": 0,
+      "accepted_count": 0,
+      "rejected_count": 0,
+      "skip_reason": "already_ingested",
+      "mismatch": {
+        "declared_columns_count": 0,
+        "input_columns_count": 0,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": null,
+        "rejected_path": null,
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 0,
+        "warnings": 0,
+        "rules": []
+      }
+    },
+    {
+      "input_file": "local://<ROOT>/in/2026/10/24/c3/orders.csv",
+      "status": "skipped",
+      "row_count": 0,
+      "accepted_count": 0,
+      "rejected_count": 0,
+      "skip_reason": "already_ingested",
+      "mismatch": {
+        "declared_columns_count": 0,
+        "input_columns_count": 0,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": null,
+        "rejected_path": null,
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 0,
+        "warnings": 0,
+        "rules": []
+      }
+    }
+  ]
+}

@@ -705,6 +705,11 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "lookback_days": {
+                    "description": "D30: file mode lists only from the watermark minus this many days.",
+                    "type": "integer",
+                    "minimum": 0
                   }
                 }
               }

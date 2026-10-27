@@ -164,6 +164,43 @@ def test_claim_skips_active_claims_from_other_runs(tmp_path: Path) -> None:
     assert {u: c.run_id for u, c in state.claims.items()} == {f.source_uri: "run-a"}
 
 
+def test_merge_barrier_skips_the_entity_while_another_run_holds_a_live_claim(
+    tmp_path: Path,
+) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    a, b = _input("local:///in/a.csv"), _input("local:///in/b.csv")
+    claim_inputs(client, uri, "sales", "run-a", [a])
+    # a newer file the live run never claimed is still held back (S7)
+    got = claim_inputs(client, uri, "sales", "run-b", [b], barrier=True)
+    assert got.pending == []
+    assert got.claimed is None
+    assert got.active_claims == [b.source_uri]
+    state = read_state(client, uri, "sales")
+    assert state is not None
+    assert {u: c.run_id for u, c in state.claims.items()} == {a.source_uri: "run-a"}
+
+
+def test_without_the_barrier_other_files_are_claimed_beside_a_live_claim(
+    tmp_path: Path,
+) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    a, b = _input("local:///in/a.csv"), _input("local:///in/b.csv")
+    claim_inputs(client, uri, "sales", "run-a", [a])  # append: order doesn't matter
+    got = claim_inputs(client, uri, "sales", "run-b", [b])
+    assert got.pending == [b]
+    assert got.active_claims == []
+
+
+def test_merge_barrier_ignores_expired_claims(tmp_path: Path) -> None:
+    uri, client, f = str(tmp_path / "state.json"), LocalClient(), _input()
+    old = EntityState(
+        "sales", None, {}, {f.source_uri: _claim("crashed", "2000-01-01T01:00:00Z")}
+    )
+    client.write_conditional(uri, None, dump_state(old))
+    got = claim_inputs(client, uri, "sales", "run-b", [f], barrier=True)
+    assert got.pending == [f]
+
+
 def test_claim_removes_expired_claims_before_acquiring(tmp_path: Path) -> None:
     uri, client, f = str(tmp_path / "state.json"), LocalClient(), _input()
     old = EntityState(
@@ -225,6 +262,73 @@ def test_promote_moves_own_claims_to_files(tmp_path: Path) -> None:
     assert list(state.claims) == ["b"]
     again = claim_inputs(client, uri, "sales", "run-c", [a])
     assert again.pending == [] and again.already_processed[0][0] == a
+
+
+def test_promote_only_some_keeps_the_other_claims(tmp_path: Path) -> None:
+    """#545: a retry promotes a dead run's committed batch first; its other inputs stay claimed."""
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    outcome = claim_inputs(client, uri, "sales", "run-a", [_input("a"), _input("b")])
+    assert outcome.claimed is not None
+    promote(client, uri, "run-a", outcome.claimed, only={"a"})
+    state = read_state(client, uri, "sales")
+    assert state is not None
+    assert (list(state.files), list(state.claims)) == (["a"], ["b"])
+    promote(client, uri, "run-a", outcome.claimed)  # a stale version: the CAS retries
+    state = read_state(client, uri, "sales")
+    assert state is not None
+    assert (sorted(state.files), state.claims) == (["a", "b"], {})
+
+
+def test_d30_promote_only_advances_in_the_same_write(tmp_path: Path) -> None:
+    """The retry guard's partial promote moves the watermark with exactly the URIs it promotes."""
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    outcome = claim_inputs(client, uri, "sales", "run-a", [_input("a"), _input("b")])
+    assert outcome.claimed is not None
+    seen: list[list[str]] = []
+
+    def advance(state: EntityState, promoted: list[str]) -> None:
+        seen.append(promoted)
+        state.watermark = "2026-10-24"
+
+    promote(client, uri, "run-a", outcome.claimed, only={"a"}, advance=advance)
+    state = read_state(client, uri, "sales")
+    assert state is not None
+    assert (seen, list(state.files), state.watermark) == ([["a"]], ["a"], "2026-10-24")  # fmt: skip
+
+
+def test_d30_release_restores_dead_claims_and_keeps_its_own_expired(tmp_path: Path) -> None:  # fmt: skip
+    uri, client, f, g = str(tmp_path / "state.json"), LocalClient(), _input("f"), _input("g")  # fmt: skip
+    old = EntityState("sales", None, {}, {"f": _claim("crashed", "2000-01-01T01:00:00Z")})  # fmt: skip
+    client.write_conditional(uri, None, dump_state(old))
+    outcome = claim_inputs(client, uri, "sales", "run-b", [f, g])
+    assert outcome.claimed is not None
+    release(client, uri, "run-b", outcome.claimed, outcome.expired, expire=True)
+    state = read_state(client, uri, "sales")
+    assert state is not None
+    assert state.claims["f"] == old.claims["f"]  # the dead run's, as it was (#545)
+    assert state.claims["g"].run_id == "run-b"
+    assert state.claims["g"].expires_at == state.claims["g"].acquired_at  # expired
+
+
+def test_d30_release_never_restores_a_claim_this_run_promoted_and_pruned(tmp_path: Path) -> None:  # fmt: skip
+    """#545: the guard promotes a dead run's batch (10-10, 10-24); if 10-10 later leaves `files` (pruning, #949),
+    a failure must not put its dead claim back, or the next retry's batch is 10-10 alone and re-appends it.
+    """
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    old, new, extra = _input("10-10"), _input("10-24"), _input("10-25")
+    dead = {u: _claim("dead", "2000-01-01T01:00:00Z") for u in ("10-10", "10-24")}
+    client.write_conditional(uri, None, dump_state(EntityState("sales", None, {}, dead)))  # fmt: skip
+    outcome = claim_inputs(client, uri, "sales", "run-b", [old, new, extra])
+    assert outcome.claimed is not None and set(outcome.expired) == set(dead)
+
+    def prune(state: EntityState, promoted: list[str]) -> None:
+        state.files.pop("10-10", None)  # older than the new window
+
+    promote(client, uri, "run-b", outcome.claimed, only={"10-10", "10-24"}, advance=prune)  # fmt: skip
+    release(client, uri, "run-b", outcome.claimed, outcome.expired)  # 10-25 failed
+    state = read_state(client, uri, "sales")
+    assert state is not None
+    assert (list(state.files), list(state.claims)) == (["10-24"], [])
 
 
 def test_release_drops_own_claims_only(tmp_path: Path) -> None:

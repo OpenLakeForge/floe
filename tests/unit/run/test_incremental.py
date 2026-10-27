@@ -5,14 +5,16 @@ import time
 from pathlib import Path
 from typing import Any
 
+import polars as pl
 import pytest
 
 from floe.config.parse import parse_config
 from floe.errors import FloeConfigError, FloeRunError
 from floe.run import entity as entity_module  # `floe.run` is the public function
 from floe.run import run
-from floe.run.entity import EntityRun, run_entity
+from floe.run.entity import EntityRun, Incremental, run_entity
 from floe.run.events import Emitter
+from floe.storage.inputs import InputFile
 
 CONFIG = """\
 version: "0.3"
@@ -113,6 +115,36 @@ def test_aborted_run_releases_its_claims(tmp_path: Path) -> None:
     assert go(entity, tmp_path, "r1").aborted
     assert not (tmp_path / "in/.floe/state/d/orders/state.json").exists()
     assert go(entity, tmp_path, "r2").report["results"]["files_skipped"] == 0
+
+
+@pytest.mark.parametrize("mode", ["append", "overwrite"])
+def test_an_abort_promotes_the_files_written_before_it(
+    tmp_path: Path, mode: str
+) -> None:
+    """#918 (#545 S5): a's rows are written before b aborts; once b is fixed, the rerun holds a's rows once.
+
+    `append` promotes a, so the rerun skips it; `overwrite` releases a, so the rerun rebuilds from both.
+    """
+    setup(tmp_path, severity="abort")
+    config = tmp_path / "config.yml"
+    config.write_text(config.read_text().replace("    sink:", f"    sink:\n      write_mode: {mode}"))  # fmt: skip
+    entity = parse_config(config).entities[0]
+    (tmp_path / "in/orders.csv").unlink()
+    (tmp_path / "in/a.csv").write_text("id\n1\n2\n")
+    (tmp_path / "in/b.csv").write_text("id\nx\n")
+    assert go(entity, tmp_path, "r1").aborted
+    promoted = [f"local://{tmp_path / 'in/a.csv'}"] if mode == "append" else []
+    if promoted:
+        assert state(tmp_path)["files"].keys() == set(promoted)
+        assert state(tmp_path)["claims"] == {}
+    else:
+        assert not (tmp_path / "in/.floe/state/d/orders/state.json").exists()
+    (tmp_path / "in/b.csv").write_text("id\n3\n")
+    rerun = go(entity, tmp_path, "r2").report
+    skipped = ["already_ingested"] if promoted else [None]
+    assert [f.get("skip_reason") for f in rerun["files"]] == [*skipped, None]
+    accepted = pl.read_parquet(tmp_path / "out/accepted/*.parquet")
+    assert sorted(accepted["id"].to_list()) == [1, 2, 3]
 
 
 def test_row_mode_reprocesses_like_rust_0_7(tmp_path: Path) -> None:
@@ -245,3 +277,29 @@ def test_bare_source_filename_roots_the_state_in_the_config_dir(tmp_path: Path) 
         go(entity, tmp_path, "r2").report["files"][0]["skip_reason"]
         == "already_ingested"
     )
+
+
+def _file(name: str) -> InputFile:
+    return InputFile(f"local:///in/{name}", name, name, 1, "t1")
+
+
+@pytest.mark.parametrize(
+    ("write_mode", "skipped"),
+    [("merge_scd1", True), ("merge_scd2", True), ("append", False)],
+)
+def test_merge_modes_skip_the_entity_while_another_run_holds_a_live_claim(
+    tmp_path: Path, write_mode: str, skipped: bool
+) -> None:
+    entity = setup(tmp_path)
+    sink = entity.sink.model_copy(update={"write_mode": write_mode})
+    entity = entity.model_copy(update={"sink": sink})
+    (tmp_path / "in" / "newer.csv").write_text("id\n3\n")
+    held = Incremental(entity, tmp_path, "run-a")
+    first = held.claim([_file("orders.csv")], Emitter(None, "run-a"))
+    assert len(first[0]) == 1  # run-a is alive and holds orders.csv
+    mine = Incremental(entity, tmp_path, "run-b")
+    pending, reports = mine.claim([_file("newer.csv")], Emitter(None, "run-b"))  # fmt: skip
+    held.release()
+    mine.release()
+    assert (pending == []) is skipped
+    assert [r["skip_reason"] for r in reports] == (["active_claim"] if skipped else [])
