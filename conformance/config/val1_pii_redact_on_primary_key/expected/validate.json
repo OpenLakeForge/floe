@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entity.name=orders pii.columns[name=id].strategy=Redact cannot be applied to a unique-key column: the strategy collapses or removes values, violating uniqueness constraints"
+  "error": "entity.name=orders pii.columns[name=id].strategy=redact cannot be applied to a unique-key column: the strategy collapses or removes values, violating uniqueness constraints"
 }

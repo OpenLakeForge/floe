@@ -2,6 +2,15 @@
 
 All notable changes to Floe are documented in this file.
 
+## floe (unreleased)
+
+- **Clearer config error messages (#704).** Wording only; the same configs are accepted and rejected:
+  - `<ctx>.storage and <ctx>.storage are mutually exclusive` now names `<ctx>.filesystem`;
+  - an unknown key at the root of an included sources file is `unknown field root.<key>` (was `sources file.<key>`);
+  - `pii.columns: <name> is not an unknown schema column` is now `is not a schema column`;
+  - `pii.columns[...].strategy=` prints the strategy as written (`hash`, not `Hash`);
+  - `schema_evolution.mode=add_columns` on a non-Iceberg sink now says it requires `sink.accepted.format=iceberg`.
+
 ## airflow-floe (unreleased)
 
 - **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest
