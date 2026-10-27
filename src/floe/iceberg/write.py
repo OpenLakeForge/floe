@@ -6,21 +6,26 @@
 import itertools
 import uuid
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Literal
 
 import pyarrow as pa
+from pyiceberg.exceptions import CommitFailedException
 from pyiceberg.io.pyarrow import (
     _check_pyarrow_schema_compatible,  # pyright: ignore[reportPrivateUsage] -- same check `Transaction.append` makes
     _dataframe_to_data_files,  # pyright: ignore[reportPrivateUsage] -- feeds one snapshot producer from many chunks
 )
 from pyiceberg.manifest import DataFile
-from pyiceberg.table import Table
+from pyiceberg.table import Table, TableProperties
 from pyiceberg.table.snapshots import ancestors_of
 
+from floe.errors import FloeRunError
 from floe.iceberg.catalog import run_error
+from floe.state import (
+    _backoff,  # pyright: ignore[reportPrivateUsage] -- one jittered backoff for every CAS retry
+)
 
 WriteMode = Literal["overwrite", "append"]
 
@@ -32,6 +37,7 @@ SMALL_FILE_THRESHOLD_BYTES = 16 * 1024 * 1024
 _BYTES_PER_MIB = 1024 * 1024
 _REPORTED_FILE_PATHS = 50
 CHUNK_ROWS = 1_000_000
+COMMIT_ATTEMPTS = 5
 
 
 @dataclass(frozen=True)
@@ -43,6 +49,9 @@ class IcebergWriteResult:
     total_bytes_written: int
     avg_file_size_mb: float | None
     small_files_count: int
+    already_committed: bool = (
+        False  # a conflict showed another run committed this batch (#545)
+    )
 
 
 def _chunks(reader: pa.RecordBatchReader, chunk_rows: int) -> Iterator[pa.Table]:
@@ -91,26 +100,50 @@ def write_table(
                 table.metadata, chunk, table.io, write_uuid, counter
             )
         ]
-    replaced: list[DataFile] = []
-    if mode == "overwrite":
-        with run_error("iceberg overwrite scan failed"):
-            replaced = [task.file for task in table.scan().plan_files()]
-    if data_files or replaced:
-        with run_error("rest iceberg commit failed"):
-            tx = table.transaction()
-            update = tx.update_snapshot(
-                snapshot_properties={RUN_ID: run_id, INPUT_HASH: input_hash}
-            )
-            with (
-                update.overwrite()
-                if mode == "overwrite"
-                else update.fast_append() as snap
-            ):
-                for old in replaced:
-                    snap.delete_data_file(old)
-                for data_file in data_files:
-                    snap.append_data_file(data_file)
-            table = tx.commit_transaction()
+    base = (
+        table.metadata.current_snapshot_id
+    )  # only commits after it can be a rival's copy of this batch
+    for attempt in range(COMMIT_ATTEMPTS):
+        if attempt:  # a conflict: the data files stay, only the transaction is rebuilt on the fresh table
+            _backoff(attempt - 1)
+            with run_error("rest iceberg table refresh failed"):
+                table.refresh()
+                seen = mode == "append" and find_committed(
+                    table, input_hash, after=base
+                )
+            if seen:
+                return replace(write_result(table, [], small_file_threshold_bytes), already_committed=True)  # fmt: skip
+        replaced: list[DataFile] = []
+        if mode == "overwrite":
+            with run_error("iceberg overwrite scan failed"):
+                replaced = [task.file for task in table.scan().plan_files()]
+        if not (data_files or replaced):
+            break
+        try:
+            with run_error("rest iceberg commit failed"):
+                # PyIceberg retries a 409 itself (refresh, rebuild) and would skip the guard; in memory only, never sent
+                table.metadata = table.metadata.model_copy(update={"properties": {**table.properties, TableProperties.COMMIT_NUM_RETRIES: "0"}})  # fmt: skip
+                tx = table.transaction()
+                update = tx.update_snapshot(
+                    snapshot_properties={RUN_ID: run_id, INPUT_HASH: input_hash}
+                )
+                with (
+                    update.overwrite()
+                    if mode == "overwrite"
+                    else update.fast_append() as snap
+                ):
+                    for old in replaced:
+                        snap.delete_data_file(old)
+                    for data_file in data_files:
+                        snap.append_data_file(data_file)
+                table = tx.commit_transaction()
+        except FloeRunError as e:
+            if not isinstance(e.__cause__, CommitFailedException):
+                raise
+            continue
+        break
+    else:
+        raise FloeRunError(f"rest iceberg commit failed: conflicted {COMMIT_ATTEMPTS} times in a row")  # fmt: skip
     return write_result(table, data_files, small_file_threshold_bytes)
 
 
@@ -136,17 +169,23 @@ def write_result(
 
 
 def find_committed(
-    table: Table, input_hash: str, since: datetime | None = None
+    table: Table,
+    input_hash: str,
+    since: datetime | None = None,
+    after: int | None = None,
 ) -> bool | None:
     """Whether a snapshot ancestor carries `floe.input_hash` (#545); the metadata is in memory, no manifest I/O.
 
     The walk stops at snapshots older than `since`, the claim's `acquired_at`: a batch can't commit before its
-    claim. None when the history back to `since` was expired, so the answer is unknown.
+    claim. None when the history back to `since` was expired, so the answer is unknown. `after` is a snapshot id
+    that ends the walk: only the commits made since it count.
     """
     stop = None if since is None else since.timestamp() * 1000
     oldest = None
     for snapshot in ancestors_of(table.current_snapshot(), table.metadata):
-        if stop is not None and snapshot.timestamp_ms < stop:
+        if snapshot.snapshot_id == after or (
+            stop is not None and snapshot.timestamp_ms < stop
+        ):
             return False
         if (
             snapshot.summary is not None
