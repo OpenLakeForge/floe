@@ -16,7 +16,8 @@ from floe.config.project import RootConfig
 from floe.config.storage import StorageDefinition
 from floe.config.validate import validate_config
 from floe.errors import FloeConfigError, FloeRunError
-from floe.iceberg.catalog import run_error
+from floe.iceberg.catalog import open_duckdb, run_error
+from floe.iceberg.compact import compact
 from floe.iceberg.sink import existing_table, resolve_target
 from floe.run import select_entities
 from floe.storage.paths import normalize_local_path, parse_s3_uri
@@ -93,11 +94,17 @@ def remove_orphans(table: Table, storage: StorageDefinition | None, delay_days: 
     return orphans
 
 
-def maintain(path: Path, root: RootConfig, entities: Sequence[str], older_than_days: int, retain_last: int, orphan_delay_days: int, dry_run: bool) -> list[dict[str, Any]]:  # fmt: skip
-    """Expire snapshots, then remove orphan files, of every selected entity's Iceberg table.
+def maintain(path: Path, root: RootConfig, entities: Sequence[str], older_than_days: int, retain_last: int, orphan_delay_days: int, dry_run: bool, compact_tables: bool, experimental: bool) -> list[dict[str, Any]]:  # fmt: skip
+    """Compact (experimental, opt-in), expire snapshots, then remove orphan files, of every selected entity's Iceberg table.
 
     A request below the retention floor or the orphan delay floor fails closed.
     """
+    if compact_tables and not experimental:
+        raise FloeConfigError(
+            "--compact is experimental: pass --experimental to run it"
+        )
+    if compact_tables and dry_run:
+        raise FloeConfigError("--compact has no dry run: drop --dry-run or --compact")
     if older_than_days < FLOOR_DAYS or retain_last < FLOOR_SNAPSHOTS:
         raise FloeConfigError(
             f"snapshot expiry below the retention floor: --older-than-days must be at least {FLOOR_DAYS} "
@@ -113,10 +120,14 @@ def maintain(path: Path, root: RootConfig, entities: Sequence[str], older_than_d
             continue
         target = resolve_target(root.storages, root.catalogs, config_dir, entity)
         table = existing_table(target)
+        compacted = None
+        if table and compact_tables:
+            with open_duckdb(target.catalog, target.storage) as con:
+                compacted = compact(table, con)
         expired, kept = expire_snapshots(table, older_than_days, retain_last, dry_run) if table else (0, 0)  # fmt: skip
         orphans = remove_orphans(table, target.storage, orphan_delay_days, dry_run) if table else []  # fmt: skip
         results.append({
-            "entity": entity.name, "table": f"{target.namespace}.{target.table}",
+            "entity": entity.name, "table": f"{target.namespace}.{target.table}", "compaction": compacted,
             "expired_snapshots": expired, "kept_snapshots": kept,
             "orphan_files": [uri for uri, _ in orphans], "orphan_bytes": sum(size for _, size in orphans),
         })  # fmt: skip

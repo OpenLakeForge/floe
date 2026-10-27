@@ -144,6 +144,11 @@ def server(tmp_path: Path) -> Iterator[tuple[RestCatalog, CatalogDefinition]]:
                 )
             elif re.fullmatch(r"/v1/namespaces/\w+/tables", path):
                 self.reply(200, catalog.create(body))
+            elif (
+                re.fullmatch(r"/v1/namespaces/\w+/tables/\w+", path)
+                and method == "POST"
+            ):
+                self.reply(*catalog.commit(body))  # a PyIceberg commit
             elif re.fullmatch(r"/v1/namespaces/\w+/tables/\w+", path):
                 self.reply(*((200, catalog.table()) if catalog.metadata else (404, NOT_FOUND)))  # fmt: skip
             elif path == "/v1/transactions/commit":
