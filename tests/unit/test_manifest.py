@@ -459,6 +459,47 @@ def test_profile_execution_shapes_the_runner_and_orchestration(
     assert json.dumps(manifest["runners"]) == json.dumps(runners)  # key order too
 
 
+def test_580_domain_scope_fields_ride_the_k8s_runner_only_when_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    profile = K8S.replace(
+        "    resources: {memory_mb: 512}\n",
+        "    resources: {memory_mb: 512, memory_limit_mb: 1024}\n"
+        "    job_scope: domain\n"
+        "    domain_resources: {sales: {cpu: '2', cpu_limit: '4', memory_mb: 4096}}\n",
+    )
+    (tmp_path / "prod.yml").write_text(profile)
+    assert (
+        generate(tmp_path, monkeypatch, "-o", "-", "-p", str(tmp_path / "prod.yml"))
+        == 0
+    )
+    runner = json.loads(capsys.readouterr().out)["runners"]["definitions"]["default"]
+    assert runner["job_scope"] == "domain"
+    assert runner["resources"] == {
+        "cpu": None,
+        "memory_mb": 512,
+        "memory_limit_mb": 1024,
+    }
+    assert runner["domain_resources"] == {
+        "sales": {"cpu": "2", "memory_mb": 4096, "cpu_limit": "4"}
+    }
+
+
+def test_580_job_scope_must_be_entity_or_domain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "prod.yml").write_text(
+        K8S.replace("    command", "    job_scope: all\n    command")
+    )
+    assert (
+        generate(tmp_path, monkeypatch, "-o", "-", "-p", str(tmp_path / "prod.yml"))
+        != 0
+    )
+    assert (
+        'job_scope: expected "entity" or "domain", got "all"' in capsys.readouterr().err
+    )
+
+
 def test_d28_the_entity_source_carries_its_partitioning(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
