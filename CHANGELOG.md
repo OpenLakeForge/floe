@@ -4,6 +4,12 @@ All notable changes to Floe are documented in this file.
 
 ## airflow-floe (unreleased)
 
+- **Loads Floe 0.8 manifests (#979).** The loader checks `spec_version` against
+  `SUPPORTED_SPEC_VERSIONS = ("0.8",)`, as dagster-floe does, instead of the pre-0.8
+  `schema: "floe.manifest.v1"` field that 0.8 manifests no longer carry. Other versions are
+  rejected; regenerate them with a supported Floe release. `MANIFEST_SCHEMA` is replaced by
+  `SUPPORTED_SPEC_VERSIONS`, and `AirflowManifest.schema` by `AirflowManifest.spec_version`.
+
 - **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest
   (#511).** Only entities whose `domain` is listed land in the context; an unknown domain
   or an empty list raises `ValueError`. Pass `entities=context.entity_names` to `FloeRunOperator` so the run

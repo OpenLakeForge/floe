@@ -13,7 +13,7 @@ For local setup of both Dagster and Airflow with isolated virtual environments, 
 
 - `INTEGRATION_SPEC.md`: contract between Airflow and Floe CLI
 - `schemas/`: JSON Schemas for XCom payloads and manifest contract
-- `src/airflow_floe/manifest.py`: manifest loader (`floe.manifest.v1`)
+- `src/airflow_floe/manifest.py`: manifest loader (`spec_version: "0.8"`)
 - `src/airflow_floe/runtime.py`: shared runtime helpers (manifest context, run event parsing, summary loading)
 - `src/airflow_floe/hooks.py`: reusable manifest hook (`FloeManifestHook`)
 - `src/airflow_floe/operators.py`: reusable run hook/operator (`FloeRunHook`, `FloeRunOperator`)
@@ -26,7 +26,7 @@ The connector is driven entirely by environment variables. No code changes are n
 
 | Env var | What it does |
 | --- | --- |
-| `FLOE_MANIFEST` | Primary: path to a `floe.manifest.v1` JSON — enables asset registration at parse time |
+| `FLOE_MANIFEST` | Primary: path to a Floe 0.8 manifest JSON — enables asset registration at parse time |
 | `FLOE_MANIFEST_DIR` | Multi-manifest mode: directory of `*.manifest.json` files; one DAG per file |
 | `FLOE_CONFIG` | Fallback run config used when manifest loading fails — DAG still executes `floe run`, but no assets are registered |
 | `FLOE_CMD` | Override the `floe` binary path (default: `floe` on `$PATH`) |
