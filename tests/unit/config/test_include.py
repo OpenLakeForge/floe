@@ -108,7 +108,7 @@ def test_included_sources(tmp_path: Path) -> None:
                 "config.yml": 'version: "0.3"\ninclude: {sources: s.yml}',
                 "s.yml": "x: 1",
             },
-            "<ROOT>/s.yml: unknown field sources file.x",
+            "<ROOT>/s.yml: unknown field root.x",
         ),
         (
             {"config.yml": 'version: "0.3"\ninclude: {sources: s.yml}'},

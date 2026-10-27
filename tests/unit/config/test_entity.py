@@ -383,7 +383,7 @@ _ERRORS: list[tuple[dict[str, object], str]] = [
                 "filesystem": "b",
             }
         },
-        "source.storage and source.storage are mutually exclusive",
+        "source.storage and source.filesystem are mutually exclusive",
     ),
     (
         {"source": {"format": "csv", "path": "p", "options": {"header_row": -1}}},
@@ -405,7 +405,7 @@ _ERRORS: list[tuple[dict[str, object], str]] = [
                 "rejected": {**_ACCEPTED, "storage": "a", "filesystem": "b"},
             }
         },
-        "sink.rejected.storage and sink.rejected.storage are mutually exclusive",
+        "sink.rejected.storage and sink.rejected.filesystem are mutually exclusive",
     ),
     (
         {"sink": {"accepted": {**_ACCEPTED, "duckdb": {"table": "t"}}}},
