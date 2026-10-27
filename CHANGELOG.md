@@ -2,6 +2,12 @@
 
 All notable changes to Floe are documented in this file.
 
+## Floe (unreleased)
+
+- **`floe.build_manifest(config_path, profile_path=None, ...)` (#986).** Returns, as a dict, the
+  manifest `floe manifest generate` writes for the same config and profile (deterministic by
+  default). `manifest generate` now calls it.
+
 ## airflow-floe (unreleased)
 
 - **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest

@@ -23,6 +23,7 @@ Four functions cover the main embedded and notebook use cases:
 | `floe.validate(config_path)` | `None` | Pre-flight config check before running |
 | `floe.run(config_path)` | `RunOutcome` | Execute the full ingestion pipeline |
 | `floe.run_manifest(manifest_path)` | `RunOutcome` | Run from a generated manifest, as `floe run --manifest` (Python core only) |
+| `floe.build_manifest(config_path, profile_path=None)` | `dict` | The manifest `floe manifest generate --deterministic` writes, built in memory (Python core only) |
 | `floe.load_config(config_path)` | `RootConfig` | Inspect entities and settings without running |
 | `floe.extract_config_env_vars(config_path)` | `dict[str, str]` | List `{{VAR}}` placeholders in the config |
 | `floe.maintain(config_path, older_than_days=7, retain_last=10, orphan_delay_days=3, dry_run=False, compact=False, experimental=False)` | `list[dict]` | Expire old Iceberg snapshots and remove orphan files (compaction with `compact=True, experimental=True`), as `floe maintain` (Python core only) |

@@ -12,6 +12,7 @@ __version__ = version(
     "floe-python"
 )  # before the imports below: `floe.report.summary` reads it
 
+from floe import manifest as _manifest
 from floe import run as _run
 from floe.config.parse import parse_config
 from floe.config.profile import ProfileConfig, apply_profile, parse_profile
@@ -209,6 +210,33 @@ def run_manifest(
     return _outcome(root, entities, out)
 
 
+def build_manifest(
+    config_path: str,
+    profile_path: str | None = None,
+    *,
+    deterministic: bool = True,
+    manifest_name: str | None = None,
+    default_domain: str | None = None,
+    path_mode: str = "default",
+    runtime: str | None = None,
+    manifest_uri: str | None = None,
+    entities: list[str] | None = None,
+) -> dict[str, Any]:
+    """What `floe manifest generate` writes; `manifest_uri` is a remote `-o` (where it is deployed)."""
+    from floe._cli import _load as _cli_load  # pyright: ignore[reportPrivateUsage] -- the CLI's config loading, so both build the same manifest
+    from floe._cli import _realpath  # pyright: ignore[reportPrivateUsage] -- as above
+
+    path = _realpath(config_path)
+    profile = parse_profile(_realpath(profile_path)) if profile_path else None
+    root = _cli_load(path, profile)
+    validate_config(root)
+    options = _manifest.Options(
+        config_path, deterministic, manifest_name, default_domain, path_mode,
+        runtime, manifest_uri, profile_path, profile,
+    )  # fmt: skip
+    return _manifest.build_manifest(root, path, options, entities or [])
+
+
 def _emit(event: dict[str, Any]) -> None:
     if _observer:
         _observer(cast(RunEvent, event))
@@ -293,6 +321,6 @@ __all__ = [
     "EntityConfig", "EntityFinishedEvent", "EntityStartedEvent", "FileFinishedEvent", "FileStartedEvent",
     "FloeConfigError", "FloeError", "FloeIoError", "FloeRunError", "FloeStorageError", "LogEvent", "RootConfig",
     "RunEvent", "RunFinishedEvent", "RunOutcome", "RunStartedEvent", "SchemaEvolutionAppliedEvent", "__version__",
-    "clear_observer", "extract_config_env_vars", "inspect_entity_state", "load_config", "maintain", "reset_entity_state", "run",
+    "build_manifest", "clear_observer", "extract_config_env_vars", "inspect_entity_state", "load_config", "maintain", "reset_entity_state", "run",
     "run_manifest", "set_observer", "validate",
 ]  # fmt: skip
