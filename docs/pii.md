@@ -1,8 +1,19 @@
 # PII Masking
 
-Floe supports column-level PII masking transforms applied to accepted output
-before it is written to the sink. Transforms run after schema validation and
-data quality checks, so rejected rows are never masked.
+Floe supports column-level PII masking transforms applied to output rows
+before they are written. Transforms run after schema validation and data quality
+checks, so checks see the raw values, and the written rows hold masked ones.
+
+## What is masked
+
+- **Accepted rows** are masked before the accepted sink write.
+- **Rejected rows** (`policy.severity: reject`) are masked the same way before they are
+  written to `sink.rejected`: a hashed `email` holds the same digest in the accepted and the
+  rejected output. The `__floe_errors` column names the rule and column, not the value.
+- **Raw files are never written.** A config that would copy an input file unmasked to
+  `sink.rejected` or an archive fails `floe validate` when `pii` is set: `policy.severity: abort`,
+  `sink.archive`, and `schema.mismatch.missing_columns` or `extra_columns` set to `reject_file`.
+  A file Floe cannot read is reported as failed without the raw copy it would otherwise get.
 
 ## Configuration
 
@@ -59,7 +70,7 @@ entities:
 >       key: "${FLOE_PII_HMAC_KEY}"   # read from environment at run time
 > ```
 >
-> A configuration warning is emitted whenever `strategy: hash` is used without `key:`.
+> Floe 0.8 emits no warning for a keyless `hash`.
 
 ### `mask` pattern syntax
 
@@ -95,7 +106,7 @@ They are not present in the Parquet output schema. If the column is part of
 `schema.primary_key` or a `schema.unique_keys` entry, validation will fail at
 config-load time.
 
-> **Note:** `strategy: drop` is **not supported** for Delta or Iceberg sinks.
+> **Note:** `strategy: drop` is **not supported** for Iceberg sinks.
 > Config validation will reject it at load time. Use `nullify` or `redact` to
 > suppress sensitive values while preserving the column in the output schema.
 
@@ -103,9 +114,18 @@ config-load time.
 
 - `name` must match a column declared in `schema.columns`.
 - `strategy: mask` requires a `mask_pattern` that contains at least one `{firstN}` or `{lastN}` token.
-- `strategy: drop` is rejected for Delta and Iceberg sinks.
+- `strategy: drop` is rejected for Iceberg sinks.
+- `strategy: hash`, `redact` and `mask` apply to string columns only; use `nullify` or `drop`
+  for other types.
+- `strategy: nullify` is rejected on a `nullable: false` column.
+- `strategy: drop` is rejected on a `schema.primary_key` column, and any strategy is rejected on
+  a primary-key column with `merge_scd1` / `merge_scd2` (it would corrupt the merge key).
+- Any strategy is rejected on a unique-key column: `drop`, `nullify`, `redact` and `mask` collapse
+  values, and `hash` would leak raw values through the uniqueness samples in the run report.
+- `pii` is rejected with `policy.severity: abort`, `sink.archive`, or a `reject_file` mismatch
+  policy (see [What is masked](#what-is-masked)).
 - `strategy: tokenize` is rejected at config validation (not yet implemented).
 - `redact_value` and `mask_pattern` are ignored for strategies that do not use them.
 - `key` is only used by `strategy: hash`; it is ignored for other strategies.
-- A configuration warning is emitted when `strategy: hash` is used without `key:` (keyless hashing is still valid for backward compatibility).
+- Keyless `strategy: hash` is valid; no warning is emitted.
 - Duplicate column names within `pii.columns` are rejected.

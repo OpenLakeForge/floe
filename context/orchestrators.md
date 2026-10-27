@@ -129,10 +129,9 @@ floe run -c config.yml -p profiles/prod.yml
 
 Both `run`, `validate`, and `manifest generate` accept `--profile` / `-p`.
 
-Profile parsing in `floe-core`:
-- `parse_profile(path)` reads the profile YAML
-- `validate_profile()` checks for unknown keys
-- The merged config is what Floe actually executes against
+Profile parsing in `src/floe/config/profile.py`:
+- `parse_profile(path)` reads and validates the profile YAML (unknown keys are rejected)
+- `apply_profile(root, profile)` merges it into the config, which is what Floe executes against
 
 In a manifest `base_args`, you can embed the profile path as a literal arg since the manifest itself is environment-specific:
 ```json

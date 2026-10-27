@@ -1,81 +1,65 @@
 # Floe — Coding Standards
 
+Applies to `src/floe/`, `tests/` and `conformance/` (Python >= 3.11, managed with `uv`).
+Context: `context/architecture.md` and `context/decisions/python-core-for-olf.md`.
+
+## Tooling
+
+- **Types:** `pyright` runs in strict mode. No `Any` where a real type exists, no untyped defs,
+  no `# type: ignore` or `# pyright: ignore` without an inline reason.
+- **Lint/format:** `ruff check` and `ruff format --check` must pass. No `# noqa` without an
+  inline reason.
+- The canonical commands live in `AGENTS.md` §5 and mirror `.github/workflows/ci.yml`.
+
 ## Error handling
 
-- All fallible public and internal functions return `FloeResult<T>`.
-- Construct errors with the `FloeError` helper matching the failure: `config`, `validation`, `storage` / `storage_at`, `sink`, `state`, `run`, `io` / `io_at`. Prefer the `_at` form when a path is known. The full list is in `crates/floe-core/src/errors.rs`; the rationale is in `context/decisions/structured-floe-error.md`.
-- No `unwrap()` or `expect()` in production paths. Use `?` or explicit `map_err`.
-- Do not add error handling for scenarios that cannot happen — trust internal invariants.
+- Raise the typed exception that matches the failure (`src/floe/errors.py`): `FloeConfigError`
+  for config and validation, `FloeRunError` for run failures, `FloeStorageError` for storage,
+  `FloeIoError` for reads; all derive from `FloeError`.
+- Error messages are a user contract: tests assert them exactly, and the golden suite pins the
+  ones a run or `floe validate` prints. Change one only on purpose, with the test.
+- Chain the cause (`raise FloeRunError(...) from err`).
+- Do not add error handling for scenarios that cannot happen; trust internal invariants.
+
+## Config
+
+- Config models are pydantic, hand-written in `src/floe/config/`, with their validation and
+  error messages. Never generate them from `schemas/`, and never validate configs at runtime
+  against the JSON Schema. `schemas/` is editor tooling; `scripts/test_config_schema.py` keeps
+  it in step with the parser.
+
+## Data paths
+
+- No per-row Python loops on data. Use Polars or DuckDB expressions.
+- Keep memory bounded by the chunk or the batch, not the table: read in chunks, and let DuckDB
+  do anything that scans the target table (merges, unique checks against history).
 
 ## Comments
 
 - Write **no comments by default**. Well-named identifiers are the documentation.
-- Only add a comment when the WHY is non-obvious: a hidden constraint, a subtle invariant, a workaround for a specific external bug, or behaviour that would surprise a future reader.
-- Never write what the code does (the code already says that).
-- Never reference the current task, PR, or issue number in source comments — those belong in the commit message.
-
-## Function signatures
-
-- When a function needs more than 4-5 parameters, introduce a context struct instead of adding arguments.
-- Pattern: `FooContext<'a>` or `FooRequest<'a>` holding all inputs as named fields. The function destructures it at the top.
-- This is how `AcceptedWriteRequest`, `AcceptedOutputContext`, `SeedContext`, and `RunReportContext` are structured.
-
-## Traits and dispatch
-
-- Prefer static dispatch (`impl Trait` / generics) for hot paths.
-- Use `dyn Trait` only when the set of implementations is not known at compile time or you need to store heterogeneous types (e.g., `Box<dyn StorageClient>`, `&dyn SinkFormat`).
-- Avoid match-on-string dispatch. Use a registry (see `SINK_FORMATS`) so adding an implementation does not require touching dispatch code.
+- Only add a comment when the WHY is non-obvious: a hidden constraint, a subtle invariant, a
+  workaround for a specific external bug, or behaviour that would surprise a future reader.
+- Never write what the code does.
+- A numbered delta (`D26`) or issue reference is fine where it explains why behaviour differs
+  from 0.7; the reasoning of the change itself belongs in the commit message.
+- Mark a deliberate shortcut with a `ponytail:` comment naming the ceiling and the upgrade path.
 
 ## Abstractions
 
-- Do not introduce an abstraction until there are at least three concrete instances of the same pattern.
-- Three similar lines is better than a premature abstraction.
-- Do not design for hypothetical future requirements.
-
-## Traits and new formats/backends
-
-When adding a new sink format:
-1. Create `crates/floe-core/src/io/write/<name>.rs`
-2. Implement `SinkFormat` trait
-3. Add `&<Name>SinkFormat` to `SINK_FORMATS` in `sink_format.rs`
-
-No other files need changing — validation, dispatch, and seeding are automatic.
-
-When adding a new storage backend:
-1. Create `crates/floe-core/src/io/storage/providers/<name>.rs`
-2. Implement `StorageClient` trait
-3. Register the client in `CloudClient::client_for_context` match
-
-## CI requirements — required before every push and PR
-
-The canonical commands live in `AGENTS.md` §5 and mirror `.github/workflows/ci.yml`. Run them before every push.
-
-No `#[allow(clippy::...)]` suppressions except where the lint is demonstrably wrong for the specific case — document why inline when you do suppress.
-
-**Code style notes:**
-- Prefer `impl Into<String>` for string-accepting constructor parameters.
-- Use `BTreeMap` instead of `HashMap` when key order matters for deterministic output (e.g., serialised state files).
-
-## Testing
-
-- See `context/testing-strategy.md` for full test strategy.
-- Tests live in `crates/floe-core/tests/` — never inline `#[test]` in `src/` except for pure unit logic with no I/O.
-- Do not mock storage or the filesystem in integration tests. Use real temporary directories and real file I/O.
+- Do not introduce an abstraction (class hierarchy, protocol, registry, config knob) until there
+  are at least three concrete instances of the same pattern.
+- Three similar lines are better than a premature abstraction.
+- Prefer the native capability of a dependency we already have (Polars, pyarrow, PyIceberg,
+  DuckDB, the stdlib) over porting or re-implementing logic.
 
 ## Dependencies
 
-- Prefer standard library solutions over new dependencies for simple problems.
-- When adding a dependency, pin it to a compatible minor version range in `Cargo.toml`.
-- Avoid async runtimes in `floe-core` — the storage providers own their own `tokio::Runtime` instance and call `block_on` internally. The core library is sync from the caller's perspective.
+- Runtime dependencies are listed in `pyproject.toml`; adding one needs approval on the issue
+  first.
+- `duckdb` stays pinned to the version the Iceberg gates ran on until a newer one passes the
+  same checks.
+- Lock changes (`uv.lock`) go in their own PR unless the change needs them.
 
-## Python (`src/floe/`)
+## Testing
 
-Applies to the Python core (`src/floe/`, Python >= 3.11, managed with `uv`). The Rust rules above stay until cutover. Context: `context/decisions/python-core-for-olf.md`.
-
-- **Types:** `pyright` runs in strict mode. No `Any`, no untyped defs, no `# type: ignore` without an inline reason.
-- **Lint/format:** `ruff check` and `ruff format --check` must pass. No `# noqa` without an inline reason.
-- **Config models:** pydantic, hand-ported from `crates/floe-core/src/config/parse.rs` and `validate.rs`, including error messages. Never generate them from `schemas/`, and never validate configs at runtime against the JSON Schema (master issue #619, "Config contract").
-- **Errors:** typed exceptions mirroring the `FloeError` kinds (`crates/floe-python/python/floe/_floe.pyi:9-13`): `FloeError` base, then `FloeConfigError`, `FloeRunError`, `FloeStorageError`, `FloeIoError`. Keep the Rust messages byte-identical.
-- **Data paths:** no per-row Python loops. Use Polars or DuckDB expressions.
-- **Dependencies:** only those approved in #619; anything else needs approval on the issue first.
-- **Comments:** same rule as Rust (none by default). Mark a deliberate shortcut with a `ponytail:` comment naming the ceiling and the upgrade path.
+See `context/testing-strategy.md`.
