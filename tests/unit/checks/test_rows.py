@@ -7,6 +7,7 @@ cases join the Python pass-list when the run pipeline (#655) lands. Unique check
 task (#642), so rows with a unique error are left out of the comparison.
 """
 
+import json
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -188,12 +189,11 @@ def test_cast_error_entry_matches_rust_json() -> None:
     )
 
 
-def test_error_entry_leaves_other_control_characters_raw() -> None:
-    # Rust's json_escape escapes only \\, ", \n, \r and \t; \b, \f and U+0001 stay as they are.
-    assert error_entry("cast_error", "a\b\f\x01\t\r", CAST_ERROR_MESSAGE) == (
-        '{"rule":"cast_error","column":"a\b\f\x01\\t\\r",'
-        '"message":"invalid value for target type"}'
-    )
+def test_error_entry_escapes_every_control_character() -> None:
+    """#983: \\b, \\f and U+0001 in a column name must not make `__floe_errors` invalid JSON."""
+    entry = error_entry("cast_error", "a\b\f\x01\t\ré", CAST_ERROR_MESSAGE)
+    assert json.loads(entry)["column"] == "a\b\f\x01\t\ré"
+    assert "é" in entry  # non-ASCII stays raw, as before
 
 
 @pytest.mark.parametrize(
