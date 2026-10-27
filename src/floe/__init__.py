@@ -27,6 +27,8 @@ from floe.errors import (
     FloeStorageError,
 )
 from floe.lineage.observer import run_with_lineage
+from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, ORPHAN_DELAY_DAYS
+from floe.maintain import maintain as _maintain
 from floe.manifest_run import load_manifest
 from floe.report.summary import id_path
 from floe.run.entity import state_uri
@@ -174,6 +176,21 @@ def run(
     return _outcome(root, entities, out)
 
 
+def maintain(
+    config_path: str,
+    entities: list[str] | None = None,
+    older_than_days: int = FLOOR_DAYS,
+    retain_last: int = FLOOR_SNAPSHOTS,
+    profile_vars: dict[str, str] | None = None,
+    profile_path: str | None = None,
+    orphan_delay_days: int = ORPHAN_DELAY_DAYS,
+    dry_run: bool = False,
+) -> list[dict[str, Any]]:
+    """`floe maintain`: expire Iceberg snapshots behind the retention floor (7 days, 10 snapshots), then remove orphan files."""
+    path, root = _load(config_path, _profile(profile_path, profile_vars))
+    return _maintain(path, root, entities or [], older_than_days, retain_last, orphan_delay_days, dry_run)  # fmt: skip
+
+
 def run_manifest(
     manifest_path: str,
     entities: list[str] | None = None,
@@ -274,6 +291,6 @@ __all__ = [
     "EntityConfig", "EntityFinishedEvent", "EntityStartedEvent", "FileFinishedEvent", "FileStartedEvent",
     "FloeConfigError", "FloeError", "FloeIoError", "FloeRunError", "FloeStorageError", "LogEvent", "RootConfig",
     "RunEvent", "RunFinishedEvent", "RunOutcome", "RunStartedEvent", "SchemaEvolutionAppliedEvent", "__version__",
-    "clear_observer", "extract_config_env_vars", "inspect_entity_state", "load_config", "reset_entity_state", "run",
+    "clear_observer", "extract_config_env_vars", "inspect_entity_state", "load_config", "maintain", "reset_entity_state", "run",
     "run_manifest", "set_observer", "validate",
 ]  # fmt: skip
