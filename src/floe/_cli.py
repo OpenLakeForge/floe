@@ -21,7 +21,7 @@ from floe.config.validate import validate_config
 from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import run_with_lineage
-from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, maintain
+from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, ORPHAN_DELAY_DAYS, maintain
 from floe.manifest import Options, build_manifest
 from floe.manifest_run import load_manifest
 from floe.run import select_entities
@@ -211,9 +211,17 @@ def _state(args: argparse.Namespace) -> int:
 def _maintain(args: argparse.Namespace) -> int:
     profile = parse_profile(_realpath(args.profile)) if args.profile else None
     path = _realpath(args.config)
-    for r in maintain(path, _load(path, profile), args.entities, args.older_than_days, args.retain_last):  # fmt: skip
+    results = maintain(
+        path, _load(path, profile), args.entities, args.older_than_days, args.retain_last,
+        args.orphan_delay_days, args.dry_run,
+    )  # fmt: skip
+    expired, removed = ("to expire", "to remove") if args.dry_run else ("expired", "removed")  # fmt: skip
+    for r in results:
         print(f"Entity: {r['entity']}\n  Table: {r['table']}")
-        print(f"  Snapshots expired: {r['expired_snapshots']}, kept: {r['kept_snapshots']}")  # fmt: skip
+        print(f"  Snapshots {expired}: {r['expired_snapshots']}, kept: {r['kept_snapshots']}")  # fmt: skip
+        print(f"  Orphan files {removed}: {len(r['orphan_files'])} ({r['orphan_bytes']} bytes)")  # fmt: skip
+        for uri in r["orphan_files"] if args.dry_run else ():
+            print(f"    {uri}")
     return 0
 
 
@@ -275,6 +283,8 @@ def _parser() -> argparse.ArgumentParser:
     maintain.add_argument("--entities", action="extend", type=lambda s: s.split(","), default=[])  # fmt: skip
     maintain.add_argument("--older-than-days", type=int, default=FLOOR_DAYS)
     maintain.add_argument("--retain-last", type=int, default=FLOOR_SNAPSHOTS)
+    maintain.add_argument("--orphan-delay-days", type=int, default=ORPHAN_DELAY_DAYS)
+    maintain.add_argument("--dry-run", action="store_true")
     return parser
 
 
