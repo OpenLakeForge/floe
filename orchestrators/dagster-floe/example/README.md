@@ -15,7 +15,7 @@ invalid so you can verify rejected asset metadata in the Dagster UI.
 ## Prerequisites
 
 ```bash
-# 1. Install the floe CLI (binary must be on PATH as "floe")
+# 1. Install Floe (the `floe` command must be on PATH)
 pip install floe-python
 
 # 2. Install Python dependencies

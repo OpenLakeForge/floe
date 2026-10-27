@@ -1,4 +1,5 @@
 id,i64,u64,f64,b,d,ts,tstz,tzp,__floe_row_index,__floe_errors
+r1,300,9223372036854775808,2,0,0,0,0,0,1,"[{""rule"":""cast_error"",""column"":""f64"",""message"":""invalid value for target type""}]"
 r2,5000000000,18446744073709551615,,1,,,,,2,"[{""rule"":""cast_error"",""column"":""f64"",""message"":""invalid value for target type""},{""rule"":""cast_error"",""column"":""d"",""message"":""invalid value for target type""},{""rule"":""cast_error"",""column"":""ts"",""message"":""invalid value for target type""},{""rule"":""cast_error"",""column"":""tstz"",""message"":""invalid value for target type""},{""rule"":""cast_error"",""column"":""tzp"",""message"":""invalid value for target type""}]"
 r3,,0,,0,2932896,1717286399999999,1717286399999999,1717286399999999,3,"[{""rule"":""cast_error"",""column"":""i64"",""message"":""invalid value for target type""},{""rule"":""cast_error"",""column"":""f64"",""message"":""invalid value for target type""}]"
 r4,,,,,,,,,4,"[{""rule"":""cast_error"",""column"":""f64"",""message"":""invalid value for target type""}]"

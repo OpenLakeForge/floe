@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-MANIFEST_SCHEMA = "floe.manifest.v1"
+# D22: a manifest's spec_version is the Floe major.minor that generated it.
+SUPPORTED_SPEC_VERSIONS = ("0.8",)
 
 
 @dataclass(frozen=True)
@@ -239,7 +240,7 @@ class ManifestRunners:
 
 @dataclass(frozen=True)
 class AirflowManifest:
-    schema: str
+    spec_version: str
     generated_at_ts_ms: int
     floe_version: str | None
     config_uri: str
@@ -254,9 +255,13 @@ class AirflowManifest:
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "AirflowManifest":
-        schema = _required_str(data, "schema")
-        if schema != MANIFEST_SCHEMA:
-            raise ValueError(f"unexpected manifest schema: {schema}")
+        spec_version = data.get("spec_version")
+        if spec_version not in SUPPORTED_SPEC_VERSIONS:
+            raise ValueError(
+                f"manifest spec_version {spec_version} is not supported "
+                f"(supported: {', '.join(SUPPORTED_SPEC_VERSIONS)}); "
+                "regenerate it with a supported Floe release"
+            )
 
         ts = data.get("generated_at_ts_ms")
         if not isinstance(ts, int) or ts < 0:
@@ -269,7 +274,7 @@ class AirflowManifest:
         entities = [ManifestEntity.from_dict(item) for item in entities_raw]
 
         return AirflowManifest(
-            schema=schema,
+            spec_version=spec_version,
             generated_at_ts_ms=ts,
             floe_version=_optional_str(data, "floe_version"),
             config_uri=_required_str(data, "config_uri"),
@@ -285,7 +290,7 @@ class AirflowManifest:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema": self.schema,
+            "spec_version": self.spec_version,
             "generated_at_ts_ms": self.generated_at_ts_ms,
             "floe_version": self.floe_version,
             **({"manifest_name": self.manifest_name} if self.manifest_name is not None else {}),
@@ -363,12 +368,7 @@ def load_manifest(path: str | Path) -> AirflowManifest:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("manifest file must contain a JSON object")
-
-    schema = payload.get("schema")
-    if schema == MANIFEST_SCHEMA:
-        return AirflowManifest.from_dict(payload)
-
-    raise ValueError(f"unsupported schema in manifest loader: {schema}")
+    return AirflowManifest.from_dict(payload)
 
 
 def _required_str(data: dict[str, Any], key: str) -> str:

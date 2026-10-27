@@ -14,7 +14,7 @@ Using repo root keeps relative paths stable for:
 ## Prerequisites
 
 - Python 3.12 installed (recommended for Airflow stability)
-- Floe CLI available (`floe --version`) or use `uv run floe` from the repo root
+- Floe CLI available (`floe --version`) or use `python -m floe`
 
 ## 1) Create a shared venv (once)
 
@@ -99,12 +99,12 @@ Deactivate when done:
 deactivate
 ```
 
-## 4) Optional: use the local checkout instead of installed `floe`
+## 4) Optional: run `floe` from this checkout instead of an installed one
 
 In Airflow env:
 
 ```bash
-export FLOE_CMD="uv run --project /path/to/floe floe"
+export FLOE_CMD="python -m floe"
 ```
 
 ## 5) Troubleshooting

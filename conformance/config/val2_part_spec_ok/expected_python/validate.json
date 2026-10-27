@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "entity.name=orders sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8"
-}

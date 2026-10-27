@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entities[0] (entity.name=orders): unknown field source.partitioning"
+  "error": "entity.name=orders source.partitioning.date_column=amt is already a column in schema.columns"
 }

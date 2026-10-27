@@ -9,5 +9,4 @@ first run's rows (the second run writes nothing).
 The `runs` file cannot add files between runs, so a new batch and a late file are covered by
 `tests/unit/run/test_run_partitioning.py` (`test_d30_*`).
 
-Rust 0.7 rejects the config (`unknown field source.partitioning`), so `expected/` holds its failed last run
-(run with `--log-format json` so it records); `expected_python/` holds the Python outputs of the last run.
+Rust 0.7 rejected the config (`unknown field source.partitioning`); the case runs with `--log-format json`.
