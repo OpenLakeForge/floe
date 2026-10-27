@@ -1,5 +1,6 @@
 """String to typed casts and cast-mismatch errors (Rust: `checks/cast.rs`, `io/format.rs`)."""
 
+import json
 import re
 
 import polars as pl
@@ -154,11 +155,6 @@ def cast_column(
     return typed, mask.alias(f"_e_cast_{name}")
 
 
-_ESCAPES = str.maketrans(
-    {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
-)
-
-
 def json_escape(value: str) -> str:
-    """Rust's `json_escape`: only these five characters are escaped, all others stay raw."""
-    return value.translate(_ESCAPES)
+    """The body of a JSON string: every control character escaped (#983), non-ASCII kept raw."""
+    return json.dumps(value, ensure_ascii=False)[1:-1]
