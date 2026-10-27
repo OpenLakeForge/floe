@@ -11,7 +11,17 @@ All notable changes to Floe are documented in this file.
   - `pii.columns[...].strategy=` prints the strategy as written (`hash`, not `Hash`);
   - `schema_evolution.mode=add_columns` on a non-Iceberg sink now says it requires `sink.accepted.format=iceberg`.
 
-## airflow-floe (unreleased)
+## airflow-floe v0.2.0
+
+Built for Floe 0.8 (`floe-python` 0.8, where `floe` is the Python CLI and `ghcr.io/openlakeforge/floe`
+is the Python image; the command line and image name are unchanged). Floe 0.7 and earlier are not
+targeted by this release.
+
+- **Report paths follow D37.** A run whose entities share one domain writes its reports under
+  `<report.path>/<domain>/run_<id>/`; other runs keep `<report.path>/run_<id>/`. The connector
+  reads report locations from the `run_finished` event, so no configuration changes.
+- Per-domain run pods (`job_scope: domain`, #580) and the in-process runner are dagster-floe only;
+  airflow-floe still runs `floe run` as a subprocess or Kubernetes/Databricks job.
 
 - **Loads Floe 0.8 manifests (#979).** The loader checks `spec_version` against
   `SUPPORTED_SPEC_VERSIONS = ("0.8",)`, as dagster-floe does, instead of the pre-0.8
