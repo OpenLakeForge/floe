@@ -634,7 +634,12 @@ ignored):
 - `boolean`: `boolean`, `bool`
 - `integer`: `int8`, `int16`, `int32`, `int64`, `int`, `integer`, `long`
 - `unsigned integer`: `uint8`, `uint16`, `uint32`, `uint64`
-- `number` (float64): `number`, `float64`, `float`, `double`, `decimal`
+- `number` (float64): `number`, `float64`, `float`, `double`
+- `decimal(p,s)`: exact decimal, `1 <= p <= 38` and `0 <= s <= p` (for example `decimal(19,2)`).
+  Cast to a Polars `Decimal` and written unchanged as Parquet `DECIMAL(p,s)` / Iceberg `decimal(p,s)`.
+  A bare `decimal` is rejected: Float64 cannot hold exact values, so use `decimal(p,s)` or `float64`.
+  In `cast_mode: strict` a value with more digits than the scale (non-zero digits dropped) or the
+  precision is a `cast_error`; in `coerce` it is rounded half-even to the scale (out of precision stays an error).
 - `float32`: `float32`
 - `date`: `date`
 - `datetime`: `datetime`, `timestamp`

@@ -45,7 +45,8 @@ Examples of accepted values are listed below.
 - `unsigned integer`:
   - `uint8`, `uint16`, `uint32`, `uint64`
 - `number` (float64):
-  - `number`, `float64`, `float`, `double`, `decimal`
+  - `number`, `float64`, `float`, `double`
+- `decimal(p,s)` (exact; see `docs/config.md`)
 - `float32`: `float32`
 - `date`: `date`
 - `datetime`: `datetime`, `timestamp`

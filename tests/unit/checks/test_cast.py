@@ -8,6 +8,7 @@ deliberately differs (intentional delta D9, master issue #619).
 import math
 from collections.abc import Sequence
 from datetime import date, datetime
+from decimal import Decimal
 
 import polars as pl
 import pytest
@@ -233,9 +234,7 @@ def test_unsigned_and_small_ints() -> None:
     check_ok("int16", [("-32768", -(2**15))])
 
 
-@pytest.mark.parametrize(
-    "column_type", ["number", "float64", "float", "double", "decimal"]
-)
+@pytest.mark.parametrize("column_type", ["number", "float64", "float", "double"])
 def test_float64(column_type: str) -> None:
     check_ok(
         column_type,
@@ -303,3 +302,39 @@ def test_cast_mode_strict_flags_only_invalid_values() -> None:
 def test_unsupported_column_type() -> None:
     with pytest.raises(ValueError, match="unsupported column type: bogus"):
         cast_column("v", "bogus")
+
+
+def test_decimal_is_exact_beyond_float64_integer_precision() -> None:
+    typed, errors = run(["12345678901234567.89", "-0.01"], "decimal(19,2)")
+    assert typed == [Decimal("12345678901234567.89"), Decimal("-0.01")]
+    assert errors == [False, False]
+
+
+def test_decimal_dtype_is_pl_decimal() -> None:
+    df = pl.DataFrame({"v": ["1.5"]}).select(cast_column("v", "Decimal(10, 2)")[0])
+    assert df.schema["v"] == pl.Decimal(10, 2)
+
+
+def test_decimal_high_scale() -> None:
+    typed, _ = run(["0.123456789012345678901234567890"], "decimal(38,30)")
+    assert typed == [Decimal("0.123456789012345678901234567890")]
+
+
+def test_decimal_digits_beyond_scale_or_precision_are_cast_errors() -> None:
+    typed, errors = run(["1.239", "1.230", "123.45", "abc"], "decimal(4,2)")
+    assert typed[1] == Decimal(
+        "1.23"
+    )  # the flagged rows are rejected, their value is moot
+    assert errors == [True, False, True, True]
+
+
+def test_decimal_coerce_rounds_and_does_not_flag() -> None:
+    typed, errors = run(["1.239"], "decimal(4,2)", "coerce")
+    assert typed == [Decimal("1.24")]
+    assert errors == [False]
+
+
+def test_decimal_from_native_float_column_keeps_scale() -> None:
+    typed, mask = cast_column("v", "decimal(10,2)", dtype=pl.Float64)
+    out = pl.DataFrame({"v": [1.5, -2.25]}).select(typed, mask)
+    assert out["v"].to_list() == [Decimal("1.50"), Decimal("-2.25")]
