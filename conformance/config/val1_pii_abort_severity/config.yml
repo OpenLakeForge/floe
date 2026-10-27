@@ -8,6 +8,9 @@ entities:
     accepted:
       format: parquet
       path: out/accepted
+    rejected:
+      format: csv
+      path: out/rejected
   policy:
     severity: abort
   schema:

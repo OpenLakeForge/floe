@@ -4,6 +4,9 @@ All notable changes to Floe are documented in this file.
 
 ## floe (unreleased)
 
+- **`floe validate` requires `sink.rejected` for `policy.severity: abort` (D39, #1007).** Abort writes the
+  failing file to the rejected sink, so a config without one could only fail at its first violation, as in
+  Rust 0.7. It is now refused up front with the same message as `reject`.
 - **`floe run --manifest` and `floe.run_manifest` take an `s3://` manifest (#1003)**, and write the run
   reports under an `s3://` `report_base_uri`, as Floe 0.7 did. Relative local paths in a remote manifest
   resolve under its `work_root`, else `FLOE_WORK_ROOT`, else the current directory (`/work` for an `image`
