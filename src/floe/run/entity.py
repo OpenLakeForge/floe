@@ -53,6 +53,7 @@ from floe.iceberg.write import find_committed
 from floe.pii import apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.csv import RAGGED_MESSAGE, read_csv
+from floe.read.json import read_json
 from floe.read.orc import read_orc
 from floe.read.parquet import read_parquet
 from floe.read.xlsx import read_xlsx
@@ -131,6 +132,9 @@ def _chunks(entity: EntityConfig, path: Path, names: list[str]) -> Chunks:
         case "xml":
             for x in read_xml(path, src.options, entity.schema_.columns[: len(names)]):
                 yield x.offset, x.df, None
+        case "json":  # #998
+            for j in read_json(path, src.options, entity.schema_.columns[: len(names)], src.cast_mode):  # fmt: skip
+                yield j.offset, j.df, None
         case other:
             raise FloeRunError(
                 f"entity.name={entity.name} unsupported source format: {other}"

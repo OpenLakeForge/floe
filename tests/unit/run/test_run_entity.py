@@ -247,6 +247,22 @@ def test_a_prefixed_xml_selector_keeps_its_value(tmp_path: Path) -> None:
     assert accepted(tmp_path)["id"].to_list() == [1]
 
 
+def test_a_json_source_runs_end_to_end(tmp_path: Path) -> None:
+    """#998: `floe validate` accepts `source.format: json`, so the run must read it too."""
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    config = config.replace('options: {header: true, separator: ","}', "options: {}")
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    (tmp_path / "in" / "a.json").write_text('[{"id": 1}, {"id": 2}]')
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    files = run_entity(entity, tmp_path, "0.3").report["files"]
+    assert [f["status"] for f in files] == ["success"]
+    assert accepted(tmp_path)["id"].to_list() == [1, 2]
+
+
 def test_append_retry_overwrites_the_rejected_part(tmp_path: Path) -> None:
     """S6 (#919): the same rejecting input run twice leaves one rejected file with the same rows."""
     config = CONFIG.format(severity="reject", mismatch="").replace(
