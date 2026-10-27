@@ -6,7 +6,7 @@
   "manifest_revision": "<volatile>",
   "runtime_env": "cli",
   "config_uri": "local://<ROOT>/work/config.yml",
-  "config_checksum": "sha256:3493bb7e2088ceca1c1484db64a5edfd86e97db3997e634f9d73faa7bb5b8d45",
+  "config_checksum": "sha256:d88a2fbaa3e63ee24df104672a21fb45111048f66487450d858884e6309bd06c",
   "report_base_uri": "local://<ROOT>/work/report",
   "domains": [
     {
@@ -79,7 +79,7 @@
       ],
       "source_format": "csv",
       "accepted_sink_uri": "local://<ROOT>/work/out/accepted/sales/orders",
-      "rejected_sink_uri": null,
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/sales/orders",
       "tags": null,
       "source": {
         "format": "csv",
@@ -114,7 +114,13 @@
           "path": "out/accepted/sales/orders",
           "resolved": true
         },
-        "rejected": null,
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/sales/orders",
+          "path": "out/rejected/sales/orders",
+          "resolved": true
+        },
         "archive": null
       },
       "runner": null,

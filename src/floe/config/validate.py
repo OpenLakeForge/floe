@@ -361,8 +361,9 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
                 raise _fail(
                     entity, f"sink.accepted.options.{field} must be greater than 0"
                 )
-    if entity.policy.severity == "reject" and sink.rejected is None:
-        raise _fail(entity, "sink.rejected is required when policy.severity=reject")
+    # D39 (#1007): abort writes the failing file to sink.rejected too; Rust 0.7 only failed at run time
+    if entity.policy.severity in ("reject", "abort") and sink.rejected is None:
+        raise _fail(entity, f"sink.rejected is required when policy.severity={entity.policy.severity}")  # fmt: skip
     if sink.rejected is not None and sink.rejected.format != "csv":
         raise _fail(
             entity, f"sink.rejected.format={sink.rejected.format} is unsupported"
