@@ -15,6 +15,8 @@ All notable changes to Floe are documented in this file.
   - `pii.columns: <name> is not an unknown schema column` is now `is not a schema column`;
   - `pii.columns[...].strategy=` prints the strategy as written (`hash`, not `Hash`);
   - `schema_evolution.mode=add_columns` on a non-Iceberg sink now says it requires `sink.accepted.format=iceberg`.
+- **`floe.run` posts OpenLineage events (#989)**, as `floe run -c` and `floe.run_manifest` already do,
+  when the config has a `lineage` block.
 
 ## airflow-floe v0.2.0
 
