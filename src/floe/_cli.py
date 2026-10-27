@@ -21,6 +21,7 @@ from floe.config.validate import validate_config
 from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import run_with_lineage
+from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, maintain
 from floe.manifest import Options, build_manifest
 from floe.manifest_run import load_manifest
 from floe.run import select_entities
@@ -207,6 +208,15 @@ def _state(args: argparse.Namespace) -> int:
     return 0
 
 
+def _maintain(args: argparse.Namespace) -> int:
+    profile = parse_profile(_realpath(args.profile)) if args.profile else None
+    path = _realpath(args.config)
+    for r in maintain(path, _load(path, profile), args.entities, args.older_than_days, args.retain_last):  # fmt: skip
+        print(f"Entity: {r['entity']}\n  Table: {r['table']}")
+        print(f"  Snapshots expired: {r['expired_snapshots']}, kept: {r['kept_snapshots']}")  # fmt: skip
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="floe")
     parser.add_argument("--version", action="version", version=f"floe {__version__}")
@@ -259,6 +269,12 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("-p", "--profile")
         if name == "reset":
             command.add_argument("--yes", action="store_true")
+    maintain = commands.add_parser("maintain")
+    maintain.add_argument("-c", "--config", required=True)
+    maintain.add_argument("-p", "--profile")
+    maintain.add_argument("--entities", action="extend", type=lambda s: s.split(","), default=[])  # fmt: skip
+    maintain.add_argument("--older-than-days", type=int, default=FLOOR_DAYS)
+    maintain.add_argument("--retain-last", type=int, default=FLOOR_SNAPSHOTS)
     return parser
 
 
@@ -274,6 +290,8 @@ def main() -> int:
             return _add_entity(args)
         if args.command == "state":
             return _state(args)
+        if args.command == "maintain":
+            return _maintain(args)
         return _run(args) if args.command == "run" else _validate(args)
     except FloeError as e:
         print(f"Error: {e}", file=sys.stderr)

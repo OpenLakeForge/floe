@@ -43,6 +43,13 @@
   - Remote resets use the same conditional delete support as remote incremental state.
   - See [docs/incremental.md](incremental.md) for reset behavior and permissions.
 
+- `floe maintain -c <config> [-p <profile>] [--entities <name[,name...]>] [--older-than-days <n>] [--retain-last <n>]` (Python core)
+  - Expire old snapshots of each selected entity's Iceberg accepted table; entities with other sinks are skipped.
+  - A snapshot is expired only if it is older than `--older-than-days` (default 7) **and** outside the newest `--retain-last` (default 10). Branch and tag heads are never expired.
+  - The retention floor is 7 days and 10 snapshots: a request below it fails, it is not clamped. The run's retry guard reads recent snapshot summaries, so it relies on this floor.
+  - Expiry changes table metadata only and deletes no file; time travel to an expired snapshot fails afterwards.
+  - Run it after ingestion, not beside it.
+
 ### Dry-run behavior
 
 - Dry-run resolves input files/objects using the same planning path as real runs.
