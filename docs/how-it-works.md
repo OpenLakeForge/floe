@@ -100,7 +100,9 @@ automatically.
 
 - **warn**: keep rows, emit warnings and error reports.
 - **reject**: reject rows with violations; write rejected output.
-- **abort**: abort the file when violations occur.
+- **abort**: abort the file when violations occur. The entity is reported
+  `aborted` and the run continues with the next entity (D36); the run still
+  exits `2`.
 
 ## Report mapping
 

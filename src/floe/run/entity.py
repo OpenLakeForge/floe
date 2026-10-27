@@ -249,6 +249,20 @@ class _Plan:
     root: str | None = None  # D29: the source root, when `source.partitioning` is set
 
 
+def _refuse_overlap(who: str, sink: str, inputs: list[InputFile]) -> None:
+    """D34: an input under the accepted Parquet sink would be deleted or re-read as one of its parts."""
+
+    def real(
+        uri: str,
+    ) -> str:  # a local path through a symlink is judged by where it lands
+        return Path(uri.removeprefix("local://")).resolve().as_posix() if uri.startswith("local://") else uri  # fmt: skip
+
+    root = real(sink).rstrip("/") + "/"
+    for f in inputs:
+        if real(f.source_uri).startswith(root):
+            raise FloeConfigError(f"{who} source file {f.source_uri} lies under sink.accepted.path {sink}; the sink would overwrite or re-read it")  # fmt: skip
+
+
 def _archive(plan: _Plan, file: InputFile) -> str | None:
     """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>` (Rust `archive_input`).
 
@@ -856,6 +870,9 @@ def _run_entity(
         inc.advance = partial(advance, *dated)
     archive = plan.archive  # a full refresh lists it too
     plan.derived = _derived(entity, source_uri, archive and archive[0], inputs.files)
+    # D34 (#931): same store only (a bucket name repeats across endpoints); before the claim, so a refusal leaves nothing to release
+    if target is None and getattr(client, "endpoint", None) == getattr(accepted_client, "endpoint", None):  # fmt: skip
+        _refuse_overlap(who, base, inputs.files)
     pending, files = inc.claim(inputs.files, emit)
     if done := inc.skip_committed(plan.table, pending, emit):
         files += done
@@ -905,6 +922,9 @@ def _run_entity(
             result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, input_hash(entity, complete))  # fmt: skip
             write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
                                   result.avg_file_size_mb, result.small_files_count)  # fmt: skip
+            if result.already_committed:  # #920: the commit conflicted and the guard found this batch in the table
+                done = {f.source_uri for f in complete}
+                files[:] = [skipped_report(r["input_file"], "already_committed") if r["input_file"] in done else r for r in files]  # fmt: skip
     else:
         write = AcceptedWrite(0, [], 0, 0.0, 0)
     inc.committed = files  # #915: from here on a failure promotes the written files

@@ -23,7 +23,6 @@ import duckdb
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
-from pyiceberg.manifest import DataFile, DataFileContent, ManifestEntryStatus
 from pyiceberg.partitioning import PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.table import Table
@@ -32,7 +31,7 @@ from pyiceberg.transforms import BucketTransform
 from floe.config.validate import SCD2_DEFAULTS
 from floe.errors import FloeRunError
 from floe.iceberg.catalog import DUCKDB_CATALOG, run_error
-from floe.iceberg.write import IcebergWriteResult, write_result
+from floe.iceberg.write import IcebergWriteResult, added_data_files, write_result
 from floe.state import (
     _backoff,  # pyright: ignore[reportPrivateUsage] -- one jittered backoff for every CAS retry
 )
@@ -206,24 +205,6 @@ def run_merge(
     return counts
 
 
-def _added_data_files(table: Table, since: int | None) -> list[DataFile]:
-    """Data files added by the snapshots after `since` (a DuckDB MERGE commits two)."""
-    files: list[DataFile] = []
-    snapshot = table.current_snapshot()
-    while snapshot is not None and snapshot.snapshot_id != since:
-        files += [
-            entry.data_file
-            for manifest in snapshot.manifests(table.io)
-            if manifest.added_snapshot_id == snapshot.snapshot_id
-            for entry in manifest.fetch_manifest_entry(table.io)
-            if entry.status == ManifestEntryStatus.ADDED
-            and entry.data_file.content == DataFileContent.DATA
-        ]
-        parent = snapshot.parent_snapshot_id
-        snapshot = None if parent is None else table.snapshot_by_id(parent)
-    return files
-
-
 def _is_conflict(e: FloeRunError) -> bool:
     """The catalog's 409 on commit: DuckDB raises it from `commit()` and does not retry it."""
     return isinstance(e.__cause__, duckdb.TransactionException) and "Conflict_409" in str(e)  # fmt: skip
@@ -262,7 +243,7 @@ def _merge(
             raise FloeRunError(f"duckdb merge failed: conflicted {MERGE_ATTEMPTS} times in a row")  # fmt: skip
     with run_error("rest catalog load_table failed"):
         table.refresh()
-        added = _added_data_files(table, None if before is None else before.snapshot_id)
+        added = added_data_files(table, None if before is None else before.snapshot_id)
     return write_result(table, added), counts
 
 
