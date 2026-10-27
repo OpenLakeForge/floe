@@ -8,6 +8,13 @@ All notable changes to Floe are documented in this file.
   manifest `floe manifest generate` writes for the same config and profile (deterministic by
   default). `manifest generate` now calls it.
 
+## dagster-floe (unreleased)
+
+- **Config mode (#986).** `load_floe_assets`, `build_definitions` and `build_job_run_config_from_manifest` accept
+  `config_path=` (and `profile_path=`) in place of `manifest_path=`. The manifest is built in memory with
+  `floe.build_manifest` (needs the `floe` extra), and runs take `floe run -c <config> [-p <profile>]` in place of
+  `--manifest <uri>`. `manifest_path=` is unchanged.
+
 ## airflow-floe (unreleased)
 
 - **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest

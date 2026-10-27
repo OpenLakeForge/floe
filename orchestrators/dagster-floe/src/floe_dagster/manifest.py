@@ -306,6 +306,10 @@ def load_manifest(path: str | Path) -> DagsterManifest:
     payload = json.loads(text)
     if not isinstance(payload, dict):
         raise ValueError("manifest file must contain a JSON object")
+    return parse_manifest(payload)
+
+
+def parse_manifest(payload: dict[str, Any]) -> DagsterManifest:
     spec_version = payload.get("spec_version")
     if spec_version not in SUPPORTED_SPEC_VERSIONS:
         raise ValueError(
@@ -315,6 +319,38 @@ def load_manifest(path: str | Path) -> DagsterManifest:
         )
     _validate_manifest_payload(payload)
     return DagsterManifest.from_dict(payload)
+
+
+def manifest_from_config(config_path: str, profile_path: str | None = None) -> dict[str, Any]:
+    """The manifest `floe manifest generate` writes, built in memory; runs take `-c/-p`, not `--manifest`.
+
+    The config (and profile) path must exist where the run happens: the run image for `kubernetes_job`.
+    """
+    try:
+        from floe import build_manifest
+    except ImportError as exc:  # no `floe`, or the Rust `floe-python` that has no build_manifest
+        raise ImportError(
+            "config_path= needs the Floe Python core: pip install 'dagster-floe[floe]'"
+        ) from exc
+    payload = build_manifest(config_path, profile_path)
+    args = payload["execution"]["base_args"]
+    at = args.index("--manifest")
+    args[at : at + 2] = ["-c", config_path, *(["-p", profile_path] if profile_path else [])]
+    return payload
+
+
+def load_manifest_source(
+    manifest_path: str | None = None, config_path: str | None = None, profile_path: str | None = None
+) -> tuple[DagsterManifest, str]:
+    """The manifest and its resolved config URI, from `manifest_path` or from `config_path` (+ profile)."""
+    if (manifest_path is None) == (config_path is None):
+        raise ValueError("pass exactly one of manifest_path= or config_path=")
+    if config_path is None:
+        if profile_path is not None:
+            raise ValueError("profile_path= needs config_path=; a manifest already carries its profile")
+        manifest = load_manifest(manifest_path)
+        return manifest, resolve_config_uri(manifest_path, manifest.config_uri)
+    return parse_manifest(manifest_from_config(config_path, profile_path)), str(Path(config_path).resolve())
 
 
 def resolve_config_uri(manifest_path: str | Path, config_uri: str) -> str:
