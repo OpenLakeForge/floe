@@ -168,10 +168,10 @@ def run(
     if profile:  # Rust `run_with_runtime`: profile vars resolved against the config's env vars first
         profile = replace(profile, variables=resolve_vars(profile.variables, {}, _env_vars(Path(config_path).absolute())))  # fmt: skip
     path, root = _load(config_path, profile)
-    validate_config(root)
-    out = _run.run(
-        path, root, run_id=run_id, entities=entities or [], dry_run=dry_run,
-        full_refresh=full_refresh, observer=_emit,
+    # as `floe run -c`: OpenLineage events, and validation after the observer so lineage sees a failure
+    out = run_with_lineage(
+        path, root, root.entities, str(path), _emit, validate=True, run_id=run_id,
+        entities=entities or [], dry_run=dry_run, full_refresh=full_refresh,
     )  # fmt: skip
     return _outcome(root, entities, out)
 

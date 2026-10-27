@@ -2,6 +2,11 @@
 
 All notable changes to Floe are documented in this file.
 
+## Floe (unreleased)
+
+- **`floe.run` posts OpenLineage events (#989)**, as `floe run -c` and `floe.run_manifest` already do,
+  when the config has a `lineage` block.
+
 ## airflow-floe (unreleased)
 
 - **Loads Floe 0.8 manifests (#979).** The loader checks `spec_version` against

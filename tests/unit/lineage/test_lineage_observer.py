@@ -477,6 +477,31 @@ def test_api_run_manifest_posts_the_same_lineage_as_the_cli(
     )
 
 
+@pytest.mark.parametrize(("file", "code"), [("orders.csv", 0), ("missing.csv", 1)])
+def test_api_run_posts_the_same_lineage_as_the_cli(
+    file: str,
+    code: int,
+    server: Server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#989: in-process `floe.run` posts what `floe run -c` posts."""
+    import floe
+
+    assert cli_run(tmp_path, monkeypatch, server.url, file) == code
+    by_cli = _lineage(server)
+    try:
+        assert (
+            floe.run(str(tmp_path / "orders.yml")).summary["run"]["exit_code"] == code
+        )
+    except floe.FloeError:
+        assert code == 1
+    assert _lineage(server) == by_cli
+    assert by_cli[0][0] == "START" and by_cli[-1][0] == (
+        "COMPLETE" if code == 0 else "FAIL"
+    )
+
+
 def test_lineage_endpoint_down_never_fails_the_run(
     server: Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
