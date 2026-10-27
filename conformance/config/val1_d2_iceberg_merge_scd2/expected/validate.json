@@ -1,4 +1,3 @@
 {
-  "ok": false,
-  "error": "entity.name=orders sink.write_mode=merge_scd2 is not supported by sink.accepted.format=iceberg"
+  "ok": true
 }

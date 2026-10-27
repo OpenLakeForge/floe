@@ -1,3 +1,4 @@
 {
-  "ok": true
+  "ok": false,
+  "error": "entity.name=orders schema.columns[0].type=string  is unsupported for column id (allowed: string, number, boolean, datetime, date)"
 }

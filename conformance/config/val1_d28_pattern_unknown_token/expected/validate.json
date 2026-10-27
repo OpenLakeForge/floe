@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entities[0] (entity.name=orders): unknown field source.partitioning"
+  "error": "entity.name=orders source.partitioning.pattern={yyyy}/{MM}/{dd}/{mm}/{batch} has unknown token {mm} (allowed: {yyyy}, {MM}, {dd}, {HH}, {batch})"
 }

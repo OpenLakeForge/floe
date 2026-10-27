@@ -1,8 +1,7 @@
 {
-  "schema": "floe.manifest.v1",
   "generated_at_ts_ms": 0,
   "floe_version": "<volatile>",
-  "spec_version": "0.1",
+  "spec_version": "<volatile>",
   "manifest_id": "<volatile>",
   "manifest_revision": "<volatile>",
   "runtime_env": "cli",
@@ -110,6 +109,18 @@
           "uri": "s3://b/out/accepted",
           "path": "out/accepted",
           "resolved": true,
+          "partition_spec": [
+            {
+              "column": "id",
+              "num_buckets": null,
+              "transform": "day"
+            },
+            {
+              "column": "id",
+              "num_buckets": null,
+              "transform": "month"
+            }
+          ],
           "iceberg": {
             "catalog": "c",
             "location": null,

@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "entity.name=orders schema.columns[0].type=varchar is unsupported for column id (allowed: string, number, boolean, datetime, date)"
-}

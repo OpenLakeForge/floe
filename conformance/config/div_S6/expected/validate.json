@@ -1,3 +1,4 @@
 {
-  "ok": true
+  "ok": false,
+  "error": "domain.name=sales.eu must be non-empty without '.', '/' or '\\' when root.version >= \"0.3\""
 }

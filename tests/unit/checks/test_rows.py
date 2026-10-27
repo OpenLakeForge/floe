@@ -78,11 +78,7 @@ def test_casts_case_matches_rust_rejected_rows() -> None:
     rejected, expected = check_case(
         "casts", "casts.csv", "casts/part-00000.csv", columns, ["id", "qty"]
     )
-    assert expected.height == 16
-    # D9 (#619): Rust 0.7 accepts r12 (`10:00:00garbage`) and r21 (space before the offset)
-    d9 = pl.col("id").is_in(["r12", "r21"]).fill_null(False)
-    assert rejected.filter(d9).height == 2
-    rejected = rejected.filter(d9.not_())
+    assert expected.height == 18
     assert_same_errors(rejected, expected)
     assert rejected["id"].to_list() == expected["id"].to_list()
 
