@@ -4,6 +4,9 @@ All notable changes to Floe are documented in this file.
 
 ## floe (unreleased)
 
+- **`floe manifest generate` refuses a literal PII hash key (#1006).** It used to write `key: null`, so
+  `floe run --manifest` hashed with unsalted SHA-256 instead of the config run's HMAC. Set the key to a
+  `${ENV_VAR}` reference; the manifest keeps it and both runs produce the same hashes.
 - **Validation messages no longer point to Delta (#995).** Wording only:
   - `sink.accepted.merge` on a format without merge now says it requires `sink.accepted.format=iceberg`;
   - `sink.accepted.partition_by` now says it is not supported in 0.8 and points to `sink.accepted.partition_spec`
