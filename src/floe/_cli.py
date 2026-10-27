@@ -5,7 +5,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from floe import __version__
+from floe import __version__, build_manifest
 from floe._cli_output import Console, run_output
 from floe.add_entity import add_entity
 from floe.config.parse import parse_config
@@ -22,7 +22,6 @@ from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import run_with_lineage
 from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, ORPHAN_DELAY_DAYS, maintain
-from floe.manifest import Options, build_manifest
 from floe.manifest_run import load_manifest
 from floe.run import select_entities
 from floe.run.entity import state_uri
@@ -130,24 +129,13 @@ def _manifest(args: argparse.Namespace) -> int:
     remote = "://" in args.output
     if remote and not args.output.startswith("s3://"):  # D1: gcs and adls are dropped
         raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}")  # fmt: skip
-    path = _realpath(args.config)
-    profile = parse_profile(_realpath(args.profile)) if args.profile else None
-    root = _load(path, profile)
-    validate_config(root)
-    options = Options(
-        args.config,
-        args.deterministic,
-        args.manifest_name,
-        args.default_domain,
-        args.manifest_path_mode,
-        args.runtime,
-        args.output
-        if remote
-        else None,  # a remote `-o` is where the manifest is deployed
-        args.profile,
-        profile,
-    )
-    manifest = build_manifest(root, path, options, args.entities)
+    manifest = build_manifest(
+        args.config, args.profile, deterministic=args.deterministic,
+        manifest_name=args.manifest_name, default_domain=args.default_domain,
+        path_mode=args.manifest_path_mode, runtime=args.runtime,
+        manifest_uri=args.output if remote else None,  # a remote `-o` is where the manifest is deployed
+        entities=args.entities,
+    )  # fmt: skip
     text = json.dumps(manifest, indent=2, ensure_ascii=False)
     if args.output == "-":
         print(text)

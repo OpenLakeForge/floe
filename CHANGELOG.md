@@ -16,6 +16,8 @@ All notable changes to Floe are documented in this file.
 - **`merge_scd2` on Iceberg sinks in `floe run` (#997).** `floe validate` already accepted it; the run
   now creates the table with the SCD2 system columns, closes changed current rows and inserts their new
   versions, and reports `inserted_count`, `updated_count`, `closed_count` and `unchanged_count`.
+- **`example/config.yml` validates on 0.8 (#993).** The `customer` entity writes Parquet instead of Delta, and the
+  `customer_warehouse` entity (a DuckDB sink) is removed; both formats were dropped in 0.8.
 - **Clearer config error messages (#704).** Wording only; the same configs are accepted and rejected:
   - `<ctx>.storage and <ctx>.storage are mutually exclusive` now names `<ctx>.filesystem`;
   - an unknown key at the root of an included sources file is `unknown field root.<key>` (was `sources file.<key>`);
@@ -24,6 +26,9 @@ All notable changes to Floe are documented in this file.
   - `schema_evolution.mode=add_columns` on a non-Iceberg sink now says it requires `sink.accepted.format=iceberg`.
 - **`floe.run` posts OpenLineage events (#989)**, as `floe run -c` and `floe.run_manifest` already do,
   when the config has a `lineage` block.
+- **`floe.build_manifest(config_path, profile_path=None, ...)` (#986).** Returns, as a dict, the
+  manifest `floe manifest generate` writes for the same config and profile (deterministic by
+  default). `manifest generate` now calls it.
 
 ## airflow-floe v0.2.0
 

@@ -597,3 +597,21 @@ def test_d28_the_entity_source_carries_its_partitioning(
     )
     source = schema["properties"]["entities"]["items"]["properties"]["source"]
     assert set(entities["d.inline"]["source"]) <= set(source["properties"])
+
+
+def test_build_manifest_returns_what_manifest_generate_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """#986: the public API and `manifest generate -o -` build the same manifest."""
+    import floe
+
+    (tmp_path / "prod.yml").write_text(K8S)
+    monkeypatch.chdir(tmp_path)  # `-c`/`-p` as typed, relative, land in the manifest
+    argv = ("-o", "-", "-p", "prod.yml", "--deterministic", "--entities", "a")
+    (tmp_path / "config.yml").write_text(CONFIG)
+    monkeypatch.setattr(
+        sys, "argv", ["floe", "manifest", "generate", "-c", "config.yml", *argv]
+    )
+    assert main() == 0
+    generated = json.loads(capsys.readouterr().out)
+    assert floe.build_manifest("config.yml", "prod.yml", entities=["a"]) == generated
