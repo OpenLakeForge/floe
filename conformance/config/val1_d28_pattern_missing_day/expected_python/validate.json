@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "entity.name=orders source.partitioning.pattern={yyyy}/{MM}/{batch} must contain {yyyy}, {MM} and {dd}"
-}

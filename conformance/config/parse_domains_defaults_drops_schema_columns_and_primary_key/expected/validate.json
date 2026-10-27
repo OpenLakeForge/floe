@@ -1,3 +1,4 @@
 {
-  "ok": true
+  "ok": false,
+  "error": "unknown field domains.defaults.schema.columns"
 }

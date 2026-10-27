@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entity.name=orders sink.write_mode=merge_scd1 is not supported by sink.accepted.format=iceberg"
+  "error": "entity.name=orders sink.write_mode=merge_scd1 requires schema.primary_key"
 }

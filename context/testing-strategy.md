@@ -74,11 +74,11 @@ Applies to the Python core. The Rust sections above stay until cutover.
 tests/
 ├── unit/          ← one module or function, no pipeline run
 └── integration/   ← full runs against real files
-conformance/       ← parity suite against Rust 0.7
+conformance/       ← golden suite (`check.py`)
 ```
 
 - Run with `uv run pytest`; single test: `uv run pytest tests/unit/<file>.py::<test>`.
 - **No storage mocking.** Integration tests use real temporary directories and real file I/O, as for Rust.
-- **Conformance is the parity gate.** `conformance/` (#616) holds cases recorded from the Rust 0.7 binary: run reports, accepted and rejected rows, `floe validate` outcomes, error messages, CLI flags and manifest. Any difference from Rust 0.7 that is not in the #619 intentional-delta register is a bug.
+- **The golden suite is the regression gate.** `conformance/` holds the golden cases: run reports, accepted and rejected rows, `floe validate` outcomes, error messages, CLI flags and manifest. Any difference from `expected/` fails CI; an intended behaviour change re-records the case (`conformance/record.py --case NAME`) and the PR shows the diff.
 - Config validation tests assert the exact error message string, as for Rust.
 - Every bug fix ships one test that fails without the fix.

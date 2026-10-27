@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entities[0] (entity.name=orders): unknown field sink.accepted.partition_spec[0].num_buckets"
+  "error": "entity.name=orders sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8"
 }

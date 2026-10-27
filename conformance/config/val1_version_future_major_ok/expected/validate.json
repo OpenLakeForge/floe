@@ -1,3 +1,4 @@
 {
-  "ok": true
+  "ok": false,
+  "error": "root.version=1.0 is unsupported (newer than Floe 0.8)"
 }

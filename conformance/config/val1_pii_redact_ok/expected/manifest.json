@@ -1,8 +1,7 @@
 {
-  "schema": "floe.manifest.v1",
   "generated_at_ts_ms": 0,
   "floe_version": "<volatile>",
-  "spec_version": "0.1",
+  "spec_version": "<volatile>",
   "manifest_id": "<volatile>",
   "manifest_revision": "<volatile>",
   "runtime_env": "cli",

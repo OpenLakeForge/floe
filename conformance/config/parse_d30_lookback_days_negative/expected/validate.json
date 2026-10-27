@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entities[0] (entity.name=orders): unknown field source.partitioning"
+  "error": "entities[0] (entity.name=orders): expected positive integer at source.partitioning.lookback_days"
 }

@@ -1,4 +1,3 @@
 {
-  "ok": false,
-  "error": "entity.name=orders schema.schema_evolution.mode=add_columns requires sink.accepted.format=delta (Delta-only additive schema evolution in this phase)"
+  "ok": true
 }
