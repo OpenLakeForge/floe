@@ -1,5 +1,6 @@
-"""`floe run`: exit code, run reports and the stop after an aborted entity."""
+"""`floe run`: exit code, run reports, and the run going on past an aborted entity (D36)."""
 
+import importlib
 import json
 import sys
 from pathlib import Path
@@ -8,6 +9,9 @@ from typing import Any
 import pytest
 
 from floe._cli import main
+from floe.config.types import EntityConfig
+from floe.errors import FloeStorageError
+from floe.run.entity import EntityRun
 
 ENTITY = """\
   - name: {name}
@@ -52,12 +56,40 @@ def test_clean_run_exits_zero_and_writes_both_reports(
     assert list((tmp_path / "report").glob("run_*/d/a/run.json"))
 
 
-def test_abort_exits_two_and_skips_the_later_entities(
+def test_d36_an_abort_fails_only_its_entity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert run(tmp_path, monkeypatch, {"a": "id\nx\n", "b": "id\n1\n"}) == 2
-    assert [e["name"] for e in summary(tmp_path)["entities"]] == ["d.a"]
-    assert not (tmp_path / "out" / "accepted" / "b").exists()
+    rows = {"a": "id\n1\n", "b": "id\nx\n", "c": "id\n1\n"}
+    assert run(tmp_path, monkeypatch, rows) == 2
+    entities = summary(tmp_path)["entities"]
+    assert [(e["name"], e["status"]) for e in entities] == [
+        ("d.a", "success"),
+        ("d.b", "aborted"),
+        ("d.c", "success"),
+    ]
+    assert summary(tmp_path)["run"]["status"] == "aborted"
+    assert (tmp_path / "out/accepted/a").exists() and (tmp_path / "out/accepted/c").exists()  # fmt: skip
+    assert list((tmp_path / "report").glob("run_*/d/c/run.json"))
+
+
+def test_d36_a_storage_failure_still_stops_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_pkg = importlib.import_module(
+        "floe.run"
+    )  # `floe.run` the attribute is the run function
+    real = run_pkg.run_entity
+
+    def failing(entity: EntityConfig, *args: Any) -> EntityRun:
+        if entity.name == "b":
+            raise FloeStorageError("storage down")
+        return real(entity, *args)
+
+    monkeypatch.setattr(run_pkg, "run_entity", failing)
+    assert run(tmp_path, monkeypatch, {"a": "id\n1\n", "b": "id\n1\n", "c": "id\n1\n"}) == 1  # fmt: skip
+    assert (tmp_path / "out/accepted/a").exists()
+    assert not (tmp_path / "out/accepted/c").exists()
+    assert not list((tmp_path / "report").glob("run_*/run.summary.json"))
 
 
 def test_an_unresolved_input_fails_before_any_entity_runs(
