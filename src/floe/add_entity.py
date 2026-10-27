@@ -23,10 +23,13 @@ from floe.config.types import SourceOptions
 from floe.config.validate import validate_entities
 from floe.config.yaml import _FLOAT, load_yaml, parse_yaml, rust_debug  # pyright: ignore[reportPrivateUsage] -- the YAML float grammar the emitter must quote
 from floe.errors import FloeConfigError, FloeError, FloeIoError
-from floe.glob import Pattern, PatternError, glob
+from floe.glob import MatchOptions, Pattern, PatternError, glob
 
 SAMPLE_ROWS = 200
 Hash = dict[object, object]
+_COMPONENT_WISE = MatchOptions(
+    require_literal_separator=True
+)  # as the glob walker: `*` stays in one component
 
 
 def _os(e: OSError) -> str:
@@ -374,7 +377,7 @@ def _matches_domain_include(config: str, root: object, path: str) -> bool:
     patterns = cast(Hash, include).get("domains") if isinstance(include, dict) else None
     base = glob_base(Path(os.path.dirname(config)))
     return any(
-        Pattern(os.path.join(base, p)).matches_with(path)
+        Pattern(os.path.join(base, p)).matches_with(path, _COMPONENT_WISE)
         for p in cast("list[object]", patterns)
         if isinstance(p, str)
     )

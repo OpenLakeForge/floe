@@ -828,3 +828,18 @@ def test_add_entity_resolves_a_symlinked_config(floe: Run, tmp_path: Path) -> No
     assert (code, err) == (0, "")
     assert (domain_dir / "orders.yml").exists()
     assert [e.name for e in entities(real)] == ["orders"]
+
+
+def test_add_entity_allows_a_sibling_that_only_a_deeper_domain_pattern_could_match(
+    floe: Run, tmp_path: Path
+) -> None:
+    config, domain_dir = included_sales_project(tmp_path)
+    (tmp_path / "silver/other.yml").write_text("name: other\nincoming_dir: ./in\n")
+    config.write_text(
+        'version: "0.3"\ninclude:\n  domains: ["silver/*.yml", "silver/sales/_domain.yml"]\n'
+    )
+    input = tmp_path / "orders.csv"
+    input.write_text("id\n1\n")
+    code, _, err = add(floe, config, input, "--domain", "sales")
+    assert (code, err) == (0, "")
+    assert (domain_dir / "orders.yml").exists()
