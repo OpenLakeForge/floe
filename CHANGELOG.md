@@ -36,6 +36,10 @@ supported. Floe 0.7 and earlier manifests are rejected.
   reads report locations from the `run_finished` event, so no configuration changes.
 - **`ghcr.io/openlakeforge/floe` is now the Python image.** The image name and the `floe` command
   are unchanged; `kubernetes_job` runners need no change.
+- **S3 reads honour the Floe environment.** `s3://` manifests and run reports are read with the
+  endpoint (`AWS_ENDPOINT_URL_S3`/`AWS_ENDPOINT_URL`) and path-style (`AWS_S3_FORCE_PATH_STYLE`)
+  settings Floe itself uses, so deployments that patched `floe_dagster.assets._fsspec_read_text`
+  for S3-compatible stores can drop the patch and set those variables instead.
 - Manifest schema additions for 0.8 are listed below (`partition_spec`, `source.partitioning`,
   `lookback_days`, `sources` index).
 
@@ -44,7 +48,8 @@ supported. Floe 0.7 and earlier manifests are rejected.
   domain (per runner) run one after another in a single `floe run --entities a,b,c` Job, while Dagster
   still reports each entity. `execution.runner.resources` gains `cpu_limit` and `memory_limit_mb`, and
   `domain_resources` sizes the Job per domain. Unset, nothing changes (one Job per entity). After
-  an aborted entity the run stops, as `floe run` does, and the entities after it are reported as not run (#959 will let the run continue); see `context/orchestrators.md`.
+  an entity aborted by its policy the run continues with the next one (D36, #959), and Dagster reports
+  each entity's own status; see `context/orchestrators.md`.
 
 - **Iceberg entities carry a `floe/table` op tag (#924).** The value is the resolved
   `catalog.namespace.table` from the manifest, so entities writing one table share it and other
