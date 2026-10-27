@@ -94,14 +94,15 @@ def test_domain_scope_subset_runs_only_the_selected_entities(tmp_path: Path) -> 
 
 
 def test_domain_scope_failed_entity_fails_alone_and_the_ones_before_it_materialize(tmp_path: Path) -> None:
-    """`floe run` stops at the first abort: entities after it are not in the summary and fail as not run."""
+    """`floe run` stops at the first abort (until #959): entities after it never ran, so they are not failed."""
     result, jobs_api = _run(tmp_path, {"orders": "success", "returns": "aborted"}, exit_code=2)
 
     assert not result.success
     jobs_api.create_namespaced_job.assert_called_once()
     assert _materialized(result) == {"sales/orders"}
     [failure] = [e for e in result.all_events if e.event_type_value == "STEP_FAILURE"]
-    assert "returns, refunds" in failure.event_specific_data.error.message
+    message = failure.event_specific_data.error.message
+    assert "entities returns; not run: refunds" in message
 
 
 def test_entity_scope_is_unchanged_when_job_scope_is_unset(tmp_path: Path) -> None:

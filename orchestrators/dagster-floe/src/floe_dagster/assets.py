@@ -431,8 +431,10 @@ def _rejected_key(entity: ManifestEntity) -> list[str]:
     return list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_rejected"]
 
 
-# After an `aborted` entity `floe run` stops, so the entities after it are absent from the summary and
-# fail here as "not run"; `rejected` and `success_with_warnings` entities are materialized.
+# Each entity is reported from its own summary status: `rejected` and `success_with_warnings` entities
+# are materialized, `aborted` / `failed` ones fail, and one absent from the summary never ran. Until
+# #959 lets a policy abort fail only its entity, a run stops at the first abort, so the entities after
+# it are "not run" (not failed); the asset code needs no change once #959 lands.
 _ENTITY_FAILED = ("aborted", "failed")
 
 
@@ -512,13 +514,17 @@ def _make_domain_multi_asset(
             or ((result.status is not None) and (result.status != STATUS_SUCCEEDED))
         )
         failures: list[str] = []
+        not_run: list[str] = []
         for entity in chosen:
             status = None
             if summary is None:
                 failed = run_failed
             else:
                 status = _extract_entity_stats(summary, entity.name).get("entity_status")
-                failed = status is None or status in _ENTITY_FAILED
+                if status is None:
+                    not_run.append(entity.name)
+                    continue
+                failed = status in _ENTITY_FAILED
             failure = yield from _entity_events(
                 context,
                 entity=entity,
@@ -535,10 +541,13 @@ def _make_domain_multi_asset(
             )
             if failure is not None:
                 failures.append(entity.name)
-        if failures:
+        if failures or not_run:
+            if not_run:
+                context.log.warning(f"floe did not run entities {not_run}")
             raise Failure(
-                description=f"floe run failed for entities {', '.join(failures)}",
-                metadata={"failed_entities": failures},
+                description=f"floe run failed for entities {', '.join(failures) or 'none'}"
+                + (f"; not run: {', '.join(not_run)}" if not_run else ""),
+                metadata={"failed_entities": failures, "not_run_entities": not_run},
             )
 
     return _domain_asset

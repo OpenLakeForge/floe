@@ -215,7 +215,7 @@ These fields are populated automatically when `floe manifest generate` is given 
 
 Dagster still reports per entity (materialization, rows, rejected counts, report URI, asset checks) from the run's `run_finished` event and summary.
 
-**After a failure** the Job behaves like `floe run`: `rejected` and `success_with_warnings` entities are materialized, and an `aborted` entity stops the run. The entities before it are materialized; it and the entities after it (absent from the summary, so not run) are reported as failed, and the step fails naming them. Re-executing the step reruns the selected entities; subset it to the failed ones to rerun only those.
+**After a failure** each entity is reported from its own status in the run summary: `rejected` and `success_with_warnings` entities are materialized, an `aborted` / `failed` entity fails, and an entity absent from the summary never ran and is reported as *not run* (listed in the step failure's `not_run_entities`), not as its own failure. Today `floe run` stops at the first abort, so the entities after it are not run; once #959 (D36) lets a policy `severity: abort` fail only its entity, the run continues and nothing here changes. A global failure (access, memory, any raised `FloeError`) still aborts the run. Re-executing the step reruns the selected entities; subset it to rerun only some. Report URIs come from `run_finished` (`summary_uri`, `entity_report_uris`), never built by hand (#960).
 
 ---
 
