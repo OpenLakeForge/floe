@@ -91,7 +91,9 @@ def _secrets(hash: Hash, key: str, ctx: str) -> list[dict[str, str | None]] | No
     return secrets
 
 
-def _resources(hash: Hash, key: str, ctx: str) -> dict[str, object] | None:
+def _resources(
+    hash: Hash, key: str, ctx: str, per_domain: bool = False
+) -> dict[str, object] | None:
     if key not in hash:
         return None
     where = f"{ctx}.{key}"
@@ -104,9 +106,14 @@ def _resources(hash: Hash, key: str, ctx: str) -> dict[str, object] | None:
         "cpu": cpu,
         "memory_mb": _u64(resources, "memory_mb", where),
     }
+    if per_domain and read["memory_mb"] == 0:  # the manifest schema requires >= 1
+        raise FloeConfigError(f"{where}.memory_mb: must be >= 1")
+    memory_limit = _u64(resources, "memory_limit_mb", where)
+    if memory_limit == 0:  # the schemas require >= 1
+        raise FloeConfigError(f"{where}.memory_limit_mb: must be >= 1")
     limits = {  # the limits are Python-only: carried only when set, so Rust manifests stay identical
         "cpu_limit": _string(resources, "cpu_limit", where),
-        "memory_limit_mb": _u64(resources, "memory_limit_mb", where),
+        "memory_limit_mb": memory_limit,
     }
     return read | {k: v for k, v in limits.items() if v is not None}
 
@@ -120,7 +127,8 @@ def _domain_resources(hash: Hash, key: str, ctx: str) -> dict[str, object] | Non
         by_domain, where, by_domain.keys()
     )  # every key must be a string
     return {
-        str(domain): _resources(by_domain, str(domain), where) for domain in by_domain
+        str(domain): _resources(by_domain, str(domain), where, per_domain=True)
+        for domain in by_domain
     }
 
 

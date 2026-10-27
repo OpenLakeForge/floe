@@ -95,3 +95,8 @@ def test_conditional_delete_uses_if_match(monkeypatch: pytest.MonkeyPatch) -> No
             client.delete_conditional("s3://b/s/state.json", '"e1"')
         assert client.delete_conditional("s3://b/s/state.json", None)  # Rust: no call
         stub.assert_no_pending_responses()
+
+
+def test_endpoint_ignores_a_trailing_slash() -> None:
+    """D34 (#931) compares endpoints to tell two stores apart: `http://minio:9000/` is the same store."""
+    assert S3Client("b", "us-east-1", "http://minio:9000/").endpoint == S3Client("b", "us-east-1", "http://minio:9000").endpoint  # fmt: skip

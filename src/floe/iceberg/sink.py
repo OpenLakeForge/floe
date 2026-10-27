@@ -17,6 +17,7 @@ from pyiceberg.catalog import Catalog
 from pyiceberg.schema import Schema, assign_fresh_schema_ids
 from pyiceberg.table import Table
 
+from floe.checks.unique import resolve_unique_keys
 from floe.config.storage import (
     CatalogDefinition,
     CatalogsConfig,
@@ -181,7 +182,8 @@ def write_iceberg(
         # Rust `default_small_file_threshold_bytes`
         threshold = SMALL_FILE_THRESHOLD_BYTES if size is None else max(1, size // 2)
         append = "overwrite" if mode == "overwrite" else "append"
-        result = write_table(table, reader, append, run_id, digest, threshold)
+        unique = [[output.get(c, c) for c in k] for k in resolve_unique_keys(entity.schema_.unique_keys, [c.name for c in entity.schema_.columns if c.unique], entity.schema_.primary_key)]  # fmt: skip
+        result = write_table(table, reader, append, run_id, digest, threshold, unique_keys=unique)  # fmt: skip
     ids = {"table_version": result.metadata_version, "snapshot_id": result.snapshot_id}
     fields = {k: v for k, v in ids.items() if v is not None} | {
         "iceberg_catalog_name": target.catalog.name,

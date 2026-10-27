@@ -6,6 +6,7 @@
 import json
 import sys
 from collections.abc import Callable, Collection, Sequence
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -491,3 +492,16 @@ def test_find_committed_walks_back_to_the_claim(tmp_path: Path, catalog: LocalCa
     # the history since the claim is gone
     assert find_committed(expired, "other", at) is None
     assert find_committed(expired, "other") is False
+
+
+def test_a_commit_conflict_that_finds_the_batch_committed_reports_the_files_skipped(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#920: `write_table` says another run committed the batch; the files are reported like the guard does."""
+    real = entity_module.write_iceberg
+
+    def conflicted(*args: Any) -> Any:
+        result, *rest = real(*args)
+        return replace(result, files_written=0, already_committed=True), *rest
+
+    monkeypatch.setattr(entity_module, "write_iceberg", conflicted)
+    (file,) = run(tmp_path, "id,name\n1,a\n", mode="append")["files"]
+    assert (file["status"], file["skip_reason"]) == ("skipped", "already_committed")
