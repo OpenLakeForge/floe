@@ -485,6 +485,31 @@ def test_580_domain_scope_fields_ride_the_k8s_runner_only_when_set(
     }
 
 
+def test_580_one_config_compiles_per_environment_domain_resources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def runner_for(env: str, memory_mb: int) -> dict[str, Any]:
+        profile = K8S.replace("name: prod", f"name: {env}").replace(
+            "    command",
+            f"    job_scope: domain\n    domain_resources: {{sales: {{memory_mb: {memory_mb}}}}}\n    command",
+        )
+        (tmp_path / f"{env}.yml").write_text(profile)
+        assert (
+            generate(
+                tmp_path, monkeypatch, "-o", "-", "-p", str(tmp_path / f"{env}.yml")
+            )
+            == 0
+        )
+        return json.loads(capsys.readouterr().out)["runners"]["definitions"]["default"]
+
+    assert runner_for("dev", 1024)["domain_resources"] == {
+        "sales": {"cpu": None, "memory_mb": 1024}
+    }
+    assert runner_for("prod", 8192)["domain_resources"] == {
+        "sales": {"cpu": None, "memory_mb": 8192}
+    }
+
+
 def test_580_job_scope_must_be_entity_or_domain(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
