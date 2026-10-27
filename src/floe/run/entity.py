@@ -151,6 +151,12 @@ def _read_rule(fmt: str, message: str) -> str:
         ("invalid selector", "duplicate xml selector")
     ):
         return "xml_selector_invalid"
+    if fmt == "json":  # Rust `JsonReadError.rule`
+        if message.startswith(("invalid selector", "duplicate json selector")):
+            return "json_selector_invalid"
+        if message.startswith("non-scalar value for selector"):
+            return "json_selector_non_scalar"
+        return "json_parse_error"
     return "xml_parse_error" if fmt == "xml" else f"{fmt}_read_error"
 
 

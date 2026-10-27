@@ -302,6 +302,32 @@ def test_a_json_source_maps_nested_selectors_to_the_schema_names(
     ]
 
 
+@pytest.mark.parametrize(
+    ("body", "rule"),
+    [
+        ("[]", "json_parse_error"),
+        ('[{"order": {"id": 1}', "json_parse_error"),
+        ('[{"order": {"id": {"x": 1}}}]', "json_selector_non_scalar"),
+    ],
+)
+def test_an_unreadable_json_file_carries_the_rust_rule(
+    tmp_path: Path, body: str, rule: str
+) -> None:
+    """#998: Rust 0.7's `JsonReadError.rule`, not a generic `json_read_error`."""
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    config = config.replace('options: {header: true, separator: ","}', "options: {}")
+    config = config.replace("{name: id,", "{name: id, source: order.id,")
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    (tmp_path / "in" / "a.json").write_text(body)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    (file,) = run_entity(entity, tmp_path, "0.3").report["files"]
+    assert (file["status"], file["mismatch"]["error"]["rule"]) == ("rejected", rule)
+
+
 def test_append_retry_overwrites_the_rejected_part(tmp_path: Path) -> None:
     """S6 (#919): the same rejecting input run twice leaves one rejected file with the same rows."""
     config = CONFIG.format(severity="reject", mismatch="").replace(
