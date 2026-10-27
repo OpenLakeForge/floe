@@ -93,6 +93,7 @@ def run(
     dry_run: bool = False,
     full_refresh: bool = False,
     observer: Observer | None = None,
+    config_uri: str | None = None,
 ) -> RunOutcome:
     """Run the selected entities in config order, writing each entity's report as it finishes. A failing entity raises: no summary, as Rust."""
     started, timer = _rfc3339(), time.monotonic()
@@ -101,6 +102,8 @@ def run(
         selected = [_refresh(e) for e in selected]
     # a symlinked manifest or config: paths are relative to its target
     config_dir = normalize_local_path(path.resolve().parent)
+    # a remote manifest is reported as typed
+    config = config_uri or str(normalize_local_path(path))
     report_uri, report_storage = resolve_path(root.storages, config_dir, root.report.storage, root.report.path, "report.storage")  # fmt: skip
     report_path = report_uri.removeprefix("local://")
     run_id = run_id or started.replace(":", "-")
@@ -116,7 +119,7 @@ def run(
         scanned = {e.id: [f.source_uri for f in inputs(e).files] for e in selected}
         summary = build_summary(
             root.version, [], run_id=run_id, started_at=started, finished_at=_rfc3339(),
-            duration_ms=0, config_path=str(normalize_local_path(path)), report_path=report_path,
+            duration_ms=0, config_path=config, report_path=report_path,
             metadata=root.metadata, domain=domain,
         )  # fmt: skip
         summary["report"]["report_file"] = "disabled (dry-run)"
@@ -137,7 +140,7 @@ def run(
             _finished(emit, entity.id, None)
             raise
 
-    emit("run_started", config=str(normalize_local_path(path)), report_base=report_path)
+    emit("run_started", config=config, report_base=report_path)
     # Rust resolves every entity's inputs before the first entity_started (#864); run_entity reuses them
     listed: dict[str, ResolvedInputs] = {}
     for e in selected:
@@ -157,7 +160,7 @@ def run(
         root.version, reports,
         run_id=run_id, started_at=started, finished_at=_rfc3339(),
         duration_ms=int((time.monotonic() - timer) * 1000),
-        config_path=str(normalize_local_path(path)), report_path=report_path,
+        config_path=config, report_path=report_path,
         metadata=root.metadata, domain=domain,
     )  # fmt: skip
     write_reports(summary, [], client)
