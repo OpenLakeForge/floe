@@ -29,7 +29,7 @@ entities:
         - {name: email, type: string}
     pii:
       columns:
-        - {name: email, strategy: hash, key: literal-secret}
+        - {name: email, strategy: hash, key: "${PII_KEY}"}
 report: {path: ./report}
 """
 
@@ -65,11 +65,19 @@ def test_deterministic_manifest_is_stable_and_revision_is_the_content_hash(
     assert manifest["manifest_revision"] == f"sha256:{digest}"
 
 
-def test_literal_pii_hmac_key_is_redacted(
+def test_literal_pii_hash_key_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert generate(tmp_path, monkeypatch, "-o", "-") == 0
-    assert "literal-secret" not in capsys.readouterr().out
+    """#1006: dropping the key would make a manifest run hash with unsalted SHA-256."""
+    config = CONFIG.replace('"${PII_KEY}"', "literal-secret")
+    assert generate(tmp_path, monkeypatch, "-o", "-", config=config) == 1
+    out, err = capsys.readouterr()
+    assert "literal-secret" not in out + err
+    assert (
+        "entity.name=a pii.columns[name=email].key: a manifest never carries secrets"
+        in err
+    )
+    assert "${ENV_VAR}" in err
 
 
 @pytest.mark.parametrize("output", ["gs://b/m.json", "abfs://c@a/m.json"])
