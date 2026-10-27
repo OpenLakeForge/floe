@@ -1,5 +1,6 @@
-"""`floe run`: exit code, run reports and the stop after an aborted entity."""
+"""`floe run`: exit code, run reports, and the run going on past an aborted entity (D36)."""
 
+import importlib
 import json
 import sys
 from pathlib import Path
@@ -8,6 +9,9 @@ from typing import Any
 import pytest
 
 from floe._cli import main
+from floe.config.types import EntityConfig
+from floe.errors import FloeStorageError
+from floe.run.entity import EntityRun
 
 ENTITY = """\
   - name: {name}
@@ -40,7 +44,7 @@ def run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: dict[str, str]) -
 
 
 def summary(tmp_path: Path) -> dict[str, Any]:
-    (path,) = (tmp_path / "report").glob("run_*/run.summary.json")
+    (path,) = (tmp_path / "report").glob("d/run_*/run.summary.json")
     return json.loads(path.read_text())
 
 
@@ -49,15 +53,43 @@ def test_clean_run_exits_zero_and_writes_both_reports(
 ) -> None:
     assert run(tmp_path, monkeypatch, {"a": "id\n1\n"}) == 0
     assert summary(tmp_path)["run"]["status"] == "success"
-    assert list((tmp_path / "report").glob("run_*/d/a/run.json"))
+    assert list((tmp_path / "report").glob("d/run_*/d/a/run.json"))
 
 
-def test_abort_exits_two_and_skips_the_later_entities(
+def test_d36_an_abort_fails_only_its_entity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert run(tmp_path, monkeypatch, {"a": "id\nx\n", "b": "id\n1\n"}) == 2
-    assert [e["name"] for e in summary(tmp_path)["entities"]] == ["d.a"]
-    assert not (tmp_path / "out" / "accepted" / "b").exists()
+    rows = {"a": "id\n1\n", "b": "id\nx\n", "c": "id\n1\n"}
+    assert run(tmp_path, monkeypatch, rows) == 2
+    entities = summary(tmp_path)["entities"]
+    assert [(e["name"], e["status"]) for e in entities] == [
+        ("d.a", "success"),
+        ("d.b", "aborted"),
+        ("d.c", "success"),
+    ]
+    assert summary(tmp_path)["run"]["status"] == "aborted"
+    assert (tmp_path / "out/accepted/a").exists() and (tmp_path / "out/accepted/c").exists()  # fmt: skip
+    assert list((tmp_path / "report").glob("d/run_*/d/c/run.json"))
+
+
+def test_d36_a_storage_failure_still_stops_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_pkg = importlib.import_module(
+        "floe.run"
+    )  # `floe.run` the attribute is the run function
+    real = run_pkg.run_entity
+
+    def failing(entity: EntityConfig, *args: Any) -> EntityRun:
+        if entity.name == "b":
+            raise FloeStorageError("storage down")
+        return real(entity, *args)
+
+    monkeypatch.setattr(run_pkg, "run_entity", failing)
+    assert run(tmp_path, monkeypatch, {"a": "id\n1\n", "b": "id\n1\n", "c": "id\n1\n"}) == 1  # fmt: skip
+    assert (tmp_path / "out/accepted/a").exists()
+    assert not (tmp_path / "out/accepted/c").exists()
+    assert not list((tmp_path / "report").glob("d/run_*/run.summary.json"))
 
 
 def test_an_unresolved_input_fails_before_any_entity_runs(
@@ -127,7 +159,7 @@ def test_run_id_names_the_run_directory(
     config = write(tmp_path, {"a": "id\n1\n"})
     assert floe(monkeypatch, "run", "-c", str(config), "--run-id", "r1") == 0
     assert summary(tmp_path)["run"]["run_id"] == "r1"
-    assert (tmp_path / "report" / "run_r1" / "run.summary.json").exists()
+    assert (tmp_path / "report" / "d" / "run_r1" / "run.summary.json").exists()
 
 
 def test_entities_restricts_the_run(
@@ -210,3 +242,37 @@ def test_decimal_column_is_written_exact(
     out = pl.read_parquet(next((tmp_path / "out" / "accepted" / "a").glob("*.parquet")))
     assert out.schema["amt"] == pl.Decimal(19, 2)
     assert out["amt"].cast(pl.String).to_list() == ["12345678901234567.89", "-0.10"]
+
+
+@pytest.mark.parametrize(
+    ("entities", "run_dir", "domain"),
+    [(["a", "b"], "sales/run_r", "sales"), (["a", "b", "h"], "run_r", None)],
+)
+def test_d37_a_single_domain_run_reports_under_its_domain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entities: list[str],
+    run_dir: str,
+    domain: str | None,
+) -> None:
+    config = write(tmp_path, dict.fromkeys(entities, "id\n1\n"))
+    text = config.read_text().replace("domain: d", "domain: sales")
+    text = text.replace("  - name: d\n", "  - name: sales\n  - name: hr\n")
+    config.write_text(text.replace("  - name: h\n    domain: sales", "  - name: h\n    domain: hr"))  # fmt: skip
+    assert floe(monkeypatch, "run", "-c", str(config), "--run-id", "r") == 0
+    summary = json.loads((tmp_path / "report" / run_dir / "run.summary.json").read_text())  # fmt: skip
+    assert summary["run"].get("domain") == domain
+    assert summary["report"]["report_file"].endswith(f"/report/{run_dir}/run.summary.json")  # fmt: skip
+    assert (tmp_path / "report" / run_dir / "sales" / "a" / "run.json").exists()
+
+
+def test_d37_a_legacy_domain_that_is_no_directory_name_keeps_the_flat_layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before 0.3 a domain may hold `.` or `/`; `..` must not lift the run out of `report.path`."""
+    config = write(tmp_path, {"a": "id\n1\n"})
+    text = config.read_text().replace('version: "0.3"', 'version: "0.2"')
+    config.write_text(text.replace("name: d\n", "name: ..\n    incoming_dir: ./in\n").replace("domain: d", "domain: '..'"))  # fmt: skip
+    assert floe(monkeypatch, "run", "-c", str(config), "--run-id", "r") == 0
+    assert (tmp_path / "report" / "run_r" / "run.summary.json").exists()
+    assert not (tmp_path / "run_r").exists()

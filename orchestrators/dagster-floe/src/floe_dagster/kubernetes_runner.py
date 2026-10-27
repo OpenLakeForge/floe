@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from dataclasses import replace
 from typing import Any
 
 from .k8s_status import (
@@ -129,9 +130,12 @@ def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunne
         container["args"] = container_args
     if env_vars:
         container["env"] = env_vars
-    requests = _resource_requests(runner.resources)
-    if requests:
-        container["resources"] = {"requests": requests}
+    requests, limits = _resource_requests(runner.resources), _resource_limits(runner.resources)
+    if requests or limits:
+        container["resources"] = {
+            **({"requests": requests} if requests else {}),
+            **({"limits": limits} if limits else {}),
+        }
 
     pod_spec: dict[str, Any] = {"containers": [container], "restartPolicy": "Never"}
     if runner.service_account:
@@ -165,6 +169,22 @@ def _resource_requests(resources: dict[str, Any] | None) -> dict[str, str]:
         if resources.get("memory_mb") is not None:
             requests["memory"] = f"{resources['memory_mb']}Mi"
     return requests
+
+
+def _resource_limits(resources: dict[str, Any] | None) -> dict[str, str]:
+    limits: dict[str, str] = {}
+    if resources:
+        if resources.get("cpu_limit"):
+            limits["cpu"] = str(resources["cpu_limit"])
+        if resources.get("memory_limit_mb") is not None:
+            limits["memory"] = f"{resources['memory_limit_mb']}Mi"
+    return limits
+
+
+def sized_for_domain(runner: ManifestRunnerDefinition, domain: str | None) -> ManifestRunnerDefinition:
+    """`domain_resources[domain]` replaces `resources` wholesale; a domain not listed keeps them."""
+    sized = (runner.domain_resources or {}).get(domain or "")
+    return replace(runner, resources=sized) if sized is not None else runner
 
 
 def _make_job_name(entity: str) -> str:

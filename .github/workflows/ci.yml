@@ -202,11 +202,14 @@ jobs:
     # Gated per step, not per job: a skipped matrix job reports one `python-test`
     # check, so the required `python-test (<version>)` checks would never report.
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # a stalled download or source build fails fast instead of hanging for GitHub's 6 h default
     strategy:
       fail-fast: false
       matrix:
-        # Oldest supported (`requires-python`) and newest stable; uv.lock has wheels for both.
-        python-version: ["3.11", "3.15"]
+        # Oldest supported (`requires-python`) and the newest with a wheel for every locked
+        # package. 3.15 builds duckdb, numpy, pyiceberg, pyyaml and zstandard from source;
+        # move up once they ship cp315 wheels.
+        python-version: ["3.11", "3.14"]
     steps:
       - uses: actions/checkout@v7
         if: needs.changes.outputs.python_core == 'true'

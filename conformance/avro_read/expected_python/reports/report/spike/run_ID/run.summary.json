@@ -1,0 +1,49 @@
+{
+  "spec_version": "0.3",
+  "tool": {
+    "name": "floe",
+    "version": "0.7.0"
+  },
+  "run": {
+    "run_id": "<volatile>",
+    "domain": "spike",
+    "started_at": "<volatile>",
+    "finished_at": "<volatile>",
+    "duration_ms": "<volatile>",
+    "status": "rejected",
+    "exit_code": 0
+  },
+  "config": {
+    "path": "<ROOT>/config.yml",
+    "version": "0.3"
+  },
+  "report": {
+    "path": "<ROOT>/report",
+    "report_file": "<ROOT>/report/spike/run_<id>/run.summary.json"
+  },
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 3,
+    "accepted_total": 2,
+    "rejected_total": 1,
+    "warnings_total": 0,
+    "errors_total": 1
+  },
+  "entities": [
+    {
+      "name": "spike.avro_read",
+      "status": "rejected",
+      "results": {
+        "files_total": 1,
+        "files_skipped": 0,
+        "rows_total": 3,
+        "accepted_total": 2,
+        "rejected_total": 1,
+        "warnings_total": 0,
+        "errors_total": 1
+      },
+      "report_file": "<ROOT>/report/spike/run_<id>/spike/avro_read/run.json"
+    }
+  ]
+}

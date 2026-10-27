@@ -13,8 +13,10 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import os
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -88,6 +90,9 @@ def load_expected(case: Path, impl: str) -> Snapshot:
     expected: Snapshot = {}
     dirs = ["expected", "expected_python"] if impl == "python" else ["expected"]
     for d in dirs:
+        if d == "expected_python" and (case / d / "reports").is_dir():
+            # D37 moves every report file of a single-domain run, so Python's reports replace Rust's whole set
+            expected = {k: v for k, v in expected.items() if not k.startswith("reports/")}  # fmt: skip
         for path in sorted((case / d).rglob("*")):
             if path.is_file():
                 rel = path.relative_to(case / d).as_posix()
@@ -169,13 +174,20 @@ def main() -> int:
         if args.impl == "rust" and not recorded(case):
             print(f"skip {case_name(case)} (D1: not recorded)")
             skipped += 1
-            continue
+    run = [c for c in selected if args.impl == "python" or recorded(c)]
+
+    def check(case: Path) -> list[str]:
         # Rust 0.7 rejects some configs Python accepts (D2): no manifest was recorded, nothing to compare
-        with_manifest = args.impl == "rust" or (
+        with_manifest = args.impl == "rust" or bool(
             (args.case or case_name(case) in manifest_cases)
             and (case / "expected" / "manifest.json").exists()
         )
-        problems = check_case(case, cmd, args.impl, with_manifest)
+        return check_case(case, cmd, args.impl, with_manifest)
+
+    # each case runs in its own temp dir, so they run in parallel; threads only wait on subprocesses
+    with ThreadPoolExecutor(os.cpu_count()) as pool:
+        results = list(zip(run, pool.map(check, run), strict=True))
+    for case, problems in results:
         if problems and args.impl == "python" and (ids := delta_ids(case)):
             problems.insert(
                 0, f"intentional delta {', '.join(ids)}: expected_python/ applies"

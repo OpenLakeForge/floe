@@ -11,6 +11,13 @@ All notable changes to Floe are documented in this file.
 
 ## dagster-floe (unreleased)
 
+- **`job_scope: domain` runs one Kubernetes Job per domain (#580).** With the opt-in
+  `execution.runner.job_scope: domain` on a `kubernetes_job` runner, the selected entities of a
+  domain (per runner) run one after another in a single `floe run --entities a,b,c` Job, while Dagster
+  still reports each entity. `execution.runner.resources` gains `cpu_limit` and `memory_limit_mb`, and
+  `domain_resources` sizes the Job per domain. Unset, nothing changes (one Job per entity). After
+  an aborted entity the run stops, as `floe run` does, and the entities after it are reported as not run (#959 will let the run continue); see `context/orchestrators.md`.
+
 - **Iceberg entities carry a `floe/table` op tag (#924).** The value is the resolved
   `catalog.namespace.table` from the manifest, so entities writing one table share it and other
   tables don't. Advisory, and an op tag: a `tag_concurrency_limits` entry on `floe/table` in the
