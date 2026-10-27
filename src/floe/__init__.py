@@ -202,10 +202,11 @@ def run_manifest(
     full_refresh: bool = False,
 ) -> RunOutcome:
     """`floe run --manifest`, OpenLineage included; the manifest was validated when it was generated."""
-    root, observed = load_manifest(Path(manifest_path))
+    root, observed, path = load_manifest(manifest_path)
     out = run_with_lineage(
-        Path(manifest_path), root, observed, "", _emit, validate=False, run_id=run_id,
+        path, root, observed, "", _emit, validate=False, run_id=run_id,
         entities=entities or [], dry_run=dry_run, full_refresh=full_refresh,
+        config_uri=manifest_path if "://" in manifest_path else None,
     )  # fmt: skip
     return _outcome(root, entities, out)
 

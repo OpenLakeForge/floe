@@ -4,6 +4,10 @@ All notable changes to Floe are documented in this file.
 
 ## floe (unreleased)
 
+- **`floe run --manifest` and `floe.run_manifest` take an `s3://` manifest (#1003)**, and write the run
+  reports under an `s3://` `report_base_uri`, as Floe 0.7 did. Relative local paths in a remote manifest
+  resolve under its `work_root`, else `FLOE_WORK_ROOT`, else the current directory (`/work` for an `image`
+  manifest).
 - **`floe manifest generate` refuses a literal PII hash key (#1006).** It used to write `key: null`, so
   `floe run --manifest` hashed with unsalted SHA-256 instead of the config run's HMAC. Set the key to a
   `${ENV_VAR}` reference; the manifest keeps it and both runs produce the same hashes.

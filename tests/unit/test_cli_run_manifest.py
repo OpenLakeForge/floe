@@ -259,7 +259,7 @@ def test_reconstruct_keeps_ids_bare_names_refs_storages_and_lineage_cloud_paths(
     """Rust `v03_manifest_names_are_qualified_and_replay_recovers_bare_names`,
     `manifest_records_source_ref_and_effective_resource` and `manifest_embeds_config_level_storages_for_replay`.
     """
-    root, observed = load_manifest(manifest(tmp_path, monkeypatch, QUALIFIED))
+    root, observed, _ = load_manifest(manifest(tmp_path, monkeypatch, QUALIFIED))
     assert [(e.id, e.name, e.domain) for e in root.entities] == [
         ("finance.accounts", "accounts", "finance"),
         ("sales.accounts", "accounts", "sales"),
@@ -297,10 +297,6 @@ def test_a_legacy_dotted_bare_name_is_kept_whole(
             "Error: manifest spec_version=9.9 is unsupported (newer than Floe 0.",
         ),
         ({"entities": None}, "Error: manifest parse error: "),
-        (
-            {"report_base_uri": "s3://b/report"},
-            "Error: report_base_uri=s3://b/report: remote reports are not supported yet (#834)",
-        ),
     ],
 )
 def test_a_bad_manifest_fails_before_the_run(
@@ -323,8 +319,8 @@ def test_a_bad_manifest_fails_before_the_run(
     ("location", "error"),
     [
         (
-            "s3://b/m.json",
-            "Error: remote manifest is not supported yet (#834): s3://b/m.json\n",
+            "gs://b/m.json",
+            "Error: remote manifest is not supported: gs://b/m.json\n",
         ),
         ("missing.json", "Error: No such file or directory (os error 2)\n"),
     ],
@@ -355,7 +351,7 @@ def test_a_missing_manifest_is_logged_after_run_started_with_code_error(
 
 def test_a_rest_catalog_loads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     catalogs = "catalogs:\n  default: rest\n  definitions:\n    - {name: rest, type: rest, uri: http://catalog, warehouse: wh}\n"  # fmt: skip
-    root, _ = load_manifest(manifest(tmp_path, monkeypatch, QUALIFIED + catalogs))
+    root, _, _ = load_manifest(manifest(tmp_path, monkeypatch, QUALIFIED + catalogs))
     assert root.catalogs and root.catalogs.definitions[0].uri == "http://catalog"
 
 
@@ -389,7 +385,7 @@ def test_a_partitioning_block_without_batch_column_is_kept(
     doc = json.loads(Path("m.json").read_text())
     assert doc["entities"][0]["source"]["partitioning"].pop("batch_column") is None
     Path("m.json").write_text(json.dumps(doc))
-    _, (entity,) = load_manifest(Path("m.json"))
+    _, (entity,), _ = load_manifest(Path("m.json"))
     assert entity.source.partitioning is not None
     assert entity.source.partitioning.batch_column is None
 
