@@ -23,6 +23,19 @@ class RunResult:
 
 
 class Runner:
+    def run_floe_entities(
+        self,
+        config_uri: str,
+        run_id: str | None,
+        domain: str,
+        entities: list[str],
+        execution: ManifestExecution,
+        runner_definition: ManifestRunnerDefinition,
+        manifest_uri: str | None = None,
+    ) -> RunResult:
+        """One run for several entities of `domain`, one after another (`job_scope: domain`)."""
+        raise NotImplementedError
+
     def run_floe_entity(
         self,
         config_uri: str,
@@ -41,6 +54,35 @@ class LocalRunner(Runner):
     def __init__(self, floe_bin: str = "floe", timeout: float | None = None) -> None:
         self._floe_cmd = shlex.split(floe_bin)
         self._timeout = timeout
+
+    def run_floe_entities(
+        self,
+        config_uri: str,
+        run_id: str | None,
+        domain: str,
+        entities: list[str],
+        execution: ManifestExecution,
+        runner_definition: ManifestRunnerDefinition,
+        manifest_uri: str | None = None,
+    ) -> RunResult:
+        if runner_definition.runner_type != "kubernetes_job":
+            raise NotImplementedError("job_scope: domain needs a kubernetes_job runner")
+        # `--entities {entity_name}` takes a comma list, so the entity token renders them all
+        args = [
+            *self._floe_cmd,
+            *render_execution_args(
+                execution,
+                config_uri=config_uri,
+                entity_name=",".join(entities),
+                run_id=run_id,
+                manifest_uri=manifest_uri,
+            ),
+        ]
+        from .kubernetes_runner import run_kubernetes_job, sized_for_domain
+
+        return run_kubernetes_job(
+            args, entity=domain, runner=sized_for_domain(runner_definition, domain)
+        )
 
     def run_floe_entity(
         self,
