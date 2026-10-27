@@ -189,6 +189,12 @@ Exit codes:
 - `2`: aborted (policy).
 - `1`: failed (technical error).
 
+An entity aborted by `policy.severity: abort` fails only that entity (D36, 0.8): its `run.json`
+is written with status `aborted`, and the run continues with the next entity. The run summary
+lists every entity, and the run status and exit code stay `aborted` / `2`. A technical error
+(storage, catalog, credentials, memory) still stops the run at that entity, with no summary.
+Rust 0.7 stopped the run at the first aborted entity.
+
 ## Validation payloads
 
 Validation summaries report aggregated counts only (no row-level examples).
