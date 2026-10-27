@@ -44,7 +44,7 @@ def run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: dict[str, str]) -
 
 
 def summary(tmp_path: Path) -> dict[str, Any]:
-    (path,) = (tmp_path / "report").glob("run_*/run.summary.json")
+    (path,) = (tmp_path / "report").glob("d/run_*/run.summary.json")
     return json.loads(path.read_text())
 
 
@@ -53,7 +53,7 @@ def test_clean_run_exits_zero_and_writes_both_reports(
 ) -> None:
     assert run(tmp_path, monkeypatch, {"a": "id\n1\n"}) == 0
     assert summary(tmp_path)["run"]["status"] == "success"
-    assert list((tmp_path / "report").glob("run_*/d/a/run.json"))
+    assert list((tmp_path / "report").glob("d/run_*/d/a/run.json"))
 
 
 def test_d36_an_abort_fails_only_its_entity(
@@ -69,7 +69,7 @@ def test_d36_an_abort_fails_only_its_entity(
     ]
     assert summary(tmp_path)["run"]["status"] == "aborted"
     assert (tmp_path / "out/accepted/a").exists() and (tmp_path / "out/accepted/c").exists()  # fmt: skip
-    assert list((tmp_path / "report").glob("run_*/d/c/run.json"))
+    assert list((tmp_path / "report").glob("d/run_*/d/c/run.json"))
 
 
 def test_d36_a_storage_failure_still_stops_the_run(
@@ -89,7 +89,7 @@ def test_d36_a_storage_failure_still_stops_the_run(
     assert run(tmp_path, monkeypatch, {"a": "id\n1\n", "b": "id\n1\n", "c": "id\n1\n"}) == 1  # fmt: skip
     assert (tmp_path / "out/accepted/a").exists()
     assert not (tmp_path / "out/accepted/c").exists()
-    assert not list((tmp_path / "report").glob("run_*/run.summary.json"))
+    assert not list((tmp_path / "report").glob("d/run_*/run.summary.json"))
 
 
 def test_an_unresolved_input_fails_before_any_entity_runs(
@@ -159,7 +159,7 @@ def test_run_id_names_the_run_directory(
     config = write(tmp_path, {"a": "id\n1\n"})
     assert floe(monkeypatch, "run", "-c", str(config), "--run-id", "r1") == 0
     assert summary(tmp_path)["run"]["run_id"] == "r1"
-    assert (tmp_path / "report" / "run_r1" / "run.summary.json").exists()
+    assert (tmp_path / "report" / "d" / "run_r1" / "run.summary.json").exists()
 
 
 def test_entities_restricts_the_run(
@@ -218,3 +218,37 @@ def test_run_needs_a_config(
 ) -> None:
     assert floe(monkeypatch, "run", *args) == 1
     assert capsys.readouterr().err == error
+
+
+@pytest.mark.parametrize(
+    ("entities", "run_dir", "domain"),
+    [(["a", "b"], "sales/run_r", "sales"), (["a", "b", "h"], "run_r", None)],
+)
+def test_d37_a_single_domain_run_reports_under_its_domain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entities: list[str],
+    run_dir: str,
+    domain: str | None,
+) -> None:
+    config = write(tmp_path, dict.fromkeys(entities, "id\n1\n"))
+    text = config.read_text().replace("domain: d", "domain: sales")
+    text = text.replace("  - name: d\n", "  - name: sales\n  - name: hr\n")
+    config.write_text(text.replace("  - name: h\n    domain: sales", "  - name: h\n    domain: hr"))  # fmt: skip
+    assert floe(monkeypatch, "run", "-c", str(config), "--run-id", "r") == 0
+    summary = json.loads((tmp_path / "report" / run_dir / "run.summary.json").read_text())  # fmt: skip
+    assert summary["run"].get("domain") == domain
+    assert summary["report"]["report_file"].endswith(f"/report/{run_dir}/run.summary.json")  # fmt: skip
+    assert (tmp_path / "report" / run_dir / "sales" / "a" / "run.json").exists()
+
+
+def test_d37_a_legacy_domain_that_is_no_directory_name_keeps_the_flat_layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before 0.3 a domain may hold `.` or `/`; `..` must not lift the run out of `report.path`."""
+    config = write(tmp_path, {"a": "id\n1\n"})
+    text = config.read_text().replace('version: "0.3"', 'version: "0.2"')
+    config.write_text(text.replace("name: d\n", "name: ..\n    incoming_dir: ./in\n").replace("domain: d", "domain: '..'"))  # fmt: skip
+    assert floe(monkeypatch, "run", "-c", str(config), "--run-id", "r") == 0
+    assert (tmp_path / "report" / "run_r" / "run.summary.json").exists()
+    assert not (tmp_path / "run_r").exists()

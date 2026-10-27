@@ -72,6 +72,13 @@ Where Python must differ from Rust 0.7 on purpose (the D-register in #619), a ca
 `record.py` only writes `expected/` (from Rust); `expected_python/` is derived from it and committed. The case
 README says how (for `config/` cases, the delta table in `config/README.md`), so a reviewer can redo it.
 
+D37 (report run directory per domain, #960): Python writes a single-domain run under `report/<domain>/run_<id>/`
+and adds `run.domain` to `run.summary.json`. Every run case whose entities all share one domain carries `[D37]` and
+an `expected_python/reports/report/<domain>/run_ID/` derived from its `expected/` (or existing `expected_python/`)
+reports: the files move under the domain, every `/report/run_<id>` path in them (and in `events.jsonl`) becomes
+`/report/<domain>/run_<id>`, and `"domain"` is inserted after `run.run_id`. When `expected_python/reports/` exists,
+`check.py` takes the case's reports only from it (the moved files replace Rust's set rather than add to it).
+
 D1 (dropped features) cases are not recorded: they hold only `expected_python/` with the Python error, `record.py`
 skips them and `check.py --impl rust` prints `skip` for them.
 

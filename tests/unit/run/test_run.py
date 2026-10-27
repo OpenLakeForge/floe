@@ -174,7 +174,7 @@ def test_full_refresh_reingests_archived_files(tmp_path: Path) -> None:
     out = run(path, parse_config(path, {}), full_refresh=True)
     assert rows(tmp_path, "o") == 3
     assert out.summary["run"]["status"] == "success"
-    report = json.loads(max(tmp_path.glob("report/run_*/d/o/run.json")).read_text())
+    report = json.loads(max(tmp_path.glob("report/d/run_*/d/o/run.json")).read_text())
     files = report["files"]
     assert [Path(f["input_file"]).name.split("__")[0] for f in files] == ["a", "b.csv"]
     assert [f["output"]["archived_path"] is None for f in files] == [True, False]
@@ -191,7 +191,7 @@ def test_d31_a_normal_run_never_lists_a_nested_archive(tmp_path: Path, mode: str
     (tmp_path / "in/b.csv").write_text("id\n3\n")
     out = run(path, parse_config(path, {}))
     assert rows(tmp_path, "o") == 3
-    report = json.loads(max(tmp_path.glob("report/run_*/d/o/run.json")).read_text())
+    report = json.loads(max(tmp_path.glob("report/d/run_*/d/o/run.json")).read_text())
     assert [Path(f["input_file"]).name for f in report["files"]] == ["b.csv"]
     assert out.summary["results"]["accepted_total"] == 1
 

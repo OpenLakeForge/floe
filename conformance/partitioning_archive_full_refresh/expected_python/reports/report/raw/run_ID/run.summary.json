@@ -1,0 +1,49 @@
+{
+  "spec_version": "0.3",
+  "tool": {
+    "name": "floe",
+    "version": "0.8.0.dev0"
+  },
+  "run": {
+    "run_id": "<volatile>",
+    "domain": "raw",
+    "started_at": "<volatile>",
+    "finished_at": "<volatile>",
+    "duration_ms": "<volatile>",
+    "status": "success",
+    "exit_code": 0
+  },
+  "config": {
+    "path": "<ROOT>/config.yml",
+    "version": "0.3"
+  },
+  "report": {
+    "path": "<ROOT>/report",
+    "report_file": "<ROOT>/report/raw/run_<id>/run.summary.json"
+  },
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 2,
+    "accepted_total": 2,
+    "rejected_total": 0,
+    "warnings_total": 0,
+    "errors_total": 0
+  },
+  "entities": [
+    {
+      "name": "raw.orders",
+      "status": "success",
+      "results": {
+        "files_total": 1,
+        "files_skipped": 0,
+        "rows_total": 2,
+        "accepted_total": 2,
+        "rejected_total": 0,
+        "warnings_total": 0,
+        "errors_total": 0
+      },
+      "report_file": "<ROOT>/report/raw/run_<id>/raw/orders/run.json"
+    }
+  ]
+}

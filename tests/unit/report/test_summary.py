@@ -13,7 +13,14 @@ from test_entity_report import CASES, CONFORMANCE, run_entity
 
 from floe.config.parse import parse_config
 from floe.config.project import ProjectMetadata
-from floe.report.summary import build_summary, id_path, run_outcome, write_reports
+from floe.report.summary import (
+    build_summary,
+    id_path,
+    run_dir,
+    run_domain,
+    run_outcome,
+    write_reports,
+)
 from floe.storage.local import LocalClient
 
 sys.path.insert(0, str(CONFORMANCE))
@@ -30,7 +37,9 @@ def test_summary_matches_recorded(case: str, tmp_path: Path) -> None:
     ids = {e for c, e in CASES if c == case}
     reports: list[tuple[str, dict[str, Any]]] = []
     texts: dict[str, str] = {}
-    for entity in (e for e in config.entities if e.id in ids):
+    selected = [e for e in config.entities if e.id in ids]
+    domain = run_domain(selected)
+    for entity in selected:
         text, _ = run_entity(case, entity, tmp_path)
         reports.append((id_path(entity), json.loads(text)))
         texts[id_path(entity)] = text
@@ -43,13 +52,14 @@ def test_summary_matches_recorded(case: str, tmp_path: Path) -> None:
         duration_ms=1,
         config_path=str(tmp_path / "config.yml"),
         report_path=str(tmp_path / "report"),
+        domain=domain,
     )
     write_reports(summary, reports, LocalClient())
 
     expected = load_expected(CONFORMANCE / case, "python")
-    prefix = "reports/report/run_ID/"
-    run_dir = tmp_path / "report" / f"run_{RUN_ID}"
-    written = {p.relative_to(run_dir).as_posix(): p for p in run_dir.rglob("*.json")}
+    prefix = run_dir("reports/report", "ID", domain) + "/"  # D37
+    path = Path(run_dir(str(tmp_path / "report"), RUN_ID, domain))
+    written = {p.relative_to(path).as_posix(): p for p in path.rglob("*.json")}
     assert set(written) == {
         k.removeprefix(prefix) for k in expected if k.startswith(prefix)
     }
