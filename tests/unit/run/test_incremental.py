@@ -279,6 +279,33 @@ def test_bare_source_filename_roots_the_state_in_the_config_dir(tmp_path: Path) 
     )
 
 
+def _overlap(tmp_path: Path, sink: str) -> Any:
+    setup(tmp_path, mode="archive")
+    (tmp_path / "in/orders.csv").unlink()
+    (tmp_path / "in/part-00000.parquet").write_bytes(b"input")
+    config = tmp_path / "config.yml"
+    text = config.read_text().replace("format: csv, path: ./in, options: {header: true, separator: \",\"}", "format: parquet, path: ./in/part-00000.parquet")  # fmt: skip
+    text = text.replace("path: ./out/accepted", f"path: {sink}")  # fmt: skip
+    text = text.replace("    sink:\n", "    sink:\n      write_mode: overwrite\n")
+    config.write_text(text.replace("      rejected:", "      archive: {path: ./arch}\n      rejected:"))  # fmt: skip
+    return parse_config(config).entities[0]
+
+
+def test_a_sink_over_the_source_fails_before_any_write(tmp_path: Path) -> None:
+    """#931 (D34): the input stays put, with its bytes, and nothing is archived or written."""
+    entity = _overlap(tmp_path, "./in")
+    with pytest.raises(FloeConfigError, match="lies under sink.accepted.path"):
+        go(entity, tmp_path, "r1")
+    assert (tmp_path / "in/part-00000.parquet").read_bytes() == b"input"
+    assert sorted(p.name for p in (tmp_path / "in").iterdir()) == ["part-00000.parquet"]  # fmt: skip
+    assert not (tmp_path / "arch").exists()
+
+
+def test_sibling_source_and_sink_dirs_still_run(tmp_path: Path) -> None:
+    entity = setup(tmp_path)
+    assert go(entity, tmp_path, "r1").report["results"]["files_total"] == 1
+
+
 def _file(name: str) -> InputFile:
     return InputFile(f"local:///in/{name}", name, name, 1, "t1")
 
@@ -303,3 +330,20 @@ def test_merge_modes_skip_the_entity_while_another_run_holds_a_live_claim(
     mine.release()
     assert (pending == []) is skipped
     assert [r["skip_reason"] for r in reports] == (["active_claim"] if skipped else [])
+
+
+def test_overlap_is_judged_by_where_a_symlink_lands(tmp_path: Path) -> None:
+    """#931: `out/link/../x` resolves beside `deep`, not under `out`; a link into the sink is under it."""
+    sink = tmp_path / "out"
+    (tmp_path / "other/deep").mkdir(parents=True)
+    sink.mkdir()
+    (sink / "link").symlink_to(tmp_path / "other/deep")
+    (tmp_path / "into").symlink_to(sink)
+
+    def file(p: str) -> InputFile:
+        return InputFile(f"local://{p}", "x", "x", None, None)
+
+    refuse = entity_module._refuse_overlap  # pyright: ignore[reportPrivateUsage]  # the unit under test
+    refuse("e", f"local://{sink}", [file(f"{sink}/link/../x.parquet")])
+    with pytest.raises(FloeConfigError):
+        refuse("e", f"local://{sink}", [file(f"{tmp_path}/into/x.parquet")])
