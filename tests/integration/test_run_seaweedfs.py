@@ -72,7 +72,7 @@ def test_csv_on_s3_to_parquet_on_s3_then_an_incremental_skip(
     part = s3.read(s3.resolve_uri(f"{prefix}/out/accepted/part-00000.parquet"))
     assert part is not None
     assert pl.read_parquet(io.BytesIO(part.body)).height == 2
-    stored = s3.read(s3.resolve_uri(f"{prefix}/runs/run_r1/d/orders/run.json"))
+    stored = s3.read(s3.resolve_uri(f"{prefix}/runs/d/run_r1/d/orders/run.json"))
     assert stored is not None
     report = json.loads(stored.body)
     assert [f["input_file"] for f in report["files"]] == [
@@ -104,7 +104,7 @@ def test_d28_a_partitioned_s3_source_loads_by_date_with_derived_columns(
         (2, date(2026, 10, 24), "a1b2"),
         (1, date(2026, 10, 25), "c3d4"),
     ]
-    stored = s3.read(s3.resolve_uri(f"{prefix}/runs/run_r1/d/orders/run.json"))
+    stored = s3.read(s3.resolve_uri(f"{prefix}/runs/d/run_r1/d/orders/run.json"))
     assert stored is not None
     assert json.loads(stored.body)["source"]["resolved_inputs"]["files"] == [
         f"s3://{BUCKET}/{prefix}/in/2026/10/24/a1b2/x.csv",
@@ -127,7 +127,7 @@ def test_d30_file_mode_lists_the_s3_source_from_the_window(
     run(config, parse_config(config), run_id="r1")
     s3.write(s3.resolve_uri(f"{prefix}/in/2026/10/24/b/x.csv"), b"id\n2\n")
     run(config, parse_config(config), run_id="r2")
-    stored = s3.read(s3.resolve_uri(f"{prefix}/runs/run_r2/d/orders/run.json"))
+    stored = s3.read(s3.resolve_uri(f"{prefix}/runs/d/run_r2/d/orders/run.json"))
     assert stored is not None
     root = f"s3://{BUCKET}/{prefix}/in/2026/10"
     report = json.loads(stored.body)
