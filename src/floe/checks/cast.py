@@ -1,5 +1,7 @@
 """String to typed casts and cast-mismatch errors (Rust: `checks/cast.rs`, `io/format.rs`)."""
 
+import re
+
 import polars as pl
 
 CAST_ERROR_MESSAGE = "invalid value for target type"
@@ -10,8 +12,27 @@ _DTYPES: dict[str, pl.DataType] = {
     "uint8": pl.UInt8(), "uint16": pl.UInt16(), "uint32": pl.UInt32(), "uint64": pl.UInt64(),
     "float32": pl.Float32(),
     "float64": pl.Float64(), "float": pl.Float64(), "double": pl.Float64(),
-    "number": pl.Float64(), "decimal": pl.Float64(),
+    "number": pl.Float64(),
 }  # fmt: skip
+
+_DECIMAL = re.compile(r"decimal\(\s*(\d+)\s*,\s*(\d+)\s*\)")
+
+
+def decimal_type(column_type: str) -> pl.Decimal | None:
+    """`decimal(p,s)` as an exact `pl.Decimal`, or None when `kind` is not one.
+
+    Raises ValueError for a precision outside 1..38 or a scale outside 0..precision.
+    """
+    # matched on the declared type: `_canonical` would drop the sign of `decimal(4,-2)`
+    if not (m := _DECIMAL.fullmatch(column_type.lower())):
+        return None
+    precision, scale = int(m[1]), int(m[2])
+    if not 1 <= precision <= 38 or scale > precision:
+        raise ValueError(
+            f"decimal(p,s) needs 1 <= p <= 38 and 0 <= s <= p, got {column_type}"
+        )
+    return pl.Decimal(precision, scale)
+
 
 # Polars 2.0 has no string -> date/datetime cast, so both are parsed by regex (decision D9, #619):
 # groups 1-3 year/month/day, 4-7 hour/minute/second/fraction, 8-10 offset sign/hour/minute.
@@ -105,7 +126,13 @@ def cast_column(
             text = text.str.replace("e+", "e", literal=True)
         return text, pl.lit(False).alias(f"_e_cast_{name}")
     fractional = None
-    if kind in _DTYPES:
+    if (exact := decimal_type(column_type)) is not None:
+        typed = raw.cast(exact, strict=False)
+        if not native:  # strict: an exponent or digits beyond the scale are a cast_error, not a silent rounding
+            fractional = raw.str.contains(
+                rf"[eE]|\.[0-9]{{{exact.scale}}}[0-9]*[1-9]"
+            ).fill_null(False)
+    elif kind in _DTYPES:
         typed = raw.cast(_DTYPES[kind], strict=False)
         if native and dtype.is_float() and _DTYPES[kind].is_integer():
             # D17; NaN and inf are null already

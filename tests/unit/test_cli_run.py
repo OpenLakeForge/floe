@@ -220,6 +220,30 @@ def test_run_needs_a_config(
     assert capsys.readouterr().err == error
 
 
+def test_decimal_column_is_written_exact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import polars as pl
+
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "a.csv").write_text("amt\n12345678901234567.89\n-0.10\n")
+    entity = ENTITY.format(name="a").replace(
+        "{name: id, type: int64}", "{name: amt, type: 'decimal(19,2)'}"
+    )
+    (tmp_path / "config.yml").write_text(
+        'version: "0.3"\ndomains:\n  - name: d\nentities:\n'
+        + entity
+        + "report: {path: ./report}\n"
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["floe", "run", "-c", str(tmp_path / "config.yml")]
+    )
+    assert main() == 0
+    out = pl.read_parquet(next((tmp_path / "out" / "accepted" / "a").glob("*.parquet")))
+    assert out.schema["amt"] == pl.Decimal(19, 2)
+    assert out["amt"].cast(pl.String).to_list() == ["12345678901234567.89", "-0.10"]
+
+
 @pytest.mark.parametrize(
     ("entities", "run_dir", "domain"),
     [(["a", "b"], "sales/run_r", "sales"), (["a", "b", "h"], "run_r", None)],

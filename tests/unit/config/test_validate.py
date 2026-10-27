@@ -336,3 +336,29 @@ def test_d28_a_derived_column_clashes_with_a_normalised_schema_column(tmp_path: 
         "entity.name=orders source.partitioning.date_column=ingest_date "
         "is already a column in schema.columns"
     )
+
+
+def test_decimal_with_precision_and_scale_is_accepted(tmp_path: Path) -> None:
+    check(
+        tmp_path,
+        "{columns: [{name: amt, type: 'Decimal(38, 10)'}, {name: b, type: 'decimal(1,0)'}]}",
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "message"),
+    [
+        ("decimal", "type=decimal needs a precision and scale"),
+        ("decimal(39,2)", "needs 1 <= p <= 38"),
+        ("decimal(0,0)", "needs 1 <= p <= 38"),
+        ("decimal(5,6)", "0 <= s <= p"),
+        ("decimal(5)", "is unsupported"),
+        ("decimal(4,-2)", "is unsupported"),
+        ("decimal(-4,2)", "is unsupported"),
+    ],
+)
+def test_bare_or_invalid_decimal_is_rejected(
+    tmp_path: Path, kind: str, message: str
+) -> None:
+    with pytest.raises(FloeConfigError, match=message.replace("(", r"\(")):
+        check(tmp_path, f"{{columns: [{{name: amt, type: '{kind}'}}]}}")

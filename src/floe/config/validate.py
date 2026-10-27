@@ -3,6 +3,7 @@
 import re
 
 from floe import __version__
+from floe.checks.cast import decimal_type
 from floe.checks.normalize import normalize_name, output_names
 from floe.config.project import (
     LineageConfig,
@@ -49,7 +50,7 @@ SCD2_DEFAULTS = {
 # Same normalisation as `checks/cast.py`, so every accepted type casts.
 _TYPE_NAMES = {
     *("string", "str", "text", "boolean", "bool", "datetime", "timestamp", "date"),
-    *("number", "float", "float32", "float64", "double", "decimal", "int"),
+    *("number", "float", "float32", "float64", "double", "int"),
     *("int8", "int16", "int32", "int64", "integer", "long"),
     *("uint8", "uint16", "uint32", "uint64"),
 }  # fmt: skip
@@ -420,7 +421,18 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
                     f"(allowed: {', '.join(allowed)})",
                 )
     for index, column in enumerate(inputs):
-        if _canonical(column.column_type) not in _TYPE_NAMES:
+        kind = _canonical(column.column_type)
+        try:
+            exact = decimal_type(column.column_type)
+        except ValueError as err:
+            raise _fail(entity, f"schema.columns[{index}].type: {err}") from err
+        if kind == "decimal":  # Float64 cannot hold exact decimals; scale is required
+            raise _fail(
+                entity,
+                f"schema.columns[{index}].type=decimal needs a precision and scale, "
+                "e.g. decimal(19,2); use float64 for approximate numbers",
+            )
+        if exact is None and kind not in _TYPE_NAMES:
             raise _fail(
                 entity,
                 f"schema.columns[{index}].type={column.column_type} is unsupported "

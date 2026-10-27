@@ -442,7 +442,7 @@ config/val2_storage_s3_ok manifest
 config/val2_storage_type_unsupported manifest
 config/val2_storages_empty manifest
 config/val2_storages_ok manifest
-config/val2_type_aliases_ok manifest
+config/val2_type_aliases_ok
 config/val2_type_time
 config/val2_type_unsupported manifest
 config/val2_uk_duplicate_column manifest
