@@ -51,7 +51,7 @@ gates below pass.
 |---|---|
 | Iceberg via Polaris REST | Delta + Unity, DuckDB/MotherDuck sinks, Glue |
 | CSV rejected output, Parquet accepted output (parity with Rust 0.7) | Parquet rejected output (post-0.8 feature) |
-| CSV, Parquet, JSON readers | XML, fixed-width, XLSX, ORC, Avro (port on demand) |
+| CSV, Parquet, JSON, Avro, ORC, XLSX readers (native Polars/pyarrow), XML (stdlib streaming parser) | Fixed-width (port on demand) |
 | S3 + local storage | ADLS, GCS |
 | YAML contract, run report, manifest: byte-compatible | Homebrew / Scoop / native packages (#278) |
 | Dagster integration | Airflow (frozen, not ported) |
@@ -171,6 +171,8 @@ What the Python Iceberg stack can do natively (compaction, z-order) is not yet v
 feasibility spike comes before the feature.
 
 ## Migration plan
+
+**Porting principle: port features, not code.** Use the native Python capability (Polars `scan_*`/`read_*`, pyarrow, PyIceberg, DuckDB, the stdlib) wherever it exists, and add only the Floe-specific layer on top. Parity is the conformance output contract (accepted/rejected rows, reports, user-facing messages) plus behaviour that decides which data is ingested (glob results), not Rust's internal implementation.
 
 ### Where the code lives
 
