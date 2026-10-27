@@ -143,13 +143,12 @@ def run(
     reports: list[tuple[str, dict[str, Any]]] = []
     client = storage_client(report_storage)
     run_dir = f"{report_path.rstrip('/')}/run_{run_id}"
-    for e in selected:  # stops at the first abort
-        result = one(e)
-        reports.append((id_path(e), result.report))
-        write_entity_report(run_dir, id_path(e), result.report, client)
-        _finished(emit, e.id, result.report)
-        if result.aborted:
-            break
+    # D36: a policy abort fails only its entity; a FloeError still stops the run
+    for e in selected:
+        report = one(e).report
+        reports.append((id_path(e), report))
+        write_entity_report(run_dir, id_path(e), report, client)
+        _finished(emit, e.id, report)
     summary = build_summary(
         root.version, reports,
         run_id=run_id, started_at=started, finished_at=_rfc3339(),

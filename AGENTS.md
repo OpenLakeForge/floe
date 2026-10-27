@@ -113,7 +113,7 @@ mypy crates/floe-python/tests/test_floe.py --ignore-missing-imports
 ## 6. PR body
 
 Use `.github/PULL_REQUEST_TEMPLATE.md`. It must state:
-- `Closes #N`: exactly one issue;
+- the issue it serves: `Closes #N`, or `Part of #N` for a PR that is one step of a stack (CI checks size only, not the body);
 - why this is the minimum change;
 - what you deliberately did not do;
 - the `/ponytail-review` result (or "ladder applied" for non-Claude agents);
