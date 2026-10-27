@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entity.name=orders sink.accepted.merge is only supported when sink.accepted.format supports merge (e.g. delta)"
+  "error": "entity.name=orders sink.accepted.merge requires sink.accepted.format=iceberg"
 }

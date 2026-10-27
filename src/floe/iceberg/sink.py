@@ -25,6 +25,7 @@ from floe.config.storage import (
     StoragesConfig,
 )
 from floe.config.types import EntityConfig, WriteMode
+from floe.config.validate import SCD2_DEFAULTS
 from floe.errors import FloeConfigError, FloeRunError
 from floe.iceberg.catalog import (
     PartitionFields,
@@ -33,7 +34,7 @@ from floe.iceberg.catalog import (
     open_duckdb,
     run_error,
 )
-from floe.iceberg.merge import merge_scd1
+from floe.iceberg.merge import merge_scd1, merge_scd2
 from floe.iceberg.write import (
     SMALL_FILE_THRESHOLD_BYTES,
     IcebergWriteResult,
@@ -143,7 +144,15 @@ def write_iceberg(
 ) -> tuple[IcebergWriteResult, dict[str, Any], dict[str, Any] | None]:
     """`frames` hold the output columns `names`; returns the result, its `accepted_output` table and merge fields."""
     reader = _reader(entity, frames, names)
-    arrow_schema = Catalog._convert_schema_if_needed(reader.schema)  # pyright: ignore[reportPrivateUsage] -- PyIceberg's own pyarrow -> Iceberg conversion
+    options = entity.sink.accepted.merge
+    scd2 = options.scd2 if options else None
+    # (is_current, valid_from, valid_to), as Rust `resolve_scd2_system_columns`
+    system = [(d if (v := getattr(scd2, f, None)) is None else v).strip() for f, d in SCD2_DEFAULTS.items()]  # fmt: skip
+    table_schema = reader.schema
+    if mode == "merge_scd2":  # the table also holds the system columns (Rust `scd2.rs`)
+        for name, kind, nullable in zip(system, (pa.bool_(), pa.timestamp("us"), pa.timestamp("us")), (False, False, True)):  # fmt: skip
+            table_schema = table_schema.append(pa.field(name, kind, nullable=nullable))
+    arrow_schema = Catalog._convert_schema_if_needed(table_schema)  # pyright: ignore[reportPrivateUsage] -- PyIceberg's own pyarrow -> Iceberg conversion
     schema: Schema = assign_fresh_schema_ids(arrow_schema)
     evolution = entity.schema_.schema_evolution
     catalog = open_catalog(target.catalog, target.storage)
@@ -152,7 +161,7 @@ def write_iceberg(
     key = [output.get(k.strip(), k.strip()) for k in primary_key]
     identifier = (target.namespace, target.table)
     with run_error("rest catalog table_exists check failed"):
-        exists = mode == "merge_scd1" and catalog.table_exists(identifier)
+        exists = mode in ("merge_scd1", "merge_scd2") and catalog.table_exists(identifier)  # fmt: skip
     if exists:
         with run_error("rest catalog load_table failed"):
             existing = set(catalog.load_table(identifier).schema().column_names)
@@ -163,19 +172,25 @@ def write_iceberg(
         partition_fields(entity), evolution.mode if evolution else "strict",
     )  # fmt: skip
     merge: dict[str, Any] | None = None
-    if mode == "merge_scd1":
-        options = entity.sink.accepted.merge
+    if mode in ("merge_scd1", "merge_scd2"):
         ignore = {output.get(c.strip(), c.strip()) for c in (options.ignore_columns or [])} if options else set()  # fmt: skip
         started = time.monotonic()
         with open_duckdb(target.catalog, target.storage) as con:
-            merged = merge_scd1(con, table, reader, key, ignore)
+            if mode == "merge_scd1":
+                merged = merge_scd1(con, table, reader, key, ignore)
+            else:
+                compare = options and options.compare_columns
+                compare = list(dict.fromkeys(output.get(c.strip(), c.strip()) for c in compare if c.strip())) if compare else None  # fmt: skip
+                merged = merge_scd2(con, table, reader, key, compare, ignore, system)
         result = merged.write
         merge = {
             "merge_key": primary_key,  # Rust's Delta merge reports the configured key
             "inserted_count": merged.inserted_count,
             "updated_count": merged.updated_count,
-            "merge_elapsed_ms": int((time.monotonic() - started) * 1000),
         }
+        if mode == "merge_scd2":  # Rust's report omits these for SCD1
+            merge |= {"closed_count": merged.closed_count, "unchanged_count": merged.unchanged_count}  # fmt: skip
+        merge["merge_elapsed_ms"] = int((time.monotonic() - started) * 1000)
     else:
         options = entity.sink.accepted.options
         size = options.max_size_per_file if options else None
