@@ -99,8 +99,15 @@ def build_floe_asset_defs(
             )
 
     assets_defs = []
+    domain_groups: dict[tuple[str, str], list[ManifestEntity]] = {}
     for entity in entity_items:
         runner_definition = resolve_entity_runner(manifest, entity)
+        source_key = _source_key(entity, manifest.sources, _source_scope(manifest))
+        if runner_definition.runner_type == "kubernetes_job" and runner_definition.job_scope == "domain":
+            # one Job per (domain, runner): an entity with its own runner gets its own Job
+            group = (entity.domain or "default", entity.runner or manifest.runners.default)
+            domain_groups.setdefault(group, []).append(entity)
+            continue
         assets_defs.append(
             _make_entity_multi_asset(
                 entity=entity,
@@ -110,8 +117,25 @@ def build_floe_asset_defs(
                 runner=runner,
                 execution=manifest.execution,
                 runner_definition=runner_definition,
-                source_key=_source_key(entity, manifest.sources, _source_scope(manifest)),
+                source_key=source_key,
                 table=entity_table(manifest, entity),
+            )
+        )
+    for (domain, runner_name), members in domain_groups.items():
+        assets_defs.append(
+            _make_domain_multi_asset(
+                domain=domain,
+                runner_name=runner_name,
+                entities=members,
+                source_keys={
+                    e.name: _source_key(e, manifest.sources, _source_scope(manifest)) for e in members
+                },
+                config_uri=config_uri,
+                manifest_path=manifest_path,
+                manifest_uri=manifest_uri,
+                runner=runner,
+                execution=manifest.execution,
+                runner_definition=manifest.runners.definitions[runner_name],
             )
         )
 
@@ -316,6 +340,8 @@ def _entity_events(
     result: RunResult,
     summary: dict[str, Any] | None,
     failed: bool,
+    out_prefix: str = "",
+    rejected_selected: bool = True,
 ):
     """Yield one entity's checks and outputs from a finished run; return its `Failure` (not raised)."""
     accepted_key = list(entity.asset_key)
@@ -370,8 +396,8 @@ def _entity_events(
     if failed:
         return Failure(description=f"floe run failed for entity {entity_name}", metadata=metadata)
 
-    yield Output(value=None, output_name="accepted", metadata=metadata)
-    if _has_rejected_asset(entity):
+    yield Output(value=None, output_name=f"{out_prefix}accepted", metadata=metadata)
+    if _has_rejected_asset(entity) and rejected_selected:
         rows = entity_stats.get("rows") or 0
         rejected_count = entity_stats.get("rejected") or 0
         rejection_rate = rejected_count / rows if rows > 0 else 0.0
@@ -389,12 +415,108 @@ def _entity_events(
             rejected_metadata["files_with_rejections"] = MetadataValue.int(files_with_rejections)
             if dominant:
                 rejected_metadata["dominant_rejection_reason"] = dominant
-        yield Output(value=None, output_name="rejected", metadata=rejected_metadata)
+        yield Output(value=None, output_name=f"{out_prefix}rejected", metadata=rejected_metadata)
     return None
 
 
 def _rejected_key(entity: ManifestEntity) -> list[str]:
     return list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_rejected"]
+
+
+# After an `aborted` entity `floe run` stops, so the entities after it are absent from the summary and
+# fail here as "not run"; `rejected` and `success_with_warnings` entities are materialized.
+_ENTITY_FAILED = ("aborted", "failed")
+
+
+def _make_domain_multi_asset(
+    *,
+    domain: str,
+    runner_name: str,
+    entities: list[ManifestEntity],
+    source_keys: dict[str, list[str]],
+    config_uri: str,
+    manifest_path: str,
+    manifest_uri: str | None,
+    runner: Runner,
+    execution: ManifestExecution,
+    runner_definition: ManifestRunnerDefinition,
+):
+    """`job_scope: domain`: one subsettable multi-asset, so one Job runs the selected entities in order."""
+    outs: dict[str, AssetOut] = {}
+    check_specs = []
+    for entity in entities:
+        op = _op_name(entity)
+        # optional: a subsettable asset yields only its selected outputs, and fails the step itself
+        outs[f"{op}__accepted"] = AssetOut(
+            key=AssetKey(entity.asset_key), group_name=entity.group_name, is_required=False
+        )
+        if _has_rejected_asset(entity):
+            outs[f"{op}__rejected"] = AssetOut(
+                key=AssetKey(_rejected_key(entity)), group_name=entity.group_name, is_required=False
+            )
+        check_specs.extend(build_asset_check_specs(list(entity.asset_key)))
+    deps = {tuple(key): AssetKey(key) for key in source_keys.values()}
+
+    # ponytail: no `floe/table` op tag here, an op spans several tables; the entities of one Job run
+    # one after another, so only runs of different Jobs on one table can still overlap (#924).
+    @multi_asset(
+        name=re.sub(r"[^A-Za-z0-9_]", "_", f"floe_{domain}__{runner_name}"),
+        outs=outs,
+        deps=list(deps.values()),
+        check_specs=check_specs,
+        can_subset=True,
+        compute_kind="floe",
+    )
+    def _domain_asset(context):
+        chosen = [
+            entity for entity in entities if AssetKey(entity.asset_key) in context.selected_asset_keys
+        ]  # manifest order
+        run = getattr(context, "run", None)
+        run_id = getattr(run, "run_id", None) if run is not None else None
+        result = runner.run_floe_entities(
+            config_uri=config_uri,
+            manifest_uri=manifest_uri or manifest_path,
+            run_id=run_id,
+            domain=domain,
+            entities=[entity.name for entity in chosen],
+            execution=execution,
+            runner_definition=runner_definition,
+        )
+        finished = _parse_finished(context, result, execution, run_id)
+        summary = _load_run_summary(context, finished, config_uri)
+        run_failed = (
+            result.exit_code != 0
+            or finished.exit_code != 0
+            or ((result.status is not None) and (result.status != STATUS_SUCCEEDED))
+        )
+        failures: list[str] = []
+        for entity in chosen:
+            if summary is None:
+                failed = run_failed
+            else:
+                status = _extract_entity_stats(summary, entity.name).get("entity_status")
+                failed = status is None or status in _ENTITY_FAILED
+            failure = yield from _entity_events(
+                context,
+                entity=entity,
+                config_uri=config_uri,
+                finished=finished,
+                result=result,
+                summary=summary,
+                failed=failed,
+                out_prefix=f"{_op_name(entity)}__",
+                rejected_selected=AssetKey(_rejected_key(entity)) in context.selected_asset_keys,
+            )
+            if failure is not None:
+                failures.append(entity.name)
+        if failures:
+            raise Failure(
+                description=f"floe run failed for entities {', '.join(failures)}",
+                metadata={"failed_entities": failures},
+            )
+
+    return _domain_asset
+
 
 
 def _log_floe_stderr(context: Any, stderr: str) -> None:
