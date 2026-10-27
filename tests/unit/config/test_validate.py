@@ -353,6 +353,8 @@ def test_decimal_with_precision_and_scale_is_accepted(tmp_path: Path) -> None:
         ("decimal(0,0)", "needs 1 <= p <= 38"),
         ("decimal(5,6)", "0 <= s <= p"),
         ("decimal(5)", "is unsupported"),
+        ("decimal(4,-2)", "is unsupported"),
+        ("decimal(-4,2)", "is unsupported"),
     ],
 )
 def test_bare_or_invalid_decimal_is_rejected(

@@ -338,3 +338,17 @@ def test_decimal_from_native_float_column_keeps_scale() -> None:
     typed, mask = cast_column("v", "decimal(10,2)", dtype=pl.Float64)
     out = pl.DataFrame({"v": [1.5, -2.25]}).select(typed, mask)
     assert out["v"].to_list() == [Decimal("1.50"), Decimal("-2.25")]
+
+
+def test_decimal_strict_rejects_exponent_notation() -> None:
+    _, errors = run(["1e-3", "1.230e-2", "1.234e1"], "decimal(4,2)")
+    assert errors == [True, True, True]
+    typed, errors = run(["1e-3"], "decimal(4,2)", "coerce")
+    assert typed == [Decimal("0.00")]
+    assert errors == [False]
+
+
+def test_decimal_keeps_the_sign_of_its_parameters() -> None:
+    for kind in ("decimal(4,-2)", "decimal(-4,2)"):
+        with pytest.raises(ValueError, match="unsupported column type"):
+            cast_column("v", kind)

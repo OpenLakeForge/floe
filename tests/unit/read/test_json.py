@@ -10,13 +10,13 @@ from floe.errors import FloeIoError
 from floe.read.json import JsonChunk, parse_selector, read_json
 
 
-def column(name: str, source: str | None = None) -> ColumnConfig:
+def column(name: str, source: str | None = None, kind: str = "string") -> ColumnConfig:
     return ColumnConfig.model_validate(
         {
             **dict.fromkeys(("nullable", "unique", "width", "trim")),
             "name": name,
             "source": source,
-            "column_type": "string",
+            "column_type": kind,
         }
     )
 
@@ -184,3 +184,18 @@ def test_parse_selector_errors(selector: str, message: str) -> None:
         ValueError, match=message.replace("[", r"\[").replace("]", r"\]")
     ):
         parse_selector(selector)
+
+
+def test_decimal_column_keeps_the_json_number_token(tmp_path: Path) -> None:
+    [chunk] = read(
+        tmp_path,
+        '[{"amt":0.12345678901234567890,"big":123456789012345678901234.5,"f":0.10}]',
+        column("amt", kind="decimal(38,20)"),
+        column("big", kind="decimal(30,1)"),
+        column("f"),
+    )
+    assert chunk.df.row(0) == (
+        "0.12345678901234567890",
+        "123456789012345678901234.5",
+        "0.1",
+    )

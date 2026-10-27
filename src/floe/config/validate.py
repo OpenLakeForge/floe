@@ -423,7 +423,7 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
     for index, column in enumerate(inputs):
         kind = _canonical(column.column_type)
         try:
-            exact = decimal_type(kind)
+            exact = decimal_type(column.column_type)
         except ValueError as err:
             raise _fail(entity, f"schema.columns[{index}].type: {err}") from err
         if kind == "decimal":  # Float64 cannot hold exact decimals; scale is required

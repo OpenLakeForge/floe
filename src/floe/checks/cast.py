@@ -15,19 +15,22 @@ _DTYPES: dict[str, pl.DataType] = {
     "number": pl.Float64(),
 }  # fmt: skip
 
-_DECIMAL = re.compile(r"decimal\((\d+),\s*(\d+)\)")
+_DECIMAL = re.compile(r"decimal\(\s*(\d+)\s*,\s*(\d+)\s*\)")
 
 
-def decimal_type(kind: str) -> pl.Decimal | None:
+def decimal_type(column_type: str) -> pl.Decimal | None:
     """`decimal(p,s)` as an exact `pl.Decimal`, or None when `kind` is not one.
 
     Raises ValueError for a precision outside 1..38 or a scale outside 0..precision.
     """
-    if not (m := _DECIMAL.fullmatch(kind)):
+    # matched on the declared type: `_canonical` would drop the sign of `decimal(4,-2)`
+    if not (m := _DECIMAL.fullmatch(column_type.lower())):
         return None
     precision, scale = int(m[1]), int(m[2])
     if not 1 <= precision <= 38 or scale > precision:
-        raise ValueError(f"decimal(p,s) needs 1 <= p <= 38 and 0 <= s <= p, got {kind}")
+        raise ValueError(
+            f"decimal(p,s) needs 1 <= p <= 38 and 0 <= s <= p, got {column_type}"
+        )
     return pl.Decimal(precision, scale)
 
 
@@ -123,13 +126,11 @@ def cast_column(
             text = text.str.replace("e+", "e", literal=True)
         return text, pl.lit(False).alias(f"_e_cast_{name}")
     fractional = None
-    if (exact := decimal_type(kind)) is not None:
+    if (exact := decimal_type(column_type)) is not None:
         typed = raw.cast(exact, strict=False)
-        if (
-            not native
-        ):  # strict: digits beyond the scale are a cast_error, not a silent rounding
+        if not native:  # strict: an exponent or digits beyond the scale are a cast_error, not a silent rounding
             fractional = raw.str.contains(
-                rf"\.[0-9]{{{exact.scale}}}[0-9]*[1-9]"
+                rf"[eE]|\.[0-9]{{{exact.scale}}}[0-9]*[1-9]"
             ).fill_null(False)
     elif kind in _DTYPES:
         typed = raw.cast(_DTYPES[kind], strict=False)

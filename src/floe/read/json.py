@@ -5,10 +5,11 @@ import math
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, Self
 
 import polars as pl
 
+from floe.checks.cast import decimal_type
 from floe.config.entity import WHITE_SPACE
 from floe.config.types import ColumnConfig, SourceOptions
 from floe.errors import FloeIoError
@@ -79,8 +80,24 @@ def _compact(value: Any) -> str:
     )  # serde_json sorts keys
 
 
+class _Number(float):
+    """A JSON float that keeps its token, so a `decimal(p,s)` column reads it without rounding."""
+
+    text: str
+
+    def __new__(cls, text: str) -> Self:
+        self = super().__new__(cls, text)
+        self.text = text
+        return self
+
+
 def _cell(
-    value: Any, tokens: Selector, source: str, cast_mode: str, where: str
+    value: Any,
+    tokens: Selector,
+    source: str,
+    cast_mode: str,
+    where: str,
+    exact: bool = False,
 ) -> str | None:
     """Missing paths and JSON null are null; objects and arrays are an error unless `coerce`."""
     row: Any = value
@@ -99,6 +116,8 @@ def _cell(
         return _compact(row)
     if isinstance(row, bool):
         return "true" if row else "false"
+    if exact and isinstance(row, _Number):
+        return row.text
     return str(row)
 
 
@@ -107,7 +126,7 @@ def _reject_constant(name: str) -> NoReturn:
 
 
 def _float(text: str) -> float:
-    value = float(text)
+    value = _Number(text)
     if math.isinf(value):
         raise ValueError("number out of range")
     return value
@@ -198,11 +217,15 @@ def read_json(
             {n: pl.Series(n, list(c), dtype=pl.String) for n, c in zip(names, cols)}
         )
 
+    exact = [decimal_type(c.column_type) is not None for c in columns]
     rows: list[list[str | None]] = []
     done = 0
     for where, value in _rows(path, mode):
         rows.append(
-            [_cell(value, p, n, cast_mode, where) for p, n in zip(plans, names)]
+            [
+                _cell(value, p, n, cast_mode, where, e)
+                for p, n, e in zip(plans, names, exact)
+            ]
         )
         if len(rows) == chunk_rows:
             yield JsonChunk(done, frame(rows))
