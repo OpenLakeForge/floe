@@ -181,10 +181,10 @@ def maintain(
     entities: list[str] | None = None,
     older_than_days: int = FLOOR_DAYS,
     retain_last: int = FLOOR_SNAPSHOTS,
-    orphan_delay_days: int = ORPHAN_DELAY_DAYS,
-    dry_run: bool = False,
     profile_vars: dict[str, str] | None = None,
     profile_path: str | None = None,
+    orphan_delay_days: int = ORPHAN_DELAY_DAYS,
+    dry_run: bool = False,
 ) -> list[dict[str, Any]]:
     """`floe maintain`: expire Iceberg snapshots behind the retention floor (7 days, 10 snapshots), then remove orphan files."""
     path, root = _load(config_path, _profile(profile_path, profile_vars))

@@ -61,7 +61,7 @@ def _list(location: str, storage: StorageDefinition | None) -> list[tuple[str, f
         client = S3Client(bucket, s3 and s3.region, s3 and s3.endpoint, s3 and s3.path_style_access)  # fmt: skip
         return [
             (r.uri, datetime.fromisoformat(r.last_modified).timestamp() if r.last_modified else None,r.size or 0)
-            for r in client.list(f"{key.rstrip('/')}/")
+            for r in client.list(f"{key.strip('/')}/" if key.strip("/") else "")  # a bucket root lists every key
         ]  # fmt: skip
     # ponytail: LocalClient.list is flat and has no mtime (a Rust port), so a local warehouse is walked here
     files = (p for p in Path(_key(location)).rglob("*") if p.is_file())

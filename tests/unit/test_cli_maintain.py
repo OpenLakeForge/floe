@@ -190,7 +190,8 @@ def test_public_api(tmp_path: Path, catalog: StubCatalog) -> None:
         "entity": "Orders", "table": "sales.orders", "expired_snapshots": 5, "kept_snapshots": 10,
         "orphan_files": [], "orphan_bytes": 0,
     }  # fmt: skip
-    assert floe.maintain("config.yml") == [expected]
+    # the profile arguments keep their positions from #950
+    assert floe.maintain("config.yml", None, 7, 10, {}) == [expected]
     with pytest.raises(floe.FloeConfigError, match="retention floor"):
         floe.maintain("config.yml", older_than_days=6)
 
@@ -259,7 +260,8 @@ def test_orphan_removal_refuses_a_listing_without_the_current_metadata(tmp_path:
     assert orphan.exists()
 
 
-def test_an_s3_location_is_listed_through_the_storage_client(monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+@pytest.mark.parametrize(("location", "prefix"), [("s3://w/t/orders", "t/orders/"), ("s3://w/t/orders/", "t/orders/"), ("s3://w", ""), ("s3://w/", "")])  # fmt: skip
+def test_an_s3_location_is_listed_through_the_storage_client(monkeypatch: pytest.MonkeyPatch, location: str, prefix: str) -> None:  # fmt: skip
     calls: list[tuple[object, ...]] = []
 
     class FakeS3:
@@ -272,6 +274,6 @@ def test_an_s3_location_is_listed_through_the_storage_client(monkeypatch: pytest
 
     # `floe.maintain` is also the public function, so the module comes from sys.modules
     monkeypatch.setattr(sys.modules["floe.maintain"], "S3Client", FakeS3)
-    listed = _list("s3://w/t/orders", None)
-    assert calls == [("w", None, None, None), ("t/orders/",)]
+    listed = _list(location, None)
+    assert calls == [("w", None, None, None), (prefix,)]
     assert listed == [("s3://w/t/orders/data/a.parquet", 1790812800.0, 7)]
