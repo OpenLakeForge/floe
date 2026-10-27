@@ -243,8 +243,7 @@ Current scope:
 
 - No schema evolution
 - No merge/upsert
-- No cleanup/garbage collection of orphaned files/metadata
-- Snapshot expiry only, with `floe maintain` (Python core, see [CLI usage](../cli.md)); no compaction
+- Snapshot expiry and orphan file removal with `floe maintain` (Python core, see [CLI usage](../cli.md)); no compaction
 
 ## Glue catalog scope and limitations
 
