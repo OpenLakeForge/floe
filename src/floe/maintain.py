@@ -37,7 +37,7 @@ def expire_snapshots(table: Table, older_than_days: int, retain_last: int) -> tu
     return len(expired), len(newest) - len(expired)
 
 
-def maintain(path: Path, root: RootConfig, entities: Sequence[str], older_than_days: int = FLOOR_DAYS, retain_last: int = FLOOR_SNAPSHOTS) -> list[dict[str, Any]]:  # fmt: skip
+def maintain(path: Path, root: RootConfig, entities: Sequence[str], older_than_days: int, retain_last: int) -> list[dict[str, Any]]:  # fmt: skip
     """Expire snapshots of every selected entity's Iceberg table; a request below the floor fails closed."""
     if older_than_days < FLOOR_DAYS or retain_last < FLOOR_SNAPSHOTS:
         raise FloeConfigError(
