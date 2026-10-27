@@ -626,7 +626,7 @@ class OperatorKubernetesRoutingTests(unittest.TestCase):
     def _write_k8s_manifest(self, base: Path, config_path: Path) -> Path:
         manifest_path = base / "manifest.k8s.json"
         payload = {
-            "schema": "floe.manifest.v1",
+            "spec_version": "0.8",
             "generated_at_ts_ms": 1739500000000,
             "floe_version": "0.3.0",
             "config_uri": str(config_path),
@@ -733,7 +733,7 @@ class OperatorKubernetesRoutingTests(unittest.TestCase):
 
             manifest_path = base / "manifest.json"
             payload = {
-                "schema": "floe.manifest.v1",
+                "spec_version": "0.8",
                 "generated_at_ts_ms": 1739500000000,
                 "floe_version": "0.3.0",
                 "config_uri": str(config_path),
