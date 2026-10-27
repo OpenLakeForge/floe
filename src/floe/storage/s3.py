@@ -73,11 +73,15 @@ class S3Client:
         key = path.lstrip("/")
         return f"s3://{self.bucket}/{key}" if key else f"s3://{self.bucket}"
 
-    def list(self, prefix: str) -> list[ObjectRef]:
+    def list(self, prefix: str, start_after: str = "") -> list[ObjectRef]:
+        """Keys under `prefix`; D30: only those after `start_after`."""
         try:
-            pages = self._client.get_paginator("list_objects_v2").paginate(
-                Bucket=self.bucket, Prefix=prefix
-            )
+            paginator = self._client.get_paginator("list_objects_v2")
+            pages = (
+                paginator.paginate(Bucket=self.bucket, Prefix=prefix, StartAfter=start_after)
+                if start_after
+                else paginator.paginate(Bucket=self.bucket, Prefix=prefix)
+            )  # fmt: skip
             return [
                 ObjectRef(
                     f"s3://{self.bucket}/{o['Key']}",

@@ -7,6 +7,8 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
+from datetime import datetime
+from functools import partial
 from itertools import chain
 from pathlib import Path
 from typing import Any
@@ -47,6 +49,7 @@ from floe.iceberg.sink import (
     write_iceberg,
 )
 from floe.iceberg.unique import seed_from_table
+from floe.iceberg.write import find_committed
 from floe.pii import apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.csv import RAGGED_MESSAGE, read_csv
@@ -59,11 +62,14 @@ from floe.report.summary import run_outcome
 from floe.run.events import NO_EVENTS, Emitter
 from floe.state import (
     CLAIM_TTL_SECONDS,
+    Claim,
+    EntityState,
     FileState,
     Loaded,
     claim_all,
     claim_inputs,
     promote,
+    read_state,
     release,
     renew,
 )
@@ -77,7 +83,14 @@ from floe.storage.inputs import (
     suffixes_for_format,
 )
 from floe.storage.local import LocalClient
-from floe.storage.partitioning import in_load_order, partition_of, source_root
+from floe.storage.partitioning import (
+    advance,
+    in_load_order,
+    listing_start,
+    partition_of,
+    source_root,
+    window,
+)
 from floe.storage.paths import normalize_local_path
 from floe.storage.resolve import resolve_path, storage_client
 from floe.storage.s3 import S3Client
@@ -233,6 +246,7 @@ class _Plan:
         None  # the merge key's unique check; its duplicates are rejected even under warn (Rust `enforce_reject`)
     )
     derived: dict[str, list[pl.Expr]] = field(default_factory=dict[str, list[pl.Expr]])  # D28: by input URI  # fmt: skip
+    root: str | None = None  # D29: the source root, when `source.partitioning` is set
 
 
 def _refuse_overlap(who: str, sink: str, inputs: list[InputFile]) -> None:
@@ -244,30 +258,37 @@ def _refuse_overlap(who: str, sink: str, inputs: list[InputFile]) -> None:
 
 
 def _archive(plan: _Plan, file: InputFile) -> str | None:
-    """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>` (Rust `archive_input`)."""
+    """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>` (Rust `archive_input`).
+
+    D29: with `source.partitioning`, its partition sub-path is kept: `<archive>/<entity>/yyyy/MM/dd/<batch>/<stem>__run-…`.
+    """
     if plan.archive is None:
         return None
     base, client = plan.archive
     if file.source_uri.startswith(f"{base}/"):
         return None  # D24: an archived input stays put
     # Rust: copy, then delete the source; the report shows a local target as a path
-    uri = archive_input_file(client, plan.run_id, plan.entity.name, lambda rel: f"{base}/{rel}", file)  # fmt: skip
+    sub = file.source_uri.removeprefix(f"{plan.root}/").rpartition("/")[0] if plan.root else ""  # fmt: skip
+    uri = archive_input_file(client, plan.run_id, plan.entity.name, lambda rel: f"{base}/{rel}", file, sub)  # fmt: skip
     return uri.removeprefix("local://")
 
 
 def _with_archived(e: EntityConfig, archive: tuple[str, StorageClient], source: Callable[[], ResolvedInputs]) -> ResolvedInputs:  # fmt: skip
-    """D24: a full refresh reads `<archive>/<entity>/` first (by name), then the source inputs; either may be empty, not both.
+    """D24: a full refresh reads `<archive>/<entity>/` first (by name; D29: in load order), then the source inputs; either may be empty, not both.
 
     Only "no inputs matched" counts as empty: any other listing error fails the refresh rather than rebuild from part of the inputs.
     """
     base, client = archive
+    p = e.source.partitioning
     path = e.name if base.startswith("local://") else f"{base}/{e.name}/"
     try:
-        old = resolve_inputs(Path(base.removeprefix("local://")), path, e.source.format, e.name, e.source.storage or "local", client)  # fmt: skip
+        old = resolve_inputs(Path(base.removeprefix("local://")), path, e.source.format, e.name, e.source.storage or "local", client, recursive=p is not None)  # fmt: skip
     except NoInputsError:
         return (
             source()
         )  # nothing archived: the source's "no input files matched" stands
+    if p is not None:  # D29: the archive keeps the partition sub-paths
+        old = in_load_order(p, e.name, f"{base}/{e.name}", old, archived=True)
     try:
         new = source()
     except NoInputsError:  # no new source file: rebuild from the archive alone
@@ -529,6 +550,12 @@ def skipped_reports(
     return out
 
 
+def _emit_skipped(emit: Emitter, entity: str, reports: list[dict[str, Any]]) -> None:
+    for r in reports:
+        emit("file_finished", entity=entity, input=r["input_file"], status="skipped",
+             skip_reason=r["skip_reason"], rows=0, accepted=0, rejected=0, elapsed_ms=0)  # fmt: skip
+
+
 class Incremental:
     """Claims the entity's inputs, renews the claims while it runs, then promotes or releases them."""
 
@@ -539,8 +566,10 @@ class Incremental:
         self.client: StorageClient = LocalClient()
         self.uri = ""
         self.claimed: Loaded | None = None
+        self.expired: dict[str, Claim] = {}  # the dead runs' claims this run took over
         # the file reports, set once the sink step is done (#915)
         self.committed: list[dict[str, Any]] | None = None
+        self.advance: Callable[[EntityState, list[str]], None] | None = None  # D30
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -553,14 +582,56 @@ class Incremental:
         if self.full_refresh:
             self._hold(claim_all(self.client, self.uri, e.name, self.run_id, inputs))
             return inputs, []
-        got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs)
+        got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs, e.sink.write_mode.startswith("merge"))  # fmt: skip
         reports = skipped_reports(e, got.already_processed, got.active_claims)
-        for r in reports:
-            emit("file_finished", entity=e.name, input=r["input_file"], status="skipped",
-                 skip_reason=r["skip_reason"], rows=0, accepted=0, rejected=0, elapsed_ms=0)  # fmt: skip
+        _emit_skipped(emit, e.name, reports)
+        self.expired = got.expired
         if got.claimed:
             self._hold(got.claimed)
         return got.pending, reports
+
+    def skip_committed(self, table: Table | None, pending: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:  # fmt: skip
+        """#545 retry guard (append): the reports of the pending inputs a dead run already committed, before any is read.
+
+        `file` mode re-derives each dead run's batch from its expired claims (by `run_id`, with their size and mtime),
+        so a retry that also holds new inputs still matches; it looks back to that run's claim. Other modes match the
+        whole set.
+        """
+        e = self.entity
+        if table is None or not pending or self.full_refresh:
+            return []
+        if e.incremental_mode != "file":
+            done = pending if find_committed(table, input_hash(e, pending)) else []
+            return self._skipped(done, emit)
+        ours = {f.source_uri for f in pending}
+        runs: dict[str, dict[str, Claim]] = {}
+        for u, c in self.expired.items():
+            runs.setdefault(c.run_id, {})[u] = c
+        committed: set[str] = set()
+        for claims in runs.values():
+            if ours.isdisjoint(claims):
+                continue  # new inputs, or a reload after `floe state reset`
+            since = min(datetime.fromisoformat(c.acquired_at) for c in claims.values())
+            batch = [InputFile(u, "", "", c.size, c.mtime) for u, c in claims.items()]
+            found = find_committed(table, input_hash(e, batch), since)
+            # fail closed; `run_entity` releases, which puts the dead runs' claims back so the next run fails too
+            if found is None:
+                raise FloeRunError(
+                    f"entity.name={e.name} cannot tell whether a run that died after claiming its inputs at {since} "
+                    "committed them: the table's snapshots since then were expired (retention floor: 7 days and at least "
+                    "10 snapshots); run `floe state reset` for the entity, then rerun"
+                )  # fmt: skip
+            if found:
+                committed |= claims.keys() & ours
+        # promote now, so a later failure of the other inputs can't release them
+        if committed and self.claimed:
+            promote(self.client, self.uri, self.run_id, self.claimed, only=committed, advance=self.advance)  # fmt: skip
+        return self._skipped([f for f in pending if f.source_uri in committed], emit)
+
+    def _skipped(self, files: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:
+        reports = [skipped_report(f.source_uri, "already_committed") for f in files]
+        _emit_skipped(emit, self.entity.name, reports)
+        return reports
 
     def _hold(self, claimed: Loaded) -> None:
         self.claimed = claimed
@@ -581,16 +652,27 @@ class Incremental:
         return claimed
 
     def release(self) -> None:
+        """The dead runs' claims this run took over go back: the next run checks them again (#545)."""
         if claimed := self._end():
-            release(self.client, self.uri, self.run_id, claimed)
+            # D30: an older day's released file stays listed for a retry
+            release(self.client, self.uri, self.run_id, claimed, self.expired, self.advance is not None and not self.full_refresh)  # fmt: skip
 
     def finish(self, files: list[dict[str, Any]]) -> None:
-        """Promote unless the entity failed or aborted (Rust commits on success, warnings and rejected)."""
+        """Promote unless the entity failed (Rust commits on success, warnings and rejected).
+
+        #918: an abort still writes the files before it (Rust 0.7), so it promotes those and releases the rest;
+        under `overwrite` it releases them all, as the retry rebuilds the output from every file.
+        """
         status, _ = run_outcome([f["status"] for f in files])
-        if status in ("failed", "aborted"):
+        if status == "failed" or (status == "aborted" and self.entity.sink.write_mode == "overwrite"):  # fmt: skip
             return self.release()
         if claimed := self._end():
-            promote(self.client, self.uri, self.run_id, claimed, self.full_refresh)
+            only = {f["input_file"] for f in files if f["status"] != "aborted"} if status == "aborted" else None  # fmt: skip
+            promote(self.client, self.uri, self.run_id, claimed, self.full_refresh, only, self.advance)  # fmt: skip
+            if (
+                only is not None
+            ):  # D30: the aborted day's released files stay listed for a retry
+                release(self.client, self.uri, self.run_id, claimed, self.expired, self.advance is not None and not self.full_refresh)  # fmt: skip
 
 
 def resolve_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None) -> tuple[str, LocalClient | S3Client]:  # fmt: skip
@@ -616,9 +698,8 @@ def _derived(entity: EntityConfig, source_uri: str, archive: str | None, files: 
         return {}
     root, out = source_root(source_uri), dict[str, list[pl.Expr]]()
     for f in files:
-        if archive and f.source_uri.startswith(f"{archive}/"):  # a full refresh
-            raise FloeRunError(f"entity.name={entity.name} archived inputs keep their partition path only with D29 (#884): {f.source_uri}")  # fmt: skip
-        part = partition_of(p, entity.name, root, f.source_uri)
+        archived = archive and f.source_uri.startswith(f"{archive}/")  # D29: a full refresh  # fmt: skip
+        part = partition_of(p, entity.name, f"{archive}/{entity.name}" if archived else root, f.source_uri)  # fmt: skip
         out[f.source_uri] = [pl.lit(part.when).alias(p.date_column)]
         if p.batch_column:
             out[f.source_uri].append(
@@ -631,17 +712,30 @@ def list_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig
     """The source inputs; a local path keeps its globs relative to the config.
 
     D31: the archive is never listed as source input; only a full refresh reads it, explicitly (D24).
+    D30: `file` mode with partitioning lists only from the state's window.
     """
     src, archive = entity.source, archive_location(entity, config_dir, storages)
-    p = src.partitioning
+    p, root, state = src.partitioning, source_root(uri), None
+    if p and entity.incremental_mode == "file" and not full_refresh:
+        at, state_client = state_uri(entity, config_dir, storages)
+        state = read_state(state_client, at, entity.name)
+    start = window(p, entity.name, root, state) if p else None
+    after = listing_start(p, start) if p and start else None
 
     def source() -> ResolvedInputs:
         inputs = resolve_inputs(
             config_dir, src.path if uri.startswith("local://") else uri, src.format, entity.name,
             src.storage or "local", client, glob_override=src.options.glob, exclude=archive and archive[0],
             recursive=bool(src.options.recursive) or p is not None,  # D28: partitioning lists recursively
+            after=f"{root}/{after}" if after else "",
         )  # fmt: skip
-        return in_load_order(p, entity.name, source_root(uri), inputs) if p else inputs
+        if not p:
+            return inputs
+        inputs = in_load_order(p, entity.name, root, inputs, start=start)
+        if start is None or state is None:
+            return inputs
+        late = f"entity.name={entity.name} incremental_mode=file lists source.partitioning dates from {start} (watermark {state.watermark}, lookback_days {p.lookback_days}); a late file in an older day is not ingested until --full-refresh"  # fmt: skip
+        return replace(inputs, warning=late)
 
     if full_refresh and archive and entity.incremental_mode in ("none", "archive"):
         return _with_archived(entity, (archive[0], storage_client(archive[1])), source)
@@ -735,6 +829,7 @@ def _run_entity(
     location = archive_location(entity, config_dir, storages)
     if location and entity.incremental_mode in ("none", "archive"):
         plan.archive = location[0], storage_client(location[1])
+        plan.root = source_root(source_uri) if entity.source.partitioning else None
     if sink.write_mode in ("merge_scd1", "merge_scd2") and entity.schema_.primary_key:
         pk = [runtime.get(k.strip(), k.strip()) for k in entity.schema_.primary_key]
         plan.merge_key = (
@@ -748,10 +843,8 @@ def _run_entity(
             base,
             sorted({runtime.get(c, c) for k in keys for c in k}),
         )
-    elif sink.write_mode == "append" and target is not None and keys:
-        plan.table = existing_table(
-            target
-        )  # Rust `seed_unique_tracker`; no table, nothing to seed
+    elif sink.write_mode == "append" and target is not None:
+        plan.table = existing_table(target)  # fmt: skip  # Rust `seed_unique_tracker`, and the retry guard
 
     def source() -> ResolvedInputs:
         # `listed`: the run's pre-check already listed the source (#864)
@@ -764,14 +857,27 @@ def _run_entity(
         )
 
     inputs = source()
+    if inputs.warning:  # D30
+        emit("log", log_level="warn", code=None, message=inputs.warning, entity=entity.name, input=None)  # fmt: skip
+    if entity.source.partitioning and entity.incremental_mode == "file":
+        dated = entity.source.partitioning, entity.name, source_root(source_uri)
+        inc.advance = partial(advance, *dated)
     archive = plan.archive  # a full refresh lists it too
     plan.derived = _derived(entity, source_uri, archive and archive[0], inputs.files)
     # D34 (#931): same store only (a bucket name repeats across endpoints); before the claim, so a refusal leaves nothing to release
     if target is None and getattr(client, "endpoint", None) == getattr(accepted_client, "endpoint", None):  # fmt: skip
         _refuse_overlap(who, base, inputs.files)
     pending, files = inc.claim(inputs.files, emit)
+    if done := inc.skip_committed(plan.table, pending, emit):
+        files += done
+        skip = {r["input_file"] for r in done}
+        # `archive` mode: the archive is the marker
+        plan.to_archive += [f for f in pending if f.source_uri in skip]
+        pending = [f for f in pending if f.source_uri not in skip]
     plan.input_hash = input_hash(entity, pending)
     frames: list[pl.DataFrame] = []
+    # #545: the snapshot's fingerprint names only the files it holds in full, never an aborted batch
+    complete: list[InputFile] = []
     skipped = len(files)
     downloader = None if isinstance(client, LocalClient) else client
     # Rust `localize_input`: a remote input is read from a local copy
@@ -790,6 +896,7 @@ def _run_entity(
             frames += kept
             if report["status"] == "aborted":
                 break
+            complete.append(f)
     files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
 
     table: dict[str, Any] | None = None
@@ -806,7 +913,7 @@ def _run_entity(
             write = write_accepted(pl.concat(frames), accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
         else:
             outputs = [plan.out_map.get(n, n) for n in names]
-            result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, plan.input_hash)  # fmt: skip
+            result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, input_hash(entity, complete))  # fmt: skip
             write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
                                   result.avg_file_size_mb, result.small_files_count)  # fmt: skip
     else:

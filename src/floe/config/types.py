@@ -87,6 +87,7 @@ class SourcePartitioning(_Model):  # D28
     pattern: str
     date_column: str
     batch_column: str | None
+    lookback_days: int = 1  # D30: file mode lists from the watermark minus these days
 
 
 class SourceConfig(_Model):

@@ -11,9 +11,18 @@ All notable changes to Floe are documented in this file.
 
 ## dagster-floe (unreleased)
 
+- **Iceberg entities carry a `floe/table` op tag (#924).** The value is the resolved
+  `catalog.namespace.table` from the manifest, so entities writing one table share it and other
+  tables don't. Advisory, and an op tag: a `tag_concurrency_limits` entry on `floe/table` in the
+  job's executor config (`applyLimitPerUniqueValue: true`, `limit: 1`) limits steps within one
+  run, not across runs. No manifest change.
+
 - **Manifest sinks may carry the Iceberg `partition_spec` (#911).** The bundled schema accepts
   `partition_spec` (`column`, `transform`, optional `num_buckets`) on a sink, so a run from the
   manifest creates the same partitioned table as the config run.
+- **Manifest `source.partitioning` may carry `lookback_days` (D30, #885).** The bundled schema
+  accepts the non-negative integer that bounds a `file`-mode run's listing to the watermark minus
+  that many days.
 - **Manifest entity sources may carry `partitioning` (D28, #883).** The bundled schema accepts
   the `source.partitioning` block (`pattern`, `date_column`, `batch_column`) that `floe run
   --manifest` honours.

@@ -159,12 +159,34 @@ At the start of an entity run, Floe:
 5. Claims remaining pending files before accepted sink output is written.
 
 When the entity finishes successfully, Floe promotes this run's claims into the
-`files` map with observed size and mtime. If the entity fails or aborts, Floe
-releases this run's claims so the same files can be retried later.
+`files` map with observed size and mtime. If the entity fails, Floe releases
+this run's claims so the same files can be retried later. If a file aborts the
+entity, the files before it are still written. With `append` and the merge
+modes, Floe promotes those and releases only the aborted file and the files
+after it: once the aborted file is fixed, a rerun writes it without writing the
+earlier files again. With `overwrite`, Floe releases every claim, because the
+rerun rebuilds the output from all the files.
 
 If a file URI is already in `files` but its size or mtime changed, Floe emits an
 `incremental_file_changed` warning and still skips it. The URI is the identity;
 Floe does not automatically reprocess changed files.
+
+## Retries Of An Append
+
+An Iceberg `append` stamps each snapshot with `floe.input_hash`, a fingerprint of the
+entity and its input files (URI, size, mtime). Before reading any file, a run checks it:
+
+- `file` mode: when the run takes over a dead run's expired claims, it looks for the
+  fingerprint of its pending files in the table's snapshots since that claim. On a match,
+  the files are reported `skipped` with `skip_reason: already_committed` and promoted.
+- Other modes (`archive`, `none`, `row`): the same check against the whole input set, over
+  the whole retained history, so a rerun of exactly the same files is skipped too. Only exactly
+  the same set matches: if new files arrived since the run that died, its rows are appended
+  again. Retry before new files land, or use `file` mode.
+
+Snapshot expiry must keep at least 7 days and 10 snapshots. If the snapshots since a dead
+run's claim were expired, Floe can't tell whether that run committed: the run fails and
+asks for `floe state reset`.
 
 ## CAS And Concurrent Runs
 

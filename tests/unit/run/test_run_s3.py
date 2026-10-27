@@ -31,9 +31,9 @@ class MemS3:
     def resolve_uri(self, path: str) -> str:
         return f"s3://b/{path.lstrip('/')}"
 
-    def list(self, prefix: str) -> list[ObjectRef]:
+    def list(self, prefix: str, start_after: str = "") -> list[ObjectRef]:
         keys = sorted(parse_s3_uri(u)[1] for u in self.objects)
-        return [ObjectRef(f"s3://b/{k}", k, "2026-01-01T00:00:00Z", len(self.objects[f"s3://b/{k}"])) for k in keys if k.startswith(prefix)]  # fmt: skip
+        return [ObjectRef(f"s3://b/{k}", k, "2026-01-01T00:00:00Z", len(self.objects[f"s3://b/{k}"])) for k in keys if k.startswith(prefix) and k > start_after]  # fmt: skip
 
     def download(self, uri: str, temp_dir: Path) -> Path:
         dest = temp_path_for_key(temp_dir, parse_s3_uri(uri)[1])
@@ -284,9 +284,9 @@ def test_the_s3_source_is_listed_once_per_run(tmp_path: Path, s3: MemS3, monkeyp
     prefixes: list[str] = []
     real = s3.list
 
-    def counted(prefix: str) -> list[ObjectRef]:
+    def counted(prefix: str, start_after: str = "") -> list[ObjectRef]:
         prefixes.append(prefix)
-        return real(prefix)
+        return real(prefix, start_after)
 
     monkeypatch.setattr(s3, "list", counted)
     go(tmp_path)
@@ -333,3 +333,36 @@ def test_a_sink_over_an_s3_source_is_refused_only_on_the_same_endpoint(tmp_path:
         assert src.objects == {"s3://b/in/part-00000.parquet": b"input"}
     else:
         go(tmp_path, config)
+
+
+def test_d29_the_s3_archive_keeps_the_partition_path_for_a_full_refresh(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
+    s3.write("s3://b/in/2026/10/24/a1b2/x.csv", b"id\n1\n")
+    go(tmp_path, config)
+    [archived] = parts(s3, "s3://b/archive/")
+    assert archived.startswith("s3://b/archive/orders/2026/10/24/a1b2/x__run-r1__src-")
+    full_refresh(tmp_path, config)
+    [part] = parts(s3, "s3://b/out/accepted/")
+    assert pl.read_parquet(s3.objects[part]).rows() == [(1, date(2026, 10, 24))]
+
+
+def test_d30_an_s3_file_mode_run_starts_after_the_window(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    config = SINKS.replace("    domain: d\n", "    domain: d\n    incremental_mode: file\n", 1).replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
+    for day in (20, 23, 24):
+        s3.write(f"s3://b/in/2026/10/{day}/a/x.csv", b"id\n1\n")
+    go(tmp_path, config)
+    s3.write("s3://b/in/2026/10/24/b/x.csv", b"id\n2\n")
+    calls: list[tuple[str, str]] = []
+    real = s3.list
+
+    def spy(prefix: str, start_after: str = "") -> list[ObjectRef]:
+        calls.append((prefix, start_after))
+        return real(prefix, start_after)
+
+    monkeypatch.setattr(s3, "list", spy)
+    go(tmp_path, config)
+    assert ("in/", "in/2026/10/22") in calls
+    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    assert [f["input_file"] for f in report["files"] if f["status"] == "success"] == ["s3://b/in/2026/10/24/b/x.csv"]  # fmt: skip
+    state = json.loads(s3.objects["s3://b/in/.floe/state/d/orders/state.json"])
+    assert (len(state["files"]), state["watermark"]) == (4, "2026-10-24")

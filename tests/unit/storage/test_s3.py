@@ -57,6 +57,19 @@ def test_list_keeps_leading_slash_in_key(monkeypatch: pytest.MonkeyPatch) -> Non
         assert [r.uri for r in client.list("/in/")] == ["s3://b//in/a.csv"]
 
 
+def test_d30_list_passes_start_after(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
+    client = S3Client("b", "us-east-1")
+    with Stubber(client._client) as stub:  # pyright: ignore[reportPrivateUsage]
+        stub.add_response(  # pyright: ignore[reportUnknownMemberType]
+            "list_objects_v2",
+            {"Contents": [{"Key": "in/2026/10/23/a/x.csv", "Size": 1}]},
+            {"Bucket": "b", "Prefix": "in/", "StartAfter": "in/2026/10/23"},
+        )
+        assert len(client.list("in/", "in/2026/10/23")) == 1
+
+
 def test_conditional_delete_uses_if_match(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")

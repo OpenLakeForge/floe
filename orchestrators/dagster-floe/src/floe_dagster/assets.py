@@ -27,11 +27,16 @@ from .manifest import (
     ManifestEntity,
     ManifestRunnerDefinition,
     _fsspec_storage_options,
+    entity_table,
     load_manifest,
     resolve_config_uri,
     resolve_entity_runner,
 )
 from .runner import Runner
+
+# Advisory Dagster tag (#924): entities writing one Iceberg table share its value, so a
+# `tag_concurrency_limits` entry on this key keeps their runs apart.
+TABLE_TAG = "floe/table"
 
 
 def load_floe_assets(
@@ -106,6 +111,7 @@ def build_floe_asset_defs(
                 execution=manifest.execution,
                 runner_definition=runner_definition,
                 source_key=_source_key(entity, manifest.sources, _source_scope(manifest)),
+                table=entity_table(manifest, entity),
             )
         )
 
@@ -201,6 +207,7 @@ def _make_entity_multi_asset(
     execution: ManifestExecution,
     runner_definition: ManifestRunnerDefinition,
     source_key: list[str],
+    table: str | None = None,
 ):
     accepted_key = list(entity.asset_key)
     has_rejected = _has_rejected_asset(entity)
@@ -224,6 +231,7 @@ def _make_entity_multi_asset(
         check_specs=build_asset_check_specs(accepted_key),
         can_subset=False,
         compute_kind="floe",
+        op_tags={TABLE_TAG: table} if table else None,
     )
     def _multi_asset(context):
         run = getattr(context, "run", None)

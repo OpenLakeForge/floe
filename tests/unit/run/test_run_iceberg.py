@@ -5,8 +5,8 @@
 
 import json
 import sys
-from collections.abc import Collection, Sequence
-from datetime import date
+from collections.abc import Callable, Collection, Sequence
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -34,10 +34,11 @@ from floe.config.project import RootConfig
 from floe.errors import FloeConfigError, FloeRunError
 from floe.iceberg.merge import MergeResult
 from floe.iceberg.sink import input_hash, partition_fields
-from floe.iceberg.write import INPUT_HASH, RUN_ID, write_result
+from floe.iceberg.write import INPUT_HASH, RUN_ID, find_committed, write_result
+from floe.run import entity as entity_module  # `floe.run` is the public function
 from floe.run import run as run_project
 from floe.run.entity import run_entity
-from floe.run.events import NO_EVENTS
+from floe.run.events import NO_EVENTS, Emitter
 from floe.storage.inputs import InputFile
 
 CONFIG = """\
@@ -398,3 +399,95 @@ def test_a_manifest_run_keeps_the_partition_spec(tmp_path: Path, catalog: LocalC
     table = catalog.tables["sales.orders"]
     assert [(f.name, str(f.transform)) for f in table.spec().fields] == [("ingest_date_day", "day"), ("id_bucket", "bucket[4]")]  # fmt: skip
     assert rows(catalog) == [(1, "a", date(2026, 10, 24))]
+
+
+def dead_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Callable[[str], dict[str, Any]], Path]:  # fmt: skip
+    """#545: an append in `file` mode commits, dies before promote, and its claims expire; returns a runner and the state."""
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n2,b\n")
+    config(tmp_path, mode="append")
+    path = tmp_path / "config.yml"
+    path.write_text(path.read_text().replace("    domain: Sales\n", "    domain: Sales\n    incremental_mode: file\n"))  # fmt: skip
+    root = parse_config(path)
+
+    def go(run_id: str) -> dict[str, Any]:
+        return run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, emit=Emitter(None, run_id), catalogs=root.catalogs).report  # fmt: skip
+
+    def killed(*_: object, **__: object) -> None:
+        raise FloeRunError("killed")
+
+    promote = entity_module.promote
+    monkeypatch.setattr(entity_module, "promote", killed)
+    with pytest.raises(FloeRunError, match="killed"):
+        go("dead")
+    monkeypatch.setattr(entity_module, "promote", promote)
+    (state,) = (tmp_path / "in").rglob("state.json")
+    doc = json.loads(state.read_text())
+    for claim in doc["claims"].values():
+        claim["expires_at"] = "2000-01-01T00:00:00Z"
+    state.write_text(json.dumps(doc))
+    return go, state
+
+
+def test_a_retry_skips_the_batch_a_dead_run_committed(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#545 S3: the run died after its commit, before promote; once its claim expires, the retry reads nothing."""
+    go, state = dead_run(tmp_path, monkeypatch)
+
+    def broken(*_: object) -> None:
+        raise FloeRunError("catalog down")
+
+    monkeypatch.setattr(entity_module, "find_committed", broken)
+    with pytest.raises(FloeRunError, match="catalog down"):
+        go("failed-retry")  # its release puts the dead run's claims back
+    monkeypatch.setattr(entity_module, "find_committed", find_committed)
+    report = go("retry")
+    assert rows(catalog) == [(1, "a"), (2, "b")]
+    assert not (tmp_path / "out" / "rejected").exists()
+    (file,) = report["files"]
+    assert (file["status"], file["skip_reason"]) == ("skipped", "already_committed")
+    assert list(json.loads(state.read_text())["files"]) == [file["input_file"]]
+
+
+def test_a_retry_with_a_new_input_skips_only_the_dead_runs_batch(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#545 S4: file B arrived before the retry; the dead run's batch is re-derived from its expired claims."""
+    go, state = dead_run(tmp_path, monkeypatch)
+    (tmp_path / "in" / "b.csv").write_text("id,name\n3,c\n")
+    report = go("retry")
+    assert rows(catalog) == [(1, "a"), (2, "b"), (3, "c")]
+    assert not (tmp_path / "out" / "rejected").exists()
+    got = [(Path(f["input_file"]).name, f["status"], f.get("skip_reason")) for f in report["files"]]  # fmt: skip
+    assert got == [("orders.csv", "skipped", "already_committed"), ("b.csv", "success", None)]  # fmt: skip
+    assert sorted(Path(u).name for u in json.loads(state.read_text())["files"]) == ["b.csv", "orders.csv"]  # fmt: skip
+
+
+def test_an_aborted_batch_is_not_skipped_as_committed(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    """#545: abort stops at b.csv after a.csv; that partial commit must not mark the whole set done."""
+    (tmp_path / "in").mkdir()
+    for name, body in [("a", "1,a"), ("b", "x,b"), ("c", "3,c")]:
+        (tmp_path / "in" / f"{name}.csv").write_text(f"id,name\n{body}\n")
+    root = config(tmp_path, mode="append", severity="abort")
+
+    def go() -> dict[str, Any]:
+        return run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, catalogs=root.catalogs).report  # fmt: skip
+
+    assert [f["status"] for f in go()["files"]] == ["success", "aborted"]
+    assert rows(catalog) == [(1, "a")]
+    again = go()["files"]
+    assert "already_committed" not in [f.get("skip_reason") for f in again]
+    assert "aborted" in [f["status"] for f in again]
+
+
+def test_find_committed_walks_back_to_the_claim(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    run(tmp_path, "id,name\n1,a\n", mode="append")
+    run(tmp_path, "id,name\n2,bb\n", mode="append")
+    table = catalog.tables["sales.orders"]
+    first, last = table.metadata.snapshots
+    digest = str(first.summary and first.summary[INPUT_HASH])
+    at = datetime.fromtimestamp(first.timestamp_ms / 1000, UTC)
+    assert find_committed(table, digest) is True
+    assert find_committed(table, digest, at) is True
+    assert find_committed(table, digest, at + timedelta(days=1)) is False
+    expired = Table(table.name(), table.metadata.model_copy(update={"snapshots": [last]}), table.metadata_location, table.io, catalog)  # pyright: ignore[reportArgumentType] -- duck-typed stand-in for a catalog  # fmt: skip
+    # the history since the claim is gone
+    assert find_committed(expired, "other", at) is None
+    assert find_committed(expired, "other") is False

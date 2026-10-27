@@ -155,6 +155,10 @@ $defs:
         - string
         - 'null'
         pattern: \S
+      lookback_days:
+        description: 'D30: file mode lists only from the watermark (latest date ingested) minus this many days.'
+        type: integer
+        minimum: 0
     if:
       required:
       - batch_column
