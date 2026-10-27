@@ -9,7 +9,20 @@ All notable changes to Floe are documented in this file.
   or an empty list raises `ValueError`. Pass `entities=context.entity_names` to `FloeRunOperator` so the run
   covers only that slice.
 
-## dagster-floe (unreleased)
+## dagster-floe v0.3.0
+
+Supports Floe 0.8 (`floe-python` 0.8, manifest `spec_version` `0.8`); older Floe versions are not
+supported. Floe 0.7 and earlier manifests are rejected.
+
+- **Optional `floe` extra (#973).** `pip install "dagster-floe[floe]"` installs `floe-python>=0.8,<0.9`
+  so `build_runner_from_env()` runs Floe in-process (see below) without a separate `floe` install.
+- **Report paths follow D37.** A run whose entities share one domain writes its reports under
+  `<report.path>/<domain>/run_<id>/`; other runs keep `<report.path>/run_<id>/`. The connector
+  reads report locations from the `run_finished` event, so no configuration changes.
+- **`ghcr.io/openlakeforge/floe` is now the Python image.** The image name and the `floe` command
+  are unchanged; `kubernetes_job` runners need no change.
+- Manifest schema additions for 0.8 are listed below (`partition_spec`, `source.partitioning`,
+  `lookback_days`, `sources` index).
 
 - **`job_scope: domain` runs one Kubernetes Job per domain (#580).** With the opt-in
   `execution.runner.job_scope: domain` on a `kubernetes_job` runner, the selected entities of a
