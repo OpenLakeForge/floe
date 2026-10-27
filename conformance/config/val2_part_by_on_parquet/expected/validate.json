@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entity.name=orders sink.accepted.partition_by is only supported for sink.accepted.format=delta"
+  "error": "entity.name=orders sink.accepted.partition_by is not supported in 0.8; use sink.accepted.partition_spec with sink.accepted.format=iceberg"
 }
