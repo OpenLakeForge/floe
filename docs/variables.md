@@ -121,7 +121,7 @@ A config variable can reference a value supplied by the profile:
 ```yaml
 # profiles/prod.yml
 variables:
-  CATALOG: unity_prod
+  CATALOG: polaris_prod
 
 # config.yml
 env:
@@ -131,19 +131,5 @@ env:
 ```
 
 ---
-
-## API reference (Rust)
-
-```rust
-use floe_core::{resolve_vars, VarSources};
-use std::collections::HashMap;
-
-let resolved = resolve_vars(VarSources {
-    profile: &profile_vars,   // HashMap<String, String>
-    cli:     &cli_vars,
-    config:  &config_vars,
-})?;
-// resolved: HashMap<String, String> — fully expanded, no ${…} remaining
-```
 
 See also: [`docs/profiles.md`](profiles.md) for the full profile schema.

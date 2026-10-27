@@ -89,32 +89,22 @@ entities:
   - Defines named storage clients for `source.storage` and `sink.*.storage`.
   - If omitted, `local` is assumed.
 - `catalogs` (optional)
-  - Defines named external catalogs for Iceberg and Delta sinks.
-  - Supported types: `glue`, `rest`, `unity`.
+  - Defines named Iceberg REST catalogs (Polaris, Nessie, Snowflake Open Catalog, etc.).
+    An Iceberg accepted sink requires one (D26).
+  - Supported type: `rest`. `glue` and `unity` were dropped in 0.8 (D1) and fail validation;
+    the archived [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust) documents them for 0.7.
   - Keys:
-    - `default` (optional): default catalog name used by `sink.accepted.iceberg.catalog` or `sink.accepted.delta.catalog` when omitted.
+    - `default` (optional): default catalog name used by `sink.accepted.iceberg.catalog` when omitted.
     - `definitions` (required): array of catalog definitions.
       - `name` (required)
-      - `type` (required): `glue`, `rest`, or `unity`
-      - **`glue`** — AWS Glue Data Catalog (Iceberg, S3-backed):
-        - `region` (required)
-        - `database` (required)
-        - `warehouse_storage` (optional): storage name, must resolve to S3
-        - `warehouse_prefix` (optional): prefix for deterministic table locations
-      - **`rest`** — Iceberg REST catalog (Unity Catalog Iceberg endpoint, Polaris, Nessie, Snowflake Open Catalog, etc.):
-        - `uri` (required): REST catalog base URI
-        - `credential` (optional): `token:<pat>` or `client_credentials:<id>:<secret>`; `${ENV_VAR}` placeholders are resolved from the OS environment at run time, so manifest runs can keep REST catalog secrets out of the manifest artifact
-        - `warehouse` (optional): warehouse/prefix hint forwarded to the REST catalog
-        - `oauth2_server_uri` (optional): override OAuth2 server URL for client-credentials flow
-        - `scope` (optional): OAuth2 scope
-        - `warehouse_storage` (optional): storage name for table location resolution
-        - `warehouse_prefix` (optional): prefix for deterministic table locations
-      - **`unity`** — Databricks Unity Catalog (Delta Lake external table registration):
-        - `host` (required): Databricks workspace URL, e.g. `https://my-workspace.azuredatabricks.net`
-        - `catalog` (required): Unity catalog name
-        - `schema` (required): default schema name
-        - `token` (required): Personal Access Token; accepts a literal value or a single `${ENV_VAR}` reference resolved from the OS environment at run time
-        - `create_schema_if_missing` (optional, default `false`): create the Unity schema if absent
+      - `type` (required): `rest`
+      - `uri` (required): REST catalog base URI
+      - `credential` (optional): `token:<pat>` or `client_credentials:<id>:<secret>`; `${ENV_VAR}` placeholders are resolved from the OS environment at run time, so manifest runs can keep REST catalog secrets out of the manifest artifact
+      - `warehouse` (optional): warehouse/prefix hint forwarded to the REST catalog
+      - `oauth2_server_uri` (optional): override OAuth2 server URL for client-credentials flow
+      - `scope` (optional): OAuth2 scope
+      - `warehouse_storage` (optional): storage name for table location resolution; must be an S3 storage
+      - `warehouse_prefix` (optional): prefix for deterministic table locations
 - `lineage` (optional)
   - Enables OpenLineage event emission for this run.
   - `url` (required): base URL of the OpenLineage-compatible endpoint (e.g. `http://marquez:5000`)
@@ -235,10 +225,9 @@ otherwise (and in all `0.1`/`0.2` configs) its identity is the bare `name`.
 - Entity-local state settings used by incremental ingestion.
 - `state.path` (optional)
   - Overrides the file or object used to store entity state.
-  - Supports local paths and cloud URIs for S3 (`s3://`), GCS (`gs://`), and ADLS (`abfs://` or `abfss://`).
+  - Supports local paths and S3 URIs (`s3://`).
   - Relative paths always resolve as local filesystem paths, regardless of the source
-    storage context. Only explicit cloud URIs (`s3://`, `gs://`, `abfs://`, `abfss://`) use remote
-    storage. A relative override with a cloud source will produce local state and will
+    storage context. Only explicit `s3://` URIs use remote storage. A relative override with a cloud source will produce local state and will
     not benefit from remote claim coordination.
   - If omitted and `incremental_mode: file` is used, Floe derives the path under the
     source root as `.floe/state/<entity>/state.json`.
@@ -274,11 +263,11 @@ state file shape, and CAS behavior.
 ### `source` (required)
 
 - `format` (required)
-  - Supported: `csv`, `tsv`, `fixed`, `parquet`, `orc`, `json`, `xlsx`, `avro`, and `xml`.
-  - Cloud inputs (S3/ADLS/GCS) use temp download + local read.
+  - Supported: `csv`, `tsv`, `parquet`, `orc`, `json`, `xlsx`, `avro`, and `xml`.
+    `fixed` (fixed-width) was dropped in 0.8 (D1) and fails validation.
+  - S3 inputs use temp download + local read.
   - `json` supports NDJSON and JSON array modes.
   - `tsv` uses tab-delimited parsing (same options as `csv`).
-  - `fixed` reads fixed-width text files using `schema.columns[].width`.
   - `xlsx` reads Excel worksheets using `source.options.sheet` + row offsets.
   - `xml` reads repeated records using `source.options.row_tag`.
 - `path` (required)
@@ -305,7 +294,6 @@ state file shape, and CAS behavior.
     - Overrides the default file pattern for the source format:
       - `csv`: `*.csv`
       - `tsv`: `*.tsv`
-      - `fixed`: `*.txt`, `*.fw`
       - `parquet`: `*.parquet`
       - `orc`: `*.orc`
       - `json`: `*.json`
@@ -385,24 +373,25 @@ state file shape, and CAS behavior.
 - `write_mode` (optional)
   - `overwrite` (default): remove existing dataset parts, then write new ones.
   - `append`: add new dataset parts without deleting existing ones.
-  - `merge_scd1`: upsert mode keyed by `schema.primary_key` for Delta or DuckDB accepted sinks.
+  - `merge_scd1`: upsert mode keyed by `schema.primary_key` for Iceberg accepted sinks (D2).
     - updates matching keys (SCD1) and inserts new keys
-    - requires `sink.accepted.format: delta` or `duckdb`
+    - requires `sink.accepted.format: iceberg`
     - requires non-empty `schema.primary_key`
     - optional merge behavior can be configured in `sink.accepted.merge`
     - source rows must be unique on `schema.primary_key` (duplicates abort the entity merge)
-  - `merge_scd2`: history mode keyed by `schema.primary_key` for Delta or DuckDB accepted sinks.
+  - `merge_scd2`: history mode keyed by `schema.primary_key`.
     - closes changed current rows and inserts new current versions
-    - requires `sink.accepted.format: delta` or `duckdb`
+    - `floe validate` accepts it with `sink.accepted.format: iceberg`, but `floe run` does not
+      support it yet and fails the entity (#654).
     - requires non-empty `schema.primary_key`
     - optional merge behavior can be configured in `sink.accepted.merge`
     - source rows must be unique on `schema.primary_key` (duplicates abort the entity merge)
   - Applies to both accepted and rejected outputs.
 - `accepted` (required)
-  - `format`: `parquet`, `delta`, `iceberg`, or `duckdb`.
-    - `delta`: Delta Lake transactional sink; optional Unity Catalog registration via `sink.accepted.delta`.
+  - `format`: `parquet` or `iceberg`.
     - `iceberg`: Iceberg table in a REST catalog; `sink.accepted.iceberg` with a catalog is required (0.8). See [Iceberg sink](sinks/iceberg.md).
-    - `duckdb`: local `.duckdb` file or MotherDuck (`md:`) database; `overwrite`/`append`/`merge_scd1`/`merge_scd2` via native `MERGE INTO`. Configured via `sink.accepted.duckdb`. See [DuckDB sink](sinks/duckdb.md).
+    - `delta` and `duckdb` were dropped in 0.8 (D1) and fail validation; the archived
+      [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust) documents them for 0.7.
 - `path`: output directory for accepted records.
   - Supports `{{var}}` templating (see "Templating & domains").
   - `storage` (optional)
@@ -414,56 +403,23 @@ state file shape, and CAS behavior.
     - `row_group_size`: positive integer (rows per row group)
     - `max_size_per_file`: positive integer bytes (default: 256MB)
       - Parquet: split accepted parquet into parts at write time.
-      - Delta: mapped to the Delta writer target file size.
-      - Also bounds in-process accepted-row memory: Floe flushes the
-        accepted buffer to the sink whenever the accumulated estimated
-        in-memory size meets this threshold (or at end of entity). The
-        first flush uses the configured `write_mode`; subsequent flushes
-        within the same run are forced to `append`. Inputs are archived
-        (when `sink.archive` is enabled) only after the sink commit
-        succeeds, so an input is never archived unless its rows were
-        written; if the commit fails, the inputs stay in the source.
-      - **Partial-output trade-off (applies to all non-merge sinks)**:
-        because flushes commit synchronously while Phase B is still
-        iterating inputs, a failure on a *later* file (read /
-        validation / rejected-write / archive) can leave the *earlier*
-        files' accepted rows already committed to the sink — and in
-        `overwrite` mode the first flush may already have replaced the
-        previous dataset. The run report and incremental state are not
-        committed in that case, so the same inputs are re-processed on
-        the next run.
-      - For **Parquet** that committed prefix is non-transactional part
-        files in the accepted directory; downstream consumers reading
-        the directory directly may see the torn state.
-      - For **Delta** and **Iceberg** each individual flush is
-        transactional (Delta commit / Iceberg snapshot), so no
-        single flush exposes a half-written file — but a failure on a
-        later file does *not* roll back the earlier flush's commit.
-        Readers can still observe a committed prefix of the batch
-        between the failure and the next run, and the re-run will
-        process the same inputs again (cross-run unique constraints
-        or merge modes are what protect against duplication, not the
-        sink's per-commit atomicity).
-      - This is an explicit design choice — keeping memory bounded
-        means accepting non-atomic batches. Merge modes (`merge_scd1`
-        / `merge_scd2`) keep the previous accumulate-then-write
-        behaviour and ignore this memory ceiling because they require
-        the full per-entity dataset, so they do not exhibit the
-        cross-file partial-batch exposure.
-  - `partition_by` (optional, `sink.accepted.format: delta`)
-    - Identity partition columns (array of schema column names).
-    - `floe validate` checks the columns exist in `schema.columns`.
-    - Runtime wiring is implemented for Delta accepted writes.
+      - Iceberg: only sets the report's small-file threshold (half this value).
+    - Accepted rows are written once per entity, after every input file is read: Parquet
+      parts in one pass, Iceberg in one catalog commit. Inputs are archived (when
+      `sink.archive` is enabled) only after that write succeeds, so an input is never
+      archived unless its rows were written; if the write fails, the inputs stay in the source.
+  - `partition_by`: Delta-only, dropped with Delta in 0.8 (D1); `floe validate` rejects it.
   - `partition_spec` (optional, `sink.accepted.format: iceberg`)
     - Array of partition spec entries.
     - Each entry supports:
       - `column` (required): schema column name
-      - `transform` (optional, default `identity`): `identity`, `year`, `month`, `day`, `hour`
+      - `transform` (optional, default `identity`): `identity`, `year`, `month`, `day`, `hour`, `bucket` (D12)
+      - `num_buckets` (required with `transform: bucket`, positive; not allowed otherwise)
     - `floe validate` checks column existence and supported transforms.
     - Runtime wiring is implemented for Iceberg accepted writes (table partition spec + partitioned file layout).
-  - `merge` (optional, Delta and DuckDB merge modes only)
+  - `merge` (optional, merge modes only)
     - Supported only when:
-      - `sink.accepted.format: delta` or `duckdb`
+      - `sink.accepted.format: iceberg`
       - `sink.write_mode: merge_scd1` or `merge_scd2`
     - `ignore_columns` (optional)
       - List of schema business columns excluded from merge update/compare behavior.
@@ -482,51 +438,29 @@ state file shape, and CAS behavior.
   - `iceberg` (required for `sink.accepted.format: iceberg` in 0.8)
     - Binds the sink to its REST catalog; a catalog-less Iceberg sink is rejected by `floe validate`.
     - `catalog` (optional)
-      - Catalog name from `catalogs.definitions` (type `glue` or `rest`).
+      - Catalog name from `catalogs.definitions` (type `rest`).
       - If omitted, `catalogs.default` is used when set.
     - `namespace` (optional)
-      - Iceberg namespace identifier reported with the run.
-      - Defaults to `entity.domain` when present, otherwise the catalog `database` / REST warehouse value.
+      - Iceberg namespace; created in the catalog if missing.
+      - Defaults to `entity.domain` when present, otherwise `default`.
     - `table` (optional)
       - Logical table name for the catalog registration.
       - Defaults to `entity.name` (normalized).
     - `location` (optional)
       - Overrides the Iceberg table root location.
       - Resolved via `warehouse_storage` when defined, otherwise via the sink storage.
-  - `delta` (optional, `sink.accepted.format: delta`)
-    - Enables Unity Catalog registration after the Delta write.
-    - `catalog` (optional)
-      - Catalog name from `catalogs.definitions` (must be type `unity`).
-      - If omitted, `catalogs.default` is used when set.
-    - `schema` (optional)
-      - Unity schema identifier. Defaults to `entity.domain` (normalized), then the catalog-level `schema`.
-    - `table` (optional)
-      - Unity table name. Defaults to `entity.name` (normalized).
-  - `duckdb` (optional, required when `sink.accepted.format: duckdb`)
-    - `table` (required)
-      - Target table name. May be schema-qualified (`"schema.table"`).
-    - `schema` (optional)
-      - Target schema; defaults to `main`.
-    - `connection` (optional)
-      - MotherDuck connection string (`md:<database>`). When set, the target is MotherDuck and
-        `path`/`storage` must be omitted. A non-`md:` connection string is rejected.
-      - When omitted, the target is the local `.duckdb` file at `sink.accepted.path`
-        (object-store paths are rejected — use MotherDuck instead).
-    - `token` (optional, MotherDuck only)
-      - Literal value or a single `${ENV_VAR}` reference, resolved at connect time. Never logged.
-    - See [DuckDB sink](sinks/duckdb.md) for full semantics.
+      - Without it, the location is `<warehouse_prefix>/<namespace>/<table>` when the catalog sets
+        `warehouse_storage` or `warehouse_prefix`, otherwise `sink.accepted.path`.
   - Accepted output reports may include file sizing metrics (`files_written`,
     `total_bytes_written`, `avg_file_size_mb`, `small_files_count`) when collected by the writer.
     - Parquet: populated from written parquet files.
-    - Delta (local): populated from committed Delta log `add` actions.
-    - Delta (S3/GCS/ADLS): best-effort via object_store commit-log read; metrics remain nullable if collection fails after a successful write.
     - Iceberg: populated from written Iceberg data files (metadata/manifests excluded from size totals).
-  - `table_version` / `snapshot_id` in reports are sink-format specific (for example Delta table version, Iceberg metadata version + snapshot ID).
-  - Compaction/optimization/maintenance remains external to Floe (for Parquet/Delta/Iceberg datasets).
-    - Examples: Delta optimize/vacuum, Iceberg compaction/maintenance jobs.
+  - `table_version` / `snapshot_id` in reports are Iceberg-only (metadata version + snapshot ID).
+  - Floe does not maintain tables during `floe run`. Iceberg snapshot expiry, orphan-file
+    removal and (experimental) compaction run separately with `floe maintain` (see [CLI](cli.md)).
   - `schema.schema_evolution` is strict by default.
-    - Runtime support in this phase is Delta-only and additive-only.
-    - `mode: add_columns` is implemented for Delta `append`, `overwrite`, `merge_scd1`, and `merge_scd2`.
+    - Runtime support is Iceberg-only and additive-only (D13).
+    - `mode: add_columns` adds new source columns to the Iceberg table as nullable columns.
     - Unsupported changes such as drops, renames, type changes, and non-nullable-to-nullable drift still fail the write.
     - When enabled, Floe audits the outcome in the entity report `schema_evolution` block and emits a `schema_evolution_applied` lifecycle event when columns are added.
 - `rejected` (required when `policy.severity: reject`)
@@ -544,7 +478,8 @@ state file shape, and CAS behavior.
 
 ### `pii` (optional)
 
-Column-level PII masking applied to accepted output before sink write.
+Column-level PII masking applied to accepted rows and to the rejected rows of
+`policy.severity: reject` before they are written.
 
 ```yaml
 pii:
@@ -587,12 +522,12 @@ See `docs/pii.md` for full strategy reference and masking pattern syntax.
   - Omitted by default, Floe behaves as `mode: strict` and `on_incompatible: fail`.
   - `mode`: `strict` or `add_columns`.
   - `on_incompatible`: `fail`.
-  - `mode: add_columns` requires `sink.accepted.format: delta`.
+  - `mode: add_columns` requires `sink.accepted.format: iceberg` (D13).
   - Current implementation is additive-only:
-    - new columns may be appended to existing Delta schemas
-    - existing columns must remain compatible
-    - merge-key columns cannot be introduced by evolution during Delta merge modes
-    - adding columns to already partitioned Delta tables is rejected in this phase
+    - new columns are added to the existing Iceberg table as nullable columns
+    - existing columns must remain compatible (same type, no non-nullable → nullable change, none missing)
+    - merge-key columns cannot be introduced by evolution during `merge_scd1`
+    - partition spec changes are rejected
 - `primary_key` (optional)
   - Array of schema column names.
   - Primary key columns are always treated as required (`not_null`) at runtime.
@@ -610,7 +545,7 @@ See `docs/pii.md` for full strategy reference and masking pattern syntax.
   - `name` (required): target column name in the output schema.
   - `source` (optional): source field selector (including nested JSON/XML extraction).
     - When omitted, defaults to the value of `name`.
-    - For CSV/Parquet/ORC/XLSX/Avro/fixed, use an input column name.
+    - For CSV/Parquet/ORC/XLSX/Avro, use an input column name.
     - For JSON, selectors may include dot notation and `[index]` (example: `user.names[0]`).
     - For XML, selectors support element paths with `.` or `/`, with optional terminal
       attribute selection (example: `order.customer.@id` or `order/customer/@id`).
@@ -623,8 +558,6 @@ See `docs/pii.md` for full strategy reference and masking pattern syntax.
   - `nullable` (optional): default `true`.
   - `unique` (optional, legacy): default `false`.
     - Legacy single-column unique. Prefer `schema.unique_keys`.
-  - `width` (required for `source.format: fixed`): number of characters to read.
-  - `trim` (optional, `source.format: fixed`): trim whitespace for the column (default `true`).
 
 ## Supported column types
 
@@ -645,7 +578,8 @@ ignored):
 - `float32`: `float32`
 - `date`: `date`
 - `datetime`: `datetime`, `timestamp`
-- `time`: `time`
+
+`time` is not supported in 0.8 (D10): `floe validate` rejects it.
 
 For more details about checks and severity behavior, see `docs/checks.md`.
 Execution order and pipeline phases are documented in `docs/how-it-works.md`.
