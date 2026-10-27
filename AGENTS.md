@@ -8,13 +8,13 @@ The goal: **the smallest correct change, one concern per PR, nothing speculative
 | Read | When |
 |---|---|
 | `context/project.md` | First time in the repo: what Floe is and is not |
-| `context/architecture.md` | Before touching anything under `crates/` |
-| `context/coding-standards.md` | Before writing Rust or Python (Python: the "Python (`src/floe/`)" section) |
-| `context/testing-strategy.md` | Before writing or moving tests (Python: the "Python tests" section) |
-| `context/decisions/python-core-for-olf.md` | Before touching `src/floe/`, `tests/` or `conformance/` |
+| `context/architecture.md` | Before touching `src/floe/` |
+| `context/coding-standards.md` | Before writing Python |
+| `context/testing-strategy.md` | Before writing or moving tests or golden cases (`conformance/`) |
+| `context/decisions/python-core-for-olf.md` | Before changing Iceberg writes, merges, memory bounds or the scope of supported features |
 | `context/orchestrators.md` | Before touching `orchestrators/` |
-| `context/bump-release.md` | Version bump PRs only |
-| `context/decisions/*.md` | Before changing errors, incremental state, merge, or Polars/Arrow usage |
+| `context/bump-release.md` | Version bump and release PRs only |
+| `context/decisions/*.md` | Before changing incremental state, commit/retry guarantees, or Polars/Arrow usage |
 
 ## 2. Ponytail is mandatory
 
@@ -24,7 +24,7 @@ The goal: **the smallest correct change, one concern per PR, nothing speculative
 - **Other agents** apply the same ladder. Stop at the first rung that holds:
   1. Does this need to exist at all? If not, skip it and say so.
   2. Does it already exist in this codebase? Reuse it. Grep before you write.
-  3. Does the Rust/Python stdlib do it?
+  3. Does the Python stdlib do it?
   4. Does a dependency we already have do it? Never add one for a few lines.
   5. Can it be one line?
   6. Only then: the minimum code that works.
@@ -42,8 +42,8 @@ The goal: **the smallest correct change, one concern per PR, nothing speculative
 - Version bumps, dependency bumps and schema resyncs each get their own PR.
 
 **Size** (enforced by `.github/workflows/pr-size.yml`)
-- Budget: **≤ 300 changed lines and ≤ 8 files** of non-test code under `crates/`,
-  `orchestrators/` and `src/floe/` (`src/floe/` is enforced once #615 lands). Tests, fixtures, docs, CHANGELOG, lockfiles and JSON schemas don't count.
+- Budget: **≤ 300 changed lines and ≤ 8 files** of non-test code under `src/floe/` and
+  `orchestrators/`. Tests, fixtures, docs, CHANGELOG, lockfiles and JSON schemas don't count.
 - Over budget? Split it into stacked PRs: a behaviour-neutral prep PR (move, extract, rename)
   first, then the behaviour change on top.
 - Only a maintainer may apply the `large-pr` label. Agents never apply it.
@@ -59,7 +59,7 @@ The goal: **the smallest correct change, one concern per PR, nothing speculative
 - Never hand-edit a vendored copy. Edit the canonical file (`orchestrators/schemas/`, or the
   dagster copy of a shared module) and let `python scripts/check_orchestrator_drift.py` confirm
   the copies match.
-- No `#[allow(...)]` or `# noqa` without an inline reason.
+- No `# noqa`, `# type: ignore` or `# pyright: ignore` without an inline reason.
 
 **Tests**
 - Every bug fix ships one test that fails without the fix.
@@ -80,35 +80,20 @@ Ask on the issue, or ask the user, before writing code when:
 
 ## 5. Checks before every push
 
-These mirror `.github/workflows/ci.yml`. All must pass.
+These mirror `.github/workflows/ci.yml`. All must pass. Floe is a `uv` project, Python >= 3.11.
 
 ```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --no-default-features --features delta,iceberg -- -D warnings
-cargo test -p floe-core --test unit <module>::          # the modules you touched
-cargo test -p floe-core --test integration -- --test-threads=1   # if floe-core/src changed
-cargo test -p floe-core --doc                           # if floe-core changed
-cargo test -p floe-cli --tests                          # if floe-cli changed
-python scripts/check_orchestrator_drift.py              # if orchestrators/ changed
-```
-
-If `src/floe/`, `tests/` or `conformance/` changed (Python core, `uv`, Python >= 3.11):
-
-```bash
-uv sync
+uv sync --all-groups
 uv run ruff check
 uv run ruff format --check
 uv run pyright                                          # strict
 uv run pytest
+uv run python conformance/check.py                      # golden suite
+python scripts/check_orchestrator_drift.py              # if orchestrators/ changed
 ```
 
-If `crates/floe-python` changed (inside a venv with `maturin`, `pytest`, `mypy`):
-
-```bash
-RUSTFLAGS="-C debuginfo=0" maturin develop --manifest-path crates/floe-python/Cargo.toml
-pytest crates/floe-python/tests/
-mypy crates/floe-python/tests/test_floe.py --ignore-missing-imports
-```
+If `orchestrators/<connector>/` changed, also run that connector's tests as its workflow does
+(`.github/workflows/dagster-floe.yml`, `airflow-floe.yml`).
 
 ## 6. PR body
 

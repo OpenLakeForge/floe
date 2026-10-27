@@ -230,9 +230,8 @@ floe run -c config.yml --profile profiles/prod.yml
 |---|---|
 | Full config reference | [docs/config.md](../docs/config.md) |
 | All check types | [docs/checks.md](../docs/checks.md) |
-| Delta + Unity Catalog | [docs/sinks/delta.md](../docs/sinks/delta.md) |
-| Iceberg + Glue / REST | [docs/sinks/iceberg.md](../docs/sinks/iceberg.md) |
-| S3 / GCS / ADLS storage | [docs/storages/](../docs/storages/) |
+| Iceberg + REST catalog | [docs/sinks/iceberg.md](../docs/sinks/iceberg.md) |
+| S3 storage | [docs/storages/s3.md](../docs/storages/s3.md) |
 | Incremental ingestion | [docs/profiles.md](../docs/profiles.md) |
 | Run reports | [docs/report.md](../docs/report.md) |
 | CLI reference | [docs/cli.md](../docs/cli.md) |

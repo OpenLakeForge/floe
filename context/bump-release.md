@@ -1,146 +1,96 @@
-# Floe — How to do a version bump PR
+# Floe — How to bump and release
 
-This document describes the exact steps to bump Floe to a new version and open a release PR. Follow them in order.
+Three packages are released from this repo, each from its own tag:
+
+| Package | Version lives in | Tag | Workflow | Publishes |
+|---|---|---|---|---|
+| `floe-python` (Floe) | `pyproject.toml` `[project] version` | `vX.Y.Z` | `.github/workflows/release.yml` | PyPI wheel + sdist, GitHub Release, `ghcr.io/openlakeforge/floe:<X.Y.Z>` and `:latest` |
+| `dagster-floe` | `orchestrators/dagster-floe/pyproject.toml` | `dagster-floe-vX.Y.Z` | `.github/workflows/release-dagster-floe.yml` | PyPI |
+| `airflow-floe` | `orchestrators/airflow-floe/pyproject.toml` | `airflow-floe-vX.Y.Z` | `.github/workflows/release-airflow-floe.yml` | PyPI |
+
+Each release is two steps: a bump PR, then a tag pushed by a maintainer once it is merged.
+Version bumps get their own PR (AGENTS.md §3).
 
 ---
 
 ## 1. Decide the new version
 
-Floe follows semantic versioning. The config schema version (`version: "0.x"` in YAML) is versioned independently and only changes when the config surface changes in a user-visible way.
+Floe follows semantic versioning, pre-1.0:
 
 | Change | Version bump |
 |---|---|
-| Breaking config or API change | minor (`0.X.0`) |
+| Breaking config, manifest, report or API change | minor (`0.X.0`) |
 | New feature, backward-compatible | minor (`0.X.0`) or patch (`0.x.Y`) |
 | Bug fix, internal refactor, test, doc | patch (`0.x.Y`) |
 
-When in doubt: if a user upgrading the binary needs to change their config YAML or manifest JSON, it's a minor bump.
+The Floe major.minor is also a contract version (D21, D22):
+- a config's `version:` is the minimum Floe version it targets; Floe accepts any version up to
+  its own major.minor (`FLOE_VERSION` in `src/floe/config/validate.py`, derived from the package
+  version);
+- the manifest `spec_version` is the major.minor that generated it.
+
+So a **minor** Floe bump changes the manifest `spec_version` the connectors must accept (step 4).
 
 ---
 
-## 2. Create the branch
+## 2. Floe (`floe-python`) bump PR
+
+Branch `chore/bump-v<NEW_VERSION>` from `main`, then:
+
+1. Set `version` in `pyproject.toml`.
+2. Run `uv lock` so `uv.lock` records the new version of the `floe-python` project.
+3. Move the `## v<NEW_VERSION> (unreleased)` section of `CHANGELOG.md` to `## v<NEW_VERSION>`, or
+   write it (one bullet per user-visible change; source: `git log <previous-tag>..HEAD`, read the
+   commit bodies).
+4. Check that `docs/` covers every user-visible change (`docs/config.md`, `docs/cli.md`,
+   `docs/sinks/<format>.md`, `docs/pii.md`, `docs/lineage.md`, `docs/profiles.md`,
+   `docs/manifest.md`, `docs/support-matrix.md`).
+5. Run the checks in `AGENTS.md` §5. The golden suite ignores `tool.version`, so it needs no
+   re-record.
+
+Title: `chore: release floe-python v<NEW_VERSION>`.
+
+## 3. Floe release
+
+After the bump PR merges, a maintainer tags the merge commit on `main`:
 
 ```bash
-git checkout main && git pull
-git checkout -b chore/bump-v<NEW_VERSION>
+git tag v<NEW_VERSION> <merge-commit> && git push origin v<NEW_VERSION>
 ```
 
----
+`release.yml` then:
+- refuses a tag that is not on `main`, or whose version differs from `pyproject.toml`;
+- builds with `uv build` and smoke-tests the `py3-none-any` wheel (`floe --help`);
+- publishes to PyPI through trusted publishing (environment `pypi`) and creates the GitHub
+  Release with the built files;
+- builds `Dockerfile.python` for linux/amd64 and linux/arm64 and pushes
+  `ghcr.io/openlakeforge/floe:<version>` and `:latest`.
 
-## 3. Bump versions in all three `Cargo.toml` files and both `pyproject` manifests
+A `workflow_dispatch` run from a branch (or with `dry_run`) builds the wheel and the image and
+publishes nothing.
 
-Files to update — change `version = "..."` **and** the `floe-core` dependency version in the crates that reference it:
+## 4. Connector bump PRs
 
-| File | Fields |
-|---|---|
-| `crates/floe-core/Cargo.toml` | `version` |
-| `crates/floe-cli/Cargo.toml` | `version`, `floe-core` dependency version |
-| `crates/floe-python/Cargo.toml` | `version`, `floe-core` dependency version |
-| `crates/floe-python/pyproject.toml` | `version` (the `[project]` version — controls the lean PyPI wheel version) |
-| `crates/floe-python/pyproject.duckdb.toml` | `version` **and** the `floe-python==<ver>` pin in `dependencies` (the DuckDB companion wheel — pinned to the exact lean version) |
+`dagster-floe` and `airflow-floe` are versioned independently; bump one only when it has changes,
+or when a Floe minor release changes what it must accept. Each gets its own PR
+(`chore(dagster-floe): release X.Y.Z`):
 
-There is no workspace-level `version` field — each crate is bumped independently but all **five** files must stay in sync. The release workflow's "Validate manifest versions match tag" job (`.github/workflows/release.yml`) checks every one of these against the tag and fails the publish on any mismatch — including `pyproject.duckdb.toml`.
+1. Set `version` in `orchestrators/<connector>/pyproject.toml`.
+2. For a new Floe minor, add the new `spec_version` to `SUPPORTED_SPEC_VERSIONS` in the
+   connector's `manifest.py`, and update `dagster-floe`'s `floe` extra pin (`floe-python>=X.Y,<X.Y+1`)
+   and its compatibility table in the README.
+3. If the manifest schema changed, edit the canonical `orchestrators/schemas/floe.manifest.schema.json`,
+   copy it into the connectors, and run `python scripts/check_orchestrator_drift.py`.
+4. Write the connector's `CHANGELOG.md` section (`## dagster-floe vX.Y.Z`).
+5. Run the connector's tests (`.github/workflows/dagster-floe.yml` / `airflow-floe.yml`).
 
----
-
-## 4. Update `Cargo.lock`
-
-```bash
-cargo check -p floe-core -p floe-cli -p floe-python
-```
-
-`cargo check` is sufficient — it resolves dependencies and rewrites `Cargo.lock` without a full compile. Do not run `cargo generate-lockfile` alone as it does not validate crate graph consistency.
-
----
-
-## 5. Write the `CHANGELOG.md` entry
-
-Add a new `## vX.Y.Z` section **at the top** of `CHANGELOG.md` (below the file header, above the previous version). Structure:
-
-- One bullet per user-visible change group (feature, fix, behaviour change).
-- Sub-bullets for details and caveats.
-- Reference the relevant doc file in parentheses where applicable.
-- "Internal hardening" section at the end for refactors with no config/API changes — still worth documenting so the diff is traceable.
-
-Source material: `git log <previous-tag>..HEAD --oneline` gives the full list of commits since the last release. Read the commit bodies (not just summaries) for the detailed changes.
-
----
-
-## 6. Update documentation
-
-For each user-visible change, check whether the matching doc file needs updating:
-
-| Change | Doc file |
-|---|---|
-| New config field | `docs/config.md` |
-| New sink behaviour | `docs/sinks/<format>.md` |
-| Lineage changes | `docs/lineage.md` |
-| Incremental state changes | `docs/how-it-works.md` |
-| PII changes | `docs/pii.md` |
-| Manifest / orchestrator changes | `context/orchestrators.md` |
-| Profile/variable changes | `docs/profiles.md`, `docs/variables.md` |
-| CLI changes | `docs/cli.md` |
-
-Also update `context/architecture.md` if a new key abstraction was added or removed, and `context/project.md` if the supported formats or storages table changed.
-
----
-
-## 7. Run CI checks locally
-
-All three must pass before pushing:
-
-```bash
-cargo fmt --all
-cargo clippy -p floe-core -p floe-cli -p floe-python -- -D warnings
-cargo test -p floe-core
-```
-
----
-
-## 8. Commit and push
-
-```bash
-git add crates/floe-core/Cargo.toml \
-        crates/floe-cli/Cargo.toml \
-        crates/floe-python/Cargo.toml \
-        crates/floe-python/pyproject.toml \
-        Cargo.lock \
-        CHANGELOG.md \
-        docs/ \
-        context/
-git commit -m "chore: bump all crates to <NEW_VERSION> and update docs"
-git push -u origin chore/bump-v<NEW_VERSION>
-```
-
----
-
-## 9. Open the PR
-
-Title: `chore: bump all crates to v<NEW_VERSION>`
-
-PR body template:
-
-```markdown
-## Summary
-- Bump `floe-core`, `floe-cli`, `floe-python` from `<OLD>` to `<NEW>`.
-- Update `CHANGELOG.md` with v<NEW_VERSION> entry.
-- Update docs: <list doc files touched>.
-
-## Checklist
-- [ ] All three `Cargo.toml` versions updated (floe-core, floe-cli, floe-python)
-- [ ] `crates/floe-python/pyproject.toml` version updated
-- [ ] `Cargo.lock` updated via `cargo check`
-- [ ] `CHANGELOG.md` entry written
-- [ ] Docs updated for all user-visible changes
-- [ ] `cargo fmt`, `clippy`, `cargo test -p floe-core` all pass
-```
-
-Merge target: `main`. No feature flags needed — this is a pure version bump.
+After the merge, a maintainer pushes `dagster-floe-v<X.Y.Z>` or `airflow-floe-v<X.Y.Z>`; the
+release workflow builds the package with `python -m build` and publishes it to PyPI.
 
 ---
 
 ## Notes
 
-- The Python orchestrator packages (`dagster-floe`, `airflow-floe`) have their own `pyproject.toml` versions and are bumped separately when they have changes. A Rust-only bump does not require bumping the Python packages.
-- The `floe-python` PyPI wheel version is derived from its `Cargo.toml` version — bumping it here also bumps the published Python package.
-- GitHub releases and PyPI publishes are triggered by CI on merge to `main` — no manual tagging required.
+- Floe 0.7 and earlier were released from the Rust crates (crates.io, Homebrew, Scoop, binaries);
+  that process is archived with the code at
+  [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).

@@ -2,7 +2,7 @@
 
 ## What it is
 
-Floe is a Polars-powered data contract runtime for reliable file ingestion. You
+Floe is a Python data contract runtime (Polars, PyIceberg, DuckDB) for reliable file ingestion. You
 describe a data contract in a YAML config file; Floe reads raw files or extracted
 datasets, enforces schema and quality rules, and writes clean rows to a sink —
 routing invalid rows to a separate rejected output.
@@ -14,8 +14,8 @@ It is designed for data platform teams who need reliable, auditable file ingesti
 - **No JVM, no cluster.** A lightweight runtime. Runs on a laptop, a Lambda function, or a Kubernetes job.
 - **Declarative contracts.** Schema, quality rules, and routing are expressed in YAML — not code.
 - **Audit trail by default.** Every run produces a JSON report with row counts, rejected file paths, schema evolution info, and timing.
-- **Cloud-native storage.** S3, GCS, ADLS, and local — all treated uniformly.
-- **Open table targets.** Accepted rows can land in Parquet, Delta Lake, Apache Iceberg, or DuckDB/MotherDuck.
+- **Cloud-native storage.** S3 (and S3-compatible stores) and local, treated uniformly.
+- **Open table targets.** Accepted rows land in Parquet or Apache Iceberg through a REST catalog (Polaris), including SCD1 merges.
 
 ## What it is NOT
 
@@ -33,18 +33,22 @@ It is designed for data platform teams who need reliable, auditable file ingesti
 
 | Direction | Formats |
 |---|---|
-| Input | CSV · TSV · JSON · Parquet · ORC · Avro · XLSX · XML · Fixed-width |
-| Accepted output | Parquet · Delta Lake · Apache Iceberg · DuckDB / MotherDuck |
-| Rejected output | CSV · Parquet |
+| Input | CSV · TSV · JSON · Parquet · ORC · Avro · XLSX · XML |
+| Accepted output | Parquet · Apache Iceberg |
+| Rejected output | CSV |
 
 ## Supported storage
 
-Local · AWS S3 · Azure ADLS · Google Cloud Storage
+Local · AWS S3 (and S3-compatible stores)
 
 ## Supported catalogs
 
-AWS Glue · Iceberg REST (Polaris, Nessie, Snowflake) · Databricks Unity Catalog
+Iceberg REST (Polaris)
+
+Floe 0.8 dropped Delta, DuckDB/MotherDuck, fixed-width, Glue, Unity, ADLS and GCS (D1, D26 in
+#619). The Rust implementation that had them is archived at
+[OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
 
 ## Versioning
 
-The project follows semantic versioning. The config file schema is versioned independently (`version: "0.1"` in YAML). Breaking config changes bump the minor version and are documented in `CHANGELOG.md`.
+The project follows semantic versioning. A config's `version:` is the minimum Floe major.minor it targets, and a manifest's `spec_version` is the Floe major.minor that generated it (D21, D22). Breaking changes bump the minor version and are documented in `CHANGELOG.md`. See `context/bump-release.md`.
