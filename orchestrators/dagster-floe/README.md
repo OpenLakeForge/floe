@@ -29,12 +29,20 @@ Current model:
 ## Install
 
 Prereqs:
-- Floe installed (either the `floe` CLI binary **or** Docker with a Floe image).
+- Floe 0.8 (`pip install floe-python`, **or** Docker with the `ghcr.io/openlakeforge/floe` image).
 - Python 3.10+.
 
 ```bash
 pip install dagster-floe
+pip install "dagster-floe[floe]"   # also installs floe-python>=0.8,<0.9 for the in-process runner
 ```
+
+## Supported Floe versions
+
+| dagster-floe | Floe | Manifest `spec_version` |
+| --- | --- | --- |
+| 0.3.x | 0.8 | `0.8` |
+| 0.2.x | 0.7 and earlier | see 0.2.x docs |
 
 ## Development install (from this repo)
 
@@ -107,8 +115,8 @@ See [docs/lineage.md](../../docs/lineage.md) for the full lineage config referen
 
 - This connector does **not** parse YAML directly; it consumes Floe manifests (`spec_version` `0.8`).
 - Connector logic lives under `src/floe_dagster/`; local wiring for demo lives in `example/definitions.py`.
-- For local development without an installed `floe` binary, you can point `LocalRunner` to a custom command, e.g.:
-  - `LocalRunner(\"cargo run -p floe-cli --\")`
+- For local development without an installed `floe` command, you can point `LocalRunner` to a custom command, e.g.:
+  - `LocalRunner("python -m floe")`
 - Manifest runner support in connector is currently `local_process` only.
 - `build_runner_from_env()` runs Floe in-process (`InProcessRunner`, through `floe.run_manifest`) when the `floe` Python core is installed in the Dagster environment, otherwise as a `floe` subprocess (`LocalRunner`). Set `FLOE_RUNNER=local` to force the subprocess. A timeout (`FLOE_RUN_TIMEOUT_SECONDS`) also runs as a subprocess, which can be killed. In-process runs are serialized within a process.
 - For local setup commands, use `orchestrators/LOCAL_DEV.md`.
