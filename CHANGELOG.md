@@ -4,6 +4,11 @@ All notable changes to Floe are documented in this file.
 
 ## floe (unreleased)
 
+- **Floe is a pure-Python package (#971).** `pip install floe-python` installs the `floe`
+  command; the wheel is `py3-none-any`. `ghcr.io/openlakeforge/floe` is now the Python image
+  (`ghcr.io/openlakeforge/floe-python` is no longer published). The Rust core moved to the
+  archived OpenLakeForge/floe-rust repository: 0.8 publishes no Rust binaries, no `floe-core`
+  or `floe-cli` crates, no `floe-duckdb` companion and no Homebrew or Scoop update.
 - **Clearer config error messages (#704).** Wording only; the same configs are accepted and rejected:
   - `<ctx>.storage and <ctx>.storage are mutually exclusive` now names `<ctx>.filesystem`;
   - an unknown key at the root of an included sources file is `unknown field root.<key>` (was `sources file.<key>`);

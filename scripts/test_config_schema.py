@@ -1,10 +1,13 @@
+import dataclasses
 import unittest
-import re
 from copy import deepcopy
 from pathlib import Path
 
 import yaml
 from jsonschema import Draft202012Validator, validators
+
+from floe import pii
+from floe.config import project, storage, types
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,47 +86,44 @@ class ConfigSchemaTest(unittest.TestCase):
                 f"{name} sink fragment schema drifted from the project contract",
             )
 
-    def test_rust_model_field_coverage(self):
-        source = (ROOT / "crates/floe-core/src/config/types.rs").read_text()
-        structs = {
-            name: set(re.findall(r"pub (\w+):", body))
-            for name, body in re.findall(r"pub struct (\w+) \{(.*?)^\}", source, re.M | re.S)
-        }
+    def test_model_field_coverage(self):
         bindings = {
-            "RootConfig": None, "ProjectMetadata": "project_metadata",
-            "LineageConfig": "lineage", "EnvConfig": "env",
-            "DomainConfig": "domain", "EntityConfig": "entity_base",
-            "PiiConfig": "pii", "PiiColumnConfig": "pii_column",
-            "EntityMetadata": "entity_metadata", "EntityStateConfig": "entity_state",
-            "SourceConfig": "source_fragment", "SourceOptions": "source_options",
-            "SinkConfig": "sink", "SinkTarget": "sink_accepted_fragment",
-            "SinkOptions": "sink_accepted_fragment", "MergeOptionsConfig": "merge",
-            "MergeScd2OptionsConfig": "merge_scd2", "IcebergPartitionFieldConfig": "partition_field",
-            "IcebergSinkTargetConfig": "iceberg", "DeltaSinkTargetConfig": "delta",
-            "DuckDbSinkTargetConfig": "duckdb", "StoragesConfig": "storages",
-            "StorageDefinition": "storage_definition", "CatalogsConfig": "catalogs",
-            "CatalogDefinition": "catalog_definition", "ReportConfig": "report",
-            "ArchiveTarget": "archive_target", "PolicyConfig": "policy_fragment",
-            "SchemaConfig": "schema", "NormalizeColumnsConfig": "normalize_columns",
-            "SchemaEvolutionConfig": "schema_evolution", "SchemaMismatchConfig": "schema_mismatch",
-            "ColumnConfig": "column",
-        }
-        self.assertEqual(set(structs), set(bindings))
-        internal = {"RootConfig": {"config_files"}, "DomainConfig": {"resolved_incoming_dir"}, "EntityConfig": {"id"}, "SinkTarget": {"write_mode"}}
-        aliases = {"SourceConfig": {"source_ref": "ref"}, "StorageDefinition": {"fs_type": "type"}, "ColumnConfig": {"column_type": "type"}, "CatalogDefinition": {"type_config": "type"}}
+            project.RootConfig: None, project.ProjectMetadata: "project_metadata",
+            project.LineageConfig: "lineage", project.EnvConfig: "env",
+            project.DomainConfig: "domain", types.EntityConfig: "entity_base",
+            types.PiiConfig: "pii", pii.PiiColumn: "pii_column",
+            types.EntityMetadata: "entity_metadata", types.EntityStateConfig: "entity_state",
+            types.SourceConfig: "source_fragment", types.SourceOptions: "source_options",
+            types.SourcePartitioning: "source_partitioning",
+            types.SinkConfig: "sink", types.SinkTarget: "sink_accepted_fragment",
+            types.SinkOptions: "sink_accepted_fragment", types.MergeOptions: "merge",
+            types.MergeScd2Options: "merge_scd2", types.IcebergPartitionField: "partition_field",
+            types.IcebergSinkOptions: "iceberg", storage.StoragesConfig: "storages",
+            storage.StorageDefinition: "storage_definition", storage.CatalogsConfig: "catalogs",
+            storage.CatalogDefinition: "catalog_definition", project.ReportConfig: "report",
+            types.ArchiveTarget: "archive_target", types.PolicyConfig: "policy_fragment",
+            types.SchemaConfig: "schema", types.NormalizeColumnsConfig: "normalize_columns",
+            types.SchemaEvolutionConfig: "schema_evolution", types.SchemaMismatchConfig: "schema_mismatch",
+            types.ColumnConfig: "column",
+        }  # `delta` and `duckdb` stay raw in the model (D1) and have no binding.
+        internal = {project.RootConfig: {"config_files"}, project.DomainConfig: {"resolved_incoming_dir"}, types.EntityConfig: {"id"}, types.SinkTarget: {"write_mode"}}
+        aliases = {types.SourceConfig: {"source_ref": "ref"}, types.ColumnConfig: {"column_type": "type"}}
         wire_extras = {
-            "RootConfig": {"sources", "include", "filesystems"},
-            "DomainConfig": {"defaults"}, "SourceConfig": {"filesystem", "partitioning"},  # D28: partitioning is Python-only
-            "SinkTarget": {"filesystem"},
-            "IcebergPartitionFieldConfig": {"num_buckets"},  # D12: Python-only, Rust 0.7 has no bucket transform
-            "CatalogDefinition": {"region", "database", "create_database_if_missing", "allow_takeover", "uri", "credential", "warehouse", "oauth2_server_uri", "scope", "host", "catalog", "schema", "token", "create_schema_if_missing"},
+            project.RootConfig: {"sources", "include", "filesystems"},
+            types.SourceConfig: {"filesystem"}, types.SinkTarget: {"filesystem"},
+            # `type` picks the catalog kind before the model; the rest are the Glue and Unity keys D1 rejects.
+            storage.CatalogDefinition: {"type", "region", "database", "create_database_if_missing", "allow_takeover", "host", "catalog", "schema", "token", "create_schema_if_missing"},
         }
         for model, definition in bindings.items():
-            with self.subTest(model=model):
-                expected = structs[model] - internal.get(model, set())
+            with self.subTest(model=model.__name__):
+                if dataclasses.is_dataclass(model):
+                    fields = {f.name for f in dataclasses.fields(model)}
+                else:
+                    fields = {f.alias or name for name, f in model.model_fields.items()}
+                expected = fields - internal.get(model, set())
                 expected = {aliases.get(model, {}).get(field, field) for field in expected}
                 block = SCHEMA if definition is None else SCHEMA["$defs"][definition]
-                if model == "SinkOptions":
+                if model is types.SinkOptions:
                     block = block["properties"]["options"]
                 self.assertEqual(expected | wire_extras.get(model, set()), set(block["properties"]))
                 self.assertFalse(internal.get(model, set()) & set(block["properties"]))
@@ -1223,9 +1223,7 @@ class ConfigSchemaTest(unittest.TestCase):
         workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
         filters = yaml.safe_load(workflow["jobs"]["changes"]["steps"][1]["with"]["filters"])
         self.assertIn("example/project/**", filters["config_schema"])
-        self.assertIn("crates/floe-core/src/config/types.rs", filters["config_schema"])
-        self.assertIn("crates/floe-core/src/config/parse.rs", filters["config_schema"])
-        self.assertIn("crates/floe-core/src/config/validate.rs", filters["config_schema"])
+        self.assertIn("src/floe/config/**", filters["config_schema"])
 
     def test_include_paths_must_not_be_blank(self):
         for include in ({"sources": ""}, {"sources": "   "}, {"domains": [""]}, {"domains": ["  "]}):

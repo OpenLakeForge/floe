@@ -13,8 +13,8 @@ Select the schema for the document you are editing:
 Each schema is self-contained: its `$ref` values point to its own `$defs`.
 There is no shared config schema or version directory to copy alongside it.
 
-Config fields follow `crates/floe-core/src/config/types.rs`. The YAML parser in
-`parse.rs` supplies the wire names and authoring-only fields: `ref`, named
+Config fields follow the models in `src/floe/config/` (`types.py`, `project.py`,
+`storage.py`). The YAML parser supplies the wire names and authoring-only fields: `ref`, named
 `sources`, domain `defaults`, includes, and the legacy `filesystem` alias.
 Resolved fields such as entity IDs, config file lists and resolved incoming
 paths are not YAML inputs. The regression suite checks the model field coverage.
