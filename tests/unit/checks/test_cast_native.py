@@ -26,13 +26,8 @@ NATIVE = pl.read_parquet(CASE / "in" / "casts_typed.parquet")
 
 def rust_rejected(declared: str) -> set[tuple[str, str]]:
     """`(row id, column)` of every cast_error in the recorded rejected rows."""
-    # D17 changes the integer targets: expected_python/ replaces the Rust recording where present
-    rel = Path("rejected") / f"typed_{declared}" / "part-00000.csv"
-    path = next(
-        (p for d in ("expected_python", "expected") if (p := CASE / d / rel).exists()),
-        None,
-    )
-    if path is None:
+    path = CASE / "expected" / "rejected" / f"typed_{declared}" / "part-00000.csv"
+    if not path.exists():
         return set()
     with path.open(newline="") as f:
         return {

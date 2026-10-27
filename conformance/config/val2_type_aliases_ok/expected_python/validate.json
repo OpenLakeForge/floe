@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "entity.name=orders schema.columns[3].type=decimal needs a precision and scale, e.g. decimal(19,2); use float64 for approximate numbers"
-}

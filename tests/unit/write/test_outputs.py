@@ -88,7 +88,7 @@ def check(case: str, base: Path, entities: list[str]) -> None:
     """Compare what `emit` wrote with the case's `expected/accepted` and `expected/rejected`."""
     expected = {
         k: v
-        for k, v in load_expected(CONFORMANCE / case, "python").items()
+        for k, v in load_expected(CONFORMANCE / case).items()
         if not k.startswith("reports/")
         and k != "manifest.json"
         and k.split("/")[1].removesuffix(".parquet") in entities

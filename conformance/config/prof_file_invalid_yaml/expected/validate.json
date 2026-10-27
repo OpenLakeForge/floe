@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "illegal placement of ':' indicator at byte 10 line 2 column 2"
+  "error": "while parsing a flow sequence, expected ',' or ']' at byte 10 line 2 column 2"
 }

@@ -195,7 +195,7 @@ def test_mismatch_case_matches_rust_report() -> None:
     ent = parse_config(CONFORMANCE / "config.yml").entities[0]
     chunk = next(read_csv(CONFORMANCE / "in" / "customers.csv", ent.source.options))
     out = plan_mismatch(ent, declared_names(ent), chunk.df.columns)
-    run = CONFORMANCE / "expected/reports/report/run_ID/spike/customers/run.json"
+    run = CONFORMANCE / "expected/reports/report/spike/run_ID/spike/customers/run.json"
     expected = json.loads(run.read_text())["files"][0]["mismatch"]
     assert out.report == expected
     df = apply_mismatch(chunk.df, out)

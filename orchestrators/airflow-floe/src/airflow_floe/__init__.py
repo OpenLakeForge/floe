@@ -4,7 +4,7 @@ from .hooks import FloeManifestHook, load_manifest_context
 from .manifest import (
     AirflowManifest,
     ManifestEntity,
-    MANIFEST_SCHEMA,
+    SUPPORTED_SPEC_VERSIONS,
     load_manifest,
 )
 from .manifest_discovery import ManifestDagSpec, discover_manifest_dag_specs
@@ -27,9 +27,9 @@ __all__ = [
     "FloeManifestHook",
     "FloeRunHook",
     "FloeRunOperator",
-    "MANIFEST_SCHEMA",
     "ManifestDagSpec",
     "ManifestEntity",
+    "SUPPORTED_SPEC_VERSIONS",
     "build_asset_event_extra",
     "build_dag_manifest_context",
     "build_dag_manifest_context_or_empty",

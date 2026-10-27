@@ -1,5 +1,5 @@
 {
-  "spec_version": "0.3",
+  "spec_version": "0.8",
   "tool": {
     "name": "floe",
     "version": "0.7.0"
@@ -14,7 +14,7 @@
   },
   "config": {
     "path": "manifest.json",
-    "version": "0.3"
+    "version": "0.8"
   },
   "report": {
     "path": "<ROOT>/report",

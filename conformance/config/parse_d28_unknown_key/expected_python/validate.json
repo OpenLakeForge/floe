@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "entities[0] (entity.name=orders): unknown field source.partitioning.timezone"
-}

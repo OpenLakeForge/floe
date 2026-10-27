@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "entity.name=orders pii.columns[name=id]: PII strategy cannot be applied to a primary_key column with write_mode=merge_scd1: masking the merge key corrupts the merge predicate"
-}

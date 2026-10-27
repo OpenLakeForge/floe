@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "entity.name=orders sink.accepted.merge.ignore_columns has duplicate column amt"
-}

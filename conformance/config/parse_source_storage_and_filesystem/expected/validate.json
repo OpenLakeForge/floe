@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entities[0] (entity.name=orders): source.storage and source.storage are mutually exclusive"
+  "error": "entities[0] (entity.name=orders): source.storage and source.filesystem are mutually exclusive"
 }

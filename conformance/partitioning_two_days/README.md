@@ -5,6 +5,4 @@ sorts last by name, and every row gets the `ingest_date` and `batch_id` of its f
 accepted (the primary key is `[id, ingest_date]`); the second `id` 2 of 2026-10-24 is rejected. One batch per day:
 the order of two batches of one day follows their modification times, which a git checkout does not keep.
 
-Rust 0.7 rejects the config (`unknown field source.partitioning`), so `expected/` holds its failed run
-(run with `--log-format json` so it records); `expected_python/` holds the Python outputs, from
-`check.py --impl python` on this case.
+Rust 0.7 rejected the config (`unknown field source.partitioning`); the case runs with `--log-format json`.

@@ -29,12 +29,20 @@ Current model:
 ## Install
 
 Prereqs:
-- Floe installed (either the `floe` CLI binary **or** Docker with a Floe image).
+- Floe 0.8 (`pip install floe-python`, **or** Docker with the `ghcr.io/openlakeforge/floe` image).
 - Python 3.10+.
 
 ```bash
 pip install dagster-floe
+pip install "dagster-floe[floe]"   # also installs floe-python>=0.8,<0.9 for the in-process runner
 ```
+
+## Supported Floe versions
+
+| dagster-floe | Floe | Manifest `spec_version` |
+| --- | --- | --- |
+| 0.3.x | 0.8 | `0.8` |
+| 0.2.x | 0.7 and earlier | see 0.2.x docs |
 
 ## Development install (from this repo)
 
@@ -78,6 +86,22 @@ Every accepted-output asset automatically gets quality checks registered in Dags
 
 Checks appear in the Dagster UI under each asset, linked to the run that produced them. A `WARN`-severity violation marks the check as a warning; `REJECT` or `ABORT` marks it as a failure.
 
+## Reading manifests and reports from S3
+
+`dagster-floe` reads `s3://` manifests and Floe run reports with `fsspec` (install the `remote`
+extra). It configures S3 the same way the Floe run does, from the environment:
+
+| Variable | Effect |
+| --- | --- |
+| `AWS_ENDPOINT_URL_S3`, else `AWS_ENDPOINT_URL` | Custom endpoint (MinIO, SeaweedFS, Ceph, ...). |
+| `AWS_S3_FORCE_PATH_STYLE=true` (or `1`) | Path-style addressing, which most S3-compatible stores need. |
+| `AWS_REGION`, `AWS_ACCESS_KEY_ID`, ... | The standard AWS chain, as for any boto3 client. |
+
+Set these on the code-location pod (and on the run pods) so Dagster reads exactly where Floe wrote.
+There is no need to replace the connector's reader: earlier versions (0.2.x) passed no endpoint or
+path-style options, which is why some deployments patched `floe_dagster.assets._fsspec_read_text`.
+From 0.3.0, remove that patch and set the variables above.
+
 ## Lineage integration
 
 The connector automatically injects two environment variables into every floe subprocess:
@@ -107,8 +131,8 @@ See [docs/lineage.md](../../docs/lineage.md) for the full lineage config referen
 
 - This connector does **not** parse YAML directly; it consumes Floe manifests (`spec_version` `0.8`).
 - Connector logic lives under `src/floe_dagster/`; local wiring for demo lives in `example/definitions.py`.
-- For local development without an installed `floe` binary, you can point `LocalRunner` to a custom command, e.g.:
-  - `LocalRunner(\"cargo run -p floe-cli --\")`
+- For local development without an installed `floe` command, you can point `LocalRunner` to a custom command, e.g.:
+  - `LocalRunner("python -m floe")`
 - Manifest runner support in connector is currently `local_process` only.
 - `build_runner_from_env()` runs Floe in-process (`InProcessRunner`, through `floe.run_manifest`) when the `floe` Python core is installed in the Dagster environment, otherwise as a `floe` subprocess (`LocalRunner`). Set `FLOE_RUNNER=local` to force the subprocess. A timeout (`FLOE_RUN_TIMEOUT_SECONDS`) also runs as a subprocess, which can be killed. In-process runs are serialized within a process.
 - For local setup commands, use `orchestrators/LOCAL_DEV.md`.

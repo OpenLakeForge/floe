@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "entity.name=orders sink.accepted.merge.compare_columns[0]=zz references unknown schema column"
-}
