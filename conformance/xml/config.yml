@@ -1,0 +1,37 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: items
+    domain: spike
+    source:
+      format: xml
+      path: "./in/items.xml"
+      options:
+        row_tag: item
+        namespace: "urn:x"
+        value_tag: value
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/items"
+      rejected:
+        format: csv
+        path: "./out/rejected/items"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: id
+          source: "@id"
+          type: string
+        - name: name
+          type: string
+          nullable: false
+        - name: city
+          source: addr.city
+          type: string
+        - name: price
+          type: number
+report:
+  path: "./report"

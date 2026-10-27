@@ -6,7 +6,7 @@ all supported options. See `example/config.yml` for a full working example.
 ## Structure at a glance
 
 ```yaml
-version: "0.2"
+version: "0.8"
 metadata: { ... }
 report:
   path: "/abs/or/relative/report/dir"
@@ -64,9 +64,10 @@ entities:
 ## Top-level fields
 
 - `version` (required)
-  - String used to validate config compatibility.
-  - Must be a numeric `major.minor` string such as `"0.1"`, `"0.2"`, or `"0.3"`.
-  - Minimum supported version is `"0.1"`.
+  - The minimum Floe release the config targets, as a numeric `major.minor`
+    string such as `"0.8"`.
+  - Floe accepts any version from `"0.1"` up to its own release (`"0.8"`) and
+    rejects a newer one. Older versions keep their semantics.
   - `schema.schema_evolution` requires `version >= "0.2"`.
   - `version >= "0.3"` qualifies entity identity with its domain (see Entity identity).
 - `metadata` (optional)
@@ -334,6 +335,49 @@ state file shape, and CAS behavior.
 - `cast_mode` (optional)
   - `strict` (default): invalid values produce cast errors.
   - `coerce`: invalid values become null (and may still fail `not_null`).
+- `partitioning` (optional, D28)
+  - For raw layouts such as `<source>/yyyy/MM/dd/<batch>/files`:
+    ```yaml
+    source:
+      path: s3://raw/crm/customer/
+      partitioning:
+        pattern: "{yyyy}/{MM}/{dd}/{batch}"   # or "year={yyyy}/month={MM}/day={dd}"
+        date_column: ingest_date               # required
+        batch_column: batch_id                 # optional
+        lookback_days: 1                       # optional, file mode (D30)
+    ```
+  - `pattern` is matched against each input's directory, relative to the source root (the
+    part of `path` before any glob). The match is on the whole directory; the file name is free.
+    Tokens are `{yyyy}`, `{MM}` and `{dd}` (required), `{HH}` (optional) and `{batch}`
+    (optional, one folder name, such as a hash). Other text is literal.
+  - Every row gets `date_column`, a `date`, or a `datetime` when the pattern has `{HH}`. With
+    `batch_column`, it also gets the `{batch}` folder name as a `string`. Both are ordinary columns
+    for keys, merges and `partition_spec` (for example `{column: ingest_date, transform: day}`).
+    They must not also be in `schema.columns`, before or after `normalize_columns`. A file column
+    with the same name is an extra column, handled by `schema.mismatch.extra_columns`; the value
+    from the path is what is kept.
+  - Inputs are listed recursively, whatever `options.recursive` says. They load by date, then by
+    batch (earliest file modification time first, then name), then by file name.
+    `resolved_inputs` in the report lists them in that order.
+  - A listed file whose directory doesn't match, or whose date is invalid (month 13), fails the
+    run before any entity starts. The error names the file and the pattern.
+  - In archive mode, an input is archived under its partition path:
+    `<archive>/<entity>/yyyy/MM/dd/<batch>/<stem>__run-…__src-….<ext>` (D29). A `--full-refresh`
+    reads the archive recursively and derives the same date and batch from those paths.
+  - With `incremental_mode: file` (D30), the state also keeps a **watermark**: the latest
+    partition date ingested. A run lists only from `watermark - lookback_days` (default `1`): S3
+    starts the listing after the previous day's prefix, a local source skips older directories. Inside
+    that window the per-file state still decides, so a new batch on the same day is picked up.
+    Any claim still in the state holds the window back to its date, so a crashed run's files are
+    retried. The window needs the date at the front of `pattern` (`{yyyy}`, `{MM}`, `{dd}`, no
+    `{batch}` or `{HH}` before `{dd}`); with another pattern the whole source is listed and older
+    files are dropped after listing.
+  - A file landing in a day older than the window is not ingested. Floe can't see it (it is not
+    listed), so every run that lists from a watermark logs one warning naming the window. A
+    `--full-refresh` lists everything and picks it up.
+  - The watermark moves only forward, when a run promotes its files, in the same state write. A
+    failed `--full-refresh` clears it, so the next run lists everything once. Per-file entries are
+    kept, so the state grows as in plain `file` mode; pruning them is #949.
 
 ### `sink` (required)
 
@@ -356,7 +400,7 @@ state file shape, and CAS behavior.
 - `accepted` (required)
   - `format`: `parquet`, `delta`, `iceberg`, or `duckdb`.
     - `delta`: Delta Lake transactional sink; optional Unity Catalog registration via `sink.accepted.delta`.
-    - `iceberg`: local/S3/GCS filesystem-catalog sink, with optional AWS Glue or REST catalog registration; append/overwrite supported; no schema evolution.
+    - `iceberg`: Iceberg table in a REST catalog; `sink.accepted.iceberg` with a catalog is required (0.8). See [Iceberg sink](sinks/iceberg.md).
     - `duckdb`: local `.duckdb` file or MotherDuck (`md:`) database; `overwrite`/`append`/`merge_scd1`/`merge_scd2` via native `MERGE INTO`. Configured via `sink.accepted.duckdb`. See [DuckDB sink](sinks/duckdb.md).
 - `path`: output directory for accepted records.
   - Supports `{{var}}` templating (see "Templating & domains").
@@ -374,10 +418,10 @@ state file shape, and CAS behavior.
         accepted buffer to the sink whenever the accumulated estimated
         in-memory size meets this threshold (or at end of entity). The
         first flush uses the configured `write_mode`; subsequent flushes
-        within the same run are forced to `append`. A file's archive
-        call (when `sink.archive` is enabled) always runs before its
-        rows are added to the buffer, so a file's accepted data only
-        ever reaches the sink after that file's archive has succeeded.
+        within the same run are forced to `append`. Inputs are archived
+        (when `sink.archive` is enabled) only after the sink commit
+        succeeds, so an input is never archived unless its rows were
+        written; if the commit fails, the inputs stay in the source.
       - **Partial-output trade-off (applies to all non-merge sinks)**:
         because flushes commit synchronously while Phase B is still
         iterating inputs, a failure on a *later* file (read /
@@ -434,8 +478,8 @@ state file shape, and CAS behavior.
       - `valid_from_column` (default `__floe_valid_from`)
       - `valid_to_column` (default `__floe_valid_to`)
       - Custom names must be non-empty, unique, and must not collide with business schema columns.
-  - `iceberg` (optional, `sink.accepted.format: iceberg`)
-    - Enables Iceberg catalog-specific options.
+  - `iceberg` (required for `sink.accepted.format: iceberg` in 0.8)
+    - Binds the sink to its REST catalog; a catalog-less Iceberg sink is rejected by `floe validate`.
     - `catalog` (optional)
       - Catalog name from `catalogs.definitions` (type `glue` or `rest`).
       - If omitted, `catalogs.default` is used when set.
@@ -493,6 +537,9 @@ state file shape, and CAS behavior.
 - `path`: directory where raw input files are archived after ingestion.
   - If omitted, archiving is disabled.
   - Supports `{{var}}` templating (see "Templating & domains").
+  - Prefer an archive location outside the source path (for example `s3://raw/archive/` next to
+    `s3://raw/crm/`). Nesting it under the source is safe: a normal run never lists the
+    archive as input, and `--full-refresh` reads it once, explicitly (D31).
 
 ### `pii` (optional)
 

@@ -2,7 +2,7 @@
 """Copy the canonical manifest schema into the package before building.
 
 dagster-floe validates every manifest against a bundled copy of
-``orchestrators/schemas/floe.manifest.v1.json`` (loaded via
+``orchestrators/schemas/floe.manifest.schema.json`` (loaded via
 ``importlib.resources``, see ``floe_dagster/manifest.py``) so it never needs
 a runtime dependency on floe-core. That copy previously had to be kept in
 sync by hand and silently drifted (issue #446): this refreshes it from the
@@ -23,8 +23,8 @@ from pathlib import Path
 import setuptools
 
 _HERE = Path(__file__).resolve().parent
-_CANONICAL_SCHEMA = _HERE.parent / "schemas" / "floe.manifest.v1.json"
-_VENDORED_SCHEMA = _HERE / "src" / "floe_dagster" / "schemas" / "floe.manifest.v1.json"
+_CANONICAL_SCHEMA = _HERE.parent / "schemas" / "floe.manifest.schema.json"
+_VENDORED_SCHEMA = _HERE / "src" / "floe_dagster" / "schemas" / "floe.manifest.schema.json"
 
 if _CANONICAL_SCHEMA.exists():
     _VENDORED_SCHEMA.parent.mkdir(parents=True, exist_ok=True)

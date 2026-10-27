@@ -1,0 +1,1020 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/OpenLakeForge/floe/orchestrators/schemas/floe.manifest.schema.json",
+  "title": "Floe Common Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "generated_at_ts_ms",
+    "floe_version",
+    "spec_version",
+    "manifest_id",
+    "config_uri",
+    "report_base_uri",
+    "domains",
+    "execution",
+    "runners",
+    "entities"
+  ],
+  "properties": {
+    "generated_at_ts_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "floe_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "spec_version": {
+      "description": "Floe release (major.minor) that generated the manifest (D22).",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "manifest_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_env": {
+      "description": "Runtime this manifest targets. 'image' records local config/profile URIs absolute under the container work-root (local:///work/...); 'cli' records them host-absolute. Absent on manifests generated before v0.6.7 (treated as 'cli').",
+      "type": "string",
+      "enum": [
+        "image",
+        "cli"
+      ]
+    },
+    "work_root": {
+      "description": "Absolute work-root that local paths are resolved under at replay time. Recorded for 'image' runtime (e.g. /work); absent for 'cli'.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "config_uri": {
+      "type": "string",
+      "minLength": 1
+    },
+    "config_checksum": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "config_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "manifest_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "manifest_revision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "profile_uri": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "profile_checksum": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "storages": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "catalogs": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "lineage": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "metadata": {
+      "description": "Project metadata from the config, descriptive only (D20).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "sources": {
+      "description": "Index of the named config sources, derived from the entities that reference them (D20). Not execution data: the runner reads only entities[].source.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "format",
+          "uri",
+          "entities"
+        ],
+        "properties": {
+          "name": {
+            "description": "The named source, matching entities[].source.ref.",
+            "type": "string",
+            "minLength": 1
+          },
+          "format": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uri": {
+            "description": "Resolved location: the longest common prefix of the consuming entities' source URIs; null when they share none (e.g. different storages).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "entities": {
+            "description": "Names of the entities that consume this source.",
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "report_base_uri": {
+      "type": "string",
+      "minLength": 1
+    },
+    "domains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "incoming_dir": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entrypoint",
+        "base_args",
+        "per_entity_args",
+        "log_format",
+        "result_contract",
+        "defaults"
+      ],
+      "properties": {
+        "entrypoint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "per_entity_args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "log_format": {
+          "type": "string",
+          "enum": [
+            "json",
+            "text"
+          ]
+        },
+        "result_contract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "run_finished_event",
+            "summary_uri_field",
+            "exit_codes"
+          ],
+          "properties": {
+            "run_finished_event": {
+              "type": "boolean"
+            },
+            "summary_uri_field": {
+              "type": "string",
+              "minLength": 1
+            },
+            "exit_codes": {
+              "type": "object",
+              "minProperties": 1,
+              "patternProperties": {
+                "^[0-9]+$": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "env",
+            "workdir"
+          ],
+          "properties": {
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "workdir": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "orchestration": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "max_concurrent_entities": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "strategy": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "sequential",
+                "parallel",
+                null
+              ]
+            }
+          }
+        }
+      }
+    },
+    "runners": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "default",
+        "definitions"
+      ],
+      "properties": {
+        "default": {
+          "type": "string",
+          "minLength": 1
+        },
+        "definitions": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "local_process",
+                  "docker",
+                  "kubernetes_pod",
+                  "kubernetes_job",
+                  "ecs_task",
+                  "databricks_job"
+                ]
+              },
+              "image": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "namespace": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "service_account": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "resources": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "cpu": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "memory_mb": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1
+                  }
+                }
+              },
+              "env": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "command": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "args": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "timeout_seconds": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "ttl_seconds_after_finished": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "poll_interval_seconds": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "secrets": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object"
+                }
+              },
+              "workspace_url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              },
+              "existing_cluster_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              },
+              "config_uri": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              },
+              "python_file_uri": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              },
+              "job_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              },
+              "auth": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "service_principal_oauth_ref": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1
+                  }
+                }
+              },
+              "env_parameters": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "databricks_job"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "workspace_url",
+                    "existing_cluster_id",
+                    "config_uri",
+                    "python_file_uri",
+                    "auth"
+                  ],
+                  "properties": {
+                    "auth": {
+                      "type": "object",
+                      "required": [
+                        "service_principal_oauth_ref"
+                      ],
+                      "properties": {
+                        "service_principal_oauth_ref": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "^env://[A-Z0-9_]+$"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "group_name",
+          "asset_key",
+          "source_format",
+          "accepted_sink_uri",
+          "source",
+          "sinks",
+          "policy_severity",
+          "write_mode",
+          "incremental_mode",
+          "schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "group_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "asset_key": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "source_format": {
+            "type": "string",
+            "minLength": 1
+          },
+          "accepted_sink_uri": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rejected_sink_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "runner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "format",
+              "storage",
+              "uri",
+              "path",
+              "resolved"
+            ],
+            "properties": {
+              "format": {
+                "type": "string",
+                "minLength": 1
+              },
+              "storage": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uri": {
+                "type": "string",
+                "minLength": 1
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "resolved": {
+                "type": "boolean"
+              },
+              "ref": {
+                "type": "string"
+              },
+              "resource": {
+                "type": "string"
+              },
+              "cast_mode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "options": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "partitioning": {
+                "description": "D28: source.partitioning; absent when the source has none.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "pattern",
+                  "date_column"
+                ],
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "date_column": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "batch_column": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "lookback_days": {
+                    "description": "D30: file mode lists only from the watermark minus this many days.",
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "sinks": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "accepted"
+            ],
+            "properties": {
+              "accepted": {
+                "$ref": "#/$defs/sink_target"
+              },
+              "rejected": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/sink_target"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "archive": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/archive_target"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "policy_severity": {
+            "type": "string",
+            "enum": [
+              "warn",
+              "reject",
+              "abort"
+            ]
+          },
+          "write_mode": {
+            "type": "string",
+            "enum": [
+              "overwrite",
+              "append",
+              "merge_scd1",
+              "merge_scd2"
+            ]
+          },
+          "incremental_mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "archive",
+              "file",
+              "row"
+            ]
+          },
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "columns",
+              "primary_key",
+              "unique_keys"
+            ],
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "column_type"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "column_type": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "source": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "nullable": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "unique": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "width": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 0
+                    },
+                    "trim": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              },
+              "primary_key": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "unique_keys": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "normalize_columns": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "mismatch": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "schema_evolution": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            }
+          },
+          "pii": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "state_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sink_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "storage",
+        "uri",
+        "path",
+        "resolved"
+      ],
+      "properties": {
+        "format": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolved": {
+          "type": "boolean"
+        },
+        "options": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "partition_by": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "partition_spec": {
+          "description": "#911: the Iceberg partition spec; absent when the sink has none.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "column",
+              "transform"
+            ],
+            "properties": {
+              "column": {
+                "type": "string",
+                "minLength": 1
+              },
+              "transform": {
+                "type": "string",
+                "minLength": 1
+              },
+              "num_buckets": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "merge": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "iceberg": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "delta": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "duckdb": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    },
+    "archive_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storage",
+        "uri",
+        "path",
+        "resolved"
+      ],
+      "properties": {
+        "storage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolved": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

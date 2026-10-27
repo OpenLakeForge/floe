@@ -49,6 +49,7 @@ def test_config_version_invalid(raw: str) -> None:
 
 
 def test_root_fields(tmp_path: Path) -> None:
+    (tmp_path / "e.yml").write_text("K: v\n")
     config = load(
         tmp_path,
         f"""
@@ -176,13 +177,13 @@ def test_source_ref_overlays_the_named_source_and_substitutes_the_resource(
         {SOURCES}
         entities:
         - {{name: orders, source: {{ref: lake, options: {{separator: "|"}}}}, {REST}}}
-        - {{name: x, source: {{ref: lake, resource: items, path: "{{{{ resource }}}}/{{{{other}}}}"}}, {REST}}}
+        - {{name: x, source: {{ref: lake, resource: items, path: "{{{{ resource }}}}/{{{{entity.name}}}}"}}, {REST}}}
         """,
     )
     assert [
         (e.source.path, e.source.options.header, e.source.options.separator)
         for e in config.entities
-    ] == [("in/orders.csv", True, "|"), ("items/{{other}}", True, ";")]
+    ] == [("in/orders.csv", True, "|"), ("items/x", True, ";")]
     assert [(e.source.source_ref, e.source.resource) for e in config.entities] == [
         ("lake", "orders"),
         ("lake", "items"),
@@ -195,6 +196,7 @@ def test_domain_defaults_are_merged_under_the_entity(tmp_path: Path) -> None:
         """
         version: "0.3"
         domains:
+        - name: finance
         - name: sales
           defaults: {policy: {severity: warn}, sink: {accepted: {format: parquet, path: o}}, source: {format: csv, path: p}}
         entities:
@@ -210,7 +212,7 @@ def test_domain_defaults_are_merged_under_the_entity(tmp_path: Path) -> None:
         ("warn", "parquet"),
     ]
     assert [e.id for e in config.entities] == ["sales.a", "finance.b", "sales.c"]
-    assert config.domains[0].defaults == {
+    assert config.domains[1].defaults == {
         "policy": {"severity": "warn"},
         "sink": {"accepted": {"format": "parquet", "path": "o"}},
         "source": {"format": "csv", "path": "p"},
@@ -285,6 +287,9 @@ def test_d7_accepts_domain_defaults_with_other_schema_keys(tmp_path: Path) -> No
 def test_cli_validate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    (tmp_path / "p.yml").write_text(
+        "apiVersion: floe/v1\nkind: EnvironmentProfile\nmetadata: {name: p}\nvariables: {A: b}\n"
+    )
     (tmp_path / "ok.yml").write_text(f'version: "0.3"\nentities: [{ENTITY}]')
     (tmp_path / "bad.yml").write_text('version: "0.3"\ncolour: 1\nentities: []')
     for config, code, stderr in [
@@ -294,7 +299,14 @@ def test_cli_validate(
     ]:
         monkeypatch.setattr(
             "sys.argv",
-            ["floe", "validate", "-c", str(tmp_path / config), "--profile", "p.yml"],
+            [
+                "floe",
+                "validate",
+                "-c",
+                str(tmp_path / config),
+                "--profile",
+                str(tmp_path / "p.yml"),
+            ],
         )
         assert _cli.main() == code
         assert capsys.readouterr().err == stderr

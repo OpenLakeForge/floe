@@ -13,9 +13,15 @@ conformance/<case>/
 │   ├── reports/      normalized run.summary.json and each entity run.json
 │   ├── accepted/     accepted rows, one Parquet file per accepted output dir
 │   └── rejected/     rejected rows (CSV)
+├── runs              optional: number of runs (default 1), or one line of extra `run` args per run (`-` for none,
+│                     e.g. `-` then `--full-refresh`); only the last run is captured, state carries over
 ├── delta.yml         optional: intentional deltas of this case, e.g. `[D9]`
+├── manifest_run      optional marker: generate `manifest.json` from `config.yml`, then run `floe run --manifest manifest.json`
 └── expected_python/  optional: only the `expected/` files that differ for Python
 ```
+
+Every case whose config generates, and has no `profile.yml`, also holds `expected/manifest.json`: the output of
+`floe manifest generate -c config.yml -o - --deterministic`, run with `FLOE_RUNTIME=cli` after the case's own run.
 
 A case is any directory holding a `config.yml` (it may be nested, e.g. `example/standalone`).
 
@@ -41,7 +47,9 @@ uv run python conformance/check.py --impl rust|python [--case NAME | --cases-fil
 
 Runs the implementation on every case and prints a diff for each difference; exits 1 if any.
 `--impl python` runs `uv run floe run -c config.yml` (`validate -c config.yml` for the cases under `config/`). `--cases-file` runs only the case names listed in the file
-(one per line, `#` comments; an empty list runs nothing and passes).
+(one per line, `#` comments; an empty list runs nothing and passes). With `--impl python` a case is compared
+on `manifest.json` only when its line ends with `manifest` (`casts manifest`) or when it is named with `--case`;
+`--impl rust` always compares it. Python skips a case that has no recorded manifest (Rust 0.7 rejects a config Python accepts, D2). Port tasks add the `manifest` tag as the builder gains features.
 
 ## CI
 
@@ -69,10 +77,23 @@ skips them and `check.py --impl rust` prints `skip` for them.
 
 ## Normalization
 
-- Masked when recording: run ids, timestamps, durations, absolute paths (`<ROOT>`, `run_<id>`).
+- Masked when recording: run ids, timestamps, durations, absolute paths (`<ROOT>`, `run_<id>`), and the run id and
+  source hash in archived file names (`__run-<id>__src-<hash>`).
 - Compared by shape: UUID-based part file names (`part-<uuid>`), Iceberg `snapshot_id`.
 - Recorded but ignored on compare (G5 ruling, #594): `total_bytes_written`, `avg_file_size_mb`.
+- Ignored on compare: `tool.version` in `run.summary.json` (each implementation reports its own version). `expected/` keeps the recorded `0.7.0`.
 - Paths in `expected/` use `run_ID` and `part-UUID` (no `<`/`>`: Windows can't check them out); file contents keep `run_<id>` / `part-<uuid>`.
-- Only `out/accepted` and `out/rejected` are captured; `record.py` fails on a case that produces neither.
+- Only `out/accepted` and `out/rejected` are captured; `record.py` fails on a case that produces neither, unless its
+  last run passes `--log-format json`: then stdout's event lines are captured too, in `expected/events.jsonl` (`ts_ms` masked).
 - Parquet dates and timestamps are compared as Arrow-rendered text, so years outside 1..9999 (which Python's `date` cannot hold) work.
+- A run's non-zero exit code is recorded in `expected/exit_code` (e.g. `2` for an aborted run) and compared; no file means 0. Codes other than 0 and 2 fail recording, except on a `--log-format json` run. An `expected_python/exit_code` of `0` marks a Python-only feature that succeeds where Rust 0.7 fails its `--log-format json` run (D28 `partitioning_*`).
+- `manifest.json`: `floe_version`, `manifest_id` and `manifest_revision` are masked (the version string and the
+  absolute paths feed them) and the temp dir holding the work dir is `<ROOT>` (so `../` paths mask too); every other byte is compared, key order included.
+  D22 (#798): `check.py` also drops `schema` and masks `spec_version` on both sides at compare time, so the Rust 0.7
+  recordings (`floe.manifest.v1`, the config version) stay as recorded; `tests/unit/test_manifest.py` checks Python's value.
+  D20 (#796): `check.py` also drops the Python-only `sources` index and project `metadata` at compare time;
+  `tests/unit/test_manifest.py` checks their content.
+  A manifest run reports the manifest's `spec_version` (the Floe version), so `manifest_run` carries a `[D22]`
+  `expected_python/` for its report files.
+  Python's profile fields (`-p`) and remote `-o` are not covered yet (#635, storage clients).
 - Key order in reports is kept: it is part of the contract.

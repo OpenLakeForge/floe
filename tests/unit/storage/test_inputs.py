@@ -20,13 +20,16 @@ class FakeClient:
     def resolve_uri(self, path: str) -> str:
         return f"s3://bucket/{path}"
 
-    def list(self, prefix: str) -> list[ObjectRef]:
+    def list(self, prefix: str, start_after: str = "") -> list[ObjectRef]:
         self.prefixes.append(prefix)
         return [
             ObjectRef(f"s3://bucket/{k}", k, None, None)
             for k in self.keys
-            if k.startswith(prefix)
+            if k.startswith(prefix) and k > start_after
         ]
+
+    def write(self, uri: str, body: bytes) -> None:
+        raise NotImplementedError
 
     def copy(self, src_uri: str, dst_uri: str) -> None:
         raise NotImplementedError
@@ -40,6 +43,9 @@ class FakeClient:
     def write_conditional(
         self, uri: str, expected_version: str | None, body: bytes
     ) -> str | None:
+        raise NotImplementedError
+
+    def delete_conditional(self, uri: str, expected_version: str | None) -> bool:
         raise NotImplementedError
 
 
@@ -203,8 +209,10 @@ def test_unsupported_scheme_and_format() -> None:
         resolve_inputs(Path("."), "gs://b/k", "csv", "orders", "gcs", None)
     assert str(err.value) == "unsupported storage uri: gs://b/k"
     with pytest.raises(FloeConfigError) as err:
-        resolve_inputs(Path("."), "s3://b/k", "xml", "orders", "s3_raw", FakeClient([]))
-    assert str(err.value) == "unsupported source format for input resolution: xml"
+        resolve_inputs(
+            Path("."), "s3://b/k", "fixed", "orders", "s3_raw", FakeClient([])
+        )
+    assert str(err.value) == "unsupported source format for input resolution: fixed"
 
 
 def test_local_normalizes_resolved_file_paths(tmp_path: Path) -> None:
@@ -388,3 +396,15 @@ def test_local_empty_glob_override_matches_nothing(tmp_path: Path) -> None:
     touch(tmp_path / "a.csv")
     with pytest.raises(FloeRunError):
         local(tmp_path, tmp_path, glob_override="")
+
+
+@pytest.mark.parametrize(
+    ("fmt", "name"),
+    [("avro", "a.avro"), ("orc", "a.orc"), ("xlsx", "a.xlsx"), ("xml", "a.xml")],
+)
+def test_directory_inputs_of_the_binary_and_xml_formats(
+    tmp_path: Path, fmt: str, name: str
+) -> None:
+    touch(tmp_path / "in" / name)
+    got = resolve_inputs(tmp_path, "in", fmt, "orders", "local", None)
+    assert [f.source_name for f in got.files] == [name]

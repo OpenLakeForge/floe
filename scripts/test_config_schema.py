@@ -66,11 +66,12 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_invalid(validator_for("domain_file"), {"defaults": {}})
         self.assert_invalid(validator_for("entity_file"), {"name": "orders"})
         for name in ("sources", "domains", "entity"):
-            self.assertEqual(
-                schemas["project"]["$defs"]["source_options"],
-                schemas[name]["$defs"]["source_options"],
-                f"{name} source option schema drifted from the project contract",
-            )
+            for definition in ("source_options", "source_partitioning"):
+                self.assertEqual(
+                    schemas["project"]["$defs"][definition],
+                    schemas[name]["$defs"][definition],
+                    f"{name} {definition} schema drifted from the project contract",
+                )
         self.assertEqual(
             schemas["project"]["$defs"]["source_definition"],
             schemas["sources"]["$defs"]["source_definition"],
@@ -112,8 +113,9 @@ class ConfigSchemaTest(unittest.TestCase):
         aliases = {"SourceConfig": {"source_ref": "ref"}, "StorageDefinition": {"fs_type": "type"}, "ColumnConfig": {"column_type": "type"}, "CatalogDefinition": {"type_config": "type"}}
         wire_extras = {
             "RootConfig": {"sources", "include", "filesystems"},
-            "DomainConfig": {"defaults"}, "SourceConfig": {"filesystem"},
+            "DomainConfig": {"defaults"}, "SourceConfig": {"filesystem", "partitioning"},  # D28: partitioning is Python-only
             "SinkTarget": {"filesystem"},
+            "IcebergPartitionFieldConfig": {"num_buckets"},  # D12: Python-only, Rust 0.7 has no bucket transform
             "CatalogDefinition": {"region", "database", "create_database_if_missing", "allow_takeover", "uri", "credential", "warehouse", "oauth2_server_uri", "scope", "host", "catalog", "schema", "token", "create_schema_if_missing"},
         }
         for model, definition in bindings.items():
@@ -134,15 +136,10 @@ class ConfigSchemaTest(unittest.TestCase):
         for version in ("abc", "0.0", "0.3.1", "-1.0"):
             with self.subTest(version=version):
                 self.assert_invalid(ROOT_VALIDATOR, {"version": version, "entities": [fragment]})
-        for version in ("0.03", "01.0", "+1.+0"):
+        for version in ("0.03", "00.8", "+0.+08"):
             with self.subTest(version=version):
                 self.assert_valid(ROOT_VALIDATOR, {"version": version, "entities": [complete_entity()]})
-        self.assert_invalid(ROOT_VALIDATOR, {"version": "+0.+0", "entities": [complete_entity()]})
-        max_u64 = "18446744073709551615"
-        self.assert_valid(ROOT_VALIDATOR, {
-            "version": f"000{max_u64}.{max_u64}", "entities": [complete_entity()],
-        })
-        for version in ("18446744073709551616.0", "0.18446744073709551616", "0.1\n"):
+        for version in ("+0.+0", "0.9", "0.10", "01.0", "+1.+0", "0.1\n"):
             with self.subTest(version=version):
                 self.assert_invalid(ROOT_VALIDATOR, {"version": version, "entities": [complete_entity()]})
 
@@ -1013,6 +1010,20 @@ class ConfigSchemaTest(unittest.TestCase):
         entity["sink"]["accepted"]["partition_spec"][0]["transform"] = "bucket[16]"
         self.assert_invalid(ROOT_VALIDATOR, document)
         self.assert_invalid(validator_for("entity_file"), entity)
+        for field, valid in (
+            ({"column": "id", "transform": " Bucket ", "num_buckets": 16}, True),
+            ({"column": "id", "transform": "bucket"}, False),
+            ({"column": "id", "transform": "bucket", "num_buckets": 0}, False),
+            ({"column": "id", "transform": "bucket", "num_buckets": 1.5}, False),
+            ({"column": "id", "transform": "bucket", "num_buckets": "16"}, False),
+            ({"column": "id", "transform": "day", "num_buckets": 16}, False),
+            ({"column": "id", "num_buckets": 16}, False),
+        ):
+            with self.subTest(field=field):
+                entity["sink"]["accepted"]["partition_spec"][0] = field
+                check = self.assert_valid if valid else self.assert_invalid
+                check(ROOT_VALIDATOR, document)
+                check(validator_for("entity_file"), entity)
         entity["sink"]["accepted"]["partition_spec"][0] = {"column": " ", "transform": "year"}
         self.assert_invalid(ROOT_VALIDATOR, document)
         self.assert_invalid(validator_for("entity_file"), entity)
@@ -1170,6 +1181,38 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_invalid(validator_for("entity_file"), {**entity, "source": {"format": "csv", "path": "in.csv", "resource": "orders"}})
         self.assert_valid(validator_for("entity_file"), {**entity, "source": {"ref": "crm", "resource": "orders"}})
 
+    def test_source_partitioning(self):  # D28: Python-only
+        partitioning = {"pattern": "year={yyyy}/{MM}/{dd}/{HH}/{batch}", "date_column": "ingest_date", "batch_column": "batch_id"}
+        cases = (
+            ({}, True),
+            ({"batch_column": None}, True),
+            ({"pattern": "{yyyy}{MM}{dd}", "batch_column": None}, True),
+            ({"pattern": "{yyyy}/{MM}/{dd}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{batch}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{dd}/{mm}/{batch}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{dd}/{batch}/{batch}"}, False),
+            ({"pattern": "{yyyy}/{MM}/{dd}/{batch"}, False),
+            ({"date_column": " "}, False),
+            ({"batch_column": ""}, False),
+            ({"other": "x"}, False),
+            ({"lookback_days": 0}, True),  # D30
+            ({"lookback_days": 7}, True),
+            ({"lookback_days": -1}, False),
+            ({"lookback_days": "1"}, False),
+        )
+        named = validator_for("sources_file")
+        for change, valid in cases:
+            with self.subTest(change=change):
+                block = {**partitioning, **change}
+                check = self.assert_valid if valid else self.assert_invalid
+                entity = complete_entity()
+                entity["source"]["partitioning"] = block
+                check(ROOT_VALIDATOR, {"version": "0.8", "entities": [entity]})
+                check(validator_for("entity_file"), entity)
+                check(validator_for("domain_file"), {"name": "sales", "defaults": {"source": {"partitioning": block}}})
+                check(named, {"sources": [{"name": "crm", "partitioning": block}]})
+        self.assert_valid(named, {"sources": [{"name": "crm", "partitioning": {"pattern": "{yyyy}/{MM}/{dd}"}}]})
+
     def test_inherited_schema_evolution(self):
         self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"schema_evolution": {"mode": "add_columns"}}}})
         self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"schema_evolution": {"mode": "unknown"}}}})
@@ -1292,10 +1335,10 @@ class ConfigSchemaTest(unittest.TestCase):
                 "include": {"sources": "sources.yml"},
             },
         )
-        self.assert_invalid(ROOT_VALIDATOR, {"version": "1.0"})
+        self.assert_invalid(ROOT_VALIDATOR, {"version": "0.8"})
         self.assert_valid(
             ROOT_VALIDATOR,
-            {"version": "1.0", "entities": [complete_entity()]},
+            {"version": "0.8", "entities": [complete_entity()]},
         )
 
     def test_source_domain_and_entity_fragments(self):

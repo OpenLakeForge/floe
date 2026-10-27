@@ -111,7 +111,7 @@ Attached to the **accepted output dataset**:
 
 - **`SchemaDataset`** (`schema`) — column names and types from `schema.columns`
 - **`DataQualityMetrics`** (`dataQualityMetrics`) — accepted row counts for the output dataset
-- **`FloeQualityRun`** — `entity`, `rejectionRate`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`
+- **`FloeQualityRun`** — `entity`, `rejectionRate`, `files`, `rows`, `warnings`, `errors`. It does not carry accepted/rejected counts; those live in the `DataQualityMetrics` facets (accepted on the accepted output dataset, rejected on the rejected one).
 - **`ColumnLineageDatasetFacet`** (`columnLineage`) — output columns mapped to
   source fields when configured, or to the same source field name by default
 
@@ -180,7 +180,7 @@ Lineage emission is independent of `--log-format`. Even with
 ## Example config
 
 ```yaml
-version: "0.3"
+version: "0.8"
 lineage:
   url: "http://localhost:5000"
   namespace: "data-platform"

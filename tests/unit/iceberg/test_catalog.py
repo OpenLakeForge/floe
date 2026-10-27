@@ -1,16 +1,20 @@
 """Messages come from `iceberg/schema.rs`; no catalog involved."""
 
 import pytest
+from pydantic import SecretStr
 from pyiceberg.schema import Schema
 from pyiceberg.types import LongType, NestedField, StringType, TimestampType
 
-from floe.errors import FloeRunError
+from floe.config.storage import CatalogDefinition
+from floe.errors import FloeConfigError, FloeRunError
 from floe.iceberg.catalog import (
     _credential_props,  # pyright: ignore[reportPrivateUsage] -- Rust tests its private `expand_env_refs` the same way
+    _duckdb_setup,  # pyright: ignore[reportPrivateUsage] -- the statements are checked without a catalog
     additive_columns,
     build_partition_spec,
     check_partition_spec_matches,
     check_schema_matches,
+    open_duckdb,
     transform_name,
 )
 
@@ -57,11 +61,14 @@ def test_schema_match_rejects_any_difference(incoming: Schema, message: str) -> 
 
 def test_partition_spec_names_and_transforms() -> None:
     spec = build_partition_spec(
-        schema(ID, NAME, TS), [(" id ", "Identity"), ("ts", " DAY")], "e"
+        schema(ID, NAME, TS),
+        [(" id ", "Identity"), ("ts", " DAY"), ("name", " Bucket[16]")],
+        "e",
     )
     assert [(f.source_id, f.name, transform_name(f)) for f in spec.fields] == [
         (1, "id", "identity"),
         (3, "ts_day", "day"),
+        (2, "name_bucket", "bucket[16]"),
     ]
 
 
@@ -75,6 +82,10 @@ def test_partition_spec_names_and_transforms() -> None:
         (
             [("id", "bucket")],
             "entity.name=e iceberg partition_spec column id has unsupported runtime transform bucket",
+        ),
+        (
+            [("id", "bucket[0]")],
+            "entity.name=e iceberg partition_spec column id has unsupported runtime transform bucket[0]",
         ),
     ],
 )
@@ -181,3 +192,26 @@ def test_credential_errors(
         _credential_props("polaris", credential)
     assert str(e.value) == message
     assert "literal-secret" not in str(e.value)
+
+
+def rest_catalog(credential: str) -> CatalogDefinition:
+    return CatalogDefinition(
+        name="polaris",
+        uri="http://localhost:1/api/catalog",
+        credential=SecretStr(credential),
+        warehouse="w",
+        oauth2_server_uri=None,
+        scope=None,
+        warehouse_storage=None,
+        warehouse_prefix=None,
+    )
+
+
+def test_duckdb_rejects_a_secret_only_credential() -> None:
+    with pytest.raises(FloeConfigError, match="needs client_id:client_secret"):
+        open_duckdb(rest_catalog("only-a-secret"))
+
+
+def test_duckdb_without_s3_storage_creates_no_s3_secret() -> None:
+    statements = _duckdb_setup(rest_catalog("id:secret"), None)
+    assert not any("TYPE s3" in s for s in statements)

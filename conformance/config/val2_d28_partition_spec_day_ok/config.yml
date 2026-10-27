@@ -1,0 +1,45 @@
+storages:
+  default: s
+  definitions:
+  - name: s
+    type: s3
+    bucket: b
+    region: r
+catalogs:
+  default: c
+  definitions:
+  - name: c
+    type: rest
+    uri: http://localhost:8181/api/catalog
+version: '0.1'
+entities:
+- name: orders
+  source:
+    format: csv
+    path: in
+    options:
+      recursive: true
+    partitioning:
+      pattern: '{yyyy}/{MM}/{dd}/{batch}'
+      date_column: ingest_date
+      batch_column: batch_id
+  sink:
+    write_mode: merge_scd1
+    accepted:
+      format: iceberg
+      path: out/accepted
+      iceberg: {}
+      partition_spec:
+      - column: ingest_date
+        transform: day
+  policy:
+    severity: warn
+  schema:
+    columns:
+    - name: id
+      type: string
+    - name: amt
+      type: number
+    primary_key:
+    - id
+    - ingest_date

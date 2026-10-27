@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -34,10 +35,19 @@ CACHE = Path.home() / ".cache" / "floe-conformance" / f"v{VERSION}"
 
 # Paths in expected/ use filesystem-safe tokens (run_ID, part-UUID): `<` and `>` break Windows checkouts.
 # Differ between any two runs of the same binary: masked when recording.
-VOLATILE_KEYS = {"run_id", "started_at", "finished_at", "duration_ms", "elapsed_ms"}
+VOLATILE_KEYS = {
+    "run_id",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "elapsed_ms",
+    "ts_ms",
+}
 # Recorded, but ignored on compare (G5 ruling on #594).
 WRITER_BYTES_KEYS = {"total_bytes_written", "avg_file_size_mb"}
 RUN_DIR = re.compile(r"run_[0-9T:.\-Z]+")
+# Archived file names embed the run id and a hash of the absolute source URI.
+ARCHIVE_NAME = re.compile(r"__run-.+?__src-[0-9a-f]{16}")
 UUID_PART = re.compile(
     r"part-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
@@ -122,6 +132,7 @@ def normalize(value: object, root: str) -> object:
     if isinstance(value, list):
         return [normalize(v, root) for v in value]
     if isinstance(value, str):
+        value = ARCHIVE_NAME.sub("__run-<id>__src-<hash>", value)
         return UUID_PART.sub(
             "part-<uuid>", RUN_DIR.sub("run_<id>", value.replace(root, "<ROOT>"))
         )
@@ -164,10 +175,47 @@ def validate_snapshot(work: Path, proc: subprocess.CompletedProcess[str]) -> Sna
     return {"validate.json": json.dumps(out, indent=2) + "\n"}
 
 
+def events_snapshot(proc: subprocess.CompletedProcess[str], work: Path) -> Snapshot:
+    """A `--log-format json` run: its stdout event lines, normalized."""
+    if "--log-format" not in proc.args:
+        return {}
+    root = str(work.resolve())
+    lines = [
+        json.dumps(normalize(json.loads(l), root)) for l in proc.stdout.splitlines()
+    ]
+    return {"events.jsonl": "".join(f"{l}\n" for l in lines)}
+
+
 def case_snapshot(
     case: Path, work: Path, proc: subprocess.CompletedProcess[str]
 ) -> Snapshot:
-    return validate_snapshot(work, proc) if is_validate(case) else snapshot(work)
+    if is_validate(case):
+        return validate_snapshot(work, proc)
+    return snapshot(work) | events_snapshot(proc, work)
+
+
+def manifest_snapshot(case: Path, cmd: list[str], work: Path) -> Snapshot:
+    """`floe manifest generate` of the case, with `floe_version`, `manifest_id` and `manifest_revision`
+    (they depend on the version string and the absolute paths) and the temp dir that holds the work dir masked.
+
+    Empty when the config does not generate (validate cases that fail) or needs a profile (#635).
+    """
+    if (case / "profile.yml").exists():
+        return {}
+    args = ["manifest", "generate", "-c", "config.yml", "-o", "-", "--deterministic"]
+    env = {**os.environ, "FLOE_RUNTIME": "cli"}
+    proc = subprocess.run(
+        [*cmd, *args], cwd=work, check=False, capture_output=True, text=True, env=env
+    )
+    if proc.returncode != 0:
+        return {}
+    manifest = json.loads(proc.stdout)
+    for key in ("floe_version", "manifest_id", "manifest_revision"):
+        manifest[key] = "<volatile>"
+    text = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+    return {
+        "manifest.json": text.replace(str(work.resolve().parent), "<ROOT>")
+    }  # `..` paths leave the work dir
 
 
 def run_in_copy(
@@ -183,13 +231,26 @@ def run_in_copy(
             ["--profile", "profile.yml"] if (case / "profile.yml").exists() else []
         )
         args = ["validate", "-c", "config.yml", *profile]
-    return work, subprocess.run(
-        [*cmd, *args],
-        cwd=work,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    if (
+        case / "manifest_run"
+    ).exists():  # run from the manifest this implementation generates
+        generate = ["manifest", "generate", "-c", "config.yml", "-o", "manifest.json"]
+        env = {**os.environ, "FLOE_RUNTIME": "cli"}
+        subprocess.run([*cmd, *generate], cwd=work, check=True, capture_output=True, env=env)  # fmt: skip
+        args = ["run", "--manifest", "manifest.json"]
+    # optional `runs`: a run count, or one line of extra `run` args per run (`-` for none); only the last run's report is kept
+    marker = case / "runs"
+    text = marker.read_text().strip() if marker.exists() else "1"
+    runs = ["-"] * int(text) if text.isdigit() else text.splitlines()
+    while True:
+        shutil.rmtree(work / "report", ignore_errors=True)
+        line = runs.pop(0).strip()
+        extra = [] if line == "-" else line.split()
+        proc = subprocess.run(
+            [*cmd, *args, *extra], cwd=work, check=False, capture_output=True, text=True
+        )
+        if not runs:
+            return work, proc
 
 
 def main() -> int:
@@ -202,13 +263,18 @@ def main() -> int:
             continue
         with tempfile.TemporaryDirectory(prefix="conformance-") as tmp:
             work, proc = run_in_copy(case, [str(binary)], Path(tmp))
-            if proc.returncode != 0 and not is_validate(case):
+            failed = proc.returncode not in (0, 2)  # 2 = aborted
+            if failed and not is_validate(case) and "--log-format" not in proc.args:
                 sys.stderr.write(proc.stdout + proc.stderr)
                 raise SystemExit(f"{case_name(case)}: floe exited {proc.returncode}")
             shutil.rmtree(case / "expected", ignore_errors=True)
-            snap = case_snapshot(case, work, proc)
+            snap = case_snapshot(case, work, proc) | manifest_snapshot(
+                case, [str(binary)], work
+            )
+            if proc.returncode and not is_validate(case):
+                snap["exit_code"] = f"{proc.returncode}\n"  # absent file means 0
             if not is_validate(case) and not any(
-                k.startswith(("accepted/", "rejected/")) for k in snap
+                k.startswith(("accepted/", "rejected/", "events")) for k in snap
             ):
                 raise SystemExit(
                     f"{case_name(case)}: no accepted or rejected output found under out/"

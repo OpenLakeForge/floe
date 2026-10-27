@@ -83,6 +83,13 @@ class SourceOptions(_Model):
     value_tag: str | None = None
 
 
+class SourcePartitioning(_Model):  # D28
+    pattern: str
+    date_column: str
+    batch_column: str | None
+    lookback_days: int = 1  # D30: file mode lists from the watermark minus these days
+
+
 class SourceConfig(_Model):
     format: str
     path: str
@@ -91,6 +98,7 @@ class SourceConfig(_Model):
     cast_mode: str
     source_ref: str | None
     resource: str | None
+    partitioning: SourcePartitioning | None = None
 
 
 class SinkOptions(_Model):
@@ -121,6 +129,7 @@ class IcebergSinkOptions(_Model):
 class IcebergPartitionField(_Model):
     column: str
     transform: str
+    num_buckets: int | None
 
 
 class SinkTarget(_Model):
@@ -166,3 +175,21 @@ class EntityConfig(_Model):
     # `schema` shadows a BaseModel attribute, so the field is `schema_` and the key stays `schema`.
     schema_: SchemaConfig = Field(alias="schema")
     pii: PiiConfig | None
+
+
+def with_partition_columns(entity: EntityConfig) -> EntityConfig:
+    """D28: the columns `source.partitioning` derives count as schema columns."""
+    p = entity.source.partitioning
+    if p is None:
+        return entity
+    date_type = "datetime" if "{HH}" in p.pattern else "date"
+    derived = [(p.date_column, date_type), (p.batch_column, "string")]
+    columns = [
+        ColumnConfig(name=n, source=n, column_type=t, nullable=False, unique=None, width=None, trim=None)
+        for n, t in derived
+        if n is not None
+    ]  # fmt: skip  # `source` keeps the name out of normalize_columns
+    schema = entity.schema_.model_copy(
+        update={"columns": [*entity.schema_.columns, *columns]}
+    )
+    return entity.model_copy(update={"schema_": schema})

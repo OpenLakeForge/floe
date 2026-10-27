@@ -89,7 +89,7 @@ Rows that pass all checks go to `out/accepted/`. Rows that fail go to `out/rejec
 ### Global settings
 
 ```yaml
-version: "0.1"
+version: "0.8"
 
 report:
   path: "./report"          # run reports land here

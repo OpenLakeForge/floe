@@ -1,0 +1,1180 @@
+{
+  "schema": "floe.manifest.v1",
+  "generated_at_ts_ms": 0,
+  "floe_version": "<volatile>",
+  "spec_version": "0.3",
+  "manifest_id": "<volatile>",
+  "manifest_revision": "<volatile>",
+  "runtime_env": "cli",
+  "config_uri": "local://<ROOT>/work/config.yml",
+  "config_checksum": "sha256:ef5ae3fd09893810c3bd82ae503c6111ac7473e32ac3227f99af7614f7f9f7e5",
+  "report_base_uri": "local://<ROOT>/work/report",
+  "domains": [
+    {
+      "name": "spike"
+    }
+  ],
+  "execution": {
+    "entrypoint": "floe",
+    "base_args": [
+      "run",
+      "--manifest",
+      "{manifest_uri}",
+      "--log-format",
+      "json",
+      "--quiet"
+    ],
+    "per_entity_args": [
+      "--entities",
+      "{entity_name}"
+    ],
+    "log_format": "json",
+    "result_contract": {
+      "run_finished_event": true,
+      "summary_uri_field": "summary_uri",
+      "exit_codes": {
+        "0": "success_or_rejected",
+        "1": "technical_failure",
+        "2": "aborted"
+      }
+    },
+    "defaults": {
+      "env": {},
+      "workdir": null
+    }
+  },
+  "runners": {
+    "default": "local",
+    "definitions": {
+      "local": {
+        "type": "local_process",
+        "command": null,
+        "args": null,
+        "timeout_seconds": null,
+        "ttl_seconds_after_finished": null,
+        "poll_interval_seconds": null,
+        "secrets": null,
+        "image": null,
+        "namespace": null,
+        "service_account": null,
+        "resources": null,
+        "env": null,
+        "workspace_url": null,
+        "existing_cluster_id": null,
+        "config_uri": null,
+        "python_file_uri": null,
+        "job_name": null,
+        "auth": null,
+        "env_parameters": null
+      }
+    }
+  },
+  "entities": [
+    {
+      "name": "spike.typed_boolean",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "typed_boolean"
+      ],
+      "source_format": "parquet",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/typed_boolean",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/typed_boolean",
+      "tags": null,
+      "source": {
+        "format": "parquet",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/casts_typed.parquet",
+        "path": "./in/casts_typed.parquet",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/typed_boolean",
+          "path": "./out/accepted/typed_boolean",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/typed_boolean",
+          "path": "./out/rejected/typed_boolean",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "i64",
+            "column_type": "boolean"
+          },
+          {
+            "name": "u64",
+            "column_type": "boolean"
+          },
+          {
+            "name": "f64",
+            "column_type": "boolean"
+          },
+          {
+            "name": "b",
+            "column_type": "boolean"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "spike.typed_date",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "typed_date"
+      ],
+      "source_format": "parquet",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/typed_date",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/typed_date",
+      "tags": null,
+      "source": {
+        "format": "parquet",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/casts_typed.parquet",
+        "path": "./in/casts_typed.parquet",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/typed_date",
+          "path": "./out/accepted/typed_date",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/typed_date",
+          "path": "./out/rejected/typed_date",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "i64",
+            "column_type": "date"
+          },
+          {
+            "name": "u64",
+            "column_type": "date"
+          },
+          {
+            "name": "f64",
+            "column_type": "date"
+          },
+          {
+            "name": "b",
+            "column_type": "date"
+          },
+          {
+            "name": "d",
+            "column_type": "date"
+          },
+          {
+            "name": "ts",
+            "column_type": "date"
+          },
+          {
+            "name": "tstz",
+            "column_type": "date"
+          },
+          {
+            "name": "tzp",
+            "column_type": "date"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "spike.typed_datetime",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "typed_datetime"
+      ],
+      "source_format": "parquet",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/typed_datetime",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/typed_datetime",
+      "tags": null,
+      "source": {
+        "format": "parquet",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/casts_typed.parquet",
+        "path": "./in/casts_typed.parquet",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/typed_datetime",
+          "path": "./out/accepted/typed_datetime",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/typed_datetime",
+          "path": "./out/rejected/typed_datetime",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "i64",
+            "column_type": "datetime"
+          },
+          {
+            "name": "u64",
+            "column_type": "datetime"
+          },
+          {
+            "name": "f64",
+            "column_type": "datetime"
+          },
+          {
+            "name": "b",
+            "column_type": "datetime"
+          },
+          {
+            "name": "d",
+            "column_type": "datetime"
+          },
+          {
+            "name": "ts",
+            "column_type": "datetime"
+          },
+          {
+            "name": "tstz",
+            "column_type": "datetime"
+          },
+          {
+            "name": "tzp",
+            "column_type": "datetime"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "spike.typed_float32",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "typed_float32"
+      ],
+      "source_format": "parquet",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/typed_float32",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/typed_float32",
+      "tags": null,
+      "source": {
+        "format": "parquet",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/casts_typed.parquet",
+        "path": "./in/casts_typed.parquet",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/typed_float32",
+          "path": "./out/accepted/typed_float32",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/typed_float32",
+          "path": "./out/rejected/typed_float32",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "i64",
+            "column_type": "float32"
+          },
+          {
+            "name": "u64",
+            "column_type": "float32"
+          },
+          {
+            "name": "f64",
+            "column_type": "float32"
+          },
+          {
+            "name": "b",
+            "column_type": "float32"
+          },
+          {
+            "name": "d",
+            "column_type": "float32"
+          },
+          {
+            "name": "ts",
+            "column_type": "float32"
+          },
+          {
+            "name": "tstz",
+            "column_type": "float32"
+          },
+          {
+            "name": "tzp",
+            "column_type": "float32"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "spike.typed_float64",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "typed_float64"
+      ],
+      "source_format": "parquet",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/typed_float64",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/typed_float64",
+      "tags": null,
+      "source": {
+        "format": "parquet",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/casts_typed.parquet",
+        "path": "./in/casts_typed.parquet",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/typed_float64",
+          "path": "./out/accepted/typed_float64",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/typed_float64",
+          "path": "./out/rejected/typed_float64",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "i64",
+            "column_type": "float64"
+          },
+          {
+            "name": "u64",
+            "column_type": "float64"
+          },
+          {
+            "name": "f64",
+            "column_type": "float64"
+          },
+          {
+            "name": "b",
+            "column_type": "float64"
+          },
+          {
+            "name": "d",
+            "column_type": "float64"
+          },
+          {
+            "name": "ts",
+            "column_type": "float64"
+          },
+          {
+            "name": "tstz",
+            "column_type": "float64"
+          },
+          {
+            "name": "tzp",
+            "column_type": "float64"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "spike.typed_int32",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "typed_int32"
+      ],
+      "source_format": "parquet",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/typed_int32",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/typed_int32",
+      "tags": null,
+      "source": {
+        "format": "parquet",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/casts_typed.parquet",
+        "path": "./in/casts_typed.parquet",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/typed_int32",
+          "path": "./out/accepted/typed_int32",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/typed_int32",
+          "path": "./out/rejected/typed_int32",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "i64",
+            "column_type": "int32"
+          },
+          {
+            "name": "u64",
+            "column_type": "int32"
+          },
+          {
+            "name": "f64",
+            "column_type": "int32"
+          },
+          {
+            "name": "b",
+            "column_type": "int32"
+          },
+          {
+            "name": "d",
+            "column_type": "int32"
+          },
+          {
+            "name": "ts",
+            "column_type": "int32"
+          },
+          {
+            "name": "tstz",
+            "column_type": "int32"
+          },
+          {
+            "name": "tzp",
+            "column_type": "int32"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "spike.typed_int64",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "typed_int64"
+      ],
+      "source_format": "parquet",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/typed_int64",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/typed_int64",
+      "tags": null,
+      "source": {
+        "format": "parquet",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/casts_typed.parquet",
+        "path": "./in/casts_typed.parquet",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/typed_int64",
+          "path": "./out/accepted/typed_int64",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/typed_int64",
+          "path": "./out/rejected/typed_int64",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "i64",
+            "column_type": "int64"
+          },
+          {
+            "name": "u64",
+            "column_type": "int64"
+          },
+          {
+            "name": "f64",
+            "column_type": "int64"
+          },
+          {
+            "name": "b",
+            "column_type": "int64"
+          },
+          {
+            "name": "d",
+            "column_type": "int64"
+          },
+          {
+            "name": "ts",
+            "column_type": "int64"
+          },
+          {
+            "name": "tstz",
+            "column_type": "int64"
+          },
+          {
+            "name": "tzp",
+            "column_type": "int64"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "spike.typed_int8",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "typed_int8"
+      ],
+      "source_format": "parquet",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/typed_int8",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/typed_int8",
+      "tags": null,
+      "source": {
+        "format": "parquet",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/casts_typed.parquet",
+        "path": "./in/casts_typed.parquet",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/typed_int8",
+          "path": "./out/accepted/typed_int8",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/typed_int8",
+          "path": "./out/rejected/typed_int8",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "i64",
+            "column_type": "int8"
+          },
+          {
+            "name": "u64",
+            "column_type": "int8"
+          },
+          {
+            "name": "f64",
+            "column_type": "int8"
+          },
+          {
+            "name": "b",
+            "column_type": "int8"
+          },
+          {
+            "name": "d",
+            "column_type": "int8"
+          },
+          {
+            "name": "ts",
+            "column_type": "int8"
+          },
+          {
+            "name": "tstz",
+            "column_type": "int8"
+          },
+          {
+            "name": "tzp",
+            "column_type": "int8"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "spike.typed_string",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "typed_string"
+      ],
+      "source_format": "parquet",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/typed_string",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/typed_string",
+      "tags": null,
+      "source": {
+        "format": "parquet",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/casts_typed.parquet",
+        "path": "./in/casts_typed.parquet",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/typed_string",
+          "path": "./out/accepted/typed_string",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/typed_string",
+          "path": "./out/rejected/typed_string",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "i64",
+            "column_type": "string"
+          },
+          {
+            "name": "u64",
+            "column_type": "string"
+          },
+          {
+            "name": "f64",
+            "column_type": "string"
+          },
+          {
+            "name": "b",
+            "column_type": "string"
+          },
+          {
+            "name": "d",
+            "column_type": "string"
+          },
+          {
+            "name": "ts",
+            "column_type": "string"
+          },
+          {
+            "name": "tstz",
+            "column_type": "string"
+          },
+          {
+            "name": "tzp",
+            "column_type": "string"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "spike.typed_uint32",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "typed_uint32"
+      ],
+      "source_format": "parquet",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/typed_uint32",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/typed_uint32",
+      "tags": null,
+      "source": {
+        "format": "parquet",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/casts_typed.parquet",
+        "path": "./in/casts_typed.parquet",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/typed_uint32",
+          "path": "./out/accepted/typed_uint32",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/typed_uint32",
+          "path": "./out/rejected/typed_uint32",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "i64",
+            "column_type": "uint32"
+          },
+          {
+            "name": "u64",
+            "column_type": "uint32"
+          },
+          {
+            "name": "f64",
+            "column_type": "uint32"
+          },
+          {
+            "name": "b",
+            "column_type": "uint32"
+          },
+          {
+            "name": "d",
+            "column_type": "uint32"
+          },
+          {
+            "name": "ts",
+            "column_type": "uint32"
+          },
+          {
+            "name": "tstz",
+            "column_type": "uint32"
+          },
+          {
+            "name": "tzp",
+            "column_type": "uint32"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "spike.typed_uint64",
+      "domain": "spike",
+      "group_name": "spike",
+      "asset_key": [
+        "spike",
+        "typed_uint64"
+      ],
+      "source_format": "parquet",
+      "accepted_sink_uri": "local://<ROOT>/work/out/accepted/typed_uint64",
+      "rejected_sink_uri": "local://<ROOT>/work/out/rejected/typed_uint64",
+      "tags": null,
+      "source": {
+        "format": "parquet",
+        "storage": "local",
+        "uri": "local://<ROOT>/work/in/casts_typed.parquet",
+        "path": "./in/casts_typed.parquet",
+        "resolved": true,
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ";",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/accepted/typed_uint64",
+          "path": "./out/accepted/typed_uint64",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "local://<ROOT>/work/out/rejected/typed_uint64",
+          "path": "./out/rejected/typed_uint64",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "id",
+            "column_type": "string",
+            "nullable": false
+          },
+          {
+            "name": "i64",
+            "column_type": "uint64"
+          },
+          {
+            "name": "u64",
+            "column_type": "uint64"
+          },
+          {
+            "name": "f64",
+            "column_type": "uint64"
+          },
+          {
+            "name": "b",
+            "column_type": "uint64"
+          },
+          {
+            "name": "d",
+            "column_type": "uint64"
+          },
+          {
+            "name": "ts",
+            "column_type": "uint64"
+          },
+          {
+            "name": "tstz",
+            "column_type": "uint64"
+          },
+          {
+            "name": "tzp",
+            "column_type": "uint64"
+          }
+        ],
+        "primary_key": [],
+        "unique_keys": []
+      }
+    }
+  ]
+}

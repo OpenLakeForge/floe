@@ -14,10 +14,12 @@ def archive_input_file(
     entity_name: str,
     join_relative: Callable[[str], str],
     input_file: InputFile,
+    subdir: str = "",
 ) -> str:
+    """`subdir` (D29): the partition sub-path kept between the entity folder and the file name."""
     relative = archive_relative_path_for_run(
-        entity_name, input_file.source_name, run_id, input_file.source_uri
-    )
+        f"{entity_name}/{subdir}" if subdir else entity_name, input_file.source_name, run_id, input_file.source_uri
+    )  # fmt: skip
     dest_uri = join_relative(relative)
     client.copy(input_file.source_uri, dest_uri)
     try:

@@ -33,7 +33,7 @@ _MAX_FILENAME_COMPONENT_BYTES = 255
 _MAX_ARCHIVE_RUN_COMPONENT_BYTES = 48
 
 
-def _fnv1a_hex(value: str) -> str:
+def fnv1a_hex(value: str) -> str:
     h = 0xCBF29CE484222325
     for byte in value.encode():
         h = ((h ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
@@ -51,7 +51,7 @@ def _run_component(run_id: str) -> str:
     safe = safe.strip("_") or "run"
     if len(safe) <= _MAX_ARCHIVE_RUN_COMPONENT_BYTES:
         return safe
-    return f"{_truncate_utf8(safe, _MAX_ARCHIVE_RUN_COMPONENT_BYTES)}_{_fnv1a_hex(run_id)[:8]}"
+    return f"{_truncate_utf8(safe, _MAX_ARCHIVE_RUN_COMPONENT_BYTES)}_{fnv1a_hex(run_id)[:8]}"
 
 
 def archive_relative_path_for_run(
@@ -61,7 +61,7 @@ def archive_relative_path_for_run(
     stem, _, ext = name.rpartition(".")
     if not ext or not stem:
         stem, ext = name, ""
-    suffix = f"__run-{_run_component(run_id)}__src-{_fnv1a_hex(source_uri)}"
+    suffix = f"__run-{_run_component(run_id)}__src-{fnv1a_hex(source_uri)}"
     ext_suffix = f".{ext}" if ext else ""
     available = _MAX_FILENAME_COMPONENT_BYTES - len(suffix) - len(ext_suffix.encode())
     archived = f"{_truncate_utf8(stem, max(available, 0))}{suffix}{ext_suffix}"

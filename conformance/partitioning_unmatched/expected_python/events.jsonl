@@ -1,0 +1,3 @@
+{"schema": "floe.log.v1", "level": "info", "event": "run_started", "run_id": "<volatile>", "config": "<ROOT>/config.yml", "report_base": "<ROOT>/report", "ts_ms": "<volatile>"}
+{"schema": "floe.log.v1", "level": "error", "event": "log", "run_id": "<volatile>", "log_level": "error", "code": "run_error", "message": "entity.name=orders input local://<ROOT>/in/2026/10/24/orders.csv does not match source.partitioning.pattern={yyyy}/{MM}/{dd}/{batch}", "entity": null, "input": null, "ts_ms": "<volatile>"}
+{"schema": "floe.log.v1", "level": "error", "event": "run_finished", "run_id": "<volatile>", "status": "failed", "exit_code": 1, "files": 0, "files_skipped": 0, "rows": 0, "accepted": 0, "rejected": 0, "warnings": 0, "errors": 1, "summary_uri": null, "ts_ms": "<volatile>"}

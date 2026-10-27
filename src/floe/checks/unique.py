@@ -1,13 +1,16 @@
 """Unique keys within a file and across the files of one run (Rust: `checks/unique.rs`)."""
+# pyarrow ships no type stubs, so strict pyright cannot see its types.
+# pyright: reportMissingTypeStubs=false, reportUnknownMemberType=false
+# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false
 
 import math
-import struct
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
 import polars as pl
+import pyarrow as pa
 
 from floe.checks.rows import RowCheck
 
@@ -15,6 +18,7 @@ SAMPLE_LIMIT = 5
 _SEEN = "__floe_seen"
 _DEBUG = "__floe_debug"
 _COUNT = "__floe_count"
+_BITS = "_bits"  # suffix of the bit-pattern column that keys a float column
 
 
 @dataclass(frozen=True)
@@ -30,6 +34,7 @@ class UniqueResult:
     columns: list[str]
     duplicates_count: int
     samples: list[UniqueSample]
+    target_duplicates_count: int = 0  # duplicates of keys seeded from the existing sink
 
 
 def resolve_unique_keys(
@@ -63,10 +68,8 @@ _STR_ESCAPES = {
 
 
 def _float_bits(s: pl.Series) -> pl.Series:
-    # ponytail: loops over the distinct duplicated float keys; vectorise if that set gets large
-    return pl.Series(
-        [struct.unpack("<Q", struct.pack("<d", x))[0] for x in s], dtype=pl.UInt64
-    )
+    """Rust's `to_bits()`: Polars cannot reinterpret a float, so view the Arrow buffer."""
+    return pl.Series(s.cast(pl.Float64).to_arrow().view(pa.uint64()))
 
 
 def _debug(name: str, dtype: pl.DataType) -> pl.Expr:
@@ -84,8 +87,7 @@ def _debug(name: str, dtype: pl.DataType) -> pl.Expr:
     if dtype.is_unsigned_integer():
         return pl.format("U64({})", c.cast(pl.String))
     if dtype.is_float():
-        bits = c.map_batches(_float_bits, return_dtype=pl.UInt64)
-        return pl.format("F64({})", bits.cast(pl.String))
+        return pl.format("F64({})", pl.col(name + _BITS).cast(pl.String))
     if isinstance(dtype, pl.Datetime):  # chrono prints the fraction only when not zero
         return pl.format('Other("{}")', c.dt.to_string("%Y-%m-%d %H:%M:%S%.f"))
     # ponytail: date keys use `Other(display)`, unverified against Rust; ties may order differently
@@ -115,6 +117,8 @@ class _Constraint:
     seen: pl.DataFrame
     dup_counts: list[pl.DataFrame] = field(default_factory=list[pl.DataFrame])
     duplicates: int = 0
+    target: int = 0
+    seeded: pl.DataFrame = field(default_factory=pl.DataFrame)
 
     @property
     def ids(self) -> list[str]:
@@ -128,6 +132,10 @@ class UniqueTracker:
     def __init__(self, keys: Sequence[Sequence[str]]) -> None:
         self._constraints = [_Constraint(list(k), pl.DataFrame()) for k in keys]
 
+    @property
+    def keys(self) -> list[list[str]]:
+        return [list(c.columns) for c in self._constraints]
+
     def check(self, df: pl.DataFrame) -> list[RowCheck]:
         """One `RowCheck` per constraint for the rows of the next file, in constraint order.
 
@@ -136,22 +144,64 @@ class UniqueTracker:
         """
         return [self._apply(c, df) for c in self._constraints]
 
-    def _apply(self, c: _Constraint, df: pl.DataFrame) -> RowCheck:
+    def snapshot(self) -> list[tuple[pl.DataFrame, list[pl.DataFrame], int, int]]:
+        """The state `restore` goes back to: a file that is rejected as unreadable leaves no keys."""
+        return [
+            (c.seen, list(c.dup_counts), c.duplicates, c.target)
+            for c in self._constraints
+        ]
+
+    def restore(
+        self, snapshot: list[tuple[pl.DataFrame, list[pl.DataFrame], int, int]]
+    ) -> None:
+        for c, (seen, counts, dups, target) in zip(
+            self._constraints, snapshot, strict=True
+        ):
+            c.seen, c.dup_counts, c.duplicates, c.target = (
+                seen,
+                list(counts),
+                dups,
+                target,
+            )
+
+    def seed(self, df: pl.DataFrame) -> None:
+        """Remember the keys of rows already in the sink (append mode); a later hit is a target duplicate."""
+        for c in self._constraints:
+            if all(n in df.columns for n in c.columns):
+                keys = self._keys(c, df)
+                valid = keys.select(pl.all_horizontal(pl.all().is_not_null()))[c.ids[0]]
+                fresh = keys.filter(valid).unique()
+                c.seen = pl.concat([c.seen, fresh]).unique() if c.seen.width else fresh
+                # Iceberg seeds chunk by chunk: keys the batch already holds stay batch keys
+                c.seeded = (
+                    pl.concat([c.seeded, fresh]).unique() if c.seeded.width else fresh
+                )
+
+    @staticmethod
+    def _keys(c: _Constraint, df: pl.DataFrame) -> pl.DataFrame:
         keys = pl.DataFrame(
             [df[n].alias(k) for n, k in zip(c.columns, c.ids, strict=True)]
         )
+        # Rust compares `to_bits()`: -0.0 differs from 0.0, NaN payloads differ; key on the bits too
+        return keys.with_columns(
+            pl.col(k).map_batches(_float_bits, return_dtype=pl.UInt64).alias(k + _BITS)
+            for k in c.ids
+            if keys.schema[k].is_float()
+        )
+
+    def _apply(self, c: _Constraint, df: pl.DataFrame) -> RowCheck:
+        keys = self._keys(c, df)
         valid = keys.select(pl.all_horizontal(pl.all().is_not_null()))[c.ids[0]]
         dup = pl.Series([False] * df.height)
         if (
             valid.any()
         ):  # skips all-null (Null dtype) frames, which cannot join the seen keys
-            # ponytail: floats compare with Polars equality (-0.0 == 0.0), Rust compares bit patterns
-            first = keys.select(pl.struct(c.ids).is_first_distinct())[c.ids[0]]
+            first = keys.select(pl.struct(keys.columns).is_first_distinct())[c.ids[0]]
             dup = valid & ~first
             if c.seen.width:
                 hit = keys.join(
                     c.seen.with_columns(pl.lit(True).alias(_SEEN)),
-                    on=c.ids,
+                    on=keys.columns,
                     how="left",
                     maintain_order="left",
                 )[_SEEN]
@@ -160,8 +210,10 @@ class UniqueTracker:
             c.seen = pl.concat([c.seen, fresh]) if c.seen.width else fresh
             dups = keys.filter(dup)
             c.duplicates += dups.height
+            if c.seeded.width:
+                c.target += dups.join(c.seeded, on=keys.columns, how="semi").height
             if dups.height:
-                c.dup_counts.append(dups.group_by(c.ids).len(_COUNT))
+                c.dup_counts.append(dups.group_by(keys.columns).len(_COUNT))
         single = len(c.columns) == 1
         name = c.columns[0] if single else f"[{','.join(c.columns)}]"
         message = "duplicate value" if single else "duplicate key"
@@ -174,7 +226,8 @@ class UniqueTracker:
     def _result(self, c: _Constraint) -> UniqueResult:
         if not c.dup_counts:
             return UniqueResult(c.columns, 0, [])
-        counts = pl.concat(c.dup_counts).group_by(c.ids).agg(pl.col(_COUNT).sum())
+        parts = pl.concat(c.dup_counts)
+        counts = parts.group_by(parts.columns[:-1]).agg(pl.col(_COUNT).sum())
         debug = pl.format(
             "CompositeKey([{}])",
             pl.concat_str([_debug(k, counts.schema[k]) for k in c.ids], separator=", "),
@@ -191,4 +244,4 @@ class UniqueTracker:
             )
             for row in top.iter_rows(named=True)
         ]
-        return UniqueResult(c.columns, c.duplicates, samples)
+        return UniqueResult(c.columns, c.duplicates, samples, c.target)

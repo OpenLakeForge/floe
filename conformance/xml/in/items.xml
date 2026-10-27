@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<root xmlns="urn:x">
+  <item id="1"><name>a</name><addr><city>Paris</city></addr><price><value>9.5</value></price></item>
+  <item id="2"><name> b </name><price>7</price></item>
+  <item id="3"><addr><city>Rome</city></addr></item>
+</root>

@@ -31,6 +31,7 @@ from floe.config.types import (
     SinkTarget,
     SourceConfig,
     SourceOptions,
+    SourcePartitioning,
     WriteMode,
 )
 from floe.config.yaml import (
@@ -39,6 +40,7 @@ from floe.config.yaml import (
     get_value,
     opt_bool,
     opt_string,
+    opt_u32,
     opt_u64,
     opt_vec_string,
     opt_vec_vec_string,
@@ -55,7 +57,7 @@ _R = TypeVar("_R")
 _M = TypeVar("_M", bound=BaseModel)
 _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 # Rust's `trim()` strips Unicode White_Space only; `str.strip()` also strips U+001C to U+001F
-_WHITE_SPACE = "\t\n\v\f\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+WHITE_SPACE = "\t\n\v\f\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
 
 
 def _or(value: _R | None, default: _R) -> _R:
@@ -67,7 +69,7 @@ def _pick(value: str, allowed: tuple[_T, ...]) -> _T | None:
 
 
 def _norm(value: str) -> str:
-    return value.strip(_WHITE_SPACE).translate(_ASCII_LOWER)
+    return value.strip(WHITE_SPACE).translate(_ASCII_LOWER)
 
 
 def _choice(value: str, allowed: tuple[_T, ...], ctx: str) -> _T:
@@ -265,6 +267,18 @@ def _storage(h: dict[object, object], ctx: str) -> str | None:
     return _or(storage, filesystem)
 
 
+def _partitioning(value: object) -> SourcePartitioning:
+    ctx = "source.partitioning"
+    h = yaml_hash(value, ctx)
+    validate_known_keys(h, ctx, tuple(SourcePartitioning.model_fields))
+    return SourcePartitioning(
+        pattern=get_string(h, "pattern", ctx),
+        date_column=get_string(h, "date_column", ctx),
+        batch_column=opt_string(h, "batch_column", ctx),
+        lookback_days=_or(opt_u32(h, "lookback_days", ctx), 1),
+    )
+
+
 def _source(value: object, ref: str | None, resource: str | None) -> SourceConfig:
     h = yaml_hash(value, "source")
     validate_known_keys(
@@ -277,6 +291,7 @@ def _source(value: object, ref: str | None, resource: str | None) -> SourceConfi
             "filesystem",
             "options",
             "cast_mode",
+            "partitioning",  # D28
         ),
     )
     fmt = get_string(h, "format", "source")
@@ -290,6 +305,7 @@ def _source(value: object, ref: str | None, resource: str | None) -> SourceConfi
         cast_mode=_or(opt_string(h, "cast_mode", "source"), "strict"),
         source_ref=ref,
         resource=resource,
+        partitioning=_partitioning(h["partitioning"]) if "partitioning" in h else None,
     )
 
 
@@ -334,11 +350,12 @@ def _partition_spec(
     for index, item in enumerate(yaml_array(parent["partition_spec"], ctx)):
         item_ctx = f"{ctx}[{index}]"
         h = yaml_hash(item, item_ctx)
-        validate_known_keys(h, item_ctx, ("column", "transform"))
+        validate_known_keys(h, item_ctx, ("column", "transform", "num_buckets"))
         out.append(
             IcebergPartitionField(
                 column=get_string(h, "column", item_ctx),
                 transform=_or(opt_string(h, "transform", item_ctx), "identity"),
+                num_buckets=opt_u32(h, "num_buckets", item_ctx),
             )
         )
     return out

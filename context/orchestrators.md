@@ -27,16 +27,15 @@ manifest feature sets) and are not part of the drift guard.
 
 The manifest is a JSON file that decouples the Floe config from orchestrator-specific execution concerns. It tells the orchestrator how to invoke Floe and what entities exist.
 
-Schema identifier: `floe.manifest.v1`
+Schema: `orchestrators/schemas/floe.manifest.schema.json`, versioned with Floe releases. `spec_version` is the Floe major.minor that generated the manifest.
 
 ### Structure
 
 ```json
 {
-  "schema": "floe.manifest.v1",
   "generated_at_ts_ms": 1700000000000,
   "floe_version": "0.x.y",
-  "spec_version": "1",
+  "spec_version": "0.8",
   "manifest_id": "abc123",
   "config_uri": "local://config.yml",
   "config_checksum": "sha256:...",
@@ -162,7 +161,9 @@ Each `@asset` function, when materialized:
 
 ### Runner
 
-`LocalRunner` (in `runner.py`) is the default runner. It invokes the CLI as a subprocess and returns a `RunResult(stdout, stderr, exit_code)`.
+`InProcessRunner` (in `runner.py`) is the default when the `floe` Python core is importable (`build_runner_from_env`; `FLOE_RUNNER=local` opts out). It runs a local `floe run --manifest` execution through `floe.run_manifest` in the Dagster process, renders the observed events as the same NDJSON stdout, and turns a `FloeError` into exit code 1 with the message on stderr. In-process runs are serialized by a lock, because `floe.set_observer` is process-global. Anything else (a timeout, `defaults.env`/`workdir`, extra CLI flags, a non-`local_process` runner) falls back to `LocalRunner`.
+
+`LocalRunner` invokes the CLI as a subprocess and returns a `RunResult(stdout, stderr, exit_code)`.
 
 `LocalRunner` also handles routing to `kubernetes_job` and `databricks_job` runner types by delegating to `kubernetes_runner.py` and `databricks_runner.py` respectively.
 

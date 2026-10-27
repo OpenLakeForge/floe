@@ -54,7 +54,8 @@ The goal: **the smallest correct change, one concern per PR, nothing speculative
 - No drive-by refactors, renames, reformatting, comment rewrites or "while I'm here" edits in
   code the change does not need.
 - No new dependency without approval on the issue first.
-- No new trait, generic, builder, config knob or module until three concrete uses exist.
+- No new trait, Protocol or ABC, generic, builder, registry or config knob until three concrete
+  uses exist. A new module is fine when it holds one self-contained concern.
 - Never hand-edit a vendored copy. Edit the canonical file (`orchestrators/schemas/`, or the
   dagster copy of a shared module) and let `python scripts/check_orchestrator_drift.py` confirm
   the copies match.

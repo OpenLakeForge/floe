@@ -12,7 +12,8 @@ from urllib.parse import unquote, urlparse, urlunparse
 
 from jsonschema import Draft202012Validator
 
-MANIFEST_SCHEMA = "floe.manifest.v1"
+# D22: a manifest's spec_version is the Floe major.minor that generated it.
+SUPPORTED_SPEC_VERSIONS = ("0.8",)
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,8 @@ class ManifestEntity:
     policy_severity: str | None = None
     write_mode: str | None = None
     incremental_mode: str | None = None
+    source_ref: str | None = None
+    iceberg: dict[str, Any] | None = None  # sinks.accepted.iceberg when the sink is Iceberg
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "ManifestEntity":
@@ -36,6 +39,8 @@ class ManifestEntity:
         if not asset_key:
             raise ValueError("entities[].asset_key must contain at least one part")
         source = data.get("source") or {}
+        accepted = (data.get("sinks") or {}).get("accepted") or {}
+        iceberg = (accepted.get("iceberg") or {}) if accepted.get("format") == "iceberg" else None
         source_uri = _optional_str(source, "uri") if isinstance(source, dict) else None
         return ManifestEntity(
             name=_required_str(data, "name"),
@@ -50,6 +55,8 @@ class ManifestEntity:
             policy_severity=_optional_str(data, "policy_severity"),
             write_mode=_optional_str(data, "write_mode"),
             incremental_mode=_optional_str(data, "incremental_mode"),
+            source_ref=_optional_str(source, "ref") if isinstance(source, dict) else None,
+            iceberg=iceberg,
         )
 
 
@@ -151,6 +158,7 @@ class ManifestRunnerDefinition:
     job_name: str | None = None
     auth: dict[str, str] | None = None
     env_parameters: dict[str, str] | None = None
+    resources: dict[str, Any] | None = None
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "ManifestRunnerDefinition":
@@ -182,6 +190,7 @@ class ManifestRunnerDefinition:
             job_name=_optional_str(data, "job_name"),
             auth=auth,
             env_parameters=env_parameters,
+            resources=data.get("resources"),
         )
 
 
@@ -205,7 +214,6 @@ class ManifestRunners:
 
 @dataclass(frozen=True)
 class DagsterManifest:
-    schema: str
     generated_at_ts_ms: int
     floe_version: str
     spec_version: str
@@ -223,12 +231,10 @@ class DagsterManifest:
     manifest_revision: str | None = None
     profile_uri: str | None = None
     profile_checksum: str | None = None
+    sources: dict[str, dict[str, Any]] | None = None  # D20 index, by source name
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "DagsterManifest":
-        schema = _required_str(data, "schema")
-        if schema != MANIFEST_SCHEMA:
-            raise ValueError(f"unexpected manifest schema: {schema}")
         generated_at = data.get("generated_at_ts_ms")
         if not isinstance(generated_at, int) or generated_at < 0:
             raise ValueError("generated_at_ts_ms must be a non-negative integer")
@@ -240,7 +246,6 @@ class DagsterManifest:
         catalogs = data.get("catalogs")
         lineage = data.get("lineage")
         return DagsterManifest(
-            schema=schema,
             generated_at_ts_ms=generated_at,
             floe_version=_required_str(data, "floe_version"),
             spec_version=_required_str(data, "spec_version"),
@@ -258,6 +263,7 @@ class DagsterManifest:
             manifest_revision=_optional_str(data, "manifest_revision"),
             profile_uri=_optional_str(data, "profile_uri"),
             profile_checksum=_optional_str(data, "profile_checksum"),
+            sources={s["name"]: s for s in data.get("sources") or []},
         )
 
 
@@ -296,6 +302,13 @@ def load_manifest(path: str | Path) -> DagsterManifest:
     payload = json.loads(text)
     if not isinstance(payload, dict):
         raise ValueError("manifest file must contain a JSON object")
+    spec_version = payload.get("spec_version")
+    if spec_version not in SUPPORTED_SPEC_VERSIONS:
+        raise ValueError(
+            f"manifest spec_version {spec_version} is not supported "
+            f"(supported: {', '.join(SUPPORTED_SPEC_VERSIONS)}); "
+            "regenerate it with a supported Floe release"
+        )
     _validate_manifest_payload(payload)
     return DagsterManifest.from_dict(payload)
 
@@ -350,6 +363,24 @@ def render_execution_args(
             for token in execution.per_entity_args
         )
     return args
+
+
+def _ident(value: str) -> str:
+    """`floe.iceberg.sink.catalog_ident`: how a run names the catalog, namespace and table it writes."""
+    out = "".join(c.lower() if c.isascii() and (c.isalnum() or c in "_-") else "_" for c in value)
+    return out.strip("_") or "default"
+
+
+def entity_table(manifest: DagsterManifest, entity: ManifestEntity) -> str | None:
+    """`catalog.namespace.table` an Iceberg entity writes, resolved as the run resolves it."""
+    if entity.iceberg is None:
+        return None
+    catalog = entity.iceberg.get("catalog") or (manifest.catalogs or {}).get("default")
+    if not catalog:
+        return None
+    namespace = entity.iceberg.get("namespace") or entity.domain or "default"
+    table = entity.iceberg.get("table") or entity.asset_key[-1]  # the run's unqualified name
+    return ".".join(_ident(part) for part in (catalog, namespace, table))
 
 
 def resolve_entity_runner(
@@ -502,7 +533,7 @@ def _validate_manifest_payload(payload: dict[str, Any]) -> None:
 @lru_cache(maxsize=1)
 def _manifest_validator() -> Draft202012Validator:
     schema_path = resources.files("floe_dagster").joinpath(
-        "schemas/floe.manifest.v1.json"
+        "schemas/floe.manifest.schema.json"
     )
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     return Draft202012Validator(schema)

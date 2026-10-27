@@ -11,6 +11,40 @@ All notable changes to Floe are documented in this file.
 
 ## dagster-floe (unreleased)
 
+- **Iceberg entities carry a `floe/table` op tag (#924).** The value is the resolved
+  `catalog.namespace.table` from the manifest, so entities writing one table share it and other
+  tables don't. Advisory, and an op tag: a `tag_concurrency_limits` entry on `floe/table` in the
+  job's executor config (`applyLimitPerUniqueValue: true`, `limit: 1`) limits steps within one
+  run, not across runs. No manifest change.
+
+- **Manifest sinks may carry the Iceberg `partition_spec` (#911).** The bundled schema accepts
+  `partition_spec` (`column`, `transform`, optional `num_buckets`) on a sink, so a run from the
+  manifest creates the same partitioned table as the config run.
+- **Manifest `source.partitioning` may carry `lookback_days` (D30, #885).** The bundled schema
+  accepts the non-negative integer that bounds a `file`-mode run's listing to the watermark minus
+  that many days.
+- **Manifest entity sources may carry `partitioning` (D28, #883).** The bundled schema accepts
+  the `source.partitioning` block (`pattern`, `date_column`, `batch_column`) that `floe run
+  --manifest` honours.
+- **Floe runs in-process when the Python core is installed (#902).** `build_runner_from_env()`
+  now returns an `InProcessRunner` when `floe.run_manifest` is importable: a local
+  `floe run --manifest` execution runs through the Python API, with the same events, `RunResult`,
+  asset metadata and OpenLineage events as the subprocess. In-process runs are serialized within a
+  process. Set `FLOE_RUNNER=local` to keep the `floe` subprocess (`LocalRunner`).
+- **Entities sharing a named source depend on one `sources/<project>/<name>` asset (D20, #796).** When
+  the manifest carries the `sources` index, every entity whose `source.ref` names an entry depends
+  on one shared `sources/<project>/<name>` asset (group `sources`, the source's format and `uri`
+  as metadata) instead of its own `<entity>_source` asset. `<project>` is the manifest's
+  `manifest_name`, else its `manifest_id`, so two manifests loaded together can both name a
+  source `crm`.
+- **Manifests may carry a `sources` index and project `metadata` (D20, #796).** The bundled
+  schema accepts both optional blocks: `sources` lists each named config source with its
+  format, resolved `uri` and consuming entities; `metadata` is the config's project metadata.
+- **Manifests are versioned by Floe release (D22, #798).** `load_manifest` accepts a
+  manifest whose `spec_version` (the Floe major.minor that generated it) is supported, `0.8`
+  for now, and rejects any other with a clear error. The `schema: "floe.manifest.v1"` field is
+  gone and the bundled schema is `floe.manifest.schema.json`; regenerate older manifests with
+  Floe 0.8.
 - **`load_floe_assets(domains=[...])` loads one domain slice of a project manifest (#510).**
   Only entities whose `domain` is listed are loaded; an unknown domain raises `ValueError`.
   Op names of entities with a domain are now derived from the full asset key

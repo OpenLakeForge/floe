@@ -29,6 +29,7 @@ from record import (
     cases,
     delta_ids,
     is_validate,
+    manifest_snapshot,
     recorded,
     run_in_copy,
     rust_binary,
@@ -42,6 +43,17 @@ def comparable(name: str, value: Any) -> str:
     if isinstance(value, str):
         if name.endswith(".json"):
             doc = json.loads(value)
+            if isinstance(doc, dict) and isinstance(doc.get("tool"), dict):
+                doc["tool"]["version"] = (
+                    "<volatile>"  # the implementation's own version
+                )
+            if name == "manifest.json":
+                # D22: Python has no `schema`; its spec_version is its own Floe major.minor
+                doc.pop("schema", None)
+                doc["spec_version"] = "<volatile>"
+                # D20: the `sources` index and project `metadata` are Python-only additions
+                doc.pop("sources", None)
+                doc.pop("metadata", None)
             return json.dumps(mask_bytes(doc), indent=2) + "\n"
         return value
     # parquet: schema, then one line per row
@@ -87,16 +99,24 @@ def load_expected(case: Path, impl: str) -> Snapshot:
     return expected
 
 
-def check_case(case: Path, cmd: list[str], impl: str) -> list[str]:
+def check_case(
+    case: Path, cmd: list[str], impl: str, with_manifest: bool = True
+) -> list[str]:
     problems: list[str] = []
     with tempfile.TemporaryDirectory(prefix="conformance-") as tmp:
         work, proc = run_in_copy(case, cmd, Path(tmp))
-        if proc.returncode != 0 and not is_validate(case):
-            problems.append(
-                f"`{' '.join(cmd)} run -c config.yml` exited {proc.returncode}: {proc.stderr.strip()}"
-            )
         actual = case_snapshot(case, work, proc)
+        if with_manifest:
+            actual |= manifest_snapshot(case, cmd, work)
+        if proc.returncode and not is_validate(case):
+            actual["exit_code"] = f"{proc.returncode}\n"
     expected = load_expected(case, impl)
+    if (
+        expected.get("exit_code") == "0\n"
+    ):  # an `expected_python/exit_code` of 0: Python succeeds where Rust failed
+        del expected["exit_code"]
+    if not with_manifest:
+        expected.pop("manifest.json", None)
     for name in sorted(set(expected) | set(actual)):
         if name not in actual:
             problems.append(f"missing output: {name}")
@@ -131,12 +151,16 @@ def main() -> int:
         else ["uv", "run", "--project", str(REPO), "floe"]
     )
     wanted = [args.case] if args.case else None
+    manifest_cases: set[str] = (
+        set()
+    )  # `<case> manifest`: Python must also match manifest.json
     if args.cases_file:
-        lines = (
-            raw.split("#")[0].strip()
+        lines = [
+            raw.split("#")[0].split()
             for raw in args.cases_file.read_text().splitlines()
-        )
-        wanted = [line for line in lines if line]
+        ]
+        wanted = [line[0] for line in lines if line]
+        manifest_cases = {line[0] for line in lines if line[1:] == ["manifest"]}
     selected = [c for c in cases() if wanted is None or case_name(c) in wanted]
     if missing := set(wanted or []) - {case_name(c) for c in selected}:
         raise SystemExit(f"no such case: {', '.join(sorted(missing))}")
@@ -146,7 +170,12 @@ def main() -> int:
             print(f"skip {case_name(case)} (D1: not recorded)")
             skipped += 1
             continue
-        problems = check_case(case, cmd, args.impl)
+        # Rust 0.7 rejects some configs Python accepts (D2): no manifest was recorded, nothing to compare
+        with_manifest = args.impl == "rust" or (
+            (args.case or case_name(case) in manifest_cases)
+            and (case / "expected" / "manifest.json").exists()
+        )
+        problems = check_case(case, cmd, args.impl, with_manifest)
         if problems and args.impl == "python" and (ids := delta_ids(case)):
             problems.insert(
                 0, f"intentional delta {', '.join(ids)}: expected_python/ applies"

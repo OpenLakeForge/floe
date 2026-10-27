@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import subprocess
 from unittest.mock import patch
@@ -12,6 +13,7 @@ from floe_dagster.assets import (
     build_floe_asset_defs,
     load_floe_assets,
 )
+from floe_dagster.definitions import build_definitions_from_manifest_paths
 from floe_dagster.manifest import ManifestRunnerDefinition
 from floe_dagster.runner import LocalRunner, RunResult, Runner
 
@@ -239,6 +241,57 @@ def test_source_asset_group_matches_entity_group() -> None:
     assert source_assets[0].group_name == entities[0].group_name
 
 
+def _crm_manifest(tmp_path, project: str, uri: str | None) -> Path:
+    """The fixture with every entity reading the named source `crm`, as project `project`."""
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    payload["manifest_name"] = project
+    payload["manifest_id"] = f"mfv1-{project}"
+    for entity in payload["entities"]:
+        entity["source"]["ref"] = "crm"
+        entity["asset_key"] = [project, *entity["asset_key"]]
+    payload["sources"] = [
+        {"name": "crm", "format": "csv", "uri": uri, "entities": ["employees", "orders"]}
+    ]
+    manifest_path = tmp_path / f"{project}.manifest.json"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    return manifest_path
+
+
+def test_entities_sharing_a_named_source_depend_on_one_source_asset(tmp_path) -> None:
+    """D20: entities with the same source.ref share the asset of that `sources` entry."""
+    manifest_path = _crm_manifest(tmp_path, "sales", "s3://b/crm")
+
+    asset_defs, source_assets, _entities = build_floe_asset_defs(
+        manifest_path=str(manifest_path), runner=_NoopRunner()
+    )
+    shared = AssetKey(["sources", "sales", "crm"])
+    assert [sa.key for sa in source_assets] == [shared]
+    assert source_assets[0].metadata["dagster/uri"].url == "s3://b/crm"
+    for asset_def in asset_defs:
+        assert shared in set(asset_def.keys_by_input_name.values())
+
+
+def test_named_source_without_a_shared_location_has_no_uri_metadata(tmp_path) -> None:
+    """D20: `sources[].uri` is null when the consumers share no location."""
+    manifest_path = _crm_manifest(tmp_path, "sales", None)
+    _asset_defs, source_assets, _entities = build_floe_asset_defs(
+        manifest_path=str(manifest_path), runner=_NoopRunner()
+    )
+    assert "dagster/uri" not in source_assets[0].metadata
+
+
+def test_two_projects_naming_the_same_source_get_two_source_assets(tmp_path) -> None:
+    """D20: the shared source key is scoped by project, so two manifests can both name `crm`."""
+    paths = [
+        str(_crm_manifest(tmp_path, "sales", "s3://b/sales/crm")),
+        str(_crm_manifest(tmp_path, "hr", "s3://b/hr/crm")),
+    ]
+    defs = build_definitions_from_manifest_paths(manifest_paths=paths, runner=_NoopRunner())
+    graph = defs.get_repository_def().asset_graph
+    for project in ("sales", "hr"):
+        assert AssetKey(["sources", project, "crm"]) in graph.get_all_asset_keys()
+
+
 def test_register_source_assets_false_returns_empty_source_list() -> None:
     """register_source_assets=False skips SourceAsset creation (opt-out for upstream pipelines)."""
     _asset_defs, source_assets, _entities = build_floe_asset_defs(
@@ -450,3 +503,65 @@ def test_qualified_op_name_colliding_with_domainless_name_raises(tmp_path) -> No
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError, match="'sales.accounts' and 'sales__accounts'"):
         build_floe_asset_defs(manifest_path=str(manifest_path), runner=_NoopRunner())
+
+
+# ── floe/table concurrency tag (#924) ──────────────────────────────────────────
+
+def _iceberg_manifest(tmp_path, entities, catalogs=None):
+    data = json.loads(FIXTURE.read_text())
+    template = data["entities"][0]
+    data["catalogs"] = catalogs
+    data["entities"] = []
+    for name, domain, iceberg in entities:
+        entity = json.loads(json.dumps(template))
+        entity.update(name=name, domain=domain, asset_key=[domain or "default", name.split(".")[-1]])
+        entity["sinks"]["accepted"].update(format="iceberg", iceberg=iceberg)
+        data["entities"].append(entity)
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def _table_tags(path):
+    asset_defs, _sources, _entities = build_floe_asset_defs(manifest_path=str(path), runner=_NoopRunner())
+    return {a.op.name.split("__")[-1]: a.op.tags.get("floe/table") for a in asset_defs}
+
+
+def test_entities_on_one_table_share_a_table_tag_and_other_tables_do_not(tmp_path) -> None:
+    target = {"catalog": "rest", "namespace": "sales", "table": "orders"}
+    path = _iceberg_manifest(
+        tmp_path,
+        [
+            ("orders_eu", "sales", target),
+            ("orders_us", "sales", target),
+            ("returns", "sales", {**target, "table": "returns"}),
+        ],
+    )
+    tags = _table_tags(path)
+    assert tags["orders_eu"] == tags["orders_us"] == "rest.sales.orders"
+    assert tags["returns"] == "rest.sales.returns"
+
+
+def test_table_tag_resolves_defaults_like_a_run(tmp_path) -> None:
+    path = _iceberg_manifest(
+        tmp_path,
+        [("Orders", "sales", {}), ("explicit", None, {"catalog": "other"})],
+        catalogs={"default": "rest"},
+    )
+    tags = _table_tags(path)
+    assert tags["Orders"] == "rest.sales.orders"
+    assert tags["explicit"] == "other.default.explicit"
+
+
+def test_table_tag_default_table_is_the_unqualified_entity_name(tmp_path) -> None:
+    path = _iceberg_manifest(
+        tmp_path,
+        [("sales.orders", "sales", {}), ("explicit", "sales", {"table": "orders"})],
+        catalogs={"default": "rest"},
+    )
+    assert set(_table_tags(path).values()) == {"rest.sales.orders"}
+
+
+def test_non_iceberg_entity_has_no_table_tag() -> None:
+    asset_def, _entity = _get_asset_def(FIXTURE, "employees")
+    assert "floe/table" not in asset_def.op.tags

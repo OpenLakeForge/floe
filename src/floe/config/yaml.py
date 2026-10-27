@@ -122,6 +122,10 @@ def load_yaml(path: Path) -> list[object]:
         raise FloeIoError("stream did not contain valid UTF-8") from e
     except ValueError as e:  # an embedded NUL in the path
         raise FloeIoError("file name contained an unexpected NUL byte") from e
+    return parse_yaml(text)
+
+
+def parse_yaml(text: str) -> list[object]:
     try:
         # Composing keeps `<<` an ordinary key and aliases plain copies; no PyYAML constructor runs.
         docs = cast(
@@ -235,6 +239,13 @@ def opt_u64(hash: dict[object, object], key: str, ctx: str) -> int | None:
         raise FloeConfigError(f"expected integer at {ctx}.{key}")
     if value < 0:
         raise FloeConfigError(f"expected positive integer at {ctx}.{key}")
+    return value
+
+
+def opt_u32(hash: dict[object, object], key: str, ctx: str) -> int | None:
+    value = opt_u64(hash, key, ctx)
+    if value is not None and value > 0xFFFFFFFF:
+        raise FloeConfigError(f"value at {ctx}.{key} exceeds maximum allowed value")
     return value
 
 

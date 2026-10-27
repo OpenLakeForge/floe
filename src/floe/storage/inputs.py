@@ -9,14 +9,22 @@ from typing import Literal
 from floe.errors import FloeConfigError, FloeError, FloeRunError
 from floe.glob import MatchOptions, Pattern, PatternError, glob
 from floe.storage.paths import normalize_local_path, parse_s3_uri
-from floe.storage.types import ObjectRef, StorageClient
+from floe.storage.types import Downloader, ObjectRef, StorageClient
 
 _SUFFIXES = {
     "csv": [".csv"],
     "tsv": [".tsv"],
     "parquet": [".parquet"],
     "json": [".json", ".jsonl", ".ndjson", ".djson"],
+    "avro": [".avro"],
+    "orc": [".orc"],
+    "xlsx": [".xlsx"],
+    "xml": [".xml"],
 }
+
+
+class NoInputsError(FloeRunError):
+    """No input file or object matched the source; any other listing error is not this."""
 
 
 @dataclass(frozen=True)
@@ -29,10 +37,18 @@ class InputFile:
 
 
 @dataclass(frozen=True)
+class LocalInputFile:
+    file: InputFile
+    local_path: Path
+    is_ephemeral: bool
+
+
+@dataclass(frozen=True)
 class ResolvedInputs:
     files: list[InputFile]
     listed: list[str]
     mode: Literal["file", "directory"]
+    warning: str | None = None  # D30: the listing window, logged once per run
 
 
 def suffixes_for_format(fmt: str) -> list[str]:
@@ -57,6 +73,19 @@ def _glob_files(pattern: str) -> list[Path]:
     return [normalize_local_path(Path(p)) for p in found if Path(p).is_file()]
 
 
+def _visible(files: list[Path], root: Path, exclude: Path | None) -> list[Path]:
+    """D23: drop anything under a `.floe` directory (the default state location), as the cloud listing does; D31: and under `exclude`."""
+    root = normalize_local_path(
+        root
+    )  # the matches are normalised, so `..` in the root must be too
+    return [
+        f
+        for f in files
+        if ".floe" not in f.relative_to(root).parts[:-1]
+        and not (exclude and f.is_relative_to(exclude))
+    ]
+
+
 def _local_files(
     config_dir: Path,
     raw: str,
@@ -65,18 +94,24 @@ def _local_files(
     storage: str,
     glob_override: str | None,
     recursive: bool,
+    exclude: Path | None,
+    after: str = "",
 ) -> tuple[list[Path], Literal["file", "directory"]]:
-    def no_match(base: object, used: str) -> FloeRunError:
-        return FloeRunError(
+    def no_match(base: object, used: str) -> NoInputsError:
+        return NoInputsError(
             f"entity.name={entity} source.storage={storage} no input files matched "
             f"(base_path={base}, glob={used}, recursive={str(recursive).lower()})"
         )
 
     if any(c in raw for c in "*?["):
         pattern = os.path.join(config_dir, raw)
-        files = sorted(set(_glob_files(pattern)), key=str)
+        prefix = pattern[: next(i for i, c in enumerate(pattern) if c in "*?[")]
+        root = Path(prefix) if prefix.endswith(os.sep) else Path(prefix).parent
+        files = _visible(sorted(set(_glob_files(pattern)), key=str), root, exclude)
         if not files:
-            raise no_match(Path(pattern).parent, Path(pattern).name)
+            raise no_match(
+                os.path.dirname(pattern), os.path.basename(pattern)
+            )  # as written: Rust keeps a leading `./`
         return files, "directory"
     base = normalize_local_path(config_dir / raw)
     if base.is_file():
@@ -92,15 +127,32 @@ def _local_files(
     if not base.is_dir():
         raise no_match(base, ",".join(globs))
     patterns = [
-        os.path.join(base, "**", g) if recursive else os.path.join(base, g)
+        os.path.join(d, "**", g) if recursive else os.path.join(d, g)
+        # D30: a glob override with a `/` keeps its meaning only from `base`, so it gets the after-listing filter alone
+        for d in (
+            _window_dirs(base, after)
+            if after and "/" not in (glob_override or "")
+            else [base]
+        )
         for g in globs
     ]
-    files = sorted({f for p in patterns for f in _glob_files(p)}, key=str)
+    files = _visible(
+        sorted({f for p in patterns for f in _glob_files(p)}, key=str), base, exclude
+    )
     if not files:
         raise no_match(base, ",".join(globs))
     return files, "directory"
 
 
+def _window_dirs(base: Path, after: str) -> list[Path]:
+    """D30: the directories at the depth of `after` (relative to `base`) that do not sort before it; older ones are never walked."""
+    dirs = [base]
+    for _ in after.split("/"):
+        dirs = sorted(d for p in dirs for d in p.iterdir() if d.is_dir() and (r := d.relative_to(base).as_posix()) >= after[: len(r)])  # fmt: skip
+    return dirs
+
+
+_REMOTE_SCHEMES = ("s3://", "gs://", "gcs://", "abfs://", "abfss://", "az://")
 _CLOUD = MatchOptions(case_sensitive=True, require_literal_separator=True)
 
 
@@ -123,6 +175,8 @@ def _cloud_refs(
     entity: str,
     storage: str,
     location: str,
+    exclude: str | None,
+    after: str = "",
 ) -> list[ObjectRef]:
     where = f"entity.name={entity} source.storage={storage}"
     first = _first_glob(key)
@@ -146,14 +200,15 @@ def _cloud_refs(
     lowered = tuple(s.lower() for s in suffixes)
     refs = [
         r
-        for r in client.list(prefix)
+        for r in client.list(prefix, after)
         if (matcher is None or matcher.matches_with(r.key, _CLOUD))
         and not (r.key.startswith(".floe/") or "/.floe/" in r.key)
+        and not (exclude and r.uri.startswith(f"{exclude}/"))
         and r.uri.lower().endswith(lowered)
     ]
     if not refs:
         used = "glob=<none>" if matcher is None else f"glob={key}"
-        raise FloeRunError(
+        raise NoInputsError(
             f"{where} no input objects matched ({location}, prefix={prefix}, "
             f"{used}, suffixes={','.join(suffixes)})"
         )
@@ -171,15 +226,27 @@ def resolve_inputs(
     list_only: bool = False,
     recursive: bool = False,
     glob_override: str | None = None,
+    exclude: str | None = None,
+    after: str = "",
 ) -> ResolvedInputs:
-    """`path` is the source path, or a full `s3://` URI for a remote storage."""
+    """`path` is the source path, or a full `s3://` URI for a remote storage; nothing under the `exclude` URI is listed (D31).
+
+    D30: `after`, a URI, skips what sorts before it: S3 `StartAfter`, or local directories never walked.
+    """
     files: list[InputFile] = []
     if path.startswith("s3://"):
         if client is None:
             raise FloeRunError("s3 storage client missing")
         bucket, key = parse_s3_uri(path)
         refs = _cloud_refs(
-            client, key, suffixes_for_format(fmt), entity, storage, f"bucket={bucket}"
+            client,
+            key,
+            suffixes_for_format(fmt),
+            entity,
+            storage,
+            f"bucket={bucket}",
+            exclude,
+            parse_s3_uri(after)[1] if after else "",
         )
         if not list_only:
             for r in refs:
@@ -196,9 +263,13 @@ def resolve_inputs(
         return ResolvedInputs(files, [r.uri for r in refs], "directory")
     if "://" in path:
         raise FloeConfigError(f"unsupported storage uri: {path}")
+    skip = Path(exclude.removeprefix("local://")) if exclude and exclude.startswith("local://") else None  # fmt: skip
+    start = Path(after.removeprefix("local://")) if after.startswith("local://") else None  # fmt: skip
+    base = normalize_local_path(config_dir / path)
     paths, mode = _local_files(
-        config_dir, path, fmt, entity, storage, glob_override, recursive
-    )
+        config_dir, path, fmt, entity, storage, glob_override, recursive, skip,
+        start.relative_to(base).as_posix() if start and start.is_relative_to(base) else "",
+    )  # fmt: skip
     uris = [client.resolve_uri(str(p)) if client else str(p) for p in paths]
     if not list_only:
         for p, uri in zip(paths, uris, strict=True):
@@ -214,3 +285,18 @@ def resolve_inputs(
                 )
             )
     return ResolvedInputs(files, uris, mode)
+
+
+def localize_input(
+    file: InputFile, client: Downloader | None, temp_dir: Path | None
+) -> LocalInputFile:
+    """Download a cloud input to `temp_dir`; a local input is used in place."""
+    if not file.source_uri.startswith(_REMOTE_SCHEMES):
+        return LocalInputFile(
+            file, Path(file.source_uri.removeprefix("local://")), False
+        )
+    if client is None:
+        raise FloeRunError(f"storage client required to download {file.source_uri}")
+    if temp_dir is None:
+        raise FloeRunError(f"temp_dir required to download {file.source_uri}")
+    return LocalInputFile(file, client.download(file.source_uri, temp_dir), True)

@@ -1,0 +1,33 @@
+# Python Floe image: the Python core (src/floe) in a locked venv, DuckDB extensions
+# preinstalled so merges work offline. Published as ghcr.io/openlakeforge/floe-python.
+FROM python:3.11-slim@sha256:b7a9e5f6a93d6d4a31f129bbd4bdee69efccb6ded0fb230d78aafaf37af98377 AS builder
+
+RUN pip install --no-cache-dir uv==0.11.32
+
+WORKDIR /app
+ENV UV_PROJECT_ENVIRONMENT=/opt/floe \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1
+
+# Dependencies first so source edits do not bust the layer cache.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+COPY src src
+RUN uv sync --frozen --no-dev --no-editable
+
+FROM python:3.11-slim@sha256:b7a9e5f6a93d6d4a31f129bbd4bdee69efccb6ded0fb230d78aafaf37af98377
+
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin floe
+
+COPY --from=builder /opt/floe /opt/floe
+ENV PATH="/opt/floe/bin:$PATH"
+
+USER floe
+WORKDIR /work
+
+# Extensions land in ~floe/.duckdb/extensions/<version>/<platform>, matching the pinned duckdb.
+# Fails the build if any extension cannot be fetched.
+RUN python -c "import duckdb; c=duckdb.connect(); [c.execute(f'INSTALL {e}') for e in ('avro','iceberg','httpfs','aws')]"
+
+ENTRYPOINT ["floe"]

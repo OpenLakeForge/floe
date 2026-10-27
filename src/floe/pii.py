@@ -68,7 +68,7 @@ def _when_set(name: str, value: pl.Expr) -> pl.Expr:
     return pl.when(pl.col(name).is_not_null()).then(value).alias(name)
 
 
-def _token_n(pattern: str, token: str) -> int:
+def token_n(pattern: str, token: str) -> int:
     start = pattern.find(token)
     if start < 0:
         return 0
@@ -81,8 +81,8 @@ def _token_n(pattern: str, token: str) -> int:
 
 
 def _mask(name: str, pattern: str) -> pl.Expr:
-    first_n = _token_n(pattern, "{first")
-    last_n = _token_n(pattern, "{last")
+    first_n = token_n(pattern, "{first")
+    last_n = token_n(pattern, "{last")
     text = pl.col(name)
     chars = text.str.len_chars()
     last = pl.min_horizontal(pl.lit(last_n, pl.UInt32), chars)

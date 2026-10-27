@@ -1,0 +1,2 @@
+id,name,ingest_date,batch_id,__floe_row_index,__floe_errors
+2,x,2026-10-24,f9e8,2,"[{""rule"":""unique"",""column"":""[id,ingest_date]"",""message"":""duplicate key""}]"
