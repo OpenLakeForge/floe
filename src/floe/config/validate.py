@@ -124,12 +124,10 @@ def _check_evolution(entity: EntityConfig, version: str) -> None:
         return
     if config_version(version) < (0, 2):
         raise _fail(entity, 'schema.schema_evolution requires root.version >= "0.2"')
-    # D13 (#619): add_columns is accepted on Iceberg; Rust allows only Delta, which D1 drops.
     if evolution.mode == "add_columns" and entity.sink.accepted.format != "iceberg":
         raise _fail(
             entity,
-            f"schema.schema_evolution.mode={evolution.mode} requires "
-            "sink.accepted.format=delta (Delta-only additive schema evolution in this phase)",
+            "schema.schema_evolution.mode=add_columns requires sink.accepted.format=iceberg",
         )
 
 
@@ -165,10 +163,7 @@ def _check_merge(entity: EntityConfig) -> None:
     if not any(
         m.startswith("merge") for m in SINK_WRITE_MODES[entity.sink.accepted.format]
     ):
-        raise _fail(
-            entity,
-            "sink.accepted.merge is only supported when sink.accepted.format supports merge (e.g. delta)",
-        )
+        raise _fail(entity, "sink.accepted.merge requires sink.accepted.format=iceberg")
     if mode not in ("merge_scd1", "merge_scd2"):
         raise _fail(
             entity,
@@ -235,7 +230,8 @@ def _check_partitioning(entity: EntityConfig) -> None:
     if accepted.partition_by is not None:
         raise _fail(
             entity,
-            "sink.accepted.partition_by is only supported for sink.accepted.format=delta",
+            "sink.accepted.partition_by is not supported in 0.8; "
+            "use sink.accepted.partition_spec with sink.accepted.format=iceberg",
         )
     spec = accepted.partition_spec
     if spec is None:
@@ -600,12 +596,11 @@ def _check_pii(entity: EntityConfig) -> None:
     seen: set[str] = set()
     for col in pii.columns:
         name, strategy = col.name, col.strategy
-        label = strategy.capitalize()  # Rust's `{:?}` of the enum
         if name in seen:
             raise _fail(entity, f"pii.columns: column name {name} is duplicated")
         seen.add(name)
         if name not in columns:
-            raise _fail(entity, f"pii.columns: {name} is not an unknown schema column")
+            raise _fail(entity, f"pii.columns: {name} is not a schema column")
         if strategy == "tokenize":
             raise _pii_error(entity, name, ".strategy=tokenize is not yet supported")
         declared = columns[name]
@@ -615,7 +610,7 @@ def _check_pii(entity: EntityConfig) -> None:
             raise _pii_error(
                 entity,
                 name,
-                f".strategy={label} can only be applied to string columns "
+                f".strategy={strategy} can only be applied to string columns "
                 f"(declared type={declared.column_type}); "
                 "use strategy=nullify or strategy=drop instead",
             )
@@ -640,7 +635,7 @@ def _check_pii(entity: EntityConfig) -> None:
             raise _pii_error(
                 entity,
                 name,
-                f".strategy={label} cannot be applied to a unique-key column: the strategy "
+                f".strategy={strategy} cannot be applied to a unique-key column: the strategy "
                 "collapses or removes values, violating uniqueness constraints",
             )
         if name in unique and strategy == "hash":

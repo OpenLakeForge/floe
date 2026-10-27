@@ -34,11 +34,11 @@ entities:
     sink:
       write_mode: append
       accepted:
-        format: delta
+        format: parquet
         storage: lake_s3
         path: bronze/orders/
       rejected:
-        format: parquet
+        format: csv
         storage: lake_s3
         path: rejected/orders/
     policy:
@@ -78,13 +78,13 @@ entities:
       path: incoming/orders/
 ```
 
-Only explicit cloud URIs (`s3://`, `gs://`, `abfs://`, `abfss://`) create remote
+Only explicit `s3://` URIs create remote
 state. Relative `state.path` values are local filesystem paths, even when the
 source is remote.
 
 Explicit remote `state.path` values are resolved through the entity's
 `source.storage`. The URI must therefore match the same storage definition, such
-as the same S3 bucket, GCS bucket, or ADLS account/container. A separate state
+as the same S3 bucket. A separate state
 prefix in the same bucket is supported; a separate state bucket is not currently
 supported by this override.
 
@@ -194,9 +194,8 @@ asks for `floe state reset`.
 Remote state uses compare-and-swap (CAS) writes so two runners cannot silently
 overwrite each other's state:
 
-- S3 and ADLS use object ETags through conditional writes.
-- GCS uses object generation numbers through conditional writes.
-- Local state uses a local file version check with a local file lock.
+- S3 uses object ETags through conditional writes.
+- Local state uses a content-hash version check with a local file lock (D18).
 
 Every state mutation is written only if the version read by the runner is still
 current. If another runner wins the race, Floe reloads state, backs off, and

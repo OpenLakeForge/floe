@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entity.name=orders pii.columns[name=amt].strategy=Mask can only be applied to string columns (declared type=number); use strategy=nullify or strategy=drop instead"
+  "error": "entity.name=orders pii.columns[name=amt].strategy=mask can only be applied to string columns (declared type=number); use strategy=nullify or strategy=drop instead"
 }

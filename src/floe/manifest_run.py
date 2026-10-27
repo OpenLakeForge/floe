@@ -5,6 +5,7 @@ Rust, a malformed option block is dropped and an unknown enum value falls back t
 """
 
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar, cast, get_args
@@ -18,7 +19,7 @@ from floe.config.project import (
     RootConfig,
     config_version,
 )
-from floe.config.storage import CatalogsConfig, StoragesConfig
+from floe.config.storage import CatalogsConfig, StorageDefinition, StoragesConfig
 from floe.config.types import (
     EntityConfig,
     IcebergPartitionField,
@@ -35,7 +36,9 @@ from floe.config.types import (
     SourcePartitioning,
 )
 from floe.config.validate import FLOE_VERSION
-from floe.errors import FloeConfigError, FloeIoError, FloeRunError
+from floe.errors import FloeConfigError, FloeIoError
+from floe.storage.paths import parse_s3_uri
+from floe.storage.s3 import S3Client
 
 Json = dict[str, Any]
 _M = TypeVar("_M", bound=BaseModel)
@@ -181,12 +184,22 @@ def _catalog_def(d: Json) -> Json:
     return {k: v for k, v in d.items() if k != "type_config"} | rest
 
 
-def _report(base: str, storages: StoragesConfig | None) -> ReportConfig:
-    if base.startswith(_CLOUD):  # ponytail: S3 in `floe run` is #834; route it then
-        raise FloeRunError(f"report_base_uri={base}: remote reports are not supported yet (#834)")  # fmt: skip
-    local = storages and next((d.name for d in storages.definitions if d.type == "local"), None)  # fmt: skip
-    path = base.removeprefix("local://")
-    return ReportConfig(path=path, formatter=None, storage=local)
+def _report(base: str, storages: StoragesConfig | None) -> tuple[ReportConfig, StoragesConfig | None]:  # fmt: skip
+    """Rust `RunContext::from_config`: an `s3://` base uses the storage on its bucket, else a synthetic one."""
+    if not base.startswith("s3://"):
+        local = storages and next((d.name for d in storages.definitions if d.type == "local"), None)  # fmt: skip
+        return ReportConfig(path=base.removeprefix("local://"), formatter=None, storage=local), storages  # fmt: skip
+    bucket = parse_s3_uri(base)[0]
+    defs = storages.definitions if storages else []
+    found = next((d.name for d in defs if d.type == "s3" and d.bucket == bucket), None)  # fmt: skip
+    # the report storage never becomes the default: unnamed paths stay local
+    if found is None:
+        found = "__report_s3__"
+        none = dict.fromkeys(("region", "account", "container", "prefix", "endpoint", "path_style_access"))  # fmt: skip
+        synthetic = StorageDefinition(name=found, type="s3", bucket=bucket, **none)
+        local = [] if storages else [StorageDefinition(name="local", type="local", bucket=None, **none)]  # fmt: skip
+        storages = StoragesConfig(default=storages and storages.default, definitions=[*defs, *local, synthetic])  # fmt: skip
+    return ReportConfig(path=base, formatter=None, storage=found), storages
 
 
 def _cloud(target: _M, uri: str | None) -> _M:
@@ -212,12 +225,35 @@ def _named_local(m: Json) -> bool:
         return False
 
 
-def load_manifest(path: Path) -> tuple[RootConfig, list[EntityConfig]]:
-    """The run's config, and the entities its lineage observes."""
+def _read(location: str) -> bytes:
+    # S3 settings come from the environment (AWS_ENDPOINT_URL, ...), as for `-o s3://`
+    if location.startswith("s3://"):
+        found = S3Client(parse_s3_uri(location)[0]).read(location)
+        if found is None:
+            raise FloeIoError(f"manifest not found: {location}")
+        return found.body
+    if "://" in location:  # D1: gcs and adls are dropped
+        raise FloeConfigError(f"remote manifest is not supported: {location}")
     try:
-        data = path.read_bytes()
+        return Path(location).read_bytes()
     except OSError as e:  # as the CLI's `_realpath`
         raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
+
+
+def _replay_base(location: str, m: Json) -> Path:
+    """Rust `manifest_replay_config_base`: a remote manifest resolves local paths under its work root."""
+    if not location.startswith("s3://"):
+        return Path(location)
+    env = os.environ.get("FLOE_WORK_ROOT", "")
+    image = str(m.get("runtime_env") or "").lower() == "image"
+    root = m.get("work_root") or (env if env.strip() else None) or ("/work" if image else os.getcwd())  # fmt: skip
+    return Path(root) / "manifest.json"  # the run resolves against its parent
+
+
+def load_manifest(location: str | Path) -> tuple[RootConfig, list[EntityConfig], Path]:
+    """The run's config, the entities its lineage observes, and the path its relative paths resolve against."""
+    location = str(location)
+    data = _read(location)
     try:
         m = json.loads(data.decode())
         spec = m["spec_version"]
@@ -235,7 +271,7 @@ def load_manifest(path: Path) -> tuple[RootConfig, list[EntityConfig]]:
     if not supported:
         floe = f"{FLOE_VERSION[0]}.{FLOE_VERSION[1]}"
         raise FloeConfigError(f"manifest spec_version={spec} is unsupported (newer than Floe {floe})")  # fmt: skip
-    storages = _section(StoragesConfig, m, "storages", _storage_def)
+    report, storages = _report(report_base, _section(StoragesConfig, m, "storages", _storage_def))  # fmt: skip
     root = RootConfig(
         version=spec,
         metadata=metadata,
@@ -243,10 +279,10 @@ def load_manifest(path: Path) -> tuple[RootConfig, list[EntityConfig]]:
         catalogs=_section(CatalogsConfig, m, "catalogs", _catalog_def),
         env=None,
         domains=[],
-        report=_report(report_base, storages),
+        report=report,
         lineage=_section(LineageConfig, m, "lineage"),
         entities=entities,
         config_files=[],
     )
     observed = [_lineage_entity(e, me) for e, me in zip(entities, m["entities"])]
-    return root, observed
+    return root, observed, _replay_base(location, m)

@@ -56,7 +56,7 @@ def test_summary_matches_recorded(case: str, tmp_path: Path) -> None:
     )
     write_reports(summary, reports, LocalClient())
 
-    expected = load_expected(CONFORMANCE / case, "python")
+    expected = load_expected(CONFORMANCE / case)
     prefix = run_dir("reports/report", "ID", domain) + "/"  # D37
     path = Path(run_dir(str(tmp_path / "report"), RUN_ID, domain))
     written = {p.relative_to(path).as_posix(): p for p in path.rglob("*.json")}

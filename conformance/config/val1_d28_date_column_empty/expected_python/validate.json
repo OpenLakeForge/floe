@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "entity.name=orders source.partitioning.date_column must not be empty"
-}

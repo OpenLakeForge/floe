@@ -59,7 +59,7 @@ def assemble_includes(
         )
         with at_file(sources_path):
             sources_root = yaml_hash(load_single_doc(sources_path), "sources")
-            validate_known_keys(sources_root, "sources file", ("sources",))
+            validate_known_keys(sources_root, "root", ("sources",))
             root["sources"] = get_value(sources_root, "sources", "root")
         config_files.append(sources_path)
     if "domains" in include:

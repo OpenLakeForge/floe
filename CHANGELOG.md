@@ -2,12 +2,57 @@
 
 All notable changes to Floe are documented in this file.
 
+## floe (unreleased)
+
+- **`floe run --manifest` and `floe.run_manifest` take an `s3://` manifest (#1003)**, and write the run
+  reports under an `s3://` `report_base_uri`, as Floe 0.7 did. Relative local paths in a remote manifest
+  resolve under its `work_root`, else `FLOE_WORK_ROOT`, else the current directory (`/work` for an `image`
+  manifest).
+- **Validation messages no longer point to Delta (#995).** Wording only:
+  - `sink.accepted.merge` on a format without merge now says it requires `sink.accepted.format=iceberg`;
+  - `sink.accepted.partition_by` now says it is not supported in 0.8 and points to `sink.accepted.partition_spec`
+    on Iceberg.
+- **Floe is a pure-Python package (#971).** `pip install floe-python` installs the `floe`
+  command; the wheel is `py3-none-any`. `ghcr.io/openlakeforge/floe` is now the Python image
+  (`ghcr.io/openlakeforge/floe-python` is no longer published). The Rust core moved to the
+  archived OpenLakeForge/floe-rust repository: 0.8 publishes no Rust binaries, no `floe-core`
+  or `floe-cli` crates, no `floe-duckdb` companion and no Homebrew or Scoop update.
+- **`merge_scd2` on Iceberg sinks in `floe run` (#997).** `floe validate` already accepted it; the run
+  now creates the table with the SCD2 system columns, closes changed current rows and inserts their new
+  versions, and reports `inserted_count`, `updated_count`, `closed_count` and `unchanged_count`.
+- **`example/config.yml` validates on 0.8 (#993).** The `customer` entity writes Parquet instead of Delta, and the
+  `customer_warehouse` entity (a DuckDB sink) is removed; both formats were dropped in 0.8.
+- **Clearer config error messages (#704).** Wording only; the same configs are accepted and rejected:
+  - `<ctx>.storage and <ctx>.storage are mutually exclusive` now names `<ctx>.filesystem`;
+  - an unknown key at the root of an included sources file is `unknown field root.<key>` (was `sources file.<key>`);
+  - `pii.columns: <name> is not an unknown schema column` is now `is not a schema column`;
+  - `pii.columns[...].strategy=` prints the strategy as written (`hash`, not `Hash`);
+  - `schema_evolution.mode=add_columns` on a non-Iceberg sink now says it requires `sink.accepted.format=iceberg`.
+- **`floe.run` posts OpenLineage events (#989)**, as `floe run -c` and `floe.run_manifest` already do,
+  when the config has a `lineage` block.
 ## Floe (unreleased)
 
 - **`floe.build_manifest(config_path, profile_path=None, ...)` (#986).** Returns, as a dict, the
   manifest `floe manifest generate` writes for the same config and profile (deterministic by
   default). `manifest generate` now calls it.
 
+## airflow-floe v0.2.0
+
+Built for Floe 0.8 (`floe-python` 0.8, where `floe` is the Python CLI and `ghcr.io/openlakeforge/floe`
+is the Python image; the command line and image name are unchanged). Floe 0.7 and earlier are not
+targeted by this release.
+
+- **Report paths follow D37.** A run whose entities share one domain writes its reports under
+  `<report.path>/<domain>/run_<id>/`; other runs keep `<report.path>/run_<id>/`. The connector
+  reads report locations from the `run_finished` event, so no configuration changes.
+- Per-domain run pods (`job_scope: domain`, #580) and the in-process runner are dagster-floe only;
+  airflow-floe still runs `floe run` as a subprocess or Kubernetes/Databricks job.
+
+- **Loads Floe 0.8 manifests (#979).** The loader checks `spec_version` against
+  `SUPPORTED_SPEC_VERSIONS = ("0.8",)`, as dagster-floe does, instead of the pre-0.8
+  `schema: "floe.manifest.v1"` field that 0.8 manifests no longer carry. Other versions are
+  rejected; regenerate them with a supported Floe release. `MANIFEST_SCHEMA` is replaced by
+  `SUPPORTED_SPEC_VERSIONS`, and `AirflowManifest.schema` by `AirflowManifest.spec_version`.
 ## dagster-floe (unreleased)
 
 - **Config mode (#986).** `load_floe_assets`, `build_definitions` and `build_job_run_config_from_manifest` accept
@@ -34,6 +79,10 @@ supported. Floe 0.7 and earlier manifests are rejected.
   reads report locations from the `run_finished` event, so no configuration changes.
 - **`ghcr.io/openlakeforge/floe` is now the Python image.** The image name and the `floe` command
   are unchanged; `kubernetes_job` runners need no change.
+- **S3 reads honour the Floe environment.** `s3://` manifests and run reports are read with the
+  endpoint (`AWS_ENDPOINT_URL_S3`/`AWS_ENDPOINT_URL`) and path-style (`AWS_S3_FORCE_PATH_STYLE`)
+  settings Floe itself uses, so deployments that patched `floe_dagster.assets._fsspec_read_text`
+  for S3-compatible stores can drop the patch and set those variables instead.
 - Manifest schema additions for 0.8 are listed below (`partition_spec`, `source.partitioning`,
   `lookback_days`, `sources` index).
 
@@ -42,7 +91,8 @@ supported. Floe 0.7 and earlier manifests are rejected.
   domain (per runner) run one after another in a single `floe run --entities a,b,c` Job, while Dagster
   still reports each entity. `execution.runner.resources` gains `cpu_limit` and `memory_limit_mb`, and
   `domain_resources` sizes the Job per domain. Unset, nothing changes (one Job per entity). After
-  an aborted entity the run stops, as `floe run` does, and the entities after it are reported as not run (#959 will let the run continue); see `context/orchestrators.md`.
+  an entity aborted by its policy the run continues with the next one (D36, #959), and Dagster reports
+  each entity's own status; see `context/orchestrators.md`.
 
 - **Iceberg entities carry a `floe/table` op tag (#924).** The value is the resolved
   `catalog.namespace.table` from the manifest, so entities writing one table share it and other

@@ -16,7 +16,7 @@ It covers every field defined in this document with types, `required` /
 your AI assistant (or point it at the file) and ask it to generate a valid
 profile for your environment.  The schema enumerates all allowed values (e.g.
 `runner.type: local|kubernetes_job|databricks_job`) and marks required fields, so generated output can be
-validated immediately with `cargo test` or a JSON Schema validator.
+validated immediately with a JSON Schema validator or `floe validate --profile <file>`.
 
 ## Schema v1
 
@@ -67,8 +67,8 @@ expanded recursively (nested resolution).  Unresolved placeholders and
 circular references both produce an immediate, actionable error before
 the run begins.
 
-For the full resolution rules, nested reference examples, and the Rust
-API see **[`docs/variables.md`](variables.md)**.
+For the full resolution rules and nested reference examples see
+**[`docs/variables.md`](variables.md)**.
 
 ---
 
@@ -262,7 +262,7 @@ Profiles can carry a `catalogs:` block with the same catalog definition shape as
 main Floe configs. When a command is run with both `--config` and `--profile`,
 the profile `catalogs:` block replaces the config-level `catalogs:` block for
 that invocation. This keeps entity logic in the shared config while moving
-Glue, REST Iceberg, or Unity Catalog endpoints into environment-specific files.
+REST Iceberg catalog endpoints (the only catalog type in 0.8) into environment-specific files.
 
 ```yaml
 apiVersion: floe/v1
@@ -270,12 +270,13 @@ kind: EnvironmentProfile
 metadata:
   name: prod
 catalogs:
-  default: prod_glue
+  default: prod_polaris
   definitions:
-    - name: prod_glue
-      type: glue
-      region: eu-west-1
-      database: bronze
+    - name: prod_polaris
+      type: rest
+      uri: https://polaris.example.com/api/catalog
+      warehouse: bronze
+      credential: "client_credentials:${POLARIS_CLIENT_ID}:${POLARIS_CLIENT_SECRET}"
       warehouse_storage: lake_s3
       warehouse_prefix: iceberg
 ```

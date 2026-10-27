@@ -96,16 +96,52 @@ CATALOG = (
         ),
         (
             f"{{{COLS}, schema_evolution: {{mode: add_columns}}}}",
-            (
-                "schema.schema_evolution.mode=add_columns requires sink.accepted.format=delta "
-                "(Delta-only additive schema evolution in this phase)"
-            ),
+            "schema.schema_evolution.mode=add_columns requires sink.accepted.format=iceberg",
         ),
     ],
 )
 def test_schema_errors(tmp_path: Path, schema: str, message: str) -> None:
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, schema)
+    assert str(err.value) == f"entity.name=orders {message}"
+
+
+@pytest.mark.parametrize(
+    ("pii", "message"),
+    [
+        ("{name: zz, strategy: nullify}", "pii.columns: zz is not a schema column"),
+        (
+            "{name: amt, strategy: hash}",
+            (
+                "pii.columns[name=amt].strategy=hash can only be applied to string columns "
+                "(declared type=number); use strategy=nullify or strategy=drop instead"
+            ),
+        ),
+        (
+            "{name: id, strategy: redact}",
+            (
+                "pii.columns[name=id].strategy=redact cannot be applied to a unique-key column: "
+                "the strategy collapses or removes values, violating uniqueness constraints"
+            ),
+        ),
+    ],
+)
+def test_pii_errors(tmp_path: Path, pii: str, message: str) -> None:
+    path = tmp_path / "config.yml"
+    path.write_text(
+        textwrap.dedent(f"""
+        version: "0.2"
+        entities:
+        - name: orders
+          source: {{format: csv, path: in.csv}}
+          sink: {{accepted: {{format: parquet, path: out}}}}
+          policy: {{severity: warn}}
+          schema: {{{COLS}, primary_key: [id]}}
+          pii: {{columns: [{pii}]}}
+        """)
+    )
+    with pytest.raises(FloeConfigError) as err:
+        validate_entities(parse_config(path))
     assert str(err.value) == f"entity.name=orders {message}"
 
 
@@ -192,6 +228,17 @@ def test_empty_iceberg_catalog_is_not_defaulted(tmp_path: Path) -> None:
         (
             "{write_mode: merge_scd1, accepted: {format: parquet, path: out}}",
             "sink.write_mode=merge_scd1 is not supported by sink.accepted.format=parquet",
+        ),
+        (
+            "{accepted: {format: parquet, path: out, merge: {ignore_columns: [amt]}}}",
+            "sink.accepted.merge requires sink.accepted.format=iceberg",
+        ),
+        (
+            "{accepted: {format: parquet, path: out, partition_by: [id]}}",
+            (
+                "sink.accepted.partition_by is not supported in 0.8; "
+                "use sink.accepted.partition_spec with sink.accepted.format=iceberg"
+            ),
         ),
         (
             "{accepted: {format: iceberg, path: out, partition_spec: [{column: id, transform: 'bucket(16)'}]}}",

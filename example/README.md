@@ -6,7 +6,7 @@ This directory is a self-contained tutorial. You can run the full pipeline in un
 
 | Entity | Input | Sink | Key features demonstrated |
 |---|---|---|---|
-| `customer` | CSV files | Delta Lake | `strict` casting · `reject` severity · `unique` constraint · incremental state |
+| `customer` | CSV files | Parquet | `strict` casting · `reject` severity · `unique` constraint · incremental state |
 | `orders` | JSON files (nested) | Parquet | Nested field selectors · `warn` severity · `fill_nulls` mismatch policy |
 
 ---
@@ -64,7 +64,7 @@ example/
 │
 ├── out/                   ← created by floe run (gitignored)
 │   ├── accepted/
-│   │   ├── customer_delta/   ← Delta Lake table
+│   │   ├── customer/         ← Parquet parts
 │   │   └── orders/           ← Parquet parts
 │   └── rejected/
 │       ├── customer/         ← rows that failed schema checks
@@ -120,8 +120,8 @@ report:
 ```yaml
   sink:
     accepted:
-      format: "delta"         # writes a Delta Lake table
-      path: "./out/accepted/customer_delta/"
+      format: "parquet"       # writes Parquet part files
+      path: "./out/accepted/customer/"
     rejected:
       format: "csv"
       path: "./out/rejected/customer/"
@@ -230,9 +230,8 @@ floe run -c config.yml --profile profiles/prod.yml
 |---|---|
 | Full config reference | [docs/config.md](../docs/config.md) |
 | All check types | [docs/checks.md](../docs/checks.md) |
-| Delta + Unity Catalog | [docs/sinks/delta.md](../docs/sinks/delta.md) |
-| Iceberg + Glue / REST | [docs/sinks/iceberg.md](../docs/sinks/iceberg.md) |
-| S3 / GCS / ADLS storage | [docs/storages/](../docs/storages/) |
+| Iceberg + REST catalog | [docs/sinks/iceberg.md](../docs/sinks/iceberg.md) |
+| S3 storage | [docs/storages/s3.md](../docs/storages/s3.md) |
 | Incremental ingestion | [docs/profiles.md](../docs/profiles.md) |
 | Run reports | [docs/report.md](../docs/report.md) |
 | CLI reference | [docs/cli.md](../docs/cli.md) |

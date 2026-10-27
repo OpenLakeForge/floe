@@ -1,6 +1,6 @@
-"""Run an implementation on every conformance case and diff it against `expected/`.
+"""Run the Python core on every golden case and diff it against `expected/`.
 
-Usage: uv run --group conformance python conformance/check.py --impl rust|python [--case NAME | --cases-file PATH]
+Usage: uv run --group conformance python conformance/check.py [--case NAME]
 
 Exits 1 on any difference. Writer byte metrics are ignored on compare (G5 ruling on #594).
 """
@@ -24,20 +24,16 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from record import (
+    FLOE,
     WRITER_BYTES_KEYS,
     Snapshot,
     case_name,
     case_snapshot,
     cases,
-    delta_ids,
     is_validate,
     manifest_snapshot,
-    recorded,
     run_in_copy,
-    rust_binary,
 )
-
-REPO = Path(__file__).resolve().parent.parent
 
 
 def comparable(name: str, value: Any) -> str:
@@ -50,10 +46,7 @@ def comparable(name: str, value: Any) -> str:
                     "<volatile>"  # the implementation's own version
                 )
             if name == "manifest.json":
-                # D22: Python has no `schema`; its spec_version is its own Floe major.minor
-                doc.pop("schema", None)
-                doc["spec_version"] = "<volatile>"
-                # D20: the `sources` index and project `metadata` are Python-only additions
+                # not recorded: tests/unit/test_manifest.py checks the `sources` index and project `metadata`
                 doc.pop("sources", None)
                 doc.pop("metadata", None)
             return json.dumps(mask_bytes(doc), indent=2) + "\n"
@@ -85,43 +78,27 @@ def mask_bytes(value: object) -> object:
     return value
 
 
-def load_expected(case: Path, impl: str) -> Snapshot:
-    """`expected/`, with `expected_python/<file>` replacing the same file when checking Python."""
+def load_expected(case: Path) -> Snapshot:
     expected: Snapshot = {}
-    dirs = ["expected", "expected_python"] if impl == "python" else ["expected"]
-    for d in dirs:
-        if d == "expected_python" and (case / d / "reports").is_dir():
-            # D37 moves every report file of a single-domain run, so Python's reports replace Rust's whole set
-            expected = {k: v for k, v in expected.items() if not k.startswith("reports/")}  # fmt: skip
-        for path in sorted((case / d).rglob("*")):
-            if path.is_file():
-                rel = path.relative_to(case / d).as_posix()
-                expected[rel] = (
-                    pq.read_table(path)
-                    if path.suffix == ".parquet"
-                    else path.read_text()
-                )
+    for path in sorted((case / "expected").rglob("*")):
+        if path.is_file():
+            rel = path.relative_to(case / "expected").as_posix()
+            expected[rel] = (
+                pq.read_table(path) if path.suffix == ".parquet" else path.read_text()
+            )
     return expected
 
 
-def check_case(
-    case: Path, cmd: list[str], impl: str, with_manifest: bool = True
-) -> list[str]:
+def check_case(case: Path) -> list[str]:
     problems: list[str] = []
+    expected = load_expected(case)
     with tempfile.TemporaryDirectory(prefix="conformance-") as tmp:
-        work, proc = run_in_copy(case, cmd, Path(tmp))
+        work, proc = run_in_copy(case, FLOE, Path(tmp))
         actual = case_snapshot(case, work, proc)
-        if with_manifest:
-            actual |= manifest_snapshot(case, cmd, work)
+        if "manifest.json" in expected:  # a case without one does not compare it
+            actual |= manifest_snapshot(case, FLOE, work)
         if proc.returncode and not is_validate(case):
             actual["exit_code"] = f"{proc.returncode}\n"
-    expected = load_expected(case, impl)
-    if (
-        expected.get("exit_code") == "0\n"
-    ):  # an `expected_python/exit_code` of 0: Python succeeds where Rust failed
-        del expected["exit_code"]
-    if not with_manifest:
-        expected.pop("manifest.json", None)
     for name in sorted(set(expected) | set(actual)):
         if name not in actual:
             problems.append(f"missing output: {name}")
@@ -145,62 +122,21 @@ def check_case(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--impl", choices=["rust", "python"], required=True)
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--case")
-    group.add_argument("--cases-file", type=Path, help="run only the cases named here")
+    parser.add_argument("--case")
     args = parser.parse_args()
-    cmd = (
-        [str(rust_binary())]
-        if args.impl == "rust"
-        else ["uv", "run", "--project", str(REPO), "floe"]
-    )
-    wanted = [args.case] if args.case else None
-    manifest_cases: set[str] = (
-        set()
-    )  # `<case> manifest`: Python must also match manifest.json
-    if args.cases_file:
-        lines = [
-            raw.split("#")[0].split()
-            for raw in args.cases_file.read_text().splitlines()
-        ]
-        wanted = [line[0] for line in lines if line]
-        manifest_cases = {line[0] for line in lines if line[1:] == ["manifest"]}
-    selected = [c for c in cases() if wanted is None or case_name(c) in wanted]
-    if missing := set(wanted or []) - {case_name(c) for c in selected}:
-        raise SystemExit(f"no such case: {', '.join(sorted(missing))}")
-    failed = skipped = 0
-    for case in selected:
-        if args.impl == "rust" and not recorded(case):
-            print(f"skip {case_name(case)} (D1: not recorded)")
-            skipped += 1
-    run = [c for c in selected if args.impl == "python" or recorded(c)]
-
-    def check(case: Path) -> list[str]:
-        # Rust 0.7 rejects some configs Python accepts (D2): no manifest was recorded, nothing to compare
-        with_manifest = args.impl == "rust" or bool(
-            (args.case or case_name(case) in manifest_cases)
-            and (case / "expected" / "manifest.json").exists()
-        )
-        return check_case(case, cmd, args.impl, with_manifest)
-
+    selected = [c for c in cases() if args.case in (None, case_name(c))]
+    if not selected:
+        raise SystemExit(f"no such case: {args.case}")
     # each case runs in its own temp dir, so they run in parallel; threads only wait on subprocesses
     with ThreadPoolExecutor(os.cpu_count()) as pool:
-        results = list(zip(run, pool.map(check, run), strict=True))
+        results = list(zip(selected, pool.map(check_case, selected), strict=True))
+    failed = 0
     for case, problems in results:
-        if problems and args.impl == "python" and (ids := delta_ids(case)):
-            problems.insert(
-                0, f"intentional delta {', '.join(ids)}: expected_python/ applies"
-            )
         print(f"{'FAIL' if problems else 'ok  '} {case_name(case)}")
         for line in problems:
             print("    " + line)
         failed += bool(problems)
-    checked = len(selected) - skipped
-    print(
-        f"\n{checked - failed}/{checked} cases match"
-        + (f" ({skipped} skipped)" if skipped else "")
-    )
+    print(f"\n{len(selected) - failed}/{len(selected)} cases match")
     return 1 if failed else 0
 
 

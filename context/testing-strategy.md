@@ -1,84 +1,62 @@
 # Floe — Testing Strategy
 
-## Test location
-
-All tests live in `crates/floe-core/tests/`. There are two categories:
+## Layout
 
 ```
 tests/
-├── unit/         ← focused tests for a single module or function
-│   ├── config/   ← config parsing, validation, variable resolution
-│   ├── run/      ← individual pipeline stages (checks, output routing)
-│   ├── state/    ← incremental state CAS logic
-│   └── ...
-└── integration/  ← full end-to-end pipeline runs against real files
-    ├── csv_run.rs
-    ├── delta_run.rs
-    ├── parquet_run.rs
-    └── ...
+├── unit/          ← one module or function; grouped by package (config/, read/, checks/,
+│                    run/, state/, storage/, iceberg/, ...) plus test_cli_*.py per command
+│   └── fixtures/  ← small input files
+└── integration/   ← services: Polaris REST catalog, S3-compatible store (SeaweedFS)
+conformance/       ← golden suite: one case per feature, `check.py`
 ```
-
-## Principles
-
-**No storage mocking.** Integration tests use real temporary directories and real file I/O. The incremental state tests exercise the actual CAS path. Mocking at the storage layer has historically masked production bugs (e.g., a mock passing while a real migration failed).
-
-**Integration tests run the full pipeline.** They call `floe_core::run(config)` with a real config pointing at real fixture files. They assert on output file presence, row counts from the JSON report, and rejection file content.
-
-**Unit tests focus on logic.** Pure functions (schema validation, error column construction, config validation errors, CAS retry logic) are tested at the unit level without spinning up a full pipeline run.
 
 ## Running tests
 
 ```bash
-# All tests
-cargo test -p floe-core
-
-# Single test by name
-cargo test -p floe-core -- unit::state::claim_expires_after_ttl
-
-# Integration tests only
-cargo test -p floe-core -- integration::
-
-# Unit tests only
-cargo test -p floe-core -- unit::
+uv sync --all-groups
+uv run pytest                                    # everything that needs no service
+uv run pytest tests/unit/<file>.py::<test>       # one test
+uv run python conformance/check.py               # golden suite
+uv run python conformance/check.py --case NAME   # one golden case
 ```
 
-## Fixture files
+Integration tests skip unless their service is configured: `-m polaris` needs
+`FLOE_POLARIS_URI`, `-m s3` needs `FLOE_S3_ENDPOINT` (see `.github/workflows/python-integration.yml`).
 
-Input fixture files live in `crates/floe-core/tests/fixtures/` (or inline in the test as temp files). A fixture set for a format typically includes:
-- A valid file (all rows pass)
-- An invalid file (some rows fail type checks or null constraints)
-- A missing-columns file (triggers file-level rejection)
+## Principles
+
+**No storage mocking.** Tests use real temporary directories and real file I/O; the S3 tests
+use a real S3-compatible service. The incremental state tests exercise the actual CAS path.
+Mocking the storage layer has masked production bugs before.
+
+**The golden suite is the regression gate.** `conformance/` holds the golden cases: run reports,
+accepted and rejected rows, `floe validate` outcomes, error messages, CLI flags and manifests.
+Any difference from `expected/` fails CI. An intended behaviour change re-records the case
+(`uv run python conformance/record.py --case NAME`) and the PR shows the diff. See
+`conformance/README.md` for the case layout.
+
+**Unit tests focus on logic.** Pure functions (casts, error columns, config validation errors,
+CAS retry logic) are tested without a full pipeline run. CLI tests call the command and assert
+its output and exit code.
 
 ## What to test when adding a feature
 
 | Change type | Test required |
 |---|---|
-| New config field | Unit test: valid value accepted, invalid value produces correct error message |
-| New check type | Unit test for check logic; integration test for end-to-end rejection routing |
-| New sink format | Integration test: full run writes accepted output, invalid rows go to rejected |
-| New storage operation | Test via the local provider (same `StorageClient` trait) |
-| Config validation change | Unit test asserting on the exact error message string |
+| New config field | Unit test: valid value accepted, invalid value produces the exact error message |
+| Config validation change | Unit test asserting on the exact error message string (or a validate golden case under `conformance/config/`) |
+| New check or reader | Unit test for the logic; a golden case for end-to-end rejection routing |
+| Sink or write-mode change | A golden case for local output; an integration test (`-m polaris` / `-m s3`) for Iceberg |
+| New storage operation | Test via the local client (same `StorageClient` protocol); S3 behaviour in `-m s3` |
 | Incremental state change | Unit test for the CAS retry / claim / promote path |
+| CLI flag or command | `tests/unit/test_cli_<command>.py` |
+| Public API change | `tests/unit/test_public_api.py` |
 
 ## Assertion style
 
-- Assert on the JSON run report (`run.json`) for row counts and status — not on file contents directly, as file formats vary.
-- For rejection tests, assert that `rejected_total > 0` and optionally read the rejected CSV to verify specific rows.
-- For config validation tests, assert the **exact error message string** — these are part of the user-facing contract.
-
-## Python tests
-
-Applies to the Python core. The Rust sections above stay until cutover.
-
-```
-tests/
-├── unit/          ← one module or function, no pipeline run
-└── integration/   ← full runs against real files
-conformance/       ← parity suite against Rust 0.7
-```
-
-- Run with `uv run pytest`; single test: `uv run pytest tests/unit/<file>.py::<test>`.
-- **No storage mocking.** Integration tests use real temporary directories and real file I/O, as for Rust.
-- **Conformance is the parity gate.** `conformance/` (#616) holds cases recorded from the Rust 0.7 binary: run reports, accepted and rejected rows, `floe validate` outcomes, error messages, CLI flags and manifest. Any difference from Rust 0.7 that is not in the #619 intentional-delta register is a bug.
-- Config validation tests assert the exact error message string, as for Rust.
+- Assert on the run report (`run.json`) for row counts and status, not on output bytes.
+- For rejection tests, assert `rejected_total` and read the rejected CSV for the rows that matter.
+- For config validation tests, assert the **exact error message string**: messages are part of
+  the user-facing contract.
 - Every bug fix ships one test that fails without the fix.

@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entity.name=orders pii.columns[name=amt].strategy=Hash can only be applied to string columns (declared type=number); use strategy=nullify or strategy=drop instead"
+  "error": "entity.name=orders pii.columns[name=amt].strategy=hash can only be applied to string columns (declared type=number); use strategy=nullify or strategy=drop instead"
 }

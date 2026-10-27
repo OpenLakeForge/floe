@@ -28,7 +28,7 @@ under that domain (`<report.path>/<domain>/run_<run_id>/`), so a domain's runs a
 carries `run.domain`. A run spanning several domains, entities without a domain, or a
 pre-0.3 domain holding `.`, `/` or `\` (not a safe directory name) keeps `<report.path>/run_<run_id>/` and has no `run.domain`. `run_finished`'s
 `summary_uri` and `entity_report_uris` point at the actual location; `report_base`
-stays `<report.path>`. Rust 0.7 always wrote `<report.path>/run_<run_id>/`.
+stays `<report.path>`. Floe 0.7 always wrote `<report.path>/run_<run_id>/`.
 
 `run_id` is a filename-safe ISO-like string: `YYYY-MM-DDTHH-MM-SSZ`
 (colons replaced by dashes). The report JSON must include the full
@@ -78,11 +78,9 @@ Common fields:
 
 Format-specific metadata:
 - `table_version`: version identifier when the sink exposes one
-  - Delta: Delta table version
   - Iceberg: metadata version (parsed from metadata filename)
 - `snapshot_id`: Iceberg snapshot id (when a snapshot exists)
-- `iceberg_catalog_name`, `iceberg_database`, `iceberg_namespace`, `iceberg_table`:
-  present for Iceberg runs using Glue catalog registration
+- `iceberg_catalog_name`, `iceberg_namespace`, `iceberg_table`: present for Iceberg runs
 
 Write-time file sizing metrics (optional):
 - `total_bytes_written`
@@ -100,74 +98,22 @@ Accepted-output metrics contract:
 This applies to `files_written`, `total_bytes_written`, `avg_file_size_mb`, and
 `small_files_count`. Floe does not use sentinel values such as `-1`.
 
-Merge-specific metrics (optional, Delta or DuckDB `merge_scd1` / `merge_scd2`):
+Merge-specific metrics (Iceberg `merge_scd1`):
 - `merge_key`: merge key columns (`schema.primary_key`)
 - `inserted_count`
-- `updated_count` (`merge_scd1`: updated rows, `merge_scd2`: closed previous current rows)
-- `closed_count` (`merge_scd2` only): rows closed from current target set
-- `unchanged_count` (`merge_scd2` only): source rows that matched active target rows with no data change
-- `target_rows_before`
-- `target_rows_after`
+- `updated_count`
 - `merge_elapsed_ms`
 
 ### `schema_evolution` (entity report)
 
-- `enabled`: `true` when schema evolution is active for the entity write path
+- `enabled`, `applied`, `incompatible_changes_detected`: always `false` in 0.8
 - `mode`: resolved config mode (`strict` or `add_columns`)
-- `applied`: `true` when Floe actually added Delta columns during the write
-- `added_columns`: ordered list of Delta columns added in that write
-- `incompatible_changes_detected`: `true` when Floe detected non-additive changes and failed the write
 
-Notes:
-- Current runtime support is Delta-only and additive-only.
-- Floe writes an explicit no-op shape (`applied=false`, empty `added_columns`) when
-  `mode=add_columns` is enabled but the target schema already matches the write schema.
-- This block is populated for entity reports even when the write path remains strict.
-
-Example:
-
-```json
-{
-  "schema_evolution": {
-    "enabled": true,
-    "mode": "add_columns",
-    "applied": true,
-    "added_columns": ["email", "country_code"],
-    "incompatible_changes_detected": false
-  }
-}
-```
-
-## Lifecycle event for schema evolution
-
-When Floe adds Delta columns, it emits a structured `schema_evolution_applied` lifecycle event.
-
-JSON envelope example (`--log-format json`):
-
-```json
-{
-  "schema": "floe.log.v1",
-  "level": "info",
-  "event": "schema_evolution_applied",
-  "run_id": "2026-03-11T16-31-00Z",
-  "entity": "customer",
-  "mode": "add_columns",
-  "added_columns": ["email"],
-  "ts_ms": 1741710660000
-}
-```
-
-Text example (`--log-format text`):
-
-```text
-schema_evolution_applied entity=customer mode=add_columns added_columns=email
-```
+`mode: add_columns` does add new columns to an Iceberg table (D13), but 0.8 does not record
+them here and emits no `schema_evolution_applied` event yet.
 
 Notes:
 - Metrics are populated when the writer can collect them cheaply and reliably.
-- Delta metrics are derived from committed Delta log `add` actions for the committed version.
-- Remote Delta metrics are collected best-effort after the write; if collection fails,
-  the run still succeeds; `part_files` may be empty and accepted-output metrics remain `null`.
 - Iceberg file sizing metrics count Iceberg data files only (not metadata/manifests).
 
 
@@ -202,7 +148,7 @@ An entity aborted by `policy.severity: abort` fails only that entity (D36, 0.8):
 is written with status `aborted`, and the run continues with the next entity. The run summary
 lists every entity, and the run status and exit code stay `aborted` / `2`. A technical error
 (storage, catalog, credentials, memory) still stops the run at that entity, with no summary.
-Rust 0.7 stopped the run at the first aborted entity.
+Floe 0.7 stopped the run at the first aborted entity.
 
 ## Validation payloads
 

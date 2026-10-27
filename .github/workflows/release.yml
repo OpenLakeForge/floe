@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Skip publishing and Homebrew update"
+        description: "Build the wheel and the image, publish nothing"
         type: boolean
         default: false
 
@@ -49,7 +49,7 @@ jobs:
           fi
 
   validate:
-    name: Validate manifest versions match tag
+    name: Validate pyproject version matches tag
     runs-on: ubuntu-latest
     needs: meta
     if: ${{ needs.meta.outputs.on_main == 'true' }}
@@ -57,121 +57,70 @@ jobs:
       VERSION: ${{ needs.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v7
-      - run: |
-          python - <<'PY'
-          import sys, os, tomllib
+      - shell: python
+        run: |
+          import os, sys, tomllib
 
-          # On workflow_dispatch (dry-run from a branch) GITHUB_REF_TYPE is
-          # "branch" and VERSION is the branch name — nothing to validate.
-          if os.environ.get("GITHUB_REF_TYPE") != "tag":
-              print(f"Skipping: not a tag push (GITHUB_REF_TYPE={os.environ.get('GITHUB_REF_TYPE')!r})")
+          # A branch dispatch (dry run) has no tag to compare against.
+          if os.environ["GITHUB_REF_TYPE"] != "tag":
               sys.exit(0)
+          with open("pyproject.toml", "rb") as f:
+              found = tomllib.load(f)["project"]["version"]
+          if found != os.environ["VERSION"]:
+              sys.exit(f"pyproject.toml version {found!r} != tag {os.environ['VERSION']!r}; bump it in a chore PR before tagging.")
+          print(f"OK: floe-python {found}")
 
-          version = os.environ["VERSION"]
-          mismatches = []
+  build:
+    name: Build floe-python
+    runs-on: ubuntu-latest
+    needs: [meta, validate]
+    if: ${{ needs.meta.outputs.on_main == 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv build
+      # Pure Python: the wheel is py3-none-any and installs a working `floe` command.
+      - name: Smoke-test the wheel
+        run: |
+          uv venv "$RUNNER_TEMP/venv"
+          uv pip install --python "$RUNNER_TEMP/venv" dist/*-py3-none-any.whl
+          "$RUNNER_TEMP/venv/bin/floe" --help
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist
+          if-no-files-found: error
 
-          # Package versions
-          pkg_checks = [
-              ("floe-core (Cargo)",           "crates/floe-core/Cargo.toml",      ["package", "version"]),
-              ("floe-cli (Cargo)",             "crates/floe-cli/Cargo.toml",       ["package", "version"]),
-              ("floe-python (Cargo)",          "crates/floe-python/Cargo.toml",    ["package", "version"]),
-              ("floe-python (pyproject.toml)", "crates/floe-python/pyproject.toml",["project",  "version"]),
-              ("floe-duckdb (pyproject.duckdb.toml)", "crates/floe-python/pyproject.duckdb.toml", ["project", "version"]),
-          ]
-          for label, path, keys in pkg_checks:
-              with open(path, "rb") as f:
-                  data = tomllib.load(f)
-              pkg_ver = data[keys[0]][keys[1]]
-              if pkg_ver != version:
-                  mismatches.append(f"  {label}: manifest={pkg_ver!r}  tag={version!r}")
-
-          # Internal floe-core dependency versions in downstream crates
-          dep_checks = [
-              ("floe-cli → floe-core dep",    "crates/floe-cli/Cargo.toml"),
-              ("floe-python → floe-core dep", "crates/floe-python/Cargo.toml"),
-          ]
-          for label, path in dep_checks:
-              with open(path, "rb") as f:
-                  dep = tomllib.load(f).get("dependencies", {}).get("floe-core")
-              # dep is either a plain string ("0.3.x") or a table ({version="0.3.x", ...})
-              dep_ver = dep if isinstance(dep, str) else (dep or {}).get("version")
-              if dep_ver != version:
-                  mismatches.append(f"  {label}: dep={dep_ver!r}  tag={version!r}")
-
-          if mismatches:
-              print("ERROR: manifest versions do not match the release tag:")
-              print("\n".join(mismatches))
-              print("Bump versions in a chore PR and merge before tagging.")
-              sys.exit(1)
-          print(f"OK: all manifests and internal deps are at {version}")
-          PY
+  publish:
+    name: Publish floe-python to PyPI
+    needs: [meta, build]
+    if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.meta.outputs.tag }}
+          name: Floe v${{ needs.meta.outputs.version }}
+          files: dist/*
 
   docker:
     name: Publish Docker image (GHCR)
     runs-on: ubuntu-latest
-    needs: [meta, build]
-    if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
-    env:
-      VERSION: ${{ needs.meta.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: dist
-          pattern: dist-*
-          merge-multiple: true
-
-      - name: Prepare docker binaries
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${VERSION}"
-          mkdir -p dist/docker/linux/amd64 dist/docker/linux/arm64
-
-          tar -C dist/docker/linux/amd64 -xzf "dist/floe-v${version}-x86_64-unknown-linux-gnu.tar.gz" floe
-          tar -C dist/docker/linux/arm64 -xzf "dist/floe-v${version}-aarch64-unknown-linux-gnu.tar.gz" floe
-
-          chmod +x dist/docker/linux/amd64/floe dist/docker/linux/arm64/floe
-
-      - name: Sanity check linux/amd64 binary
-        run: ./dist/docker/linux/amd64/floe --help > /dev/null
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Login to GHCR
-        uses: docker/login-action@v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push (multi-arch)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile.release
-          platforms: linux/amd64,linux/arm64
-          push: true
-          # GHCR names must be lowercase; github.repository_owner is OpenLakeForge.
-          tags: |
-            ghcr.io/openlakeforge/floe:${{ env.VERSION }}
-            ghcr.io/openlakeforge/floe:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  docker-python:
-    name: Publish floe-python image (GHCR)
-    runs-on: ubuntu-latest
     needs: [meta, validate]
-    if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
+    if: ${{ needs.meta.outputs.on_main == 'true' }}
     env:
-      VERSION: ${{ needs.meta.outputs.version }}
+      # A branch dispatch has no version, so its dry-run build gets a placeholder tag.
+      VERSION: ${{ github.ref_type == 'tag' && needs.meta.outputs.version || 'dry-run' }}
+      PUBLISH: ${{ github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
     steps:
       - uses: actions/checkout@v7
       - name: Set up QEMU
@@ -179,7 +128,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Login to GHCR
-        uses: docker/login-action@v4.6.0
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -190,767 +140,10 @@ jobs:
           context: .
           file: ./Dockerfile.python
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ env.PUBLISH == 'true' }}
+          # GHCR names must be lowercase; github.repository_owner is OpenLakeForge.
           tags: |
-            ghcr.io/openlakeforge/floe-python:${{ env.VERSION }}
-            ghcr.io/openlakeforge/floe-python:latest
+            ghcr.io/openlakeforge/floe:${{ env.VERSION }}
+            ghcr.io/openlakeforge/floe:latest
           cache-from: type=gha,scope=python-image
           cache-to: type=gha,mode=max,scope=python-image
-
-  docker-duckdb:
-    name: Build floe-duckdb image (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    needs: [meta, validate]
-    if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Build each arch on a NATIVE runner. The duckdb image compiles a
-          # bundled native (C++) DuckDB build from source; under QEMU emulation
-          # that compile is prohibitively slow, so we build per-arch natively and
-          # combine the manifests in docker-duckdb-merge below.
-          - platform: linux/amd64
-            runner: ubuntu-latest
-            arch: amd64
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            arch: arm64
-    env:
-      IMAGE: ghcr.io/openlakeforge/floe-duckdb
-    steps:
-      - uses: actions/checkout@v7
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-      - name: Login to GHCR
-        uses: docker/login-action@v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile.duckdb
-          platforms: ${{ matrix.platform }}
-          # Push by digest only; the named multi-arch tags are assembled in the
-          # docker-duckdb-merge job from the per-arch digests.
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=duckdb-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=duckdb-${{ matrix.arch }}
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: duckdb-digest-${{ matrix.arch }}
-          path: /tmp/digests/*
-          retention-days: 1
-          if-no-files-found: error
-
-  docker-duckdb-merge:
-    name: Publish floe-duckdb multi-arch image (GHCR)
-    runs-on: ubuntu-latest
-    needs: [meta, docker-duckdb]
-    if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
-    env:
-      VERSION: ${{ needs.meta.outputs.version }}
-      IMAGE: ghcr.io/openlakeforge/floe-duckdb
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v8
-        with:
-          path: /tmp/digests
-          pattern: duckdb-digest-*
-          merge-multiple: true
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-      - name: Login to GHCR
-        uses: docker/login-action@v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Create and push multi-arch manifest
-        working-directory: /tmp/digests
-        run: |
-          set -euo pipefail
-          docker buildx imagetools create \
-            -t "${IMAGE}:${VERSION}" \
-            -t "${IMAGE}:latest" \
-            $(for d in *; do printf '%s@sha256:%s ' "${IMAGE}" "$d"; done)
-      - name: Inspect
-        run: docker buildx imagetools inspect "${IMAGE}:${VERSION}"
-
-  build-duckdb-wheel:
-    name: Build floe-duckdb wheel (${{ matrix.target }} on ${{ matrix.os }})
-    needs: [meta, validate]
-    if: ${{ needs.meta.outputs.on_main == 'true' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Native runners with manylinux OFF. The manylinux containers ship a
-          # GCC pinned to the legacy pre-C++11 CXX ABI, and bundled DuckDB refuses
-          # to compile its extensions under that ABI (platform.hpp guard). Building
-          # directly on the runner host uses a modern toolchain (new C++11 ABI) so
-          # the bundle compiles. The bundle also cannot be cross-compiled, so these
-          # wheels are platform-tagged and published OFF PyPI (GitHub Release assets
-          # + a PEP 503 index), not to PyPI — manylinux compliance is not required.
-          - os: ubuntu-latest
-            target: x86_64
-            manylinux: "off"
-            before_script: ""
-          - os: ubuntu-24.04-arm
-            target: aarch64
-            manylinux: "off"
-            before_script: ""
-          - os: macos-15-intel
-            target: x86_64
-            manylinux: "off"
-            before_script: ""
-          - os: macos-latest
-            target: aarch64
-            manylinux: "off"
-            before_script: ""
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-      - name: Stage DuckDB build manifest
-        shell: bash
-        # maturin has no flag to select an alternate pyproject; it always reads
-        # `pyproject.toml` next to the manifest. Swap in the companion build
-        # manifest (dist name `floe-duckdb`, module `floe._floe_duckdb`, no
-        # python-source) so this job builds the heavy companion wheel. The
-        # workspace is shared with the maturin-action container, so this host
-        # copy is visible inside it.
-        run: cp crates/floe-python/pyproject.duckdb.toml crates/floe-python/pyproject.toml
-      - uses: PyO3/maturin-action@v1
-        with:
-          command: build
-          # Build the DuckDB companion: same crate +duckdb, distinct module
-          # (floe._floe_duckdb) and dist name (floe-duckdb) from the staged
-          # pyproject.toml above.
-          args: >-
-            --release
-            --strip
-            --features duckdb
-            -m crates/floe-python/Cargo.toml
-            --out dist
-          target: ${{ matrix.target }}
-          manylinux: ${{ matrix.manylinux }}
-          before-script-linux: ${{ matrix.before_script }}
-      - uses: actions/upload-artifact@v7
-        with:
-          name: duckdb-wheel-${{ matrix.os }}-${{ matrix.target }}
-          path: dist
-          if-no-files-found: error
-
-  publish-duckdb-wheel:
-    name: Publish floe-duckdb wheels (off-PyPI)
-    # Wait for publish-python: the companion wheel pins `floe-python==<version>`,
-    # so advertising it in the PEP 503 index before the matching lean wheel is
-    # live on PyPI would leave pip unable to resolve the dependency.
-    needs: [meta, build-duckdb-wheel, release, publish-python]
-    if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
-    runs-on: ubuntu-latest
-    env:
-      VERSION: ${{ needs.meta.outputs.version }}
-      TAG: ${{ needs.meta.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v7
-      - name: Download duckdb wheels
-        uses: actions/download-artifact@v8
-        with:
-          path: duckdb-dist
-          pattern: duckdb-wheel-*
-          merge-multiple: true
-      - name: Attach wheels to the GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ env.TAG }}
-          files: duckdb-dist/*.whl
-      - name: Render PEP 503 index from all release assets
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python .github/scripts/render_pep503_index.py \
-            --repo "${{ github.repository }}" \
-            --out site/simple
-      - name: Publish index to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: site
-          # Keep any other gh-pages content (docs); only the simple/ tree is ours.
-          keep_files: true
-
-  publish:
-    runs-on: ubuntu-latest
-    needs: [meta, validate]
-    if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
-    env:
-      VERSION: ${{ needs.meta.outputs.version }}
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Verify crates.io token
-        run: |
-          if [ -z "${CARGO_REGISTRY_TOKEN}" ]; then
-            echo "CRATES_IO_TOKEN is required to publish crates."
-            exit 1
-          fi
-      - id: check
-        name: Check published versions
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import urllib.request
-
-          version = os.environ["VERSION"]
-          output = os.environ["GITHUB_OUTPUT"]
-
-          def exists(crate: str) -> bool:
-              with urllib.request.urlopen(f"https://crates.io/api/v1/crates/{crate}") as resp:
-                  data = json.load(resp)
-              versions = {v["num"] for v in data.get("versions", [])}
-              return version in versions
-
-          core_exists = exists("floe-core")
-          cli_exists = exists("floe-cli")
-
-          with open(output, "a", encoding="utf-8") as fh:
-              fh.write(f"core_exists={str(core_exists).lower()}\n")
-              fh.write(f"cli_exists={str(cli_exists).lower()}\n")
-          PY
-      - name: Publish floe-core
-        if: ${{ steps.check.outputs.core_exists != 'true' }}
-        run: cargo publish -p floe-core
-      - name: Wait for floe-core to appear in crates.io index
-        if: ${{ steps.check.outputs.core_exists != 'true' }}
-        run: |
-          python - <<'PY'
-          import json, os, time, urllib.request
-          version = os.environ["VERSION"]
-          # Poll the SPARSE INDEX that `cargo publish` actually resolves against
-          # (index.crates.io), NOT the crates.io web API. The two propagate on
-          # different schedules, and resolving floe-cli's `floe-core` dependency
-          # below reads the sparse index — so the web API going green did not stop
-          # `cargo publish -p floe-cli` from failing on v0.6.1/v0.6.3. Index path
-          # layout: crates with >= 4 char names live at <ab>/<cd>/<name>.
-          url = "https://index.crates.io/fl/oe/floe-core"
-          attempts = 60                       # up to ~20 minutes (60 × 20 s)
-          for attempt in range(attempts):
-              try:
-                  req = urllib.request.Request(url, headers={"Cache-Control": "no-cache"})
-                  with urllib.request.urlopen(req, timeout=15) as resp:
-                      body = resp.read().decode("utf-8")
-                  versions = {
-                      json.loads(line)["vers"]
-                      for line in body.splitlines() if line.strip()
-                  }
-                  if version in versions:
-                      print(f"floe-core {version} is available in the sparse index")
-                      break
-              except Exception as exc:
-                  print(f"  (probe failed: {exc})")
-              print(f"[{attempt + 1}/{attempts}] floe-core {version} not yet in sparse index, waiting 20 s...")
-              time.sleep(20)
-          else:
-              print(f"WARNING: floe-core {version} still not visible after ~20 min; "
-                    "the publish step below will retry")
-          PY
-      - name: Publish floe-cli
-        if: ${{ steps.check.outputs.cli_exists != 'true' }}
-        run: |
-          # Retry to absorb residual crates.io sparse-index lag: floe-cli's
-          # `floe-core` dependency can be briefly unresolvable even after the wait
-          # step above (the v0.6.1/v0.6.3 release failure). The "failed to select a
-          # version for floe-core" error happens during packaging, before any
-          # upload, so a failed attempt publishes nothing and retrying is safe.
-          for attempt in $(seq 1 5); do
-            if cargo publish -p floe-cli; then
-              echo "floe-cli published on attempt ${attempt}"
-              exit 0
-            fi
-            echo "cargo publish -p floe-cli failed (attempt ${attempt}/5); retrying in 60 s..."
-            sleep 60
-          done
-          echo "ERROR: cargo publish -p floe-cli failed after 5 attempts"
-          exit 1
-
-  build:
-    runs-on: ${{ matrix.os }}
-    needs: [meta, validate]
-    if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # amd64 keeps `cross`: it builds in an Ubuntu 20.04 / glibc 2.31 container
-          # so the generic Linux tarball stays compatible with older distros (see
-          # CHANGELOG "build Linux AMD64 artifacts with cross to improve glibc
-          # compatibility"). amd64 cross-on-amd64 has been reliable across releases.
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            use_cross: true
-            archive_ext: tar.gz
-          # aarch64 builds NATIVELY on an ARM runner — matching how build-duckdb-cli
-          # already ships its aarch64 binary. This drops the cross+QEMU emulation
-          # path that silently fell back to a broken host build in v0.6.3 (ring could
-          # not find aarch64-linux-gnu-gcc).
-          #
-          # Pin to ubuntu-22.04-arm (glibc 2.35), NOT ubuntu-24.04-arm (glibc 2.39):
-          # the binary is packaged into debian:bookworm-slim (glibc 2.36) by
-          # Dockerfile.release, and glibc has no forward compatibility. Building on
-          # 24.04 produced a binary requiring GLIBC_2.38/2.39 that could not run on
-          # bookworm, breaking the arm64 image in v0.6.5 (issue #437). 2.35 <= 2.36
-          # runs on bookworm and on every currently-supported distro.
-          - os: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
-            use_cross: false
-            archive_ext: tar.gz
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            use_cross: false
-            archive_ext: tar.gz
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            use_cross: false
-            archive_ext: tar.gz
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            use_cross: false
-            archive_ext: zip
-    env:
-      VERSION: ${{ needs.meta.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - name: Install cross
-        if: ${{ matrix.use_cross }}
-        uses: taiki-e/install-action@v2.85.3
-        with:
-          tool: cross
-      - name: Build floe
-        shell: bash
-        run: |
-          # Ship the lean sink set (parquet + delta + iceberg). The duckdb sink is
-          # intentionally excluded from released binaries: its bundled native (C++)
-          # build does not cross-compile and bloats artifacts. Users who need it
-          # build from source with `--features duckdb`.
-          #
-          # amd64 uses `cross` (old-glibc container) for broad compatibility of the
-          # generic Linux tarball; aarch64 builds natively on its ARM runner (the
-          # target always equals the host arch there, so no cross toolchain needed).
-          features="--no-default-features --features delta,iceberg"
-          if [[ "${{ matrix.target }}" == *unknown-linux* ]]; then
-            features="--no-default-features --features delta,iceberg,vendored-openssl"
-          fi
-          if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build -p floe-cli ${features} --release --target ${{ matrix.target }}
-          else
-            cargo build -p floe-cli ${features} --release --target ${{ matrix.target }}
-          fi
-      - name: Package binary (Unix)
-        if: matrix.archive_ext == 'tar.gz'
-        shell: bash
-        run: |
-          set -euo pipefail
-          target="${{ matrix.target }}"
-          version="${VERSION}"
-          bin_path="target/${target}/release/floe"
-          if [ ! -f "${bin_path}" ]; then
-            echo "Binary not found: ${bin_path}" >&2
-            exit 1
-          fi
-          mkdir -p dist
-          tarball="floe-v${version}-${target}.tar.gz"
-          tar -C "target/${target}/release" -czf "dist/${tarball}" floe
-          python - <<PY
-          import hashlib
-          from pathlib import Path
-
-          tarball = Path("dist/${tarball}")
-          sha = hashlib.sha256(tarball.read_bytes()).hexdigest()
-          sha_path = tarball.with_suffix(tarball.suffix + ".sha256")
-          sha_path.write_text(f"{sha}  {tarball.name}\n", encoding="utf-8")
-          PY
-      - name: Package binary (Windows)
-        if: matrix.archive_ext == 'zip'
-        shell: python
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          import hashlib, os, zipfile
-          from pathlib import Path
-
-          target = os.environ["TARGET"]
-          version = os.environ["VERSION"]
-          bin_path = Path(f"target/{target}/release/floe.exe")
-          if not bin_path.exists():
-              raise FileNotFoundError(f"Binary not found: {bin_path}")
-          archive_path = Path(f"dist/floe-v{version}-{target}.zip")
-          archive_path.parent.mkdir(parents=True, exist_ok=True)
-          with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zf:
-              zf.write(bin_path, "floe.exe")
-          sha = hashlib.sha256(archive_path.read_bytes()).hexdigest()
-          sha_path = Path(str(archive_path) + ".sha256")
-          sha_path.write_text(f"{sha}  {archive_path.name}\n", encoding="utf-8")
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist-${{ matrix.target }}
-          path: dist/*
-
-  build-duckdb-cli:
-    name: Build floe-duckdb CLI (${{ matrix.target }} on ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    needs: [meta, validate]
-    if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-latest,    target: x86_64-unknown-linux-gnu,  archive_ext: tar.gz }
-          # ubuntu-22.04-arm (glibc 2.35), not 24.04-arm (glibc 2.39): keep the
-          # aarch64 floe-duckdb tarball runnable on debian:bookworm-slim / older
-          # distros, same glibc floor as the lean `build` job above (issue #437).
-          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, archive_ext: tar.gz }
-          - { os: macos-15-intel,   target: x86_64-apple-darwin,       archive_ext: tar.gz }
-          - { os: macos-latest,     target: aarch64-apple-darwin,      archive_ext: tar.gz }
-          # Windows excluded: libduckdb-sys bundled C++ fails to compile with MSVC
-          # cl.exe (same reason build-duckdb-wheel already omits Windows). The lean
-          # floe.exe Windows binary is unaffected — it is built by the separate `build`
-          # job which avoids the duckdb feature entirely.
-    env:
-      VERSION: ${{ needs.meta.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      # Cache keyed separately from the lean build so the heavy duckdb artifact
-      # never evicts (or is evicted by) the lean default build cache.
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: v0-rust
-          add-job-id-key: false
-          shared-key: v0-rust-duckdb-cli-${{ matrix.target }}
-          cache-on-failure: true
-      - name: Build floe-duckdb
-        shell: bash
-        env:
-          CARGO_BUILD_JOBS: "4"
-          # -C debuginfo=0 prevents the bundled lld from exceeding runner memory/disk
-          # during the output write (same discipline as the duckdb CI job).
-          RUSTFLAGS: "-C debuginfo=0"
-        run: |
-          features="--no-default-features --features delta,iceberg,duckdb"
-          if [[ "${{ matrix.target }}" == *unknown-linux* ]]; then
-            features="${features},vendored-openssl"
-          fi
-          # Native runner only — `cross` cannot build the bundled C++ DuckDB library.
-          cargo build -p floe-cli ${features} --release --target ${{ matrix.target }}
-      - name: Package binary (Unix)
-        if: matrix.archive_ext == 'tar.gz'
-        shell: bash
-        run: |
-          set -euo pipefail
-          target="${{ matrix.target }}"
-          version="${VERSION}"
-          # Cargo always names the output binary 'floe' (the [[bin]] name). Rename it
-          # to 'floe-duckdb' so that when extracted alongside the lean 'floe', the
-          # companion discovery in delegate.rs finds it by name.
-          cp "target/${target}/release/floe" "target/${target}/release/floe-duckdb"
-          mkdir -p dist
-          tarball="floe-duckdb-v${version}-${target}.tar.gz"
-          tar -C "target/${target}/release" -czf "dist/${tarball}" floe-duckdb
-          python - <<PY
-          import hashlib
-          from pathlib import Path
-          t = Path("dist/${tarball}")
-          t.with_suffix(t.suffix + ".sha256").write_text(
-              f"{hashlib.sha256(t.read_bytes()).hexdigest()}  {t.name}\n", encoding="utf-8")
-          PY
-      - uses: actions/upload-artifact@v7
-        with:
-          # Prefix 'dist-duckdb-' so these artifacts are included in the 'release'
-          # job's 'pattern: dist-*' download and land in the same dist/ directory.
-          name: dist-duckdb-${{ matrix.target }}
-          path: dist/*
-
-  release:
-    runs-on: ubuntu-latest
-    needs: [meta, publish, build, build-duckdb-cli]
-    if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
-    env:
-      VERSION: ${{ needs.meta.outputs.version }}
-      TAG: ${{ needs.meta.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v7
-      - name: Download artifacts
-        uses: actions/download-artifact@v8
-        with:
-          # Only the platform binary archives are needed here (GH Release assets +
-          # checksums for the Homebrew/Scoop formulae). Without this pattern the
-          # step downloads every run artifact — incl. the ~80 MB DuckDB wheels and
-          # ~70 MB Python wheels (~1.1 GB total) — which intermittently fails the
-          # download "after 5 retries". The DuckDB wheels are handled separately by
-          # publish-duckdb-wheel (pattern: duckdb-wheel-*).
-          pattern: dist-*
-          path: dist
-          merge-multiple: true
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ env.TAG }}
-          name: Floe v${{ env.VERSION }}
-          files: dist/**
-      - id: shas
-        name: Collect checksums
-        shell: bash
-        run: |
-          version="${VERSION}"
-          linux="dist/floe-v${version}-x86_64-unknown-linux-gnu.tar.gz.sha256"
-          mac_x86="dist/floe-v${version}-x86_64-apple-darwin.tar.gz.sha256"
-          mac_arm="dist/floe-v${version}-aarch64-apple-darwin.tar.gz.sha256"
-          windows="dist/floe-v${version}-x86_64-pc-windows-msvc.zip.sha256"
-          echo "linux_sha=$(cut -d ' ' -f1 "${linux}")" >> "$GITHUB_OUTPUT"
-          echo "mac_x86_sha=$(cut -d ' ' -f1 "${mac_x86}")" >> "$GITHUB_OUTPUT"
-          echo "mac_arm_sha=$(cut -d ' ' -f1 "${mac_arm}")" >> "$GITHUB_OUTPUT"
-          echo "windows_sha=$(cut -d ' ' -f1 "${windows}")" >> "$GITHUB_OUTPUT"
-      - name: Verify Homebrew tap token
-        run: |
-          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
-            echo "HOMEBREW_TAP_TOKEN is required to update the tap repo."
-            exit 1
-          fi
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-      - name: Checkout Homebrew tap
-        uses: actions/checkout@v7
-        with:
-          repository: OpenLakeForge/homebrew-floe
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: homebrew
-      - name: Render Homebrew formula
-        run: |
-          python .github/scripts/render_homebrew_formula.py \
-            --version "${VERSION}" \
-            --linux-sha "${{ steps.shas.outputs.linux_sha }}" \
-            --mac-x86-sha "${{ steps.shas.outputs.mac_x86_sha }}" \
-            --mac-arm-sha "${{ steps.shas.outputs.mac_arm_sha }}" \
-            --out "homebrew/Formula/floe.rb"
-      - name: Commit and push Homebrew formula
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd homebrew
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/floe.rb
-          if git diff --cached --quiet; then
-            echo "No Homebrew changes to commit."
-            exit 0
-          fi
-          git commit -m "bump floe to v${VERSION}"
-          git push
-      - name: Verify Scoop bucket token
-        run: |
-          if [ -z "${SCOOP_BUCKET_TOKEN}" ]; then
-            echo "SCOOP_BUCKET_TOKEN is required to update the Scoop bucket."
-            exit 1
-          fi
-        env:
-          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
-      - name: Checkout Scoop bucket
-        uses: actions/checkout@v7
-        with:
-          repository: OpenLakeForge/scoop-floe
-          token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
-          path: scoop
-      - name: Render Scoop manifest
-        run: |
-          python .github/scripts/render_scoop_manifest.py \
-            --version "${VERSION}" \
-            --windows-sha "${{ steps.shas.outputs.windows_sha }}" \
-            --out "scoop/bucket/floe.json"
-      - name: Commit and push Scoop manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd scoop
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add bucket/floe.json
-          if git diff --cached --quiet; then
-            echo "No Scoop changes to commit."
-            exit 0
-          fi
-          git commit -m "bump floe to v${VERSION}"
-          git push
-      # ── floe-duckdb companion binary: Homebrew + Scoop ─────────────────────
-      # The dist-duckdb-* artifacts are included in the pattern: dist-* download
-      # above (merge-multiple: true), so the archives are already in dist/ and
-      # attached to the GitHub Release via the 'files: dist/**' step above.
-      - id: duckdb_shas
-        name: Collect floe-duckdb checksums
-        shell: bash
-        run: |
-          v="${VERSION}"; d="dist"
-          echo "linux_sha=$(cut -d ' ' -f1     "${d}/floe-duckdb-v${v}-x86_64-unknown-linux-gnu.tar.gz.sha256")"    >> "$GITHUB_OUTPUT"
-          echo "linux_arm_sha=$(cut -d ' ' -f1 "${d}/floe-duckdb-v${v}-aarch64-unknown-linux-gnu.tar.gz.sha256")"   >> "$GITHUB_OUTPUT"
-          echo "mac_x86_sha=$(cut -d ' ' -f1   "${d}/floe-duckdb-v${v}-x86_64-apple-darwin.tar.gz.sha256")"         >> "$GITHUB_OUTPUT"
-          echo "mac_arm_sha=$(cut -d ' ' -f1   "${d}/floe-duckdb-v${v}-aarch64-apple-darwin.tar.gz.sha256")"        >> "$GITHUB_OUTPUT"
-          # Windows excluded from floe-duckdb: libduckdb-sys C++ build fails with MSVC.
-      - name: Render Homebrew formula (floe-duckdb)
-        run: |
-          python .github/scripts/render_homebrew_formula_duckdb.py \
-            --version "${VERSION}" \
-            --linux-sha     "${{ steps.duckdb_shas.outputs.linux_sha }}" \
-            --linux-arm-sha "${{ steps.duckdb_shas.outputs.linux_arm_sha }}" \
-            --mac-x86-sha   "${{ steps.duckdb_shas.outputs.mac_x86_sha }}" \
-            --mac-arm-sha   "${{ steps.duckdb_shas.outputs.mac_arm_sha }}" \
-            --out "homebrew/Formula/floe-duckdb.rb"
-      - name: Commit and push Homebrew formula (floe-duckdb)
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd homebrew
-          git add Formula/floe-duckdb.rb
-          if git diff --cached --quiet; then
-            echo "No floe-duckdb Homebrew changes to commit."
-            exit 0
-          fi
-          git commit -m "bump floe-duckdb to v${VERSION}"
-          git push
-      # Note: no Scoop manifest for floe-duckdb — Windows is excluded from the
-      # build-duckdb-cli matrix (libduckdb-sys bundled C++ fails with MSVC cl.exe).
-
-  build-python:
-    name: Build Python wheels (${{ matrix.target }} on ${{ matrix.os }})
-    needs: [meta, validate]
-    if: ${{ needs.meta.outputs.on_main == 'true' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # manylinux x86_64 — install perl-IPC-Cmd so reqwest's native-tls-vendored
-          # can compile OpenSSL inside the manylinux container
-          - os: ubuntu-latest
-            target: x86_64
-            manylinux: auto
-            before_script: "dnf install -y perl-core 2>/dev/null || yum install -y perl-core 2>/dev/null || true"
-          # aarch64 — use a native ARM runner to avoid cross-compilation failures
-          # (aws-lc-sys assembly build fails when cross-compiling on x86_64)
-          - os: ubuntu-24.04-arm
-            target: aarch64
-            manylinux: auto
-            before_script: "dnf install -y perl-core 2>/dev/null || yum install -y perl-core 2>/dev/null || true"
-          # musllinux — Alpine-based container; perl package includes IPC::Cmd
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            manylinux: musllinux_1_2
-            before_script: "apk add --no-cache perl 2>/dev/null || true"
-          # Keep macOS wheels split by architecture: the universal2 wheel exceeds
-          # PyPI's default 100 MB per-file limit for this project.
-          - os: macos-15-intel
-            target: x86_64
-            manylinux: "off"
-            before_script: ""
-          - os: macos-latest
-            target: aarch64
-            manylinux: "off"
-            before_script: ""
-          - os: windows-latest
-            target: x86_64
-            manylinux: "off"
-            before_script: ""
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: PyO3/maturin-action@v1
-        with:
-          command: build
-          # Ship the lean sink set. The duckdb sink is excluded from published
-          # wheels: its bundled native (C++) build fails to compile in the
-          # manylinux/musllinux containers and would exceed PyPI's 100 MB
-          # per-file limit. Users who need it build from source with
-          # `--features duckdb`.
-          args: >-
-            --release
-            --strip
-            --no-default-features
-            --features delta,iceberg
-            -m crates/floe-python/Cargo.toml
-            --out dist
-          target: ${{ matrix.target }}
-          manylinux: ${{ matrix.manylinux }}
-          before-script-linux: ${{ matrix.before_script }}
-      - uses: actions/upload-artifact@v7
-        with:
-          name: py-dist-${{ matrix.os }}-${{ matrix.target }}
-          path: dist
-
-  build-python-sdist:
-    name: Build Python sdist
-    needs: [meta, validate]
-    if: ${{ needs.meta.outputs.on_main == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: PyO3/maturin-action@v1
-        with:
-          command: sdist
-          args: -m crates/floe-python/Cargo.toml --out dist
-      - uses: actions/upload-artifact@v7
-        with:
-          name: py-dist-sdist
-          path: dist
-
-  publish-python:
-    name: Publish floe-python to PyPI
-    needs: [meta, build-python, build-python-sdist]
-    if: ${{ needs.meta.outputs.on_main == 'true' && github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.dry_run == false) }}
-    runs-on: ubuntu-latest
-    environment: pypi
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          path: dist
-          pattern: "py-dist-*"
-          merge-multiple: true
-      - name: Check PyPI file size limit
-        shell: bash
-        run: |
-          set -euo pipefail
-          limit=$((100 * 1024 * 1024))
-          too_large=0
-
-          while IFS= read -r -d '' file; do
-            size=$(stat -c%s "$file")
-            if ! python3 - "$file" "$size" "$limit" <<'PY'
-          import sys
-
-          path, size, limit = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
-          print(f"{path}: {size / 1024 / 1024:.1f} MB")
-          if size > limit:
-              print(f"ERROR: {path} exceeds PyPI's 100 MB per-file limit.")
-              sys.exit(1)
-          PY
-            then
-              too_large=1
-            fi
-          done < <(find dist -type f \( -name '*.whl' -o -name '*.tar.gz' \) -print0)
-
-          exit "$too_large"
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist

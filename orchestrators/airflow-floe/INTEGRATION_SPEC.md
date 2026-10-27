@@ -2,7 +2,7 @@
 
 ## 1. Goal
 
-Airflow consumes a static Floe manifest (`floe.manifest.v1`) and executes Floe runs without parsing Floe YAML configs directly at DAG parse-time.
+Airflow consumes a static Floe manifest (`spec_version: "0.8"`) and executes Floe runs without parsing Floe YAML configs directly at DAG parse-time.
 
 The connector must:
 
@@ -15,7 +15,7 @@ The connector must:
 
 ### 2.1 Manifest schema
 
-- Schema id: `floe.manifest.v1`
+- Spec version: `spec_version: "0.8"` (other versions are rejected; regenerate with a supported Floe release)
 - Canonical schema file: `orchestrators/schemas/floe.manifest.schema.json`
 
 ### 2.2 Manifest generation
@@ -132,7 +132,7 @@ Task fails when:
 ## 8. Connector modules
 
 - `src/airflow_floe/manifest.py`
-  - manifest models + loader (`floe.manifest.v1`)
+  - manifest models + loader (`spec_version: "0.8"`)
 - `src/airflow_floe/manifest_discovery.py`
   - multi-manifest discovery and deterministic DAG id derivation
 - `src/airflow_floe/runtime.py`

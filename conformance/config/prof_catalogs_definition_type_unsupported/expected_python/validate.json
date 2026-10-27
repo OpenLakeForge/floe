@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "profile.catalogs.definitions[0]: profile.catalogs.definitions name=r has unsupported type=hive (supported: rest)"
-}
