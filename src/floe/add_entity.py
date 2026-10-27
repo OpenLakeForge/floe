@@ -23,7 +23,7 @@ from floe.config.types import SourceOptions
 from floe.config.validate import validate_entities
 from floe.config.yaml import _FLOAT, load_yaml, parse_yaml, rust_debug  # pyright: ignore[reportPrivateUsage] -- the YAML float grammar the emitter must quote
 from floe.errors import FloeConfigError, FloeError, FloeIoError
-from floe.glob import PatternError, glob
+from floe.glob import Pattern, PatternError, glob
 
 SAMPLE_ROWS = 200
 Hash = dict[object, object]
@@ -368,6 +368,18 @@ def _included_domain(
     return None
 
 
+def _matches_domain_include(config: str, root: object, path: str) -> bool:
+    """Whether `assemble_includes` would load `path` as a domain file."""
+    include = cast(Hash, root).get("include") if isinstance(root, dict) else None
+    patterns = cast(Hash, include).get("domains") if isinstance(include, dict) else None
+    base = glob_base(Path(os.path.dirname(config)))
+    return any(
+        Pattern(os.path.join(base, p)).matches_with(path)
+        for p in cast("list[object]", patterns)
+        if isinstance(p, str)
+    )
+
+
 def _strip_defaults(entity: Hash, defaults: Hash) -> None:
     for key, default in defaults.items():
         if key not in entity:
@@ -448,6 +460,8 @@ def add_entity(
         output = os.path.join(directory, f"{name}.yml")
         if os.path.exists(output):
             raise FloeIoError(f"refusing to overwrite existing entity file at {output}")
+        if _matches_domain_include(config, docs[0], output):
+            raise FloeConfigError(f"entity file {output} would also match an include.domains pattern and load as a domain; use --output or a different name")  # fmt: skip
         if isinstance(defaults, dict):
             # Rust first drops `name`, `schema.columns` and `primary_key` from the defaults; D7 rejects those
             _strip_defaults(entity, cast(Hash, defaults))

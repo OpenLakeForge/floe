@@ -166,8 +166,11 @@ def _manifest(args: argparse.Namespace) -> int:
 
 
 def _add_entity(args: argparse.Namespace) -> int:
+    config = (
+        args.config if not os.path.exists(args.config) else str(_realpath(args.config))
+    )
     added = add_entity(
-        args.config, args.input, args.format, args.name, args.domain,
+        config, args.input, args.format, args.name, args.domain,
         args.source_ref, args.resource, args.output, args.dry_run,
     )  # fmt: skip
     if added.rendered is not None:

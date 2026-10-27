@@ -800,3 +800,31 @@ def test_add_entity_json_errors_match_rust(
     input.write_text(text)
     code, _, err = add(floe, tmp_path / "c.yml", input)
     assert (code, err) == (1, f"Error: {error.format(path=input)}\n")
+
+
+def test_add_entity_refuses_a_sibling_that_matches_a_domain_include(
+    floe: Run, tmp_path: Path
+) -> None:
+    config, domain_dir = included_sales_project(tmp_path)
+    config.write_text('version: "0.3"\ninclude:\n  domains: ["silver/sales/*.yml"]\n')
+    input = tmp_path / "orders.csv"
+    input.write_text("id\n1\n")
+    code, _, err = add(floe, config, input, "--domain", "sales")
+    assert code == 1
+    assert "would also match an include.domains pattern" in err
+    assert "--output" in err
+    assert not (domain_dir / "orders.yml").exists()
+
+
+def test_add_entity_resolves_a_symlinked_config(floe: Run, tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    real, domain_dir = included_sales_project(project)
+    link = tmp_path / "floe.yml"
+    link.symlink_to(real)
+    input = tmp_path / "orders.csv"
+    input.write_text("id\n1\n")
+    code, _, err = add(floe, link, input, "--domain", "sales")
+    assert (code, err) == (0, "")
+    assert (domain_dir / "orders.yml").exists()
+    assert [e.name for e in entities(real)] == ["orders"]
