@@ -815,8 +815,6 @@ def _run_entity(
     if sink.accepted.format not in ("parquet", "iceberg"):
         raise FloeRunError(f"entity.name={entity.name} unsupported sink format: {sink.accepted.format}")  # fmt: skip
     iceberg = sink.accepted.format == "iceberg"
-    if iceberg and sink.write_mode == "merge_scd2":  # #654
-        raise FloeRunError(f"entity.name={entity.name} sink.write_mode={sink.write_mode} is not yet supported for iceberg")  # fmt: skip
     who = f"entity.name={entity.name}"
     source_uri, client = resolve_source(entity, config_dir, storages)
     target = resolve_target(storages, catalogs, config_dir, entity) if iceberg else None
