@@ -163,10 +163,7 @@ def _check_merge(entity: EntityConfig) -> None:
     if not any(
         m.startswith("merge") for m in SINK_WRITE_MODES[entity.sink.accepted.format]
     ):
-        raise _fail(
-            entity,
-            "sink.accepted.merge is only supported when sink.accepted.format supports merge (e.g. delta)",
-        )
+        raise _fail(entity, "sink.accepted.merge requires sink.accepted.format=iceberg")
     if mode not in ("merge_scd1", "merge_scd2"):
         raise _fail(
             entity,
@@ -233,7 +230,8 @@ def _check_partitioning(entity: EntityConfig) -> None:
     if accepted.partition_by is not None:
         raise _fail(
             entity,
-            "sink.accepted.partition_by is only supported for sink.accepted.format=delta",
+            "sink.accepted.partition_by is not supported in 0.8; "
+            "use sink.accepted.partition_spec with sink.accepted.format=iceberg",
         )
     spec = accepted.partition_spec
     if spec is None:

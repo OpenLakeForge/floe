@@ -4,6 +4,10 @@ All notable changes to Floe are documented in this file.
 
 ## floe (unreleased)
 
+- **Validation messages no longer point to Delta (#995).** Wording only:
+  - `sink.accepted.merge` on a format without merge now says it requires `sink.accepted.format=iceberg`;
+  - `sink.accepted.partition_by` now says it is not supported in 0.8 and points to `sink.accepted.partition_spec`
+    on Iceberg.
 - **Floe is a pure-Python package (#971).** `pip install floe-python` installs the `floe`
   command; the wheel is `py3-none-any`. `ghcr.io/openlakeforge/floe` is now the Python image
   (`ghcr.io/openlakeforge/floe-python` is no longer published). The Rust core moved to the
