@@ -13,7 +13,7 @@ from airflow_floe.manifest import (  # noqa: E402
     AirflowManifest,
     load_manifest,
 )
-from airflow_floe.runtime import build_dag_manifest_context  # noqa: E402
+from airflow_floe.runtime import build_dag_manifest_context  # noqa: E402 -- after the sys.path insert above
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
