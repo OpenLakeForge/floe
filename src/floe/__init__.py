@@ -226,7 +226,7 @@ def _outcome(
             "rejected_format": e.sink.rejected and e.sink.rejected.format,
             "archive_path": e.sink.archive.path if e.sink.archive else "",
             "archive_storage": e.sink.archive and e.sink.archive.storage,
-            "report_file": f"{base.rstrip('/')}/run_{out.run_id}/{id_path(e)}/run.json",
+            "report_file": f"{out.run_dir}/{id_path(e)}/run.json",
             "scanned_files": out.dry_run[e.id],
         }
         for e in _run.select_entities(root, entities or [])

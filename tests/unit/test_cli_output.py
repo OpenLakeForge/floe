@@ -52,7 +52,9 @@ SUMMARY = {
 
 
 def outcome() -> RunOutcome:
-    return RunOutcome("run-123", SUMMARY, None, "/tmp/reports", [REPORT])
+    return RunOutcome(
+        "run-123", SUMMARY, None, "/tmp/reports", "/tmp/reports/run_run-123", [REPORT]
+    )
 
 
 def test_format_run_output_default_mode() -> None:
@@ -118,7 +120,7 @@ def test_dry_run_previews_each_entity(
     config = str(standalone(tmp_path))
     args = ["run", "-c", config, "--run-id", "r1", "--dry-run"]
     code, out, _ = floe(monkeypatch, capsys, *args, *(["--verbose"] * verbose))
-    report = f"  report: {tmp_path}/report/run_r1/sales/orders/run.json"
+    report = f"  report: {tmp_path}/report/sales/run_r1/sales/orders/run.json"
     assert code == 0
     assert out == "\n".join(
         [
@@ -137,7 +139,7 @@ def test_dry_run_previews_each_entity(
             "",
             "Totals: files=0 rows=0 accepted=0 rejected=0",
             "Overall: success (exit_code=0)",
-            f"Run summary: {tmp_path}/report/run_r1/run.summary.json\n",
+            f"Run summary: {tmp_path}/report/sales/run_r1/run.summary.json\n",
         ]
     )
     assert not (tmp_path / "out").exists()

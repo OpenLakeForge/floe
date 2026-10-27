@@ -82,7 +82,8 @@ entities:
     Relative `report.path` values resolve under the storage prefix.
   - Reports are written under:
     `report.path/run_<run_id>/run.summary.json` and
-    `report.path/run_<run_id>/<entity.name>/run.json`.
+    `report.path/run_<run_id>/<entity.name>/run.json`; a single-domain run goes under
+    `report.path/<domain>/run_<run_id>/` (D37, see [report](report.md)).
   - Supports `{{var}}` templating (see "Templating & domains").
 - `storages` (optional)
   - Defines named storage clients for `source.storage` and `sink.*.storage`.

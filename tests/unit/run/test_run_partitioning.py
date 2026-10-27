@@ -54,7 +54,7 @@ def go(tmp_path: Path, mode: str = "", archive: str = "", **kw: Any) -> Any:
 
 
 def report(tmp_path: Path) -> Any:
-    return json.loads(max(tmp_path.glob("report/run_*/d/o/run.json")).read_text())
+    return json.loads(max(tmp_path.glob("report/d/run_*/d/o/run.json")).read_text())
 
 
 def test_two_days_two_batches_load_in_date_then_batch_order(tmp_path: Path) -> None:
