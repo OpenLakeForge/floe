@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from dataclasses import replace
 from typing import Any
 from urllib.parse import unquote, urlparse
 
 from dagster import (
+    AssetCheckKey,
     AssetKey,
     AssetOut,
     Definitions,
@@ -341,7 +343,10 @@ def _entity_events(
     summary: dict[str, Any] | None,
     failed: bool,
     out_prefix: str = "",
+    accepted_selected: bool = True,
     rejected_selected: bool = True,
+    check_status: str | None = None,
+    selected_checks: set[AssetCheckKey] | None = None,
 ):
     """Yield one entity's checks and outputs from a finished run; return its `Failure` (not raised)."""
     accepted_key = list(entity.asset_key)
@@ -384,18 +389,21 @@ def _entity_events(
     check_results = build_asset_check_results(
         asset_key=accepted_key,
         entity_name=entity_name,
-        finished=finished,
+        finished=replace(finished, status=check_status) if check_status else finished,
         entity_report=entity_report_json,
         entity_stats=entity_stats,
         summary_uri=summary_uri,
         entity_report_uri=entity_report_uri,
     )
     for check_result in check_results:
-        yield check_result
+        if selected_checks is None or AssetCheckKey(AssetKey(accepted_key), check_result.check_name) in selected_checks:
+            yield check_result
 
     if failed:
         return Failure(description=f"floe run failed for entity {entity_name}", metadata=metadata)
 
+    if not accepted_selected:
+        return None
     yield Output(value=None, output_name=f"{out_prefix}accepted", metadata=metadata)
     if _has_rejected_asset(entity) and rejected_selected:
         rows = entity_stats.get("rows") or 0
@@ -455,28 +463,42 @@ def _make_domain_multi_asset(
                 key=AssetKey(_rejected_key(entity)), group_name=entity.group_name, is_required=False
             )
         check_specs.extend(build_asset_check_specs(list(entity.asset_key)))
-    deps = {tuple(key): AssetKey(key) for key in source_keys.values()}
+    # each output keeps its own entity's source, so selecting one source's downstream runs one entity
+    internal_deps = {
+        name: {AssetKey(source_keys[entity.name])}
+        for entity in entities
+        for name in (f"{_op_name(entity)}__accepted", f"{_op_name(entity)}__rejected")
+        if name in outs
+    }
 
     # ponytail: no `floe/table` op tag here, an op spans several tables; the entities of one Job run
     # one after another, so only runs of different Jobs on one table can still overlap (#924).
     @multi_asset(
         name=re.sub(r"[^A-Za-z0-9_]", "_", f"floe_{domain}__{runner_name}"),
         outs=outs,
-        deps=list(deps.values()),
+        deps=[AssetKey(key) for key in {tuple(k) for k in source_keys.values()}],
+        internal_asset_deps=internal_deps,
         check_specs=check_specs,
         can_subset=True,
         compute_kind="floe",
     )
     def _domain_asset(context):
-        chosen = [
-            entity for entity in entities if AssetKey(entity.asset_key) in context.selected_asset_keys
-        ]  # manifest order
+        selected = context.selected_asset_keys
+        selected_checks = set(context.selected_asset_check_keys)
+        chosen = [  # manifest order; a checks-only selection still runs the entity
+            entity
+            for entity in entities
+            if AssetKey(entity.asset_key) in selected
+            or any(k.asset_key == AssetKey(entity.asset_key) for k in selected_checks)
+        ]
         run = getattr(context, "run", None)
         run_id = getattr(run, "run_id", None) if run is not None else None
+        # concurrent groups of one Dagster run must not share a Floe run id (it names the summary file)
+        floe_run_id = f"{run_id}_{context.op_def.name}" if run_id else None
         result = runner.run_floe_entities(
             config_uri=config_uri,
             manifest_uri=manifest_uri or manifest_path,
-            run_id=run_id,
+            run_id=floe_run_id,
             domain=domain,
             entities=[entity.name for entity in chosen],
             execution=execution,
@@ -491,6 +513,7 @@ def _make_domain_multi_asset(
         )
         failures: list[str] = []
         for entity in chosen:
+            status = None
             if summary is None:
                 failed = run_failed
             else:
@@ -505,7 +528,10 @@ def _make_domain_multi_asset(
                 summary=summary,
                 failed=failed,
                 out_prefix=f"{_op_name(entity)}__",
-                rejected_selected=AssetKey(_rejected_key(entity)) in context.selected_asset_keys,
+                accepted_selected=AssetKey(entity.asset_key) in selected,
+                rejected_selected=AssetKey(_rejected_key(entity)) in selected,
+                check_status=status,  # the entity's own outcome, not the run's (an aborted later entity)
+                selected_checks=selected_checks,
             )
             if failure is not None:
                 failures.append(entity.name)

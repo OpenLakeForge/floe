@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from dagster import AssetKey, materialize
+from dagster import AssetKey, AssetSelection, materialize
 
 from floe_dagster.assets import build_floe_asset_defs
 from floe_dagster.runner import LocalRunner
@@ -79,6 +79,8 @@ def test_domain_scope_runs_the_entities_in_one_job_with_a_materialization_each(t
     jobs_api.create_namespaced_job.assert_called_once()
     assert _entities_arg(jobs_api) == "orders,returns,refunds"
     assert _materialized(result) == {"sales/orders", "sales/returns", "sales/refunds"}
+    args = jobs_api.create_namespaced_job.call_args.kwargs["body"]["spec"]["template"]["spec"]["containers"][0]["args"]
+    assert args[args.index("--run-id") + 1] == f"{result.run_id}_floe_sales__k8s"  # one Floe run id per group
 
 
 def test_domain_scope_subset_runs_only_the_selected_entities(tmp_path: Path) -> None:
@@ -120,3 +122,28 @@ def test_an_entity_with_its_own_runner_gets_its_own_domain_asset(tmp_path: Path)
     assets, _, _ = build_floe_asset_defs(manifest_path=str(manifest), runner=LocalRunner())
 
     assert sorted(a.node_def.name for a in assets) == ["floe_sales__k8s", "floe_sales__k8s_big"]
+
+
+def test_each_output_keeps_its_own_entitys_source(tmp_path: Path) -> None:
+    assets, _, _ = build_floe_asset_defs(manifest_path=str(_manifest(tmp_path)), runner=LocalRunner())
+    [domain] = assets
+    assert domain.asset_deps[AssetKey(["sales", "orders"])] == {AssetKey(["sales", "orders_source"])}
+    assert domain.asset_deps[AssetKey(["sales", "refunds"])] == {AssetKey(["sales", "refunds_source"])}
+
+
+def test_a_checks_only_selection_still_runs_the_entity(tmp_path: Path) -> None:
+    assets, _, _ = build_floe_asset_defs(manifest_path=str(_manifest(tmp_path)), runner=LocalRunner())
+    selection = AssetSelection.checks(*(k for k in assets[0].check_keys if k.asset_key == AssetKey(["sales", "orders"])))
+    result, jobs_api = _run(tmp_path, {"orders": "success"}, selection=selection)
+
+    assert result.success
+    assert _entities_arg(jobs_api) == "orders"
+    assert _materialized(result) == set()
+    assert len(result.get_asset_check_evaluations()) == 5
+
+
+def test_a_later_entity_aborting_does_not_fail_the_checks_of_an_earlier_one(tmp_path: Path) -> None:
+    result, _ = _run(tmp_path, {"orders": "success", "returns": "aborted"}, exit_code=2)
+    orders = [c for c in result.get_asset_check_evaluations() if c.asset_key == AssetKey(["sales", "orders"])]
+    assert orders
+    assert all(c.passed for c in orders)
