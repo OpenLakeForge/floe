@@ -165,7 +165,8 @@ entity, the files before it are still written. With `append` and the merge
 modes, Floe promotes those and releases only the aborted file and the files
 after it: once the aborted file is fixed, a rerun writes it without writing the
 earlier files again. With `overwrite`, Floe releases every claim, because the
-rerun rebuilds the output from all the files.
+rerun rebuilds the output from all the files. Either way the claims are settled
+before the next entity starts, which runs as usual (D36).
 
 If a file URI is already in `files` but its size or mtime changed, Floe emits an
 `incremental_file_changed` warning and still skips it. The URI is the identity;
