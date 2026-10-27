@@ -43,11 +43,14 @@
   - Remote resets use the same conditional delete support as remote incremental state.
   - See [docs/incremental.md](incremental.md) for reset behavior and permissions.
 
-- `floe maintain -c <config> [-p <profile>] [--entities <name[,name...]>] [--older-than-days <n>] [--retain-last <n>]` (Python core)
-  - Expire old snapshots of each selected entity's Iceberg accepted table; entities with other sinks are skipped.
+- `floe maintain -c <config> [-p <profile>] [--entities <name[,name...]>] [--older-than-days <n>] [--retain-last <n>] [--orphan-delay-days <n>] [--dry-run]` (Python core)
+  - Expire old snapshots of each selected entity's Iceberg accepted table, then remove its orphan files; entities with other sinks are skipped.
   - A snapshot is expired only if it is older than `--older-than-days` (default 7) **and** outside the newest `--retain-last` (default 10). Branch and tag heads are never expired.
   - The retention floor is 7 days and 10 snapshots: a request below it fails, it is not clamped. The run's retry guard reads recent snapshot summaries, so it relies on this floor.
   - Expiry changes table metadata only and deletes no file; time travel to an expired snapshot fails afterwards.
+  - Orphan removal then deletes every object under the table location that the retained metadata no longer references (the files only expired snapshots used, and files of failed writes), once it is older than `--orphan-delay-days` (default 3, at least 1). The delay keeps the files an in-flight `floe run` has written but not committed yet, so keep it longer than your longest run. Don't keep other files under a table's location: they count as orphans.
+  - The scan lists S3 through Floe's storage client (`list` permission on the table prefix) and fails without deleting anything if the listing misses the table's current metadata file.
+  - `--dry-run` commits nothing and deletes nothing: it prints the snapshots it would expire, and the orphan files and their total bytes as of now. Files that only the expired snapshots reference show up on the next run.
   - Run it after ingestion, not beside it.
 
 ### Dry-run behavior
