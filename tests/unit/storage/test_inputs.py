@@ -20,12 +20,12 @@ class FakeClient:
     def resolve_uri(self, path: str) -> str:
         return f"s3://bucket/{path}"
 
-    def list(self, prefix: str) -> list[ObjectRef]:
+    def list(self, prefix: str, start_after: str = "") -> list[ObjectRef]:
         self.prefixes.append(prefix)
         return [
             ObjectRef(f"s3://bucket/{k}", k, None, None)
             for k in self.keys
-            if k.startswith(prefix)
+            if k.startswith(prefix) and k > start_after
         ]
 
     def write(self, uri: str, body: bytes) -> None:

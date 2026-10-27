@@ -31,6 +31,7 @@ class ManifestEntity:
     write_mode: str | None = None
     incremental_mode: str | None = None
     source_ref: str | None = None
+    iceberg: dict[str, Any] | None = None  # sinks.accepted.iceberg when the sink is Iceberg
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "ManifestEntity":
@@ -38,6 +39,8 @@ class ManifestEntity:
         if not asset_key:
             raise ValueError("entities[].asset_key must contain at least one part")
         source = data.get("source") or {}
+        accepted = (data.get("sinks") or {}).get("accepted") or {}
+        iceberg = (accepted.get("iceberg") or {}) if accepted.get("format") == "iceberg" else None
         source_uri = _optional_str(source, "uri") if isinstance(source, dict) else None
         return ManifestEntity(
             name=_required_str(data, "name"),
@@ -53,6 +56,7 @@ class ManifestEntity:
             write_mode=_optional_str(data, "write_mode"),
             incremental_mode=_optional_str(data, "incremental_mode"),
             source_ref=_optional_str(source, "ref") if isinstance(source, dict) else None,
+            iceberg=iceberg,
         )
 
 
@@ -359,6 +363,24 @@ def render_execution_args(
             for token in execution.per_entity_args
         )
     return args
+
+
+def _ident(value: str) -> str:
+    """`floe.iceberg.sink.catalog_ident`: how a run names the catalog, namespace and table it writes."""
+    out = "".join(c.lower() if c.isascii() and (c.isalnum() or c in "_-") else "_" for c in value)
+    return out.strip("_") or "default"
+
+
+def entity_table(manifest: DagsterManifest, entity: ManifestEntity) -> str | None:
+    """`catalog.namespace.table` an Iceberg entity writes, resolved as the run resolves it."""
+    if entity.iceberg is None:
+        return None
+    catalog = entity.iceberg.get("catalog") or (manifest.catalogs or {}).get("default")
+    if not catalog:
+        return None
+    namespace = entity.iceberg.get("namespace") or entity.domain or "default"
+    table = entity.iceberg.get("table") or entity.asset_key[-1]  # the run's unqualified name
+    return ".".join(_ident(part) for part in (catalog, namespace, table))
 
 
 def resolve_entity_runner(

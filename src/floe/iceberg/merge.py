@@ -15,7 +15,7 @@ a single MERGE runs out of memory there (#609).
 
 import datetime as dt
 import tempfile
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,11 +29,16 @@ from pyiceberg.table import Table
 from pyiceberg.transforms import BucketTransform
 
 from floe.config.validate import SCD2_DEFAULTS
+from floe.errors import FloeRunError
 from floe.iceberg.catalog import DUCKDB_CATALOG, run_error
 from floe.iceberg.write import IcebergWriteResult, added_data_files, write_result
+from floe.state import (
+    _backoff,  # pyright: ignore[reportPrivateUsage] -- one jittered backoff for every CAS retry
+)
 
 # (is_current, valid_from, valid_to)
 SCD2_COLUMNS = tuple(SCD2_DEFAULTS.values())
+MERGE_ATTEMPTS = 5
 
 
 def _q(name: str) -> str:
@@ -193,27 +198,49 @@ def run_merge(
         try:
             for p in params:
                 con.execute(merge, p)
-            con.commit()
         except BaseException:
             con.rollback()
             raise
+        con.commit()  # a failed commit has already ended the transaction: no rollback
     return counts
+
+
+def _is_conflict(e: FloeRunError) -> bool:
+    """The catalog's 409 on commit: DuckDB raises it from `commit()` and does not retry it."""
+    return isinstance(e.__cause__, duckdb.TransactionException) and "Conflict_409" in str(e)  # fmt: skip
 
 
 def _merge(
     con: duckdb.DuckDBPyConnection,
     table: Table,
     reader: pa.RecordBatchReader,
-    count: str,
-    merge: str,
-    changed: str | None = None,
+    statements: Callable[[], tuple[str, str, str | None]],
 ) -> tuple[IcebergWriteResult, tuple[int, ...]]:
-    before = table.current_snapshot()
+    """`statements` gives (count, merge, changed); it runs per attempt, so SCD2 stamps each retry's own time.
+
+    On a commit conflict the whole MERGE runs again on the fresh table (#922): the counts and
+    the changed rows are recomputed, so a key both writers inserted becomes an update.
+    """
     with tempfile.TemporaryDirectory(prefix="floe-merge-") as staging:
         with run_error("iceberg merge staging failed"):
             files = stage_batch(Path(staging), reader, table.spec(), table.schema())
-        with run_error("duckdb merge failed"):
-            counts = run_merge(con, count, merge, files, changed)
+        for attempt in range(MERGE_ATTEMPTS):
+            if attempt:
+                _backoff(attempt - 1)
+                with run_error("rest catalog load_table failed"):
+                    table.refresh()
+            before = table.current_snapshot()
+            try:
+                with run_error("duckdb merge failed"):
+                    count, merge, changed = statements()
+                    counts = run_merge(con, count, merge, files, changed)
+            except FloeRunError as e:
+                if not _is_conflict(e):
+                    raise
+                continue
+            break
+        else:
+            raise FloeRunError(f"duckdb merge failed: conflicted {MERGE_ATTEMPTS} times in a row")  # fmt: skip
     with run_error("rest catalog load_table failed"):
         table.refresh()
         added = added_data_files(table, None if before is None else before.snapshot_id)
@@ -235,7 +262,7 @@ def merge_scd1(
     count, merge = scd1_sql(
         _target(table), reader.schema.names, merge_key, ignore_columns
     )
-    write, counts = _merge(con, table, reader, count, merge)
+    write, counts = _merge(con, table, reader, lambda: (count, merge, None))
     return MergeResult(write, counts[0], counts[1])
 
 
@@ -257,12 +284,14 @@ def merge_scd2(
         compare_columns = [
             c for c in columns if c not in merge_key and c not in ignore_columns
         ]
-    # Rust stamps both versions with the UTC time of the merge, as a naive timestamp
-    now = dt.datetime.now(dt.UTC).replace(tzinfo=None)
-    count, changed, merge = scd2_sql(
-        _target(table), columns, merge_key, compare_columns, system_columns, now
-    )
-    write, (inserted, closed, unchanged) = _merge(
-        con, table, reader, count, merge, changed
-    )
+
+    def statements() -> tuple[str, str, str | None]:
+        # Rust stamps both versions with the UTC time of the merge, as a naive timestamp
+        now = dt.datetime.now(dt.UTC).replace(tzinfo=None)
+        count, changed, merge = scd2_sql(
+            _target(table), columns, merge_key, compare_columns, system_columns, now
+        )
+        return count, merge, changed
+
+    write, (inserted, closed, unchanged) = _merge(con, table, reader, statements)
     return MergeResult(write, inserted, closed, closed, unchanged)

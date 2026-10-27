@@ -5,7 +5,7 @@
 
 import json
 import sys
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -402,8 +402,8 @@ def test_a_manifest_run_keeps_the_partition_spec(tmp_path: Path, catalog: LocalC
     assert rows(catalog) == [(1, "a", date(2026, 10, 24))]
 
 
-def test_a_retry_skips_the_batch_a_dead_run_committed(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
-    """#545 S3: the run died after its commit, before promote; once its claim expires, the retry reads nothing."""
+def dead_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Callable[[str], dict[str, Any]], Path]:  # fmt: skip
+    """#545: an append in `file` mode commits, dies before promote, and its claims expire; returns a runner and the state."""
     (tmp_path / "in").mkdir()
     (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n2,b\n")
     config(tmp_path, mode="append")
@@ -414,7 +414,7 @@ def test_a_retry_skips_the_batch_a_dead_run_committed(tmp_path: Path, catalog: L
     def go(run_id: str) -> dict[str, Any]:
         return run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, emit=Emitter(None, run_id), catalogs=root.catalogs).report  # fmt: skip
 
-    def killed(*_: object) -> None:
+    def killed(*_: object, **__: object) -> None:
         raise FloeRunError("killed")
 
     promote = entity_module.promote
@@ -427,6 +427,12 @@ def test_a_retry_skips_the_batch_a_dead_run_committed(tmp_path: Path, catalog: L
     for claim in doc["claims"].values():
         claim["expires_at"] = "2000-01-01T00:00:00Z"
     state.write_text(json.dumps(doc))
+    return go, state
+
+
+def test_a_retry_skips_the_batch_a_dead_run_committed(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#545 S3: the run died after its commit, before promote; once its claim expires, the retry reads nothing."""
+    go, state = dead_run(tmp_path, monkeypatch)
 
     def broken(*_: object) -> None:
         raise FloeRunError("catalog down")
@@ -441,6 +447,18 @@ def test_a_retry_skips_the_batch_a_dead_run_committed(tmp_path: Path, catalog: L
     (file,) = report["files"]
     assert (file["status"], file["skip_reason"]) == ("skipped", "already_committed")
     assert list(json.loads(state.read_text())["files"]) == [file["input_file"]]
+
+
+def test_a_retry_with_a_new_input_skips_only_the_dead_runs_batch(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#545 S4: file B arrived before the retry; the dead run's batch is re-derived from its expired claims."""
+    go, state = dead_run(tmp_path, monkeypatch)
+    (tmp_path / "in" / "b.csv").write_text("id,name\n3,c\n")
+    report = go("retry")
+    assert rows(catalog) == [(1, "a"), (2, "b"), (3, "c")]
+    assert not (tmp_path / "out" / "rejected").exists()
+    got = [(Path(f["input_file"]).name, f["status"], f.get("skip_reason")) for f in report["files"]]  # fmt: skip
+    assert got == [("orders.csv", "skipped", "already_committed"), ("b.csv", "success", None)]  # fmt: skip
+    assert sorted(Path(u).name for u in json.loads(state.read_text())["files"]) == ["b.csv", "orders.csv"]  # fmt: skip
 
 
 def test_an_aborted_batch_is_not_skipped_as_committed(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
