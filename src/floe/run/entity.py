@@ -251,9 +251,15 @@ class _Plan:
 
 def _refuse_overlap(who: str, sink: str, inputs: list[InputFile]) -> None:
     """D34: an input under the accepted Parquet sink would be deleted or re-read as one of its parts."""
-    root = sink.rstrip("/") + "/"
+
+    def real(
+        uri: str,
+    ) -> str:  # a local path through a symlink is judged by where it lands
+        return str(Path(uri.removeprefix("local://")).resolve()) if uri.startswith("local://") else uri  # fmt: skip
+
+    root = real(sink).rstrip("/") + "/"
     for f in inputs:
-        if f.source_uri.startswith(root):
+        if real(f.source_uri).startswith(root):
             raise FloeConfigError(f"{who} source file {f.source_uri} lies under sink.accepted.path {sink}; the sink would overwrite or re-read it")  # fmt: skip
 
 

@@ -330,3 +330,20 @@ def test_merge_modes_skip_the_entity_while_another_run_holds_a_live_claim(
     mine.release()
     assert (pending == []) is skipped
     assert [r["skip_reason"] for r in reports] == (["active_claim"] if skipped else [])
+
+
+def test_overlap_is_judged_by_where_a_symlink_lands(tmp_path: Path) -> None:
+    """#931: `out/link/../x` resolves beside `deep`, not under `out`; a link into the sink is under it."""
+    sink = tmp_path / "out"
+    (tmp_path / "other/deep").mkdir(parents=True)
+    sink.mkdir()
+    (sink / "link").symlink_to(tmp_path / "other/deep")
+    (tmp_path / "into").symlink_to(sink)
+
+    def file(p: str) -> InputFile:
+        return InputFile(f"local://{p}", "x", "x", None, None)
+
+    refuse = entity_module._refuse_overlap  # pyright: ignore[reportPrivateUsage]  # the unit under test
+    refuse("e", f"local://{sink}", [file(f"{sink}/link/../x.parquet")])
+    with pytest.raises(FloeConfigError):
+        refuse("e", f"local://{sink}", [file(f"{tmp_path}/into/x.parquet")])
