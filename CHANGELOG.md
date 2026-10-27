@@ -24,6 +24,9 @@ All notable changes to Floe are documented in this file.
   - `schema_evolution.mode=add_columns` on a non-Iceberg sink now says it requires `sink.accepted.format=iceberg`.
 - **`floe.run` posts OpenLineage events (#989)**, as `floe run -c` and `floe.run_manifest` already do,
   when the config has a `lineage` block.
+- **`floe.build_manifest(config_path, profile_path=None, ...)` (#986).** Returns, as a dict, the
+  manifest `floe manifest generate` writes for the same config and profile (deterministic by
+  default). `manifest generate` now calls it.
 
 ## airflow-floe v0.2.0
 
