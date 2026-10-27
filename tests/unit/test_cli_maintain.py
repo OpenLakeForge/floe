@@ -8,6 +8,7 @@ import sys
 import time
 from pathlib import Path
 
+import duckdb
 import pyarrow as pa
 import pytest
 from pyiceberg.io import load_file_io
@@ -187,7 +188,7 @@ def test_a_missing_table_expires_nothing(catalog: StubCatalog, monkeypatch: pyte
 def test_public_api(tmp_path: Path, catalog: StubCatalog) -> None:
     seed(tmp_path, catalog)
     expected = {
-        "entity": "Orders", "table": "sales.orders", "expired_snapshots": 5, "kept_snapshots": 10,
+        "entity": "Orders", "table": "sales.orders", "compaction": None, "expired_snapshots": 5, "kept_snapshots": 10,
         "orphan_files": [], "orphan_bytes": 0,
     }  # fmt: skip
     # the profile arguments keep their positions from #950
@@ -277,3 +278,32 @@ def test_an_s3_location_is_listed_through_the_storage_client(monkeypatch: pytest
     listed = _list(location, None)
     assert calls == [("w", None, None, None), (prefix,)]
     assert listed == [("s3://w/t/orders/data/a.parquet", 1790812800.0, 7)]
+
+
+@pytest.mark.parametrize("flags", [["--compact"], ["--compact", "--experimental", "--dry-run"]])  # fmt: skip
+def test_compaction_needs_the_experimental_opt_in_and_no_dry_run(tmp_path: Path, catalog: StubCatalog, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], flags: list[str]) -> None:  # fmt: skip
+    table = seed(tmp_path, catalog)
+    code, _, err = floe_cli(monkeypatch, capsys, *flags)
+    assert code == 1 and "--compact" in err
+    assert len(table.metadata.snapshots) == 15
+
+
+def test_compaction_runs_first_on_its_own_duckdb_connection(tmp_path: Path, catalog: StubCatalog, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:  # fmt: skip
+    table = seed(tmp_path, catalog)
+    module = sys.modules["floe.maintain"]
+    monkeypatch.setattr(module, "open_duckdb", lambda *_: duckdb.connect())  # pyright: ignore[reportUnknownLambdaType] -- stub
+    calls: list[int] = []
+
+    def compact(t: Table, _: object) -> dict[str, int]:
+        calls.append(len(t.metadata.snapshots))  # before expiry
+        return {
+            "rewritten_data_files": 15,
+            "removed_delete_files": 2,
+            "added_data_files": 1,
+        }
+
+    monkeypatch.setattr(module, "compact", compact)
+    code, out, err = floe_cli(monkeypatch, capsys, "--compact", "--experimental")
+    assert (code, err) == (0, ""), err
+    assert calls == [15] and len(table.metadata.snapshots) == 10
+    assert "  Compaction: 15 data files and 2 delete files rewritten into 1 data file(s)\n" in out  # fmt: skip

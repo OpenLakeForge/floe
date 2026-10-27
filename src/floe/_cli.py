@@ -213,11 +213,13 @@ def _maintain(args: argparse.Namespace) -> int:
     path = _realpath(args.config)
     results = maintain(
         path, _load(path, profile), args.entities, args.older_than_days, args.retain_last,
-        args.orphan_delay_days, args.dry_run,
+        args.orphan_delay_days, args.dry_run, args.compact, args.experimental,
     )  # fmt: skip
     expired, removed = ("to expire", "to remove") if args.dry_run else ("expired", "removed")  # fmt: skip
     for r in results:
         print(f"Entity: {r['entity']}\n  Table: {r['table']}")
+        if c := r["compaction"]:
+            print(f"  Compaction: {c['rewritten_data_files']} data files and {c['removed_delete_files']} delete files rewritten into {c['added_data_files']} data file(s)")  # fmt: skip
         print(f"  Snapshots {expired}: {r['expired_snapshots']}, kept: {r['kept_snapshots']}")  # fmt: skip
         print(f"  Orphan files {removed}: {len(r['orphan_files'])} ({r['orphan_bytes']} bytes)")  # fmt: skip
         for uri in r["orphan_files"] if args.dry_run else ():
@@ -285,6 +287,8 @@ def _parser() -> argparse.ArgumentParser:
     maintain.add_argument("--retain-last", type=int, default=FLOOR_SNAPSHOTS)
     maintain.add_argument("--orphan-delay-days", type=int, default=ORPHAN_DELAY_DAYS)
     maintain.add_argument("--dry-run", action="store_true")
+    maintain.add_argument("--compact", action="store_true")
+    maintain.add_argument("--experimental", action="store_true")
     return parser
 
 
