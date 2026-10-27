@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -439,6 +440,12 @@ def _rejected_key(entity: ManifestEntity) -> list[str]:
 _ENTITY_FAILED = ("aborted", "failed")
 
 
+def _domain_op_name(scope: str, domain: str, runner_name: str) -> str:
+    # sanitizing alone maps `k8s-big` and `k8s_big` to one name; the digest keeps every group distinct
+    digest = hashlib.sha1(f"{scope}\0{domain}\0{runner_name}".encode()).hexdigest()[:8]
+    return re.sub(r"[^A-Za-z0-9_]", "_", f"floe_{scope}__{domain}__{runner_name}") + f"_{digest}"
+
+
 def _make_domain_multi_asset(
     *,
     scope: str,
@@ -478,7 +485,7 @@ def _make_domain_multi_asset(
     # ponytail: no `floe/table` op tag here, an op spans several tables; the entities of one Job run
     # one after another, so only runs of different Jobs on one table can still overlap (#924).
     @multi_asset(
-        name=re.sub(r"[^A-Za-z0-9_]", "_", f"floe_{scope}__{domain}__{runner_name}"),
+        name=_domain_op_name(scope, domain, runner_name),
         outs=outs,
         deps=[AssetKey(key) for key in {tuple(k) for k in source_keys.values()}],
         internal_asset_deps=internal_deps,

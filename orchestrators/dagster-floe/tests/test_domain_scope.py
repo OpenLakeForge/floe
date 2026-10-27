@@ -123,7 +123,7 @@ def test_an_entity_with_its_own_runner_gets_its_own_domain_asset(tmp_path: Path)
 
     assets, _, _ = build_floe_asset_defs(manifest_path=str(manifest), runner=LocalRunner())
 
-    assert sorted(a.node_def.name.split("__", 1)[1] for a in assets) == ["sales__k8s", "sales__k8s_big"]
+    assert len({a.node_def.name for a in assets}) == 2
 
 
 def test_each_output_keeps_its_own_entitys_source(tmp_path: Path) -> None:
@@ -169,5 +169,19 @@ def test_two_manifests_with_one_domain_and_runner_load_together(tmp_path: Path) 
     second.write_text(json.dumps(payload), encoding="utf-8")
 
     definitions = build_definitions_from_manifest_paths(manifest_paths=[str(first), str(second)])
+
+    assert definitions.resolve_all_job_defs()  # conflicting op names raise here
+
+
+def test_runners_whose_names_sanitize_alike_get_distinct_ops(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    for name in ("k8s-big", "k8s_big"):
+        payload["runners"]["definitions"][name] = payload["runners"]["definitions"]["k8s"]
+    payload["entities"][0]["runner"] = "k8s-big"
+    payload["entities"][1]["runner"] = "k8s_big"
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    definitions = build_definitions_from_manifest_paths(manifest_paths=[str(manifest)])
 
     assert definitions.resolve_all_job_defs()  # conflicting op names raise here
