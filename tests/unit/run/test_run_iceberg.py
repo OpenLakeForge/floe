@@ -27,12 +27,20 @@ from pyiceberg.table.update import (
     update_table_metadata,
 )
 
+sys.path.insert(0, str(Path(__file__).parents[1] / "iceberg"))  # the REST catalog fixture's module  # fmt: skip
+from test_merge_commit_retry import (  # pyright: ignore[reportMissingImports] -- a sibling test module, put on the path above
+    RestCatalog,
+    server,  # noqa: F401  # pyright: ignore[reportUnusedImport] -- the fixture, used by name
+)
+
 import floe
 import floe.iceberg.sink as sink_module
 from floe._cli import main
 from floe.config.parse import parse_config
 from floe.config.project import RootConfig
+from floe.config.storage import CatalogDefinition
 from floe.errors import FloeConfigError, FloeRunError
+from floe.iceberg.catalog import open_catalog, open_duckdb
 from floe.iceberg.merge import MergeResult
 from floe.iceberg.sink import input_hash, partition_fields
 from floe.iceberg.write import INPUT_HASH, RUN_ID, find_committed, write_result
@@ -316,9 +324,31 @@ def test_merge_scd1_upserts_and_reports_the_counts(tmp_path: Path, catalog: Loca
     assert out["merge_elapsed_ms"] >= 0 and out["snapshot_id"] is not None
 
 
-def test_merge_scd2_is_not_yet_supported(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
-    with pytest.raises(FloeRunError, match="sink.write_mode=merge_scd2 is not yet supported for iceberg"):  # fmt: skip
-        run(tmp_path, "id,name\n1,a\n", mode="merge_scd2")
+def test_merge_scd2_closes_the_changed_row_and_reports_the_counts(
+    tmp_path: Path,
+    server: tuple[RestCatalog, CatalogDefinition],  # noqa: F811 -- the imported fixture
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#997: the real DuckDB MERGE, on the in-process REST catalog of `test_merge_commit_retry.py`."""
+    _, definition = server
+    monkeypatch.setattr(sink_module, "open_catalog", lambda *_: open_catalog(definition))  # pyright: ignore[reportUnknownLambdaType] -- stub  # fmt: skip
+    monkeypatch.setattr(sink_module, "open_duckdb", lambda *_: open_duckdb(definition))  # pyright: ignore[reportUnknownLambdaType] -- stub
+    first = run(tmp_path, "id,name\n1,a\n2,b\n", mode="merge_scd2")
+    report = run(tmp_path, "id,name\n1,A\n2,b\n", mode="merge_scd2")
+    table = open_catalog(definition).load_table(("sales", "orders"))
+    got = sorted(tuple(r.values()) for r in table.scan().to_arrow().to_pylist())
+    assert [r[:3] for r in got] == [(1, "A", True), (1, "a", False), (2, "b", True)]
+    (new, old, kept) = got
+    assert old[4] == new[3] > old[3] == kept[3]  # closed when the new version starts
+    assert new[4] is None and kept[4] is None
+    assert [f.name for f in table.schema().fields][2:] == ["__floe_is_current", "__floe_valid_from", "__floe_valid_to"]  # fmt: skip
+    counts = ["inserted_count", "updated_count", "closed_count", "unchanged_count"]
+    assert [first["accepted_output"][k] for k in counts] == [2, 0, 0, 0]
+    out = report["accepted_output"]
+    assert list(out)[-6:] == ["merge_key", *counts, "merge_elapsed_ms"]
+    assert (out["write_mode"], out["merge_key"]) == ("merge_scd2", ["id"])
+    assert [out[k] for k in counts] == [1, 1, 1, 1]
+    assert out["merge_elapsed_ms"] >= 0 and out["snapshot_id"] is not None
 
 
 def test_full_refresh_with_a_merge_is_a_config_error(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip

@@ -230,6 +230,17 @@ def test_empty_iceberg_catalog_is_not_defaulted(tmp_path: Path) -> None:
             "sink.write_mode=merge_scd1 is not supported by sink.accepted.format=parquet",
         ),
         (
+            "{accepted: {format: parquet, path: out, merge: {ignore_columns: [amt]}}}",
+            "sink.accepted.merge requires sink.accepted.format=iceberg",
+        ),
+        (
+            "{accepted: {format: parquet, path: out, partition_by: [id]}}",
+            (
+                "sink.accepted.partition_by is not supported in 0.8; "
+                "use sink.accepted.partition_spec with sink.accepted.format=iceberg"
+            ),
+        ),
+        (
             "{accepted: {format: iceberg, path: out, partition_spec: [{column: id, transform: 'bucket(16)'}]}}",
             (
                 "sink.accepted.partition_spec[0].transform=bucket(16) is unsupported "

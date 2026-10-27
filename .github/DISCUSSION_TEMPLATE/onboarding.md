@@ -13,17 +13,16 @@ Welcome! This thread is for newcomers to share context and ask questions.
 - Any constraints (time/stack):
 
 ## Codebase map (short)
-- `crates/floe-core`: ingestion engine (formats, checks, run pipeline)
-- `crates/floe-cli`: CLI wrapper for config loading + run/validate
+- `src/floe`: the ingestion engine and the `floe` CLI (`src/floe/_cli.py`)
 - `docs/`: user docs and support matrix
 - `example/`: sample configs + inputs
 
 ## Architecture highlights
-- Storage abstraction: `crates/floe-core/src/io/storage`
-- Input formats: `crates/floe-core/src/io/read`
-- Output sinks: `crates/floe-core/src/io/write`
-- Run pipeline: `crates/floe-core/src/run`
-- Reports: `crates/floe-core/src/report`
+- Storage abstraction: `src/floe/storage`
+- Input formats: `src/floe/read`
+- Output sinks: `src/floe/write`
+- Run pipeline: `src/floe/run`
+- Reports: `src/floe/report`
 
 ## How to get started
 - Find a `good first issue`

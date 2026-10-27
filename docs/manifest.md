@@ -112,7 +112,7 @@ otherwise `cli`. Override detection with the `FLOE_RUNTIME` environment variable
   intentionally **not** reproducible across machines — for a stable, committed, CI-diffable
   `manifest_id`, generate with `--runtime image`.
 
-Remote config URIs (`s3://`, `gs://`, `abfs://`) and already-absolute local paths are recorded
+Remote config URIs (`s3://`) and already-absolute local paths are recorded
 unchanged in both modes.
 
 > **Changed in v0.6.7.** v0.6.6 briefly recorded local `config_uri` / `profile_uri` **relative**
@@ -129,7 +129,7 @@ an ops bucket can safely reference sinks in other buckets.
 
 > **`manifest_revision` and local storage.** `manifest_revision` is a SHA-256 over the
 > whole manifest body, which includes the **resolved** `source.uri` / `sink.*` /
-> `report_base_uri` fields. For **remote** storage (s3://, gs://, abfs://) those
+> `report_base_uri` fields. For **remote** storage (s3://) those
 > resolve to environment-independent URIs, so `manifest_revision` is reproducible too.
 > For **local** storage under `--runtime cli`, those fields resolve to host-absolute
 > `local://<checkout>/...` URIs, so `manifest_revision` (like the host-absolute `config_uri`)

@@ -1,9 +1,0 @@
-*.so
-*.pyd
-__pycache__/
-*.pyc
-dist/
-build/
-*.egg-info/
-tests/fixtures/out/
-tests/fixtures/report/
