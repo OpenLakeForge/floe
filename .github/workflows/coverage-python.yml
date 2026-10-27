@@ -1,8 +1,7 @@
 name: Coverage (Python)
 
 # Informational only — never make this a required check. Runs on main after
-# Python core changes, on demand, and on PRs that edit this file. Separate from
-# coverage.yml so Python-only merges don't rerun the Rust llvm-cov build.
+# Python core changes, on demand, and on PRs that edit this file.
 on:
   push:
     branches: [main]

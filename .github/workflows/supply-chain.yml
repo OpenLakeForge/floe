@@ -4,8 +4,8 @@ on:
   pull_request:
   merge_group:
   schedule:
-    # Weekly sweep so newly published RUSTSEC advisories surface even when no
-    # PR touches the dependency tree.
+    # Weekly sweep so newly published advisories surface even when no PR
+    # touches the dependency tree.
     - cron: "0 6 * * 1"
   workflow_dispatch:
 
@@ -18,30 +18,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Runs on every PR and queue entry so the required `supply-chain` check always
-  # reports; cargo-deny itself runs only when the dependency tree can change.
-  cargo-deny:
-    name: supply-chain
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dorny/paths-filter@v4
-        id: filter
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-        with:
-          filters: |
-            deps:
-              - "Cargo.toml"
-              - "Cargo.lock"
-              - "crates/**/Cargo.toml"
-              - "deny.toml"
-              - ".github/workflows/supply-chain.yml"
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        if: steps.filter.outcome == 'skipped' || steps.filter.outputs.deps == 'true'
-        with:
-          command: check advisories bans licenses sources
-
-  # Same pattern as above: always reports, audits only when Python deps can change.
+  # Runs on every PR and queue entry so the required `python-audit` check always
+  # reports; the audit itself runs only when the Python dependencies can change.
   python-audit:
     name: python-audit
     runs-on: ubuntu-latest
@@ -60,7 +38,7 @@ jobs:
         if: steps.filter.outcome == 'skipped' || steps.filter.outputs.deps == 'true'
       # pip-audit runs via uvx, so it is not a project dependency. The export is
       # hashed, so --disable-pip audits the lock as-is without resolving anything.
-      # Ignores (--ignore-vuln <ID>) must carry an inline reason, as in deny.toml.
+      # Ignores (--ignore-vuln <ID>) must carry an inline reason.
       - name: Audit locked Python dependencies
         if: steps.filter.outcome == 'skipped' || steps.filter.outputs.deps == 'true'
         run: |

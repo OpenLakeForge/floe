@@ -2,6 +2,14 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.0 (unreleased)
+
+- **Floe is a pure-Python package (#971).** `pip install floe-python` installs the `floe`
+  command; the wheel is `py3-none-any`. `ghcr.io/openlakeforge/floe` is now the Python image
+  (`ghcr.io/openlakeforge/floe-python` is no longer published). The Rust core moved to the
+  archived OpenLakeForge/floe-rust repository: 0.8 publishes no Rust binaries, no `floe-core`
+  or `floe-cli` crates, no `floe-duckdb` companion and no Homebrew or Scoop update.
+
 ## airflow-floe (unreleased)
 
 - **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest
