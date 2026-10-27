@@ -1,86 +1,86 @@
-# Floe Support Matrix (Current)
+# Floe Support Matrix (0.8)
 
-This matrix reflects **current behavior** in the codebase (not aspirational).
-Cloud storage uses temp download/upload for file IO, except Delta and S3/GCS
-Iceberg accepted sinks which use direct object_store-backed transactions/writes.
-DuckDB accepted output targets a local `.duckdb` file or MotherDuck; object-store
-database files are rejected because DuckDB cannot update them safely in place.
+This matrix reflects **current behavior** of Floe 0.8 (not aspirational). Floe 0.8 supports
+local and S3 storage. S3 inputs are downloaded to a temp directory and read locally; Parquet
+parts, rejected CSV and reports are built in memory, then uploaded; Iceberg tables are
+written through PyIceberg (and DuckDB for merges) directly to S3.
+
+## Dropped in 0.8
+
+These 0.7 features are rejected by `floe validate` with a "not supported in 0.8" error (D1, D26):
+
+| Dropped | Instead |
+|---|---|
+| Fixed-width input (`source.format: fixed`) | Convert to CSV upstream |
+| Delta Lake accepted sink and Unity Catalog | Iceberg |
+| DuckDB / MotherDuck accepted sink | Iceberg (merges run through DuckDB) |
+| AWS Glue catalog | Iceberg REST catalog (Polaris) |
+| Catalog-less Iceberg tables (filesystem catalog) | Iceberg REST catalog |
+| ADLS and GCS storage | S3 or an S3-compatible store |
+
+The 0.7 implementation is archived at
+[OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
 
 ## Inputs
 
-| Format | Local | S3 | ADLS | GCS | Notes |
-|---|---|---|---|---|---|
-| CSV | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | Suffix filter `.csv` |
-| TSV | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | Suffix filter `.tsv` |
-| Fixed-width | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | Suffix filter `.txt`, `.fw` |
-| JSON (array) | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | `source.options.json_mode=array` (default) |
-| JSON (ndjson) | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | `source.options.json_mode=ndjson` |
-| ORC | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | Suffix filter `.orc` |
-| Parquet | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | Temp download then read locally |
-| XLSX | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | `source.options.sheet` (name), `header_row`/`data_row` (1-based) |
-| Avro | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | Suffix filter `.avro` |
-| XML | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | `source.options.row_tag` required; selectors in `schema.columns[].source` |
+| Format | Local | S3 | Notes |
+|---|---|---|---|
+| CSV | ✅ | ✅ (temp) | Suffix filter `.csv` |
+| TSV | ✅ | ✅ (temp) | Suffix filter `.tsv` |
+| JSON (array) | ✅ | ✅ (temp) | `source.options.json_mode=array` (default) |
+| JSON (ndjson) | ✅ | ✅ (temp) | `source.options.json_mode=ndjson` |
+| Parquet | ✅ | ✅ (temp) | Suffix filter `.parquet` |
+| ORC | ✅ | ✅ (temp) | Suffix filter `.orc` |
+| Avro | ✅ | ✅ (temp) | Suffix filter `.avro` |
+| XLSX | ✅ | ✅ (temp) | `source.options.sheet` (name), `header_row`/`data_row` (1-based) |
+| XML | ✅ | ✅ (temp) | `source.options.row_tag` required; selectors in `schema.columns[].source`; DOCTYPEs are refused |
 
 Notes:
-- Cloud inputs are resolved by **prefix listing** + suffix filtering, then downloaded to temp files.
-- Globs and recursive options apply to local inputs only.
-- Fixed-width file extensions accepted: `.txt`, `.fw` (case-insensitive).
-- TSV file extensions accepted: `.tsv` (case-insensitive).
-- JSON file extensions accepted: `.json`, `.jsonl`, `.ndjson`, `.djson` (case-insensitive).
-- XLSX file extensions accepted: `.xlsx` (case-insensitive).
-- Avro file extensions accepted: `.avro` (case-insensitive).
-- XML file extensions accepted: `.xml` (case-insensitive).
+- File extensions are matched case-insensitively: `.csv`, `.tsv`, `.parquet`, `.orc`, `.avro`,
+  `.xlsx`, `.xml`, and `.json`, `.jsonl`, `.ndjson`, `.djson` for JSON.
+- S3 inputs are resolved by **prefix listing** plus suffix filtering, then downloaded to temp
+  files. A glob in an S3 path needs a non-empty literal prefix before the first wildcard.
+- `source.options.glob` and `recursive` apply to local directory inputs.
+- `.floe/` paths and the entity's archive location are never listed as inputs (D23, D31).
 - Nested JSON values (objects/arrays) are rejected.
 
 ## Outputs
 
-| Output | Local | S3 | ADLS | GCS | Notes |
-|---|---|---|---|---|---|
-| Accepted: Parquet | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | Writes `part-*.parquet` (overwrite: sequential parts, append: UUID parts) |
-| Accepted: Delta | ✅ | ✅ (object_store) | ✅ (object_store) | ✅ (object_store) | Transactional `_delta_log`; additive schema evolution for Delta only |
-| Accepted: Iceberg | ✅ | ✅ (filesystem catalog or Glue catalog over object_store) | ✅ (filesystem catalog over object_store) | ✅ (filesystem catalog over object_store) | `metadata/` + `data/`; append/overwrite; partition spec runtime supported; no schema evolution/GC |
-| Accepted: DuckDB | ✅ (`.duckdb` file) | ➡️ MotherDuck | ➡️ MotherDuck | ➡️ MotherDuck | overwrite/append/merge_scd1/merge_scd2 via native `MERGE INTO`; remote via MotherDuck (`md:`) only — object-store `.duckdb` files are rejected |
-| Rejected: CSV | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | Dataset parts `part-*.csv` |
-| Reports: JSON | ✅ | ✅ (temp) | ✅ (temp) | ✅ (temp) | Uploaded via temp file |
+| Output | Local | S3 | Notes |
+|---|---|---|---|
+| Accepted: Parquet | ✅ | ✅ (upload) | Writes `part-*.parquet`; `overwrite` and `append` |
+| Accepted: Iceberg | ❌ | ✅ (REST catalog) | `overwrite`, `append` and `merge_scd1` in one catalog commit per entity; `merge_scd2` is not runnable yet (#654) |
+| Rejected: CSV | ✅ | ✅ (upload) | Dataset parts `part-*.csv`; the only rejected format |
+| Reports: JSON | ✅ | ✅ (upload) | |
 
 Notes:
-- Parquet outputs to cloud are written locally then uploaded.
-- Delta outputs to cloud are **direct** via object_store (no temp upload).
-- Delta `partition_by` is runtime-supported on local/S3/ADLS/GCS accepted sinks.
-- Delta schema evolution is currently Delta-only and additive-only (`schema.schema_evolution.mode=add_columns`).
-- Delta additive evolution is implemented for `append`, `overwrite`, `merge_scd1`, and `merge_scd2`.
-- Non-additive schema changes and additive changes against partitioned Delta tables fail fast.
-- Delta accepted-output report metrics use committed Delta log `add` actions; remote metrics are best-effort and remain nullable on post-write collection failure.
-- Iceberg on S3 supports filesystem-catalog semantics and AWS Glue catalog registration (S3 data location).
-- Iceberg `partition_spec` is runtime-supported (validated subset: `identity`, `year`, `month`, `day`, `hour`).
-- Iceberg accepted-output reports include snapshot/version metadata and file sizing metrics for data files.
-- Iceberg on GCS uses filesystem-catalog semantics (no external catalog yet).
-- Iceberg on ADLS uses filesystem-catalog semantics (no external catalog beyond REST).
-- `sink.write_mode` applies to accepted and rejected outputs (`overwrite`, `append`, `merge_scd1`, `merge_scd2`).
-- `merge_scd1` and `merge_scd2` are supported on accepted Delta and DuckDB sinks; other accepted sinks (Parquet, Iceberg) fail validation for merge modes.
-- DuckDB accepted sinks write a local `.duckdb` file or a MotherDuck (`md:`) database; object-store `.duckdb` file paths are rejected at validation (DuckDB cannot read-write database files over object storage). See [DuckDB sink](sinks/duckdb.md).
+- `sink.write_mode` applies to accepted and rejected outputs (`overwrite`, `append`,
+  `merge_scd1`, `merge_scd2`). Merge modes need an Iceberg accepted sink.
+- An Iceberg accepted sink requires a REST catalog in `catalogs.definitions` (D26) and S3
+  storage for the table data.
+- Iceberg `partition_spec` supports `identity`, `year`, `month`, `day`, `hour` and
+  `bucket` (with `num_buckets`, D12).
+- `schema.schema_evolution.mode: add_columns` is Iceberg-only and additive-only (D13).
+- Iceberg `append` commits carry an input fingerprint, so a retry after a crash does not write
+  the same batch twice (D5).
+- Iceberg merges are merge-on-read and leave position delete files. `floe maintain` expires old
+  snapshots and removes orphan files; see [CLI](cli.md).
+- PII `strategy: drop` is rejected for Iceberg sinks (the table enforces the full declared schema).
 
-## Accepted-output report metadata (current)
+## Accepted-output report metadata
 
 - `accepted_output` in each entity report can include:
   - `files_written`, `parts_written`, `part_files`
-  - `table_version` (Delta version or Iceberg metadata version, format-dependent)
-  - `snapshot_id` (Iceberg)
+  - `table_version` and `snapshot_id` (Iceberg)
   - `total_bytes_written`, `avg_file_size_mb`, `small_files_count`
-  - Iceberg catalog identifiers when Glue mode is configured (`iceberg_catalog_name`, `iceberg_database`, `iceberg_namespace`, `iceberg_table`)
-
-Operational boundary:
-- Floe writes tables and reports write-time metrics, but does not run downstream
-  table optimization/maintenance (Delta optimize/vacuum, Iceberg compaction/maintenance).
+  - merge metrics for `merge_scd1` (see [report.md](report.md))
 
 ## Cloud storage behavior
 
-- Storage paths resolve to canonical URIs:
-  - S3: `s3://<bucket>/<prefix>/<path>`
-  - ADLS: `abfs://<container>@<account>.dfs.core.windows.net/<prefix>/<path>`
-  - GCS: `gs://<bucket>/<prefix>/<path>`
+- Storage paths resolve to canonical URIs: `s3://<bucket>/<prefix>/<path>`.
 - Prefix listing is stable and lexicographically sorted.
-- No glob support for S3/ADLS/GCS inputs (prefix only).
+- S3-compatible stores (MinIO, SeaweedFS, …) work through `AWS_ENDPOINT_URL_S3` /
+  `AWS_ENDPOINT_URL`; see [storages/s3.md](storages/s3.md).
 
 ## Config keys (storage)
 
@@ -94,15 +94,6 @@ storages:
       type: s3
       bucket: my-bucket
       region: eu-west-1
-      prefix: data
-    - name: adls_raw
-      type: adls
-      account: myaccount
-      container: raw
-      prefix: ingest
-    - name: gcs_raw
-      type: gcs
-      bucket: my-bucket
       prefix: data
 ```
 

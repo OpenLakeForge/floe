@@ -1,4 +1,0 @@
-apiVersion: floe/v1
-kind: EnvironmentProfile
-metadata:
-  name: test

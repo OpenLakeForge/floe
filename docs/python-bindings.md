@@ -1,31 +1,39 @@
-# Using floe from Python
+# Python API
 
-`floe-python` wraps the Floe Rust engine via [PyO3](https://pyo3.rs) and
-[maturin](https://www.maturin.rs), so the same contract-first ingestion gate can
-run from Python scripts, Jupyter notebooks, tests, or orchestrators. Use it when
-you want Floe inside an existing Python workflow without deploying a service or
-starting a separate platform instance.
+Floe is a Python library: `import floe` gives the same contract-first ingestion
+gate as the `floe` command, from Python scripts, Jupyter notebooks, tests, or
+orchestrators. Use it when you want Floe inside an existing Python workflow
+without deploying a service or starting a separate platform instance.
 
-A single ABI3 wheel covers Python 3.10–3.13.
+The package is pure Python and needs Python 3.11 or later.
 
 ```bash
 pip install floe-python
 ```
 
+The public API is what `floe.__all__` exports: the functions below, the
+`RunOutcome`, `RootConfig` and `EntityConfig` result types, the typed exceptions,
+the `RunEvent` TypedDicts, and `floe.__version__`.
+
 ---
 
 ## The core functions
-
-Four functions cover the main embedded and notebook use cases:
 
 | Function | Returns | When to use |
 |---|---|---|
 | `floe.validate(config_path)` | `None` | Pre-flight config check before running |
 | `floe.run(config_path)` | `RunOutcome` | Execute the full ingestion pipeline |
-| `floe.run_manifest(manifest_path)` | `RunOutcome` | Run from a generated manifest, as `floe run --manifest` (Python core only) |
+| `floe.run_manifest(manifest_path)` | `RunOutcome` | Run from a generated manifest, as `floe run --manifest` |
 | `floe.load_config(config_path)` | `RootConfig` | Inspect entities and settings without running |
 | `floe.extract_config_env_vars(config_path)` | `dict[str, str]` | List `{{VAR}}` placeholders in the config |
-| `floe.maintain(config_path, older_than_days=7, retain_last=10, orphan_delay_days=3, dry_run=False, compact=False, experimental=False)` | `list[dict]` | Expire old Iceberg snapshots and remove orphan files (compaction with `compact=True, experimental=True`), as `floe maintain` (Python core only) |
+| `floe.maintain(config_path, older_than_days=7, retain_last=10, orphan_delay_days=3, dry_run=False, compact=False, experimental=False)` | `list[dict]` | Expire old Iceberg snapshots and remove orphan files (compaction with `compact=True, experimental=True`), as `floe maintain` |
+| `floe.inspect_entity_state(config_path, entity_name)` / `floe.reset_entity_state(config_path, entity_name)` | `dict` / `bool` | Incremental state, as `floe state inspect` / `floe state reset` (see [below](#incremental-state)) |
+| `floe.set_observer(callback)` / `floe.clear_observer()` | `bool` / `None` | Receive run events as they happen (see [below](#observing-runs-in-real-time)) |
+
+`run`, `run_manifest` and `maintain` also take `entities=[...]` to select entities;
+`run` and `run_manifest` take `dry_run`, `run_id` and `full_refresh`, like the CLI
+flags of the same names. `validate`, `run` and `maintain` take `profile_path` and
+`profile_vars` (see [Working with profiles](#working-with-profiles)).
 
 A quick example for each:
 
@@ -90,7 +98,7 @@ outcome = floe.run("orders.yml")
 outcome   # renders inline HTML table with per-entity status rows
 ```
 
-The `_repr_html_()` method is called automatically by Jupyter. Status colors: green = Success, orange = SuccessWithWarnings, red = Failure.
+The `_repr_html_()` method is called automatically by Jupyter. Status colors: green = `success`, orange = `success_with_warnings`, red = anything else.
 
 ---
 
@@ -128,7 +136,7 @@ The callback is **swappable between calls** — calling `set_observer` again rep
 | `run_finished` | `run_id`, `status`, `exit_code`, `files`, `rows`, `accepted`, `rejected`, `summary_uri` |
 | `log` | `run_id`, `log_level`, `code`, `message`, `entity`, `input` |
 
-All events have an `event` key (string discriminator) and `ts_ms` (Unix timestamp in milliseconds). The full TypedDict definitions are in [`python/floe/_floe.pyi`](../crates/floe-python/python/floe/_floe.pyi).
+All events have an `event` key (string discriminator) and `ts_ms` (Unix timestamp in milliseconds). Each event type is exported as a TypedDict (`floe.RunStartedEvent`, …, `floe.LogEvent`; `floe.RunEvent` is their union), defined in [`src/floe/run/events.py`](../src/floe/run/events.py). `schema_evolution_applied` is part of the contract but is not emitted in 0.8.
 
 ---
 
@@ -183,7 +191,7 @@ except floe.FloeConfigError as e:
     # YAML is invalid or a required field is missing
     print(f"Config error: {e}")
 except floe.FloeStorageError as e:
-    # Could not reach S3/GCS/ADLS or read a local path
+    # Could not reach S3 or read a local path
     print(f"Storage error: {e}")
 except floe.FloeRunError as e:
     # Pipeline ran but encountered a fatal data error
@@ -205,14 +213,14 @@ FloeError
 
 ---
 
-## Threading and the GIL
+## Threads
 
-`floe.run()` and `floe.validate()` release the Python GIL while Rust is working, so they are safe to call from threads managed by `asyncio`, `concurrent.futures`, or a Dagster worker. You can run multiple pipelines in parallel across threads.
-
-The observer callback is called from the Rust thread and must reacquire the GIL. Keep callbacks fast and non-blocking — avoid heavy pandas operations or network calls inside the callback. Use a queue if you need to hand off work:
+`floe.run()` runs its entities one after another in the calling thread and calls
+the observer from that thread, so the callback blocks the run while it executes.
+Keep it fast, and use a queue to hand off work:
 
 ```python
-import queue, threading
+import queue
 q: queue.Queue = queue.Queue()
 
 floe.set_observer(q.put_nowait)  # fast: just enqueues
@@ -223,26 +231,17 @@ while not q.empty():
     print(q.get_nowait())  # process events after the run
 ```
 
+The observer is global to the process: runs in parallel threads share it.
+
 ---
 
-## Build from source
+## Developing Floe
 
-If you want to build the native extension yourself (e.g., to test a local floe-core change):
+To work on the library itself, see [`CONTRIBUTING.md`](../CONTRIBUTING.md):
 
 ```bash
-# Install maturin
-pip install maturin
-
-# Clone the repo and build in development mode
 git clone https://github.com/OpenLakeForge/floe
-cd floe/crates/floe-python
-maturin develop          # builds and installs into your current virtualenv
+cd floe
+uv sync --all-groups
+uv run pytest
 ```
-
-For a release-quality wheel:
-
-```bash
-maturin build --release  # produces a .whl in target/wheels/
-```
-
-The extension is compiled as `floe._floe` (a C extension module) and re-exported through `floe/__init__.py`. The ABI3 flag (`abi3-py310`) means the same `.so` file works on Python 3.10, 3.11, 3.12, and 3.13.
