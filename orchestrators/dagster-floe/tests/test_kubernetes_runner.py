@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from floe_dagster.kubernetes_runner import (
@@ -12,8 +13,10 @@ from floe_dagster.kubernetes_runner import (
     build_k8s_job_spec,
     map_k8s_job_status,
     run_kubernetes_job,
+    sized_for_domain,
 )
-from floe_dagster.manifest import ManifestRunnerDefinition
+from floe_dagster.manifest import ManifestRunnerDefinition, load_manifest
+from floe_dagster.runner import LocalRunner
 
 
 def _runner() -> ManifestRunnerDefinition:
@@ -218,3 +221,58 @@ def test_run_kubernetes_job_surfaces_oom_killed_reason() -> None:
         )
 
     assert result.failure_reason == "OOMKilled (exit_code=137)"
+
+
+def test_build_k8s_job_spec_sets_requests_and_limits() -> None:
+    runner = replace(
+        _runner(),
+        resources={"cpu": "1", "memory_mb": 512, "cpu_limit": "2", "memory_limit_mb": 1024},
+    )
+    container = build_k8s_job_spec("floe-x", ["floe"], runner)["spec"]["template"]["spec"]["containers"][0]
+    assert container["resources"] == {
+        "requests": {"cpu": "1", "memory": "512Mi"},
+        "limits": {"cpu": "2", "memory": "1024Mi"},
+    }
+
+
+def test_sized_for_domain_replaces_resources_only_for_a_listed_domain() -> None:
+    runner = replace(
+        _runner(),
+        resources={"cpu": "1"},
+        domain_resources={"sales": {"memory_mb": 4096}},
+    )
+    assert sized_for_domain(runner, "sales").resources == {"memory_mb": 4096}
+    assert sized_for_domain(runner, "finance").resources == {"cpu": "1"}
+    assert sized_for_domain(runner, None).resources == {"cpu": "1"}
+
+
+def test_run_floe_entities_creates_one_job_named_for_the_domain() -> None:
+    execution = load_manifest(Path(__file__).parent / "fixtures" / "manifest.json").execution
+    runner = replace(_runner(), domain_resources={"sales": {"cpu": "2"}})
+    jobs_api, core_api = MagicMock(), MagicMock()
+    jobs_api.read_namespaced_job.return_value = _job(
+        succeeded=1, conditions=[{"type": "Complete", "status": "True"}]
+    )
+    core_api.list_namespaced_pod.return_value.items = []
+
+    with (
+        patch("floe_dagster.kubernetes_runner._make_batch_client", return_value=jobs_api),
+        patch("floe_dagster.kubernetes_runner._make_core_client", return_value=core_api),
+    ):
+        result = LocalRunner().run_floe_entities(
+            config_uri="cfg.yml",
+            run_id="r1",
+            domain="sales",
+            entities=["orders", "returns", "refunds"],
+            execution=execution,
+            runner_definition=runner,
+            manifest_uri="s3://m/manifest.json",
+        )
+
+    assert result.exit_code == 0
+    jobs_api.create_namespaced_job.assert_called_once()
+    body = jobs_api.create_namespaced_job.call_args.kwargs["body"]
+    assert body["metadata"]["name"].startswith("floe-sales-")
+    container = body["spec"]["template"]["spec"]["containers"][0]
+    assert container["args"][container["args"].index("--entities") + 1] == "orders,returns,refunds"
+    assert container["resources"] == {"requests": {"cpu": "2"}}
