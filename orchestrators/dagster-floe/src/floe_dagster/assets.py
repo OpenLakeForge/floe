@@ -126,6 +126,7 @@ def build_floe_asset_defs(
     for (domain, runner_name), members in domain_groups.items():
         assets_defs.append(
             _make_domain_multi_asset(
+                scope=_source_scope(manifest),  # the multi-manifest loader needs distinct op names
                 domain=domain,
                 runner_name=runner_name,
                 entities=members,
@@ -440,6 +441,7 @@ _ENTITY_FAILED = ("aborted", "failed")
 
 def _make_domain_multi_asset(
     *,
+    scope: str,
     domain: str,
     runner_name: str,
     entities: list[ManifestEntity],
@@ -476,7 +478,7 @@ def _make_domain_multi_asset(
     # ponytail: no `floe/table` op tag here, an op spans several tables; the entities of one Job run
     # one after another, so only runs of different Jobs on one table can still overlap (#924).
     @multi_asset(
-        name=re.sub(r"[^A-Za-z0-9_]", "_", f"floe_{domain}__{runner_name}"),
+        name=re.sub(r"[^A-Za-z0-9_]", "_", f"floe_{scope}__{domain}__{runner_name}"),
         outs=outs,
         deps=[AssetKey(key) for key in {tuple(k) for k in source_keys.values()}],
         internal_asset_deps=internal_deps,
@@ -541,7 +543,8 @@ def _make_domain_multi_asset(
             )
             if failure is not None:
                 failures.append(entity.name)
-        if failures or not_run:
+        # entity outcomes are kept, but a failed backend (or any non-zero run) still fails the step
+        if failures or not_run or run_failed:
             if not_run:
                 context.log.warning(f"floe did not run entities {not_run}")
             raise Failure(

@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 from dagster import AssetKey, AssetSelection, materialize
 
 from floe_dagster.assets import build_floe_asset_defs
+from floe_dagster.definitions import build_definitions_from_manifest_paths
 from floe_dagster.runner import LocalRunner
 
 FIXTURE = Path(__file__).parent / "fixtures" / "manifest.json"
@@ -80,7 +81,7 @@ def test_domain_scope_runs_the_entities_in_one_job_with_a_materialization_each(t
     assert _entities_arg(jobs_api) == "orders,returns,refunds"
     assert _materialized(result) == {"sales/orders", "sales/returns", "sales/refunds"}
     args = jobs_api.create_namespaced_job.call_args.kwargs["body"]["spec"]["template"]["spec"]["containers"][0]["args"]
-    assert args[args.index("--run-id") + 1] == f"{result.run_id}_floe_sales__k8s"  # one Floe run id per group
+    assert args[args.index("--run-id") + 1].startswith(f"{result.run_id}_floe_")  # one Floe run id per group
 
 
 def test_domain_scope_subset_runs_only_the_selected_entities(tmp_path: Path) -> None:
@@ -122,7 +123,7 @@ def test_an_entity_with_its_own_runner_gets_its_own_domain_asset(tmp_path: Path)
 
     assets, _, _ = build_floe_asset_defs(manifest_path=str(manifest), runner=LocalRunner())
 
-    assert sorted(a.node_def.name for a in assets) == ["floe_sales__k8s", "floe_sales__k8s_big"]
+    assert sorted(a.node_def.name.split("__", 1)[1] for a in assets) == ["sales__k8s", "sales__k8s_big"]
 
 
 def test_each_output_keeps_its_own_entitys_source(tmp_path: Path) -> None:
@@ -148,3 +149,25 @@ def test_a_later_entity_aborting_does_not_fail_the_checks_of_an_earlier_one(tmp_
     orders = [c for c in result.get_asset_check_evaluations() if c.asset_key == AssetKey(["sales", "orders"])]
     assert orders
     assert all(c.passed for c in orders)
+
+
+def test_a_failed_backend_fails_the_step_even_when_every_entity_succeeded(tmp_path: Path) -> None:
+    result, _ = _run(tmp_path, dict.fromkeys(NAMES, "success"), exit_code=1)
+
+    assert not result.success
+    assert _materialized(result) == {"sales/orders", "sales/returns", "sales/refunds"}  # outcomes are kept
+
+
+def test_two_manifests_with_one_domain_and_runner_load_together(tmp_path: Path) -> None:
+    first = _manifest(tmp_path)
+    payload = json.loads(first.read_text(encoding="utf-8"))
+    payload["manifest_id"] = "other"
+    payload["entities"] = payload["entities"][:1]
+    payload["entities"][0]["name"] = "audit"
+    payload["entities"][0]["asset_key"] = ["sales", "audit"]
+    second = tmp_path / "other.json"
+    second.write_text(json.dumps(payload), encoding="utf-8")
+
+    definitions = build_definitions_from_manifest_paths(manifest_paths=[str(first), str(second)])
+
+    assert definitions.resolve_all_job_defs()  # conflicting op names raise here
