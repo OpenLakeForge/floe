@@ -21,6 +21,7 @@ from floe.checks.mismatch import (
     MismatchOutcome,
     apply_mismatch,
     declared_names,
+    json_input_columns,
     plan_mismatch,
 )
 from floe.checks.normalize import (
@@ -375,6 +376,9 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     try:
         if entity.source.format == "xml":
             first, probe = [], xml_columns(path, entity.source.options)
+        elif entity.source.format == "json":
+            # #998: Rust compares the first object's top-level keys, not the selected columns
+            first, probe = [], json_input_columns(path, entity.source.options.json_mode or "array")  # fmt: skip
         else:  # the first chunk's columns are the input columns the plan compares
             first = [next(chunks)]
             probe = list(first[0][1].columns)

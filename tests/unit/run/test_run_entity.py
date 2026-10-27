@@ -263,6 +263,45 @@ def test_a_json_source_runs_end_to_end(tmp_path: Path) -> None:
     assert accepted(tmp_path)["id"].to_list() == [1, 2]
 
 
+def test_a_json_source_maps_nested_selectors_to_the_schema_names(
+    tmp_path: Path,
+) -> None:
+    """#998: every row is read and each selector's values land in its schema column, as Rust 0.7."""
+    config = CONFIG.format(
+        severity="reject",
+        mismatch="normalize_columns: {enabled: true, strategy: snake_case}",
+    )
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    config = config.replace('options: {header: true, separator: ","}', "options: {}")
+    config = config.replace(
+        "{name: id, type: int64, nullable: false}",
+        "{name: order_id, source: order.id, type: int64, nullable: false}",
+    )
+    config = config.replace(
+        "{name: name, type: string}",
+        "{name: first_sku, source: 'items[0].sku', type: string}",
+    )
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    rows = '[{"order": {"id": 1}, "items": [{"sku": "a"}]}, {"order": {"id": 2}, "items": []}, {"order": {"id": 3}}]'
+    (tmp_path / "in" / "a.json").write_text(rows)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    (file,) = run_entity(entity, tmp_path, "0.3").report["files"]
+    assert (file["status"], file["row_count"], file["accepted_count"]) == (
+        "success",
+        3,
+        3,
+    )
+    assert file["mismatch"]["extra_columns"] == ["items", "order"]
+    assert accepted(tmp_path).to_dicts() == [
+        {"order_id": 1, "first_sku": "a"},
+        {"order_id": 2, "first_sku": None},
+        {"order_id": 3, "first_sku": None},
+    ]
+
+
 def test_append_retry_overwrites_the_rejected_part(tmp_path: Path) -> None:
     """S6 (#919): the same rejecting input run twice leaves one rejected file with the same rows."""
     config = CONFIG.format(severity="reject", mismatch="").replace(
