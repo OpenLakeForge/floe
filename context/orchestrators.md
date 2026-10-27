@@ -199,10 +199,23 @@ When `type = kubernetes_job`, the manifest runner definition supports:
 | `service_account` | string | ServiceAccount to attach to the runner Pod |
 | `resources.cpu` | string | CPU request in Kubernetes quantity notation (e.g. `500m`) |
 | `resources.memory_mb` | integer | Memory request in mebibytes |
+| `resources.cpu_limit` | string | CPU limit (none when omitted) |
+| `resources.memory_limit_mb` | integer | Memory limit in mebibytes (none when omitted) |
+| `job_scope` | `entity` \| `domain` | `entity` (default): one Job per entity. `domain`: see below |
+| `domain_resources` | object | Resources per domain name; used by `domain` Jobs in place of `resources` (no key-wise merge) |
 | `env` | object | Plain env-var key→value pairs injected into the container |
 | `secrets` | array | Kubernetes Secret key references: `[{name, secret_name, key}]` |
 
 These fields are populated automatically when `floe manifest generate` is given a profile with a `kubernetes_job` runner block. The `dagster-floe[kubernetes]` optional extra expresses the Kubernetes client requirement.
+
+### Job scope (`job_scope`)
+
+- **`entity`** (default, also when unset): one Job per entity, named `floe-<entity>-<id>`. Pod start is paid once per entity; each entity has its own timeout, TTL and failure. Use it for a few large entities, or when entities need isolation.
+- **`domain`**: entities of one domain whose runner has `job_scope: domain` form one subsettable multi-asset per (domain, runner), so an entity with another runner gets its own Job. Materializing it launches **one** Job named `floe-<domain>-<id>` running `floe run --manifest <uri> --entities a,b,c` for the selected entities in manifest order, one after another, so Polaris never sees overlapping commits from the Job. The Job is sized from `domain_resources[<domain>]`, else `resources`; `timeout_seconds`, TTL and polling apply to the one Job. Use it when pod start dominates (many small entities). Select the accepted assets: a rejected asset is materialized only when it is selected too, and the asset job selects both. The `floe/table` op tag (#924) is not set on a domain asset.
+
+Dagster still reports per entity (materialization, rows, rejected counts, report URI, asset checks) from the run's `run_finished` event and summary.
+
+**After a failure** each entity is reported from its own status in the run summary: `rejected` and `success_with_warnings` entities are materialized, an `aborted` / `failed` entity fails, and an entity absent from the summary never ran and is reported as *not run* (listed in the step failure's `not_run_entities`), not as its own failure. Today `floe run` stops at the first abort, so the entities after it are not run; once #959 (D36) lets a policy `severity: abort` fail only its entity, the run continues and nothing here changes. A global failure (access, memory, any raised `FloeError`) still aborts the run. Re-executing the step reruns the selected entities; subset it to rerun only some. Report URIs come from `run_finished` (`summary_uri`, `entity_report_uris`), never built by hand (#960).
 
 ---
 

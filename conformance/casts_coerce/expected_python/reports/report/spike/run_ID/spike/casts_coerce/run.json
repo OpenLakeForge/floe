@@ -1,0 +1,100 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "spike.casts_coerce"
+  },
+  "source": {
+    "format": "csv",
+    "path": "local://<ROOT>/in/casts_coerce.csv",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ","
+    },
+    "cast_mode": "coerce",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "file",
+      "file_count": 1,
+      "files": [
+        "local://<ROOT>/in/casts_coerce.csv"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/casts_coerce"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/casts_coerce"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/casts_coerce",
+    "table_root_uri": "local://<ROOT>/out/accepted/casts_coerce",
+    "write_mode": "overwrite",
+    "accepted_rows": 122,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 1926,
+    "avg_file_size_mb": 0.0018367767333984375,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 122,
+    "accepted_total": 122,
+    "rejected_total": 0,
+    "warnings_total": 0,
+    "errors_total": 0
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/casts_coerce.csv",
+      "status": "success",
+      "row_count": 122,
+      "accepted_count": 122,
+      "rejected_count": 0,
+      "mismatch": {
+        "declared_columns_count": 4,
+        "input_columns_count": 4,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/casts_coerce",
+        "rejected_path": null,
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 0,
+        "warnings": 0,
+        "rules": []
+      }
+    }
+  ]
+}

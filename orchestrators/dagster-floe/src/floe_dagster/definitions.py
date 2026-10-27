@@ -7,7 +7,7 @@ from typing import Any, Iterable
 
 from dagster import AssetSelection, Definitions, define_asset_job
 
-from .assets import build_floe_asset_defs
+from .assets import _has_rejected_asset, _rejected_key, build_floe_asset_defs
 from .manifest import ManifestExecution, load_manifest
 from .runner import InProcessRunner, LocalRunner, Runner
 
@@ -142,7 +142,9 @@ def build_definitions_from_manifest_paths(
                 )
             seen_job_names.add(manifest_job_name)
             selection = AssetSelection.assets(
-                *[entity.asset_key for entity in manifest_entities]
+                *[entity.asset_key for entity in manifest_entities],
+                # a domain-scope asset is subsettable, so its rejected outputs are selected explicitly
+                *[_rejected_key(e) for e in manifest_entities if _has_rejected_asset(e)],
             ).required_multi_asset_neighbors()
             job_kwargs: dict[str, Any] = {
                 "name": manifest_job_name,

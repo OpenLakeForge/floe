@@ -1,0 +1,118 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "spike.typed_datetime"
+  },
+  "source": {
+    "format": "parquet",
+    "path": "local://<ROOT>/in/casts_typed.parquet",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ";"
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "file",
+      "file_count": 1,
+      "files": [
+        "local://<ROOT>/in/casts_typed.parquet"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/typed_datetime"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/typed_datetime"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/typed_datetime",
+    "table_root_uri": "local://<ROOT>/out/accepted/typed_datetime",
+    "write_mode": "overwrite",
+    "accepted_rows": 2,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 3138,
+    "avg_file_size_mb": 0.0029926300048828125,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 5,
+    "accepted_total": 2,
+    "rejected_total": 3,
+    "warnings_total": 0,
+    "errors_total": 4
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/casts_typed.parquet",
+      "status": "rejected",
+      "row_count": 5,
+      "accepted_count": 2,
+      "rejected_count": 3,
+      "mismatch": {
+        "declared_columns_count": 9,
+        "input_columns_count": 9,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/typed_datetime",
+        "rejected_path": "<ROOT>/out/rejected/typed_datetime/part-00000.csv",
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 4,
+        "warnings": 0,
+        "rules": [
+          {
+            "rule": "cast_error",
+            "severity": "reject",
+            "violations": 4,
+            "columns": [
+              {
+                "column": "f64",
+                "violations": 2,
+                "target_type": "datetime"
+              },
+              {
+                "column": "u64",
+                "violations": 2,
+                "target_type": "datetime"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

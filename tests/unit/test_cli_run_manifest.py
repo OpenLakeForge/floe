@@ -84,7 +84,9 @@ def test_a_run_from_the_generated_manifest_matches_the_config_run(
     assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
     assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == code
     expected, actual = outputs(by_config), outputs(by_manifest)
-    summary = "report/run_r/run.summary.json"
+    summary = next(
+        k for k in expected if k.endswith("run_r/run.summary.json")
+    )  # D37: under the domain
     assert expected[summary]["config"].pop("path") == "<ROOT>/config.yml"
     assert actual[summary]["config"].pop("path") == "m.json"  # as typed, as Rust
     assert actual == expected
@@ -169,7 +171,9 @@ def test_an_image_runtime_manifest_with_sources_and_metadata_runs(
     assert m["entities"][0]["source"]["uri"] == f"local://{by_manifest}/in/orders.csv"
     assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 0
     expected, actual = outputs(by_config), outputs(by_manifest)
-    summary = "report/run_r/run.summary.json"
+    summary = next(
+        k for k in expected if k.endswith("run_r/run.summary.json")
+    )  # D37: under the domain
     assert expected[summary]["config"].pop("path") == "<ROOT>/config.yml"
     assert actual[summary]["config"].pop("path") == "m.json"
     assert actual == expected
@@ -348,7 +352,7 @@ def test_an_option_block_omitting_an_optional_field_is_kept(
     expected, actual = outputs(by_config), outputs(by_manifest)
     assert actual["out/accepted/orders"] == []  # the file is rejected
     for out in (expected, actual):
-        out["report/run_r/run.summary.json"]["config"].pop("path")
+        out["report/spike/run_r/run.summary.json"]["config"].pop("path")
     assert actual == expected
 
 
@@ -471,6 +475,6 @@ def test_an_empty_metadata_block_runs_and_is_reported(
     monkeypatch.chdir(by_manifest)
     assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
     assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 0
-    summary = "report/run_r/run.summary.json"
+    summary = "report/spike/run_r/run.summary.json"
     expected, actual = outputs(by_config)[summary], outputs(by_manifest)[summary]
     assert actual["config"]["metadata"] == expected["config"]["metadata"]

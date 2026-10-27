@@ -263,6 +263,7 @@ _RUNNER_FIELDS = (
     *("resources", "env", "workspace_url", "existing_cluster_id", "config_uri"),
     *("python_file_uri", "job_name", "auth", "env_parameters"),
 )
+_PYTHON_RUNNER_FIELDS = ("job_scope", "domain_resources")  # carried only when set
 
 
 # Rust `runners_contract`: the fields each profile runner type carries into the manifest
@@ -286,6 +287,10 @@ def _runners(profile: ProfileConfig | None) -> Json:
         if k in ("env", "env_parameters") and isinstance(v, dict):  # a BTreeMap in Rust
             v = dict(sorted(cast(dict[str, str], v).items()))
         runner[k] = v
+    if kind == "kubernetes_job":
+        for k in _PYTHON_RUNNER_FIELDS:
+            if (v := profile.runner.get(k)) is not None:
+                runner[k] = v
     if kind == "databricks_job":
         runner["job_name"] = runner["job_name"] or "floe-{domain}-{env}"
     return {"default": "default", "definitions": {"default": runner}}

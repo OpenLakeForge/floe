@@ -159,6 +159,8 @@ class ManifestRunnerDefinition:
     auth: dict[str, str] | None = None
     env_parameters: dict[str, str] | None = None
     resources: dict[str, Any] | None = None
+    job_scope: str | None = None  # "entity" (when unset) or "domain"
+    domain_resources: dict[str, dict[str, Any]] | None = None  # by domain, replaces `resources`
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "ManifestRunnerDefinition":
@@ -191,6 +193,8 @@ class ManifestRunnerDefinition:
             auth=auth,
             env_parameters=env_parameters,
             resources=data.get("resources"),
+            job_scope=_optional_str(data, "job_scope"),
+            domain_resources=data.get("domain_resources"),
         )
 
 

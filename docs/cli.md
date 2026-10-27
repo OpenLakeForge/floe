@@ -7,7 +7,8 @@
 
 - `floe run -c <config> [--run-id <id>] [--entities <name[,name...]>] [--log-format json|text]`
   - Execute ingestion using the config.
-  - Run reports are written under `<report.path>/run_<run_id>/...` as defined in the config.
+  - Run reports are written under `<report.path>/run_<run_id>/...` as defined in the config,
+    or `<report.path>/<domain>/run_<run_id>/...` when every selected entity has one domain (D37).
   - `-c` accepts local paths or cloud URIs (`s3://`, `gs://`, `abfs://`).
   - `--log-format json` emits NDJSON events to stdout (useful for orchestrators).
   - `--dry-run` resolves entity inputs and output targets without running ingestion.
