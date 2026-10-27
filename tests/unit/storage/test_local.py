@@ -231,3 +231,15 @@ def test_copy_keeps_restrictive_mode(tmp_path: Path) -> None:
     src.chmod(0o600)
     LocalClient().copy(str(src), str(tmp_path / "d"))
     assert (tmp_path / "d").stat().st_mode & 0o777 == 0o600
+
+
+def test_copy_over_an_existing_file_keeps_restrictive_mode(tmp_path: Path) -> None:
+    """#779: `os.open`'s mode only applies on create; an existing 0644 destination must not stay world-readable."""
+    src, dst = tmp_path / "s", tmp_path / "d"
+    src.write_text("secret")
+    src.chmod(0o600)
+    dst.write_text("old")
+    dst.chmod(0o644)
+    LocalClient().copy(str(src), str(dst))
+    assert dst.stat().st_mode & 0o777 == 0o600
+    assert dst.read_text() == "secret"

@@ -100,9 +100,9 @@ class LocalClient:
         src, dst = _path(src_uri), _path(dst_uri)
         try:
             dst.parent.mkdir(parents=True, exist_ok=True)
-            fd = os.open(
-                dst, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, src.stat().st_mode & 0o777
-            )
+            mode = src.stat().st_mode & 0o777
+            fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+            os.fchmod(fd, mode)  # #779: the open mode applies on create only
             with src.open("rb") as fin, os.fdopen(fd, "wb") as fout:
                 shutil.copyfileobj(fin, fout)
         except OSError as e:
