@@ -20,7 +20,7 @@ from dagster import (
 from .k8s_status import STATUS_SUCCEEDED
 
 from .asset_checks import build_asset_check_results, build_asset_check_specs
-from .events import last_run_finished, parse_json_event_lines, parse_run_finished, render_log_event
+from .events import FloeRunFinished, last_run_finished, parse_json_event_lines, parse_run_finished, render_log_event
 from .manifest import (
     DagsterManifest,
     ManifestExecution,
@@ -32,7 +32,7 @@ from .manifest import (
     resolve_config_uri,
     resolve_entity_runner,
 )
-from .runner import Runner
+from .runner import RunResult, Runner
 
 # Advisory Dagster tag (#924): entities writing one Iceberg table share its value, so a
 # `tag_concurrency_limits` entry on this key keeps their runs apart.
@@ -211,7 +211,7 @@ def _make_entity_multi_asset(
 ):
     accepted_key = list(entity.asset_key)
     has_rejected = _has_rejected_asset(entity)
-    rejected_key = list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_rejected"]
+    rejected_key = _rejected_key(entity)
 
     asset_name = _op_name(entity)
     group_name = entity.group_name
@@ -250,113 +250,151 @@ def _make_entity_multi_asset(
             dagster_job_name=dagster_job_name,
         )
 
-        try:
-            events = parse_json_event_lines(result.stdout)
-            _log_floe_output(context, result.stdout, events)
-            if result.stderr.strip():
-                _log_floe_stderr(context, result.stderr)
-            finished_event = last_run_finished(events)
-            finished = parse_run_finished(
-                finished_event,
-                summary_uri_field=execution.result_contract.summary_uri_field,
-            )
-        except ValueError as exc:
-            _log_floe_output(context, result.stdout, [])
-            if result.stderr.strip():
-                _log_floe_stderr(context, result.stderr)
-            context.log.warning(f"failed to parse Floe run events: {exc}")
-            synthetic_status = result.status or ("success" if result.exit_code == 0 else "failed")
-            synthetic_exit_code = result.exit_code
-            from .events import FloeRunFinished
-
-            finished = FloeRunFinished(
-                run_id=(result.backend_metadata or {}).get("backend_run_id") or (run_id or "unknown"),
-                status=synthetic_status,
-                exit_code=synthetic_exit_code,
-                summary_uri=None,
-            )
-
-        summary_uri = finished.summary_uri
-        entity_stats: dict[str, Any] = {}
-        entity_report_json: dict[str, Any] | None = None
-        entity_report_uri: str | None = None
-
-        # Prefer entity_report_uris from the event (richer contract); fall back to
-        # loading the run summary and extracting entity_report_file from it.
-        entity_report_uri = finished.entity_report_uris.get(entity_name)
-        if summary_uri:
-            try:
-                summary_json = _load_summary_json(summary_uri, config_uri)
-                entity_stats = _extract_entity_stats(summary_json, entity_name)
-                if not entity_report_uri:
-                    entity_report_uri = _as_optional_str(entity_stats.get("entity_report_file"))
-                if entity_report_uri:
-                    entity_report_json = _load_entity_report_json(entity_report_uri, config_uri)
-            except Exception as exc:  # noqa: BLE001
-                context.log.warning(f"failed to load run summary/entity report: {exc}")
-
-        metadata: dict[str, Any] = {
-            "run_id": finished.run_id,
-            "status": finished.status,
-            "exit_code": finished.exit_code,
-        }
-        if summary_uri:
-            metadata["summary_uri"] = summary_uri
-
-        metadata.update(entity_stats)
-        if entity_report_uri:
-            metadata["entity_report_uri"] = entity_report_uri
-        if result.failure_reason:
-            metadata["failure_reason"] = result.failure_reason
-        if result.status:
-            metadata["backend_status"] = result.status
-        if result.backend_metadata:
-            metadata["backend_metadata"] = result.backend_metadata
-
-        check_results = build_asset_check_results(
-            asset_key=accepted_key,
-            entity_name=entity_name,
-            finished=finished,
-            entity_report=entity_report_json,
-            entity_stats=entity_stats,
-            summary_uri=summary_uri,
-            entity_report_uri=entity_report_uri,
-        )
-        for check_result in check_results:
-            yield check_result
-
-        if (
+        finished = _parse_finished(context, result, execution, run_id)
+        summary = _load_run_summary(context, finished, config_uri)
+        failed = (
             result.exit_code != 0
             or finished.exit_code != 0
             or ((result.status is not None) and (result.status != STATUS_SUCCEEDED))
-        ):
-            raise Failure(
-                description=f"floe run failed for entity {entity_name}",
-                metadata=metadata,
-            )
-
-        yield Output(value=None, output_name="accepted", metadata=metadata)
-        if has_rejected:
-            rows = entity_stats.get("rows") or 0
-            rejected_count = entity_stats.get("rejected") or 0
-            rejection_rate = rejected_count / rows if rows > 0 else 0.0
-            rejected_metadata: dict[str, Any] = {
-                "run_id": finished.run_id,
-                "rejected": MetadataValue.int(rejected_count),
-                "status": finished.status,
-                "rejection_rate": MetadataValue.float(rejection_rate),
-            }
-            if entity.rejected_sink_uri:
-                rejected_metadata["dagster/uri"] = MetadataValue.url(entity.rejected_sink_uri)
-            if entity_report_json:
-                files_with_rejections = _count_files_with_rejections(entity_report_json)
-                dominant = _dominant_rejection_reason(entity_report_json)
-                rejected_metadata["files_with_rejections"] = MetadataValue.int(files_with_rejections)
-                if dominant:
-                    rejected_metadata["dominant_rejection_reason"] = dominant
-            yield Output(value=None, output_name="rejected", metadata=rejected_metadata)
+        )
+        failure = yield from _entity_events(
+            context,
+            entity=entity,
+            config_uri=config_uri,
+            finished=finished,
+            result=result,
+            summary=summary,
+            failed=failed,
+        )
+        if failure is not None:
+            raise failure
 
     return _multi_asset
+
+
+def _parse_finished(context: Any, result: RunResult, execution: ManifestExecution, run_id: str | None):
+    try:
+        events = parse_json_event_lines(result.stdout)
+        _log_floe_output(context, result.stdout, events)
+        if result.stderr.strip():
+            _log_floe_stderr(context, result.stderr)
+        finished_event = last_run_finished(events)
+        return parse_run_finished(
+            finished_event,
+            summary_uri_field=execution.result_contract.summary_uri_field,
+        )
+    except ValueError as exc:
+        _log_floe_output(context, result.stdout, [])
+        if result.stderr.strip():
+            _log_floe_stderr(context, result.stderr)
+        context.log.warning(f"failed to parse Floe run events: {exc}")
+        synthetic_status = result.status or ("success" if result.exit_code == 0 else "failed")
+        return FloeRunFinished(
+            run_id=(result.backend_metadata or {}).get("backend_run_id") or (run_id or "unknown"),
+            status=synthetic_status,
+            exit_code=result.exit_code,
+            summary_uri=None,
+        )
+
+
+def _load_run_summary(context: Any, finished: FloeRunFinished, config_uri: str) -> dict[str, Any] | None:
+    if not finished.summary_uri:
+        return None
+    try:
+        return _load_summary_json(finished.summary_uri, config_uri)
+    except Exception as exc:  # noqa: BLE001
+        context.log.warning(f"failed to load run summary/entity report: {exc}")
+        return None
+
+
+def _entity_events(
+    context: Any,
+    *,
+    entity: ManifestEntity,
+    config_uri: str,
+    finished: FloeRunFinished,
+    result: RunResult,
+    summary: dict[str, Any] | None,
+    failed: bool,
+):
+    """Yield one entity's checks and outputs from a finished run; return its `Failure` (not raised)."""
+    accepted_key = list(entity.asset_key)
+    entity_name = entity.name
+    summary_uri = finished.summary_uri
+    entity_stats: dict[str, Any] = {}
+    entity_report_json: dict[str, Any] | None = None
+
+    # Prefer entity_report_uris from the event (richer contract); fall back to the
+    # entity_report_file in the run summary.
+    entity_report_uri = finished.entity_report_uris.get(entity_name)
+    if summary is not None:
+        entity_stats = _extract_entity_stats(summary, entity_name)
+        if not entity_report_uri:
+            entity_report_uri = _as_optional_str(entity_stats.get("entity_report_file"))
+        if entity_report_uri:
+            try:
+                entity_report_json = _load_entity_report_json(entity_report_uri, config_uri)
+            except Exception as exc:  # noqa: BLE001
+                context.log.warning(f"failed to load run summary/entity report: {exc}")
+
+    metadata: dict[str, Any] = {
+        "run_id": finished.run_id,
+        "status": finished.status,
+        "exit_code": finished.exit_code,
+    }
+    if summary_uri:
+        metadata["summary_uri"] = summary_uri
+
+    metadata.update(entity_stats)
+    if entity_report_uri:
+        metadata["entity_report_uri"] = entity_report_uri
+    if result.failure_reason:
+        metadata["failure_reason"] = result.failure_reason
+    if result.status:
+        metadata["backend_status"] = result.status
+    if result.backend_metadata:
+        metadata["backend_metadata"] = result.backend_metadata
+
+    check_results = build_asset_check_results(
+        asset_key=accepted_key,
+        entity_name=entity_name,
+        finished=finished,
+        entity_report=entity_report_json,
+        entity_stats=entity_stats,
+        summary_uri=summary_uri,
+        entity_report_uri=entity_report_uri,
+    )
+    for check_result in check_results:
+        yield check_result
+
+    if failed:
+        return Failure(description=f"floe run failed for entity {entity_name}", metadata=metadata)
+
+    yield Output(value=None, output_name="accepted", metadata=metadata)
+    if _has_rejected_asset(entity):
+        rows = entity_stats.get("rows") or 0
+        rejected_count = entity_stats.get("rejected") or 0
+        rejection_rate = rejected_count / rows if rows > 0 else 0.0
+        rejected_metadata: dict[str, Any] = {
+            "run_id": finished.run_id,
+            "rejected": MetadataValue.int(rejected_count),
+            "status": finished.status,
+            "rejection_rate": MetadataValue.float(rejection_rate),
+        }
+        if entity.rejected_sink_uri:
+            rejected_metadata["dagster/uri"] = MetadataValue.url(entity.rejected_sink_uri)
+        if entity_report_json:
+            files_with_rejections = _count_files_with_rejections(entity_report_json)
+            dominant = _dominant_rejection_reason(entity_report_json)
+            rejected_metadata["files_with_rejections"] = MetadataValue.int(files_with_rejections)
+            if dominant:
+                rejected_metadata["dominant_rejection_reason"] = dominant
+        yield Output(value=None, output_name="rejected", metadata=rejected_metadata)
+    return None
+
+
+def _rejected_key(entity: ManifestEntity) -> list[str]:
+    return list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_rejected"]
 
 
 def _log_floe_stderr(context: Any, stderr: str) -> None:
