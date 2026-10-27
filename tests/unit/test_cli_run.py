@@ -240,3 +240,15 @@ def test_d37_a_single_domain_run_reports_under_its_domain(
     assert summary["run"].get("domain") == domain
     assert summary["report"]["report_file"].endswith(f"/report/{run_dir}/run.summary.json")  # fmt: skip
     assert (tmp_path / "report" / run_dir / "sales" / "a" / "run.json").exists()
+
+
+def test_d37_a_legacy_domain_that_is_no_directory_name_keeps_the_flat_layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before 0.3 a domain may hold `.` or `/`; `..` must not lift the run out of `report.path`."""
+    config = write(tmp_path, {"a": "id\n1\n"})
+    text = config.read_text().replace('version: "0.3"', 'version: "0.2"')
+    config.write_text(text.replace("name: d\n", "name: ..\n    incoming_dir: ./in\n").replace("domain: d", "domain: '..'"))  # fmt: skip
+    assert floe(monkeypatch, "run", "-c", str(config), "--run-id", "r") == 0
+    assert (tmp_path / "report" / "run_r" / "run.summary.json").exists()
+    assert not (tmp_path / "run_r").exists()

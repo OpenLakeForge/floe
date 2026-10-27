@@ -25,8 +25,8 @@ Reports are written under the configured report directory:
 
 When every entity of the run belongs to one domain (D37, 0.8), the run directory sits
 under that domain (`<report.path>/<domain>/run_<run_id>/`), so a domain's runs are listed together, and `run.summary.json`
-carries `run.domain`. A run spanning several domains, or entities without a domain,
-keeps `<report.path>/run_<run_id>/` and has no `run.domain`. `run_finished`'s
+carries `run.domain`. A run spanning several domains, entities without a domain, or a
+pre-0.3 domain holding `.`, `/` or `\` (not a safe directory name) keeps `<report.path>/run_<run_id>/` and has no `run.domain`. `run_finished`'s
 `summary_uri` and `entity_report_uris` point at the actual location; `report_base`
 stays `<report.path>`. Rust 0.7 always wrote `<report.path>/run_<run_id>/`.
 

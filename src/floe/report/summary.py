@@ -21,9 +21,10 @@ def id_path(entity: EntityConfig) -> str:
 
 
 def run_domain(entities: Sequence[EntityConfig]) -> str | None:
-    """D37: the domain every entity of the run belongs to, else None."""
+    """D37: the domain every entity of the run belongs to, else None; a pre-0.3 domain that is no safe directory name (`..`, `a/b`) is None too."""
     domains = {e.domain for e in entities}
-    return domains.pop() if len(domains) == 1 else None
+    domain = domains.pop() if len(domains) == 1 else None
+    return domain if domain and not any(c in domain for c in "./\\") else None
 
 
 def run_dir(report_path: str, run_id: str, domain: str | None) -> str:
