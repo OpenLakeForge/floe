@@ -25,6 +25,7 @@ Four functions cover the main embedded and notebook use cases:
 | `floe.run_manifest(manifest_path)` | `RunOutcome` | Run from a generated manifest, as `floe run --manifest` (Python core only) |
 | `floe.load_config(config_path)` | `RootConfig` | Inspect entities and settings without running |
 | `floe.extract_config_env_vars(config_path)` | `dict[str, str]` | List `{{VAR}}` placeholders in the config |
+| `floe.maintain(config_path, older_than_days=7, retain_last=10)` | `list[dict]` | Expire old Iceberg snapshots, as `floe maintain` (Python core only) |
 
 A quick example for each:
 
