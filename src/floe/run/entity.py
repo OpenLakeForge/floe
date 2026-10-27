@@ -255,7 +255,7 @@ def _refuse_overlap(who: str, sink: str, inputs: list[InputFile]) -> None:
     def real(
         uri: str,
     ) -> str:  # a local path through a symlink is judged by where it lands
-        return str(Path(uri.removeprefix("local://")).resolve()) if uri.startswith("local://") else uri  # fmt: skip
+        return Path(uri.removeprefix("local://")).resolve().as_posix() if uri.startswith("local://") else uri  # fmt: skip
 
     root = real(sink).rstrip("/") + "/"
     for f in inputs:
