@@ -397,6 +397,19 @@
                       "null"
                     ],
                     "minimum": 1
+                  },
+                  "cpu_limit": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "memory_limit_mb": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1
                   }
                 }
               },
@@ -522,6 +535,58 @@
                 ],
                 "additionalProperties": {
                   "type": "string"
+                }
+              },
+              "job_scope": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "entity",
+                  "domain",
+                  null
+                ]
+              },
+              "domain_resources": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "cpu": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "memory_mb": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 1
+                    },
+                    "cpu_limit": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "memory_limit_mb": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 1
+                    }
+                  }
                 }
               }
             },
