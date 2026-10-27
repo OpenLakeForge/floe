@@ -41,7 +41,7 @@ Controls (`*_ok`, `*_ctrl`) are valid configs that sit on the passing side of a 
 
 ## Intentional deltas
 
-18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 5 D12, 1 D13, 2 D21, 4 D26, 17 D28, 2 D30, 1 D33, 1 D34.
+18 D1, 18 D2, 10 D7, 2 D10, 1 D11, 5 D12, 1 D13, 2 D21, 4 D26, 17 D28, 2 D30, 1 D33, 1 D38.
 **The Python messages below are hand-derived proposals**, not recorded: the maintainer owns the wording. No Python
 implementation exists yet; each is derived as its row says.
 
@@ -53,7 +53,7 @@ implementation exists yet; each is derived as its row says.
 - **D2**: Rust 0.7 rejects Iceberg `merge_scd1`/`merge_scd2` at the write-mode check; Python accepts. The `py` message of the
   merge-rule cases is the message of the Rust rule that would fire for a Delta sink, so these are the only coverage of
   those rules (they are listed in the table below with their `(D2)` mark).
-- **D34** (proposed): bare `decimal` is rejected (Rust 0.7 accepts it as Float64); `decimal(p,s)` is exact. Only `val2_type_aliases_ok` uses it.
+- **D38** (#559): bare `decimal` is rejected (Rust 0.7 accepts it as Float64); `decimal(p,s)` is exact. Only `val2_type_aliases_ok` uses it.
 - **D7**: S1-S7 of #584, schema wins (Python validate rejects). S3/S4/S5 reuse the Rust run-time message.
 
 | case | delta | Python outcome | how it was derived |
