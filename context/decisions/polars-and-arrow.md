@@ -1,30 +1,33 @@
-# Decision — Polars as DataFrame engine + Arrow as the inter-layer wire format
+# Decision — Polars as DataFrame engine + Arrow as the inter-library format
 
-> **Superseded in part** by [`python-core-for-olf.md`](python-core-for-olf.md) (2026-10-23): the Python core exchanges Arrow data through the C Data Interface, so the Rust-specific points below (crate versions, `RecordBatch` types) apply only to the Rust core.
+> The Rust-era version of this record (crate versions, `RecordBatch` hand-off to `deltalake` and
+> `iceberg-rust`) is archived at [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
+> The Python core keeps the decision; see [`python-core-for-olf.md`](python-core-for-olf.md).
 
 ## Context
 
-Floe needs to read heterogeneous file formats (CSV, JSON, Parquet, ORC, Avro, XLSX, XML), validate rows against a schema, and write to structured sinks (Parquet files, Delta Lake tables, Iceberg tables). A DataFrame engine is required for column-level type casting, null checks, and cross-row uniqueness evaluation.
-
-The pipeline has a natural seam between the validation layer and the sink layer. Each sink library (`deltalake`, `iceberg`) speaks Apache Arrow — they accept `RecordBatch` streams natively. The question was: what is the internal representation, and how does data cross the seam?
+Floe reads heterogeneous file formats (CSV, JSON, Parquet, ORC, Avro, XLSX, XML), validates rows
+against a schema, and writes Parquet files and Iceberg tables. Column-level casts, null checks and
+cross-row uniqueness need a DataFrame engine, and the writers (PyIceberg, DuckDB) each have their
+own data model.
 
 ## Decision
 
-Use **Polars** as the single DataFrame engine inside `floe-core`. At the sink boundary, convert Polars DataFrames to **Apache Arrow RecordBatches** and pass them to the sink library directly.
+Use **Polars** as the single DataFrame engine for reading and validation. Data crosses to the
+writers as **Apache Arrow** through the Arrow C Data Interface: Polars → pyarrow → PyIceberg for
+overwrite and append, and Arrow / staged Parquet → DuckDB for merges and unique checks against
+table history.
 
 ## Rationale
 
-**Why Polars:**
-- Rust-native — no JVM, no GC, sub-millisecond startup.
-- Batteries included: first-class readers for all supported input formats, with Polars handling low-level format parsing so Floe only adds a validation layer on top.
-- LazyFrame API enables predicate and projection pushdown when reading Parquet or Delta for uniqueness seeding — only the columns needed for the check are materialised.
-- The Arrow memory model is Polars' native columnar layout, so conversion to Arrow RecordBatches is zero-copy.
-
-**Why Arrow at the sink boundary:**
-- Both `deltalake` and `iceberg-rust` accept `RecordBatch` streams as their write interface. Passing Arrow directly avoids any intermediate serialisation.
-- Keeping Arrow as the boundary contract means the sink libraries can evolve independently of Polars. If a future sink library does not speak Arrow, the conversion layer is isolated to that sink's implementation file.
-- The same Arrow schema is used for schema validation between what Polars inferred and what the sink's existing table expects — mismatch detection happens at the type system level, not via string comparison.
+- Polars has native readers for most input formats, so Floe only adds its validation layer on top,
+  and its expressions keep the data path free of per-row Python loops.
+- The Arrow C Data Interface does not depend on library versions, so Polars, pyarrow, PyIceberg and
+  DuckDB upgrade independently (the Rust core had to move every `arrow` major in lockstep).
+- One Arrow schema is the boundary contract: the Iceberg table's schema is compared with the
+  validated batch's Arrow schema, not with strings.
 
 ## Consequences
 
-All data flowing through the validation pipeline is `polars::DataFrame`. At write time, format writers (in `io/write/`) convert to Arrow and hand off to the sink library. No other layer of the codebase is aware of Arrow directly.
+Validation code works on `polars.DataFrame`. Only the writers (`src/floe/write/`,
+`src/floe/iceberg/`) convert to Arrow or stage Parquet for DuckDB.

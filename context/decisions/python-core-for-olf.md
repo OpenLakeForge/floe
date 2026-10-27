@@ -5,6 +5,10 @@
 **Accepted** on 2026-10-23, after the go/no-go spike in #594 (sub-issues #596–#600, #609). Every
 gate passed; see [Outcome](#outcome).
 
+**Implemented:** the cutover (#971) removed `crates/`; the Rust code is archived at
+[OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust). Paths under `crates/`
+below refer to that archive.
+
 ## Context
 
 Floe is now part of OpenLakeForge (OLF). Its priority is maturity on the OLF stack:

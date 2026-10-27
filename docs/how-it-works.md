@@ -5,10 +5,11 @@ or extracted datasets before they enter the trusted layer, writes valid rows to
 the accepted sink, routes invalid rows to the rejected sink, and records what
 happened in machine-readable reports.
 
-The runtime is a lightweight single-node engine written in Rust. Floe uses
-Polars for dataframe execution and Apache Arrow RecordBatches at the sink
-boundary, so Delta, Iceberg, and DuckDB writers receive columnar data without an
-extra serialization step.
+The runtime is a lightweight single-node Python package. Floe reads and validates
+with Polars, writes Iceberg tables through PyIceberg (one catalog commit per
+entity), and runs Iceberg merges and unique checks against the table's history
+through DuckDB, which spills to disk. The libraries exchange data as Arrow, so
+no extra serialization step sits between them.
 
 This document describes the canonical ingestion pipeline Floe uses for each
 entity. The order is deterministic and is reflected in reports.
@@ -37,7 +38,6 @@ entity. The order is deterministic and is reflected in reports.
 Floe inspects only the file header/schema before reading full data:
 
 - **CSV/TSV**: header row (or the first row for headerless CSV/TSV).
-- **Fixed-width**: declared schema widths and inferred columns from row slices.
 - **Parquet**: schema metadata.
 - **ORC**: schema metadata.
 - **NDJSON**: the first valid JSON object line.
@@ -66,22 +66,24 @@ For files that passed prechecks:
 
 After row-level validation, uniqueness is evaluated across the **entire entity**
 in file order. The first occurrence is accepted; later duplicates are flagged.
-This is the only entity-level check in v0.1/v0.2.
+With `append`, keys already in the accepted sink count as seen,
+so a row that duplicates the existing history is flagged too.
 
 ### E) Entity-level accepted output (across files)
 
-Accepted rows from input files are written to the accepted sink in file order.
-For parquet sinks, Floe writes a dataset directory containing `part-*.parquet`.
-For table sinks, Floe writes through the format implementation for Delta,
-Iceberg, or DuckDB. Some non-merge sinks can flush accepted rows in bounded
-batches when `sink.accepted.options.max_size_per_file` is configured; see the
-sink docs for the partial-output trade-off.
+Accepted rows from input files are written to the accepted sink in file order,
+once per entity. For Parquet sinks, Floe writes a dataset directory containing
+`part-*.parquet` (`sink.accepted.options.max_size_per_file` splits it into
+parts). For Iceberg sinks, `overwrite` and `append` land in one PyIceberg
+transaction, and `merge_scd1` stages the batch as Parquet, then runs one DuckDB
+`MERGE INTO`; either way the entity is one catalog commit. With `sink.archive`,
+input files are archived only after that commit succeeds (D32).
 
 ### F) Incremental state commit
 
 When `incremental_mode: file` is enabled, Floe first claims pending file URIs in
-state. Local state uses atomic file replacement. Remote state on S3, GCS, and
-ADLS uses optimistic conditional writes so concurrent runners do not silently
+state. Local state uses atomic file replacement. Remote state on S3 uses optimistic
+conditional writes so concurrent runners do not silently
 overwrite one another.
 
 When the entity finishes successfully, Floe promotes this run's claims into the

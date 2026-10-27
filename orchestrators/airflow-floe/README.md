@@ -9,6 +9,14 @@ For local setup of both Dagster and Airflow with isolated virtual environments, 
 
 - `orchestrators/LOCAL_DEV.md`
 
+## Supported Floe versions
+
+| airflow-floe | Floe |
+| --- | --- |
+| 0.2.x | 0.8 (`pip install floe-python`, or the `ghcr.io/openlakeforge/floe` image) |
+| 0.1.x | 0.7 and earlier |
+
+
 ## Contents
 
 - `INTEGRATION_SPEC.md`: contract between Airflow and Floe CLI
