@@ -263,7 +263,9 @@ def _storage(h: dict[object, object], ctx: str) -> str | None:
     storage = opt_string(h, "storage", ctx)
     filesystem = opt_string(h, "filesystem", ctx)
     if storage is not None and filesystem is not None:
-        raise FloeConfigError(f"{ctx}.storage and {ctx}.storage are mutually exclusive")
+        raise FloeConfigError(
+            f"{ctx}.storage and {ctx}.filesystem are mutually exclusive"
+        )
     return _or(storage, filesystem)
 
 

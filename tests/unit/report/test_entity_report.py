@@ -173,7 +173,7 @@ def test_report_matches_recorded(case: str, entity_id: str, tmp_path: Path) -> N
         e for e in parse_config(CONFORMANCE / case / "config.yml").entities if e.id == entity_id
     )  # fmt: skip
     text, rel = run_entity(case, entity, tmp_path)
-    expected = load_expected(CONFORMANCE / case, "python")
+    expected = load_expected(CONFORMANCE / case)
     (name,) = [k for k in expected if k.startswith("reports/") and k.endswith(rel)]
     assert comparable(name, text) == comparable(name, expected[name])
     # the raw text is serde's pretty print: Python's re-dump of it changes nothing

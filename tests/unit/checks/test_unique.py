@@ -58,7 +58,9 @@ def test_unique_pii_case_matches_rust_rejected_rows() -> None:
 def test_unique_pii_case_matches_rust_report_samples() -> None:
     _, tracker = run_case()
     report = json.loads(
-        (CASE / "expected/reports/report/run_ID/spike/orders/run.json").read_text()
+        (
+            CASE / "expected/reports/report/spike/run_ID/spike/orders/run.json"
+        ).read_text()
     )
     got = [
         {

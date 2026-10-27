@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entity.name=orders sink.accepted.partition_spec[0].transform=bucket is unsupported (allowed: identity, year, month, day, hour)"
+  "error": "entity.name=orders sink.accepted.partition_spec[0].num_buckets is required for transform=bucket"
 }

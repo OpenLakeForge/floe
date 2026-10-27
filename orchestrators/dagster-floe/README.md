@@ -86,6 +86,22 @@ Every accepted-output asset automatically gets quality checks registered in Dags
 
 Checks appear in the Dagster UI under each asset, linked to the run that produced them. A `WARN`-severity violation marks the check as a warning; `REJECT` or `ABORT` marks it as a failure.
 
+## Reading manifests and reports from S3
+
+`dagster-floe` reads `s3://` manifests and Floe run reports with `fsspec` (install the `remote`
+extra). It configures S3 the same way the Floe run does, from the environment:
+
+| Variable | Effect |
+| --- | --- |
+| `AWS_ENDPOINT_URL_S3`, else `AWS_ENDPOINT_URL` | Custom endpoint (MinIO, SeaweedFS, Ceph, ...). |
+| `AWS_S3_FORCE_PATH_STYLE=true` (or `1`) | Path-style addressing, which most S3-compatible stores need. |
+| `AWS_REGION`, `AWS_ACCESS_KEY_ID`, ... | The standard AWS chain, as for any boto3 client. |
+
+Set these on the code-location pod (and on the run pods) so Dagster reads exactly where Floe wrote.
+There is no need to replace the connector's reader: earlier versions (0.2.x) passed no endpoint or
+path-style options, which is why some deployments patched `floe_dagster.assets._fsspec_read_text`.
+From 0.3.0, remove that patch and set the variables above.
+
 ## Lineage integration
 
 The connector automatically injects two environment variables into every floe subprocess:

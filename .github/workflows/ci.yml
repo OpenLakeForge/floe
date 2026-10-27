@@ -3,7 +3,6 @@ name: CI
 on:
   pull_request:
   merge_group:
-  # Runs on main only to save the rust caches that PRs restore from.
   push:
     branches: [main]
 
@@ -13,37 +12,16 @@ concurrency:
 
 jobs:
   # Single source of truth for path-based change detection. Runs `paths-filter`
-  # once and exposes every flag as a job output so `test`, `duckdb-clippy`, and
-  # `duckdb-test` can gate at the job level (via `needs` + `if`) instead of each
-  # re-running checkout + paths-filter and booting a runner only to skip its steps.
+  # once and exposes every flag as a job output so the jobs below can gate at the
+  # job level (via `needs` + `if`) instead of each re-running checkout +
+  # paths-filter and booting a runner only to skip its steps.
   changes:
     runs-on: ubuntu-latest
     outputs:
       config_schema: ${{ steps.filter.outputs.config_schema }}
-      rust: ${{ steps.filter.outputs.rust }}
-      floe_core: ${{ steps.filter.outputs.floe_core }}
-      core_code: ${{ steps.filter.outputs.core_code }}
-      core_code_global: ${{ steps.filter.outputs.core_code_global }}
-      manifest: ${{ steps.filter.outputs.manifest }}
-      unit_tests: ${{ steps.filter.outputs.unit_tests }}
-      integration_tests: ${{ steps.filter.outputs.integration_tests }}
-      floe_cli: ${{ steps.filter.outputs.floe_cli }}
-      io_format: ${{ steps.filter.outputs.io_format }}
-      io_read: ${{ steps.filter.outputs.io_read }}
-      io_storage: ${{ steps.filter.outputs.io_storage }}
-      io_write: ${{ steps.filter.outputs.io_write }}
-      run_entity: ${{ steps.filter.outputs.run_entity }}
-      run_checks: ${{ steps.filter.outputs.run_checks }}
-      run_schema: ${{ steps.filter.outputs.run_schema }}
-      run_report: ${{ steps.filter.outputs.run_report }}
-      run_check_order: ${{ steps.filter.outputs.run_check_order }}
-      run_normalize: ${{ steps.filter.outputs.run_normalize }}
-      core_config: ${{ steps.filter.outputs.core_config }}
       docs: ${{ steps.filter.outputs.docs }}
-      floe_python: ${{ steps.filter.outputs.floe_python }}
       python_core: ${{ steps.filter.outputs.python_core }}
       conformance: ${{ steps.filter.outputs.conformance }}
-      io_write_duckdb: ${{ steps.filter.outputs.io_write_duckdb }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -53,90 +31,16 @@ jobs:
             config_schema:
               - "schemas/**"
               - "scripts/test_config_schema.py"
-              - "crates/floe-core/src/config/types.rs"
-              - "crates/floe-core/src/config/parse.rs"
-              - "crates/floe-core/src/config/validate.rs"
+              - "src/floe/config/**"
+              - "src/floe/pii.py"
+              - "pyproject.toml"
+              - "uv.lock"
               - "example/project/**"
               - "example/standalone/**"
               - ".github/workflows/ci.yml"
-            # Anything that can change rustfmt/clippy results. Docs-only PRs skip both.
-            rust:
-              - "**/*.rs"
-              - "**/Cargo.toml"
-              - "Cargo.lock"
-              - "rust-toolchain.toml"
-              - "clippy.toml"
-              - ".github/workflows/ci.yml"
-            floe_core:
-              - "crates/floe-core/**"
-              - "Cargo.lock"
-            core_code:
-              - "crates/floe-core/src/**"
-              - "crates/floe-core/Cargo.toml"
-              - "Cargo.lock"
-            core_code_global:
-              - "crates/floe-core/src/**"
-              - "!crates/floe-core/src/io/**"
-              - "!crates/floe-core/src/report/**"
-              - "!crates/floe-core/src/run/**"
-              - "!crates/floe-core/src/manifest/**"
-              - "!crates/floe-core/src/config/**"
-              - "!crates/floe-core/src/checks/**"
-              - "crates/floe-core/Cargo.toml"
-              - "Cargo.lock"
-            manifest:
-              - "crates/floe-core/src/manifest/**"
-              - "crates/floe-core/tests/unit/manifest/**"
-            unit_tests:
-              - "crates/floe-core/tests/unit/**"
-              - "crates/floe-core/tests/unit.rs"
-            integration_tests:
-              - "crates/floe-core/tests/integration/**"
-              - "crates/floe-core/tests/integration.rs"
-            floe_cli:
-              - "crates/floe-cli/**"
-              - "Cargo.lock"
-            io_format:
-              - "crates/floe-core/src/io/format.rs"
-              - "crates/floe-core/tests/unit/io/format.rs"
-            io_read:
-              - "crates/floe-core/src/io/read/**"
-              - "crates/floe-core/tests/unit/io/read/**"
-            io_storage:
-              - "crates/floe-core/src/io/storage/**"
-              - "crates/floe-core/tests/unit/io/storage/**"
-            io_write:
-              - "crates/floe-core/src/io/write/**"
-              - "crates/floe-core/tests/unit/io/write/**"
-            run_entity:
-              - "crates/floe-core/src/run/entity/**"
-              - "crates/floe-core/tests/unit/run/entity/**"
-            run_checks:
-              - "crates/floe-core/src/checks/**"
-              - "crates/floe-core/tests/unit/run/checks.rs"
-            run_schema:
-              - "crates/floe-core/src/checks/mismatch.rs"
-              - "crates/floe-core/src/run/schema_mismatch.rs"
-              - "crates/floe-core/tests/unit/run/schema_mismatch.rs"
-            run_report:
-              - "crates/floe-core/src/report/**"
-              - "crates/floe-core/tests/unit/report/**"
-              - "crates/floe-core/tests/unit/run/report.rs"
-            run_check_order:
-              - "crates/floe-core/src/run/entity/**"
-              - "crates/floe-core/src/run/file.rs"
-              - "crates/floe-core/tests/unit/run/check_order.rs"
-            run_normalize:
-              - "crates/floe-core/src/run/normalize.rs"
-              - "crates/floe-core/tests/unit/run/normalize.rs"
-            core_config:
-              - "crates/floe-core/src/config/**"
-              - "crates/floe-core/tests/unit/config/**"
             docs:
               - "docs/**"
               - "README.md"
-            floe_python:
-              - "crates/floe-python/**"
             python_core:
               - "src/floe/**"
               - "tests/**"
@@ -150,18 +54,6 @@ jobs:
               - "pyproject.toml"
               - "uv.lock"
               - ".github/workflows/ci.yml"
-            io_write_duckdb:
-              - "crates/floe-core/src/io/write/duckdb.rs"
-              - "crates/floe-core/src/io/write/duckdb/**"
-              - "crates/floe-core/tests/integration/duckdb_run.rs"
-              - "crates/floe-core/tests/unit/config/duckdb_validation.rs"
-              - "crates/floe-core/Cargo.toml"
-              # The `floe-duckdb` companion is `floe-cli` built `--features duckdb`,
-              # which only the release pipeline compiles. Feature-gated CLI code
-              # (e.g. delegate.rs) can break that build without tripping the lean
-              # `clippy`/`test` jobs, so guard it here.
-              - "crates/floe-cli/src/**"
-              - "crates/floe-cli/Cargo.toml"
 
   config-schema:
     needs: changes
@@ -169,12 +61,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - name: Install schema test dependencies
-        run: python -m pip install jsonschema==4.26.0 PyYAML==6.0.2
-      - run: python scripts/test_config_schema.py
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups
+      - run: uv run python scripts/test_config_schema.py
 
   python-lint:
     needs: changes
@@ -220,7 +109,9 @@ jobs:
       - run: uv run --python ${{ matrix.python-version }} pytest
         if: needs.changes.outputs.python_core == 'true'
 
-  conformance:
+  golden:
+    # The branch ruleset requires the check named `conformance`.
+    name: conformance
     needs: changes
     if: needs.changes.outputs.conformance == 'true'
     runs-on: ubuntu-latest
@@ -228,230 +119,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --all-groups
-      # `record.py` downloads the v0.7.0 release binary into this directory.
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/floe-conformance
-          key: floe-conformance-${{ hashFiles('conformance/record.py') }}
-      - name: Rust 0.7 matches the recorded cases
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: uv run python conformance/check.py --impl rust
-      - name: Python passes every listed case
-        run: uv run python conformance/check.py --impl python --cases-file conformance/python_passing.txt
+      - name: Python matches every golden case
+        run: uv run python conformance/check.py
 
-  rustfmt:
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-  clippy:
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: v0-rust
-          add-job-id-key: false
-          shared-key: v0-rust-clippy
-          cache-on-failure: true
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      # Lint the lean default capability set (parquet + delta + iceberg). The
-      # duckdb sink pulls a bundled native build; linting it on every PR would
-      # reintroduce the slow compile this gating removed, so duckdb clippy lives
-      # in the dedicated, path-gated `duckdb-clippy` job below. `--no-default-features
-      # --features delta,iceberg` keeps floe-cli/floe-python (whose defaults
-      # include duckdb) from dragging in the bundle here.
-      - name: Lint with clippy
-        run: cargo clippy --workspace --all-targets --no-default-features --features delta,iceberg -- -D warnings
-
-  test:
-    needs: changes
-    if: |
-      needs.changes.outputs.floe_core == 'true' ||
-      needs.changes.outputs.floe_cli == 'true' ||
-      needs.changes.outputs.floe_python == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: v0-rust
-          add-job-id-key: false
-          shared-key: v0-rust-test
-          cache-on-failure: true
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Run tests
-        env:
-          CARGO_BUILD_JOBS: "4"
-          RUST_TEST_THREADS: "4"
-          RUSTFLAGS: "-C debuginfo=0"
-        run: |
-          if [ "${{ needs.changes.outputs.floe_core }}" = "true" ]; then
-            ran_unit=0
-            if [ "${{ needs.changes.outputs.core_config }}" = "true" ]; then
-              cargo test -p floe-core --test unit config::
-              ran_unit=1
-            fi
-            if [ "${{ needs.changes.outputs.manifest }}" = "true" ]; then
-              cargo test -p floe-core --test unit manifest::
-              ran_unit=1
-            fi
-            if [ "${{ needs.changes.outputs.io_format }}" = "true" ]; then
-              cargo test -p floe-core --test unit io::format::
-              ran_unit=1
-            fi
-            if [ "${{ needs.changes.outputs.io_read }}" = "true" ]; then
-              cargo test -p floe-core --test unit io::read::
-              ran_unit=1
-            fi
-            if [ "${{ needs.changes.outputs.io_storage }}" = "true" ]; then
-              cargo test -p floe-core --test unit io::storage::
-              ran_unit=1
-            fi
-            if [ "${{ needs.changes.outputs.io_write }}" = "true" ]; then
-              cargo test -p floe-core --test unit io::write::
-              ran_unit=1
-            fi
-            if [ "${{ needs.changes.outputs.run_entity }}" = "true" ]; then
-              cargo test -p floe-core --test unit run::entity::
-              ran_unit=1
-            fi
-            if [ "${{ needs.changes.outputs.run_checks }}" = "true" ]; then
-              cargo test -p floe-core --test unit run::checks::
-              ran_unit=1
-            fi
-            if [ "${{ needs.changes.outputs.run_schema }}" = "true" ]; then
-              cargo test -p floe-core --test unit run::schema_mismatch::
-              ran_unit=1
-            fi
-            if [ "${{ needs.changes.outputs.run_report }}" = "true" ]; then
-              cargo test -p floe-core --test unit run::report::
-              ran_unit=1
-            fi
-            if [ "${{ needs.changes.outputs.run_check_order }}" = "true" ]; then
-              cargo test -p floe-core --test unit run::check_order::
-              ran_unit=1
-            fi
-            if [ "${{ needs.changes.outputs.run_normalize }}" = "true" ]; then
-              cargo test -p floe-core --test unit run::normalize::
-              ran_unit=1
-            fi
-            if [ "$ran_unit" = "0" ] && [ "${{ needs.changes.outputs.core_code_global }}" = "true" ]; then
-              cargo test -p floe-core --test unit
-              ran_unit=1
-            fi
-            if [ "$ran_unit" = "0" ] && [ "${{ needs.changes.outputs.unit_tests }}" = "true" ]; then
-              cargo test -p floe-core --test unit
-            fi
-            if [ "${{ needs.changes.outputs.integration_tests }}" = "true" ] \
-              || [ "${{ needs.changes.outputs.core_code }}" = "true" ]; then
-              cargo test -p floe-core --test integration -- --test-threads=1
-            fi
-            cargo test -p floe-core --doc
-          fi
-          if [ "${{ needs.changes.outputs.floe_cli }}" = "true" ]; then
-            cargo test -p floe-cli --tests
-          fi
-      - uses: actions/setup-python@v7
-        if: needs.changes.outputs.floe_python == 'true'
-        with:
-          python-version: "3.12"
-          cache: "pip"
-      - name: Create virtualenv and install deps
-        if: needs.changes.outputs.floe_python == 'true'
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install "maturin>=1.7,<2" pytest mypy
-      - name: Build and install floe-python
-        if: needs.changes.outputs.floe_python == 'true'
-        # Match the memory discipline of the "Run tests" step above. Without
-        # `-C debuginfo=0` maturin links `lib_floe.so` with full debug info, whose
-        # oversized object files make the bundled `lld` exceed the runner's
-        # memory/disk during the output write and abort with
-        # `ld terminated with signal 7 [Bus error], core dumped`. The flag keeps
-        # the cdylib link small enough to succeed (Python tests don't need symbols).
-        env:
-          CARGO_BUILD_JOBS: "4"
-          RUSTFLAGS: "-C debuginfo=0"
-        run: .venv/bin/maturin develop --manifest-path crates/floe-python/Cargo.toml
-      - name: Run Python tests
-        if: needs.changes.outputs.floe_python == 'true'
-        run: .venv/bin/pytest crates/floe-python/tests/ -v
-      - name: Type-check stubs
-        if: needs.changes.outputs.floe_python == 'true'
-        run: .venv/bin/mypy crates/floe-python/tests/test_floe.py --ignore-missing-imports
-
-  # The DuckDB sink is the only one with a bundled native (C++) build, which is
-  # why it is opt-in (`--features duckdb`) and excluded from the default `test`
-  # and `clippy` jobs above. Its clippy and tests are split into two jobs that
-  # run in parallel and share the `v0-rust-duckdb` rust-cache key (with
-  # `add-job-id-key: false`) — the heavy bundled artifact is a Cargo dependency
-  # cached under `target/`, so both jobs restore it and never evict (or are
-  # evicted by) the lean default build. Both are job-level gated on
-  # `io_write_duckdb`, so no runner starts when DuckDB code is untouched.
-  duckdb-clippy:
-    needs: changes
-    if: needs.changes.outputs.io_write_duckdb == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      # ubuntu-latest ships build-essential (gcc/g++/make), which is all the
-      # bundled libduckdb-sys build needs — no extra toolchain install required.
-      # This job is the sole writer of the `v0-rust-duckdb` cache (default
-      # `save-if`); `duckdb-test` restores read-only to avoid a redundant save.
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: v0-rust
-          add-job-id-key: false
-          shared-key: v0-rust-duckdb
-          cache-on-failure: true
-      - name: Lint duckdb sink with clippy
-        run: cargo clippy -p floe-core --all-targets --features duckdb -- -D warnings
-      # Compile the `floe-cli` binary with the duckdb feature — the exact build the
-      # release pipeline ships as `floe-duckdb`. Catches feature-gated CLI breakage
-      # (e.g. an import gated to the lean build but used by the duckdb variant)
-      # before it reaches a tagged release.
-      - name: Lint floe-cli (duckdb) with clippy
-        run: cargo clippy -p floe-cli --all-targets --features duckdb -- -D warnings
-
-  duckdb-test:
-    needs: changes
-    if: needs.changes.outputs.io_write_duckdb == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      # Restore the shared duckdb cache read-only; `duckdb-clippy` owns the save.
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: v0-rust
-          add-job-id-key: false
-          shared-key: v0-rust-duckdb
-          cache-on-failure: true
-          save-if: false
-      - name: Run duckdb sink tests
-        env:
-          CARGO_BUILD_JOBS: "4"
-          RUST_TEST_THREADS: "4"
-          RUSTFLAGS: "-C debuginfo=0"
-        run: |
-          cargo test -p floe-core --features duckdb --lib io::write::duckdb
-          cargo test -p floe-core --features duckdb --test unit config::duckdb_validation::
-          cargo test -p floe-core --features duckdb --test integration duckdb_run:: -- --test-threads=1

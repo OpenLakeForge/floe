@@ -64,14 +64,7 @@ They are stored as the proleptic Gregorian day (`d43` = day -719528). `check.py`
 ## Looks like a Rust bug (recorded as is; candidates for an intentional delta in #619)
 - Whitespace inside the value (`2024- 01-01`, `2024 -01-01`) is accepted.
 
-## Intentional delta D9 (`delta.yml`, `expected_python/`)
+## Python differs from Rust 0.7: D9
 Python rejects years outside 1..9999 and whitespace inside a value (#617 decision, D9), as a `cast_error` on `date`
 with the same message as Rust. Rows changed: d34, d35, d36 (spaces inside), d43-d46 (year outside 1..9999).
 Leading/trailing spaces (d06-d08) and the `+` sign (d09) are not touched by D9 and stay accepted.
-
-`expected_python/` was derived from `expected/` of the same case (no Python run exists yet):
-- `accepted/casts_date.parquet`: the seven rows removed, others unchanged;
-- `rejected/casts_date/part-00000.csv`: for each of the seven rows, a copy of a Rust-rejected `date` row with that `id`
-  and `__floe_row_index` (its 0-based line in `in/`), merged in row-index order;
-- `reports/`: `accepted_total`/`accepted_rows`/`accepted_count` minus 7, `rejected_total`/`rejected_count`/`errors`/`violations`
-  (global and the `date` column) plus 7. Writer byte metrics keep Rust's values (ignored on compare).

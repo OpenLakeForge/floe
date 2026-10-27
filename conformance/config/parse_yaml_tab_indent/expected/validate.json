@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "tabs disallowed within this context (block indentation) at byte 26 line 3 column 2"
+  "error": "while scanning for the next token, found character '\\t' that cannot start any token at byte 25 line 3 column 1"
 }

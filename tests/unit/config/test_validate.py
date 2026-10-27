@@ -96,16 +96,52 @@ CATALOG = (
         ),
         (
             f"{{{COLS}, schema_evolution: {{mode: add_columns}}}}",
-            (
-                "schema.schema_evolution.mode=add_columns requires sink.accepted.format=delta "
-                "(Delta-only additive schema evolution in this phase)"
-            ),
+            "schema.schema_evolution.mode=add_columns requires sink.accepted.format=iceberg",
         ),
     ],
 )
 def test_schema_errors(tmp_path: Path, schema: str, message: str) -> None:
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, schema)
+    assert str(err.value) == f"entity.name=orders {message}"
+
+
+@pytest.mark.parametrize(
+    ("pii", "message"),
+    [
+        ("{name: zz, strategy: nullify}", "pii.columns: zz is not a schema column"),
+        (
+            "{name: amt, strategy: hash}",
+            (
+                "pii.columns[name=amt].strategy=hash can only be applied to string columns "
+                "(declared type=number); use strategy=nullify or strategy=drop instead"
+            ),
+        ),
+        (
+            "{name: id, strategy: redact}",
+            (
+                "pii.columns[name=id].strategy=redact cannot be applied to a unique-key column: "
+                "the strategy collapses or removes values, violating uniqueness constraints"
+            ),
+        ),
+    ],
+)
+def test_pii_errors(tmp_path: Path, pii: str, message: str) -> None:
+    path = tmp_path / "config.yml"
+    path.write_text(
+        textwrap.dedent(f"""
+        version: "0.2"
+        entities:
+        - name: orders
+          source: {{format: csv, path: in.csv}}
+          sink: {{accepted: {{format: parquet, path: out}}}}
+          policy: {{severity: warn}}
+          schema: {{{COLS}, primary_key: [id]}}
+          pii: {{columns: [{pii}]}}
+        """)
+    )
+    with pytest.raises(FloeConfigError) as err:
+        validate_entities(parse_config(path))
     assert str(err.value) == f"entity.name=orders {message}"
 
 

@@ -7,6 +7,7 @@ cases join the Python pass-list when the run pipeline (#655) lands. Unique check
 task (#642), so rows with a unique error are left out of the comparison.
 """
 
+import json
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -78,11 +79,7 @@ def test_casts_case_matches_rust_rejected_rows() -> None:
     rejected, expected = check_case(
         "casts", "casts.csv", "casts/part-00000.csv", columns, ["id", "qty"]
     )
-    assert expected.height == 16
-    # D9 (#619): Rust 0.7 accepts r12 (`10:00:00garbage`) and r21 (space before the offset)
-    d9 = pl.col("id").is_in(["r12", "r21"]).fill_null(False)
-    assert rejected.filter(d9).height == 2
-    rejected = rejected.filter(d9.not_())
+    assert expected.height == 18
     assert_same_errors(rejected, expected)
     assert rejected["id"].to_list() == expected["id"].to_list()
 
@@ -192,12 +189,11 @@ def test_cast_error_entry_matches_rust_json() -> None:
     )
 
 
-def test_error_entry_leaves_other_control_characters_raw() -> None:
-    # Rust's json_escape escapes only \\, ", \n, \r and \t; \b, \f and U+0001 stay as they are.
-    assert error_entry("cast_error", "a\b\f\x01\t\r", CAST_ERROR_MESSAGE) == (
-        '{"rule":"cast_error","column":"a\b\f\x01\\t\\r",'
-        '"message":"invalid value for target type"}'
-    )
+def test_error_entry_escapes_every_control_character() -> None:
+    """#983: \\b, \\f and U+0001 in a column name must not make `__floe_errors` invalid JSON."""
+    entry = error_entry("cast_error", "a\b\f\x01\t\ré", CAST_ERROR_MESSAGE)
+    assert json.loads(entry)["column"] == "a\b\f\x01\t\ré"
+    assert "é" in entry  # non-ASCII stays raw, as before
 
 
 @pytest.mark.parametrize(

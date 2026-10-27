@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "entity.name=orders source.partitioning.batch_column requires {batch} in source.partitioning.pattern"
-}

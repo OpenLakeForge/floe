@@ -1,10 +1,6 @@
-/target
-**/*.rs.bk
-
 # OS
 .DS_Store
 Thumbs.db
-.cargo/
 .venv/
 .venv-airflow/
 .venv-dagster/

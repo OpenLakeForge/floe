@@ -108,7 +108,7 @@ Rust accepts `0000-01-01T00:00:00` (t70), `-0001-01-01T00:00:00` (t71), `-2024-0
 - `9999-12-31T23:59:60` rolls over to year 10000, which unsigned `10000-...` input itself cannot express.
 - Offsets are silently ignored rather than applied.
 
-## Intentional delta D9 (`delta.yml`, `expected_python/`)
+## Python differs from Rust 0.7: D9
 Python (#617 decision, D9):
 - rejects second `61`, anything after a valid time (`garbage`, `:00`, `,123`, `.123.456`), spaces inside a value
   (a space before the offset, or after the `T`), and a result outside years 1..9999 (after rollover too);
@@ -118,10 +118,3 @@ Python (#617 decision, D9):
 Rows rejected: t26, t27, t30, t44, t45, t51, t64, t65, t67, t70-t74, s09. Rows converted: t21 (`+02:00`, 08:00:00),
 t22 (`-05:30`, 15:30:00), t23 (`+0200`), t24 (`+02`), t25 (`.5+02:00`, 08:00:00.500), t28 (`T10:00+02:00`).
 `Z` rows (t17-t20, s03) are unchanged since UTC is already the stored value.
-
-`expected_python/` was derived from `expected/` of the same case (no Python run exists yet):
-- `accepted/casts_datetime.parquet`: rejected rows removed; converted rows get the wall-clock time minus the offset;
-- `rejected/casts_datetime/part-00000.csv`: for each newly rejected row, a copy of a Rust-rejected row for the same column
-  with that `id` and `__floe_row_index` (its 0-based line in `in/`), merged in row-index order;
-- `reports/`: `accepted_total`/`accepted_rows`/`accepted_count` minus 15, `rejected_total`/`rejected_count`/`errors`/`violations`
-  plus 15 (global, `datetime` column +14, `timestamp` column +1). Writer byte metrics keep Rust's values (ignored on compare).

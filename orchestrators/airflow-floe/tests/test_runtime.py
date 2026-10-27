@@ -138,7 +138,7 @@ class RuntimeHelpersTests(unittest.TestCase):
             accepted_path = base / "out" / "accepted" / "orders"
 
             manifest_payload = {
-                "schema": "floe.manifest.v1",
+                "spec_version": "0.8",
                 "generated_at_ts_ms": 1739500000000,
                 "floe_version": "0.2.4",
                 "config_uri": str(config_path),
@@ -172,7 +172,7 @@ class RuntimeHelpersTests(unittest.TestCase):
             config_path.write_text("version: v1\n", encoding="utf-8")
 
             manifest_payload = {
-                "schema": "floe.manifest.v1",
+                "spec_version": "0.8",
                 "generated_at_ts_ms": 1739500000000,
                 "floe_version": "0.2.4",
                 "config_uri": f"local://{config_path}",
@@ -203,7 +203,7 @@ class RuntimeHelpersTests(unittest.TestCase):
             config_path.write_text("version: v1\n", encoding="utf-8")
 
             manifest_payload = {
-                "schema": "floe.manifest.v1",
+                "spec_version": "0.8",
                 "generated_at_ts_ms": 1739500000000,
                 "floe_version": "0.2.4",
                 "config_uri": str(config_path),

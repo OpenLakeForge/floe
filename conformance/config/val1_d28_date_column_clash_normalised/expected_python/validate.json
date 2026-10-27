@@ -1,4 +1,0 @@
-{
-  "ok": false,
-  "error": "entity.name=orders source.partitioning.date_column=ingest_date is already a column in schema.columns"
-}

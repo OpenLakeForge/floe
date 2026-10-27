@@ -1,3 +1,4 @@
 {
-  "ok": true
+  "ok": false,
+  "error": "unsupported report.formatter: xml"
 }
