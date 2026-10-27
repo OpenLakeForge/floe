@@ -115,6 +115,30 @@ $defs:
           Must be >= 1.  When combined with strategy "sequential" this
           value is effectively 1.
 
+  profile_runner_resources:
+    type: object
+    additionalProperties: false
+    description: CPU and memory resource requests for the runner container.
+    properties:
+      cpu:
+        type: string
+        description: >
+          CPU resource request in Kubernetes quantity notation
+          (e.g. "500m", "1", "2000m").
+      memory_mb:
+        type: integer
+        minimum: 0
+        maximum: 9223372036854775807
+        description: Memory request in mebibytes (e.g. 512 → 512Mi).
+      cpu_limit:
+        type: string
+        description: CPU limit in Kubernetes quantity notation. No limit when omitted.
+      memory_limit_mb:
+        type: integer
+        minimum: 1
+        maximum: 9223372036854775807
+        description: Memory limit in mebibytes. No limit when omitted.
+
   profile_runner:
     type: object
     additionalProperties: false
@@ -182,20 +206,28 @@ $defs:
           Name of the Kubernetes ServiceAccount to attach to the runner Pod.
           Required when the Pod needs cloud-provider IAM or RBAC privileges.
       resources:
+        $ref: "#/$defs/profile_runner_resources"
+      job_scope:
+        type: string
+        enum:
+          - entity
+          - domain
+        description: >
+          Kubernetes: how dagster-floe groups entities into Jobs.
+            - "entity": one Job per entity (default when omitted).
+            - "domain": one Job per domain runs its selected entities one after another
+              in a single `floe run --entities a,b,c`.
+      domain_resources:
         type: object
-        additionalProperties: false
-        description: CPU and memory resource requests for the runner container.
-        properties:
-          cpu:
-            type: string
-            description: >
-              CPU resource request in Kubernetes quantity notation
-              (e.g. "500m", "1", "2000m").
-          memory_mb:
-            type: integer
-            minimum: 0
-            maximum: 9223372036854775807
-            description: Memory request in mebibytes (e.g. 512 → 512Mi).
+        additionalProperties:
+          allOf:
+            - $ref: "#/$defs/profile_runner_resources"
+            - properties:
+                memory_mb:
+                  minimum: 1
+        description: >
+          Kubernetes: container resources per domain name, used by `job_scope: domain`
+          Jobs in place of `resources`. A domain not listed uses `resources`.
       env_parameters:
         type: object
         additionalProperties:

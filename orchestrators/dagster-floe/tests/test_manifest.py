@@ -368,3 +368,31 @@ def test_manifest_orchestration_null_value_treated_as_absent():
     data = _base_execution_dict(orchestration=None)
     execution = ManifestExecution.from_dict(data)
     assert execution.orchestration is None
+
+
+def test_runner_definition_reads_job_scope_and_domain_resources(tmp_path: Path):
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    default = payload["runners"]["default"]
+    runner = payload["runners"]["definitions"][default]
+    runner["job_scope"] = "domain"
+    runner["resources"] = {"cpu": "1", "memory_mb": 512, "memory_limit_mb": 1024}
+    runner["domain_resources"] = {"sales": {"cpu": "2", "memory_mb": 4096}}
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    definition = load_manifest(path).runners.definitions[default]
+
+    assert definition.job_scope == "domain"
+    assert definition.domain_resources == {"sales": {"cpu": "2", "memory_mb": 4096}}
+
+
+def test_runner_definition_rejects_unknown_job_scope(tmp_path: Path):
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    payload["runners"]["definitions"][payload["runners"]["default"]]["job_scope"] = "all"
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="job_scope"):
+        load_manifest(path)
