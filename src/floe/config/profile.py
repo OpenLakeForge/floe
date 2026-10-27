@@ -104,9 +104,12 @@ def _resources(hash: Hash, key: str, ctx: str) -> dict[str, object] | None:
         "cpu": cpu,
         "memory_mb": _u64(resources, "memory_mb", where),
     }
+    memory_limit = _u64(resources, "memory_limit_mb", where)
+    if memory_limit == 0:  # the schemas require >= 1
+        raise FloeConfigError(f"{where}.memory_limit_mb: must be >= 1")
     limits = {  # the limits are Python-only: carried only when set, so Rust manifests stay identical
         "cpu_limit": _string(resources, "cpu_limit", where),
-        "memory_limit_mb": _u64(resources, "memory_limit_mb", where),
+        "memory_limit_mb": memory_limit,
     }
     return read | {k: v for k, v in limits.items() if v is not None}
 

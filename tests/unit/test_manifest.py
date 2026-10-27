@@ -510,6 +510,32 @@ def test_580_one_config_compiles_per_environment_domain_resources(
     }
 
 
+@pytest.mark.parametrize(
+    ("setting", "where"),
+    [
+        ("resources: {memory_limit_mb: 0}", "profile.execution.runner.resources"),
+        (
+            "domain_resources: {sales: {memory_limit_mb: 0}}",
+            "profile.execution.runner.domain_resources.sales",
+        ),
+    ],
+)
+def test_580_a_zero_memory_limit_is_rejected(
+    setting: str,
+    where: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    profile = K8S.replace("    resources: {memory_mb: 512}\n", f"    {setting}\n")
+    (tmp_path / "prod.yml").write_text(profile)
+    assert (
+        generate(tmp_path, monkeypatch, "-o", "-", "-p", str(tmp_path / "prod.yml"))
+        != 0
+    )
+    assert f"{where}.memory_limit_mb: must be >= 1" in capsys.readouterr().err
+
+
 def test_580_job_scope_must_be_entity_or_domain(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
