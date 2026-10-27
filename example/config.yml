@@ -35,8 +35,8 @@ entities:
 
     sink:
       accepted:
-        format: "delta"
-        path: "./out/accepted/customer_delta/"
+        format: "parquet"
+        path: "./out/accepted/customer/"
       rejected:
         format: "csv"
         path: "./out/rejected/customer/"
@@ -169,65 +169,3 @@ entities:
           type: "string"
           nullable: true
           unique: false
-
-  - name: "customer_warehouse"
-
-    metadata:
-      data_product: "customer_master"
-      domain: "sales"
-      owner: "data-platform"
-      description: "Customer master upserted into a local DuckDB warehouse"
-      tags: ["prepared", "masterdata", "duckdb"]
-
-    source:
-      format: "csv"
-      path: "./in/customer"
-      options:
-        header: true
-        separator: ","
-        encoding: "utf-8"
-        null_values: ["", "NULL", "null"]
-        glob: "*.csv"
-      cast_mode: "strict"
-
-    sink:
-      write_mode: "merge_scd1"   # overwrite | append | merge_scd1 | merge_scd2
-      accepted:
-        format: "duckdb"
-        path: "./out/accepted/warehouse.duckdb"   # local file (use MotherDuck `md:` for remote)
-        duckdb:
-          table: "customers"
-          schema: "main"
-      rejected:
-        format: "csv"
-        path: "./out/rejected/customer_warehouse/"
-
-    policy:
-      severity: "reject"   # warn | reject | abort
-
-    schema:
-      mismatch:
-        missing_columns: "reject_file"
-        extra_columns: "ignore"
-      normalize_columns:
-        enabled: true
-        strategy: "snake_case"
-      primary_key: ["customer_id"]
-
-      columns:
-        - name: "customer_id"
-          type: "string"
-          nullable: false
-          unique: true
-
-        - name: "email"
-          type: "string"
-          nullable: true
-
-        - name: "country_code"
-          type: "string"
-          nullable: true
-
-        - name: "created_at"
-          type: "datetime"
-          nullable: true

@@ -100,3 +100,12 @@ def test_validate_checks_the_entity_selection(
     )
     assert code == 1
     assert err == "Error: entities not found: zz\n"
+
+
+def test_validate_accepts_the_tutorial_example_config(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, _, err = floe(
+        monkeypatch, capsys, "validate", "-c", str(REPO / "example/config.yml")
+    )
+    assert (code, err) == (0, "")
