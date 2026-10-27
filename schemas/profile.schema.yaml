@@ -220,7 +220,11 @@ $defs:
       domain_resources:
         type: object
         additionalProperties:
-          $ref: "#/$defs/profile_runner_resources"
+          allOf:
+            - $ref: "#/$defs/profile_runner_resources"
+            - properties:
+                memory_mb:
+                  minimum: 1
         description: >
           Kubernetes: container resources per domain name, used by `job_scope: domain`
           Jobs in place of `resources`. A domain not listed uses `resources`.

@@ -536,6 +536,21 @@ def test_580_a_zero_memory_limit_is_rejected(
     assert f"{where}.memory_limit_mb: must be >= 1" in capsys.readouterr().err
 
 
+def test_580_a_zero_per_domain_memory_request_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    profile = K8S.replace(
+        "    resources: {memory_mb: 512}\n",
+        "    domain_resources: {sales: {memory_mb: 0}}\n",
+    )
+    (tmp_path / "prod.yml").write_text(profile)
+    assert (
+        generate(tmp_path, monkeypatch, "-o", "-", "-p", str(tmp_path / "prod.yml"))
+        != 0
+    )
+    assert "domain_resources.sales.memory_mb: must be >= 1" in capsys.readouterr().err
+
+
 def test_580_job_scope_must_be_entity_or_domain(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
