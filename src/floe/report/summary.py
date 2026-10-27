@@ -20,6 +20,17 @@ def id_path(entity: EntityConfig) -> str:
     return entity.id
 
 
+def run_domain(entities: Sequence[EntityConfig]) -> str | None:
+    """D37: the domain every entity of the run belongs to, else None."""
+    domains = {e.domain for e in entities}
+    return domains.pop() if len(domains) == 1 else None
+
+
+def run_dir(report_path: str, run_id: str, domain: str | None) -> str:
+    """D37: `<report>/<domain>/run_<id>` for a single-domain run, else `<report>/run_<id>`."""
+    return "/".join([report_path.rstrip("/"), *([domain] if domain else []), f"run_{run_id}"])  # fmt: skip
+
+
 def run_outcome(file_statuses: Sequence[str], warnings: int = 0) -> tuple[str, int]:
     """Rust's `compute_run_outcome` then `upgrade_status_for_warnings`: (status, exit code)."""
     if "failed" in file_statuses:
@@ -42,9 +53,10 @@ def build_summary(
     config_path: str,
     report_path: str,
     metadata: ProjectMetadata | None = None,
+    domain: str | None = None,
 ) -> dict[str, Any]:
-    """`reports` are the entity `run.json` dicts in run order, each with its `id_path`."""
-    run_dir = f"{report_path.rstrip('/')}/run_{run_id}"
+    """`reports` are the entity `run.json` dicts in run order, each with its `id_path`; `domain` is the run's one domain (D37)."""
+    run_path = run_dir(report_path, run_id, domain)
     totals = {k: sum(r["results"][k] for _, r in reports) for k in _TOTALS}
     statuses = [f["status"] for _, r in reports for f in r["files"]]
     status, exit_code = run_outcome(statuses, totals["warnings_total"])
@@ -55,7 +67,7 @@ def build_summary(
                 [f["status"] for f in r["files"]], r["results"]["warnings_total"]
             )[0],
             "results": r["results"],
-            "report_file": f"{run_dir}/{path}/run.json",
+            "report_file": f"{run_path}/{path}/run.json",
         }
         for path, r in reports
     ]
@@ -64,6 +76,9 @@ def build_summary(
         "tool": {"name": "floe", "version": __version__},
         "run": {
             "run_id": run_id,
+        }
+        | ({"domain": domain} if domain else {})
+        | {
             "started_at": started_at,
             "finished_at": finished_at,
             "duration_ms": duration_ms,
@@ -72,7 +87,7 @@ def build_summary(
         },
         "config": {"path": config_path, "version": version}
         | ({"metadata": metadata.model_dump(exclude_none=True)} if metadata else {}),
-        "report": {"path": report_path, "report_file": f"{run_dir}/run.summary.json"},
+        "report": {"path": report_path, "report_file": f"{run_path}/run.summary.json"},
         "results": totals,
         "entities": entities,
     }
@@ -83,7 +98,7 @@ def write_reports(
     reports: Sequence[tuple[str, dict[str, Any]]],
     client: StorageClient,
 ) -> None:
-    """Write `<report>/run_<id>/<id_path>/run.json` per entity, then `run.summary.json` (overwriting, as Rust)."""
+    """Write `<run_dir>/<id_path>/run.json` per entity, then `run.summary.json` (overwriting, as Rust)."""
     summary_file = summary["report"]["report_file"]
     run_dir = summary_file.removesuffix("/run.summary.json")
     for path, report in reports:

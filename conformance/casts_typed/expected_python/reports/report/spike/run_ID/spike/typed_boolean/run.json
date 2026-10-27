@@ -1,0 +1,105 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "spike.typed_boolean"
+  },
+  "source": {
+    "format": "parquet",
+    "path": "local://<ROOT>/in/casts_typed.parquet",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ";"
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "file",
+      "file_count": 1,
+      "files": [
+        "local://<ROOT>/in/casts_typed.parquet"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/typed_boolean"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/typed_boolean"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/typed_boolean",
+    "table_root_uri": "local://<ROOT>/out/accepted/typed_boolean",
+    "write_mode": "overwrite",
+    "accepted_rows": 5,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 1336,
+    "avg_file_size_mb": 0.00127410888671875,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 5,
+    "accepted_total": 5,
+    "rejected_total": 0,
+    "warnings_total": 0,
+    "errors_total": 0
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/casts_typed.parquet",
+      "status": "success",
+      "row_count": 5,
+      "accepted_count": 5,
+      "rejected_count": 0,
+      "mismatch": {
+        "declared_columns_count": 5,
+        "input_columns_count": 9,
+        "missing_columns": [],
+        "extra_columns": [
+          "d",
+          "ts",
+          "tstz",
+          "tzp"
+        ],
+        "mismatch_action": "ignored_extras"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/typed_boolean",
+        "rejected_path": null,
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 0,
+        "warnings": 0,
+        "rules": []
+      }
+    }
+  ]
+}

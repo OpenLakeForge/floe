@@ -158,7 +158,7 @@ def run_output(
     timings: list[dict[str, int]],
 ) -> str:
     """Rust's `format_run_output`; `mode` is `default`, `quiet` or `verbose`."""
-    run_dir = Path(outcome.report_base_path) / f"run_{outcome.run_id}"
+    run_dir = Path(outcome.run_dir)
     head = [f"run id: {outcome.run_id}", f"report base: {outcome.report_base_path}"]
     if outcome.dry_run is not None:
         by_id = {e.id: e for e in entities}

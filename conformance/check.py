@@ -88,6 +88,9 @@ def load_expected(case: Path, impl: str) -> Snapshot:
     expected: Snapshot = {}
     dirs = ["expected", "expected_python"] if impl == "python" else ["expected"]
     for d in dirs:
+        if d == "expected_python" and (case / d / "reports").is_dir():
+            # D37 moves every report file of a single-domain run, so Python's reports replace Rust's whole set
+            expected = {k: v for k, v in expected.items() if not k.startswith("reports/")}  # fmt: skip
         for path in sorted((case / d).rglob("*")):
             if path.is_file():
                 rel = path.relative_to(case / d).as_posix()

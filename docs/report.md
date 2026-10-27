@@ -21,6 +21,15 @@ Reports are written under the configured report directory:
 <report.path>/run_<run_id>/<entity.name>/run.json
 ```
 
+(`<entity.name>` is `<domain>/<name>` for an entity with a qualified id, see [config](config.md#entity-identity).)
+
+When every entity of the run belongs to one domain (D37, 0.8), the run directory sits
+under that domain (`<report.path>/<domain>/run_<run_id>/`), so a domain's runs are listed together, and `run.summary.json`
+carries `run.domain`. A run spanning several domains, or entities without a domain,
+keeps `<report.path>/run_<run_id>/` and has no `run.domain`. `run_finished`'s
+`summary_uri` and `entity_report_uris` point at the actual location; `report_base`
+stays `<report.path>`. Rust 0.7 always wrote `<report.path>/run_<run_id>/`.
+
 `run_id` is a filename-safe ISO-like string: `YYYY-MM-DDTHH-MM-SSZ`
 (colons replaced by dashes). The report JSON must include the full
 `report_file` path.
@@ -35,7 +44,7 @@ Golden example files live under `example/report/run_2026-01-19T10-23-45Z/`.
 
 - `spec_version`: Config version string.
 - `tool`: Tool name/version and optional git info.
-- `run`: Run ID, timestamps, duration, status, and exit code.
+- `run`: Run ID, `domain` (only when the run has a single domain, D37), timestamps, duration, status, and exit code.
 - `config`: Config path, version, and metadata (free-form).
 - `report`: Report base path and the full summary report file path.
 - `results`: Totals for files, rows, accepted/rejected rows, warnings, errors.

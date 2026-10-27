@@ -143,7 +143,8 @@ def snapshot(work: Path) -> Snapshot:
     """Normalized reports, accepted rows (one table per accepted dir) and rejected CSVs of a run."""
     root = str(work.resolve())
     out: Snapshot = {}
-    for path in sorted(work.glob("report/run_*/**/*.json")):
+    # D37: Python writes a single-domain run under `report/<domain>/run_<id>/`
+    for path in sorted({*work.glob("report/run_*/**/*.json"), *work.glob("report/*/run_*/**/*.json")}):  # fmt: skip
         rel = RUN_DIR.sub("run_ID", path.relative_to(work).as_posix())
         # key order is part of the contract, so it is preserved
         out[f"reports/{rel}"] = (

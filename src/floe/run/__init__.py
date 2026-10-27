@@ -14,6 +14,8 @@ from floe.errors import FloeConfigError, FloeError
 from floe.report.summary import (
     build_summary,
     id_path,
+    run_dir,
+    run_domain,
     run_outcome,
     write_entity_report,
     write_reports,
@@ -31,6 +33,7 @@ class RunOutcome:
     summary: dict[str, Any]
     dry_run: dict[str, list[str]] | None  # entity id -> scanned files
     report_base_path: str
+    run_dir: str  # D37: `<report>/<domain>/run_<id>` for a single-domain run
     entity_reports: list[dict[str, Any]]
 
 
@@ -101,6 +104,8 @@ def run(
     report_uri, report_storage = resolve_path(root.storages, config_dir, root.report.storage, root.report.path, "report.storage")  # fmt: skip
     report_path = report_uri.removeprefix("local://")
     run_id = run_id or started.replace(":", "-")
+    domain = run_domain(selected)
+    run_path = run_dir(report_path, run_id, domain)
 
     def inputs(e: EntityConfig) -> ResolvedInputs:
         return list_source(
@@ -112,10 +117,10 @@ def run(
         summary = build_summary(
             root.version, [], run_id=run_id, started_at=started, finished_at=_rfc3339(),
             duration_ms=0, config_path=str(normalize_local_path(path)), report_path=report_path,
-            metadata=root.metadata,
+            metadata=root.metadata, domain=domain,
         )  # fmt: skip
         summary["report"]["report_file"] = "disabled (dry-run)"
-        return RunOutcome(run_id, summary, scanned, report_path, [])
+        return RunOutcome(run_id, summary, scanned, report_path, run_path, [])
     emit = Emitter(observer, run_id)
     formatter = cast(
         Formatter, root.report.formatter or "json"
@@ -142,19 +147,18 @@ def run(
             listed[e.id] = inputs(e)
     reports: list[tuple[str, dict[str, Any]]] = []
     client = storage_client(report_storage)
-    run_dir = f"{report_path.rstrip('/')}/run_{run_id}"
     # D36: a policy abort fails only its entity; a FloeError still stops the run
     for e in selected:
         report = one(e).report
         reports.append((id_path(e), report))
-        write_entity_report(run_dir, id_path(e), report, client)
+        write_entity_report(run_path, id_path(e), report, client)
         _finished(emit, e.id, report)
     summary = build_summary(
         root.version, reports,
         run_id=run_id, started_at=started, finished_at=_rfc3339(),
         duration_ms=int((time.monotonic() - timer) * 1000),
         config_path=str(normalize_local_path(path)), report_path=report_path,
-        metadata=root.metadata,
+        metadata=root.metadata, domain=domain,
     )  # fmt: skip
     write_reports(summary, [], client)
     r, t = summary["run"], summary["results"]
@@ -163,4 +167,6 @@ def run(
          warnings=t["warnings_total"], errors=t["errors_total"],
          summary_uri=summary["report"]["report_file"], report_base=report_path,
          entity_report_uris={e["name"]: e["report_file"] for e in summary["entities"]})  # fmt: skip
-    return RunOutcome(run_id, summary, None, report_path, [r for _, r in reports])
+    return RunOutcome(
+        run_id, summary, None, report_path, run_path, [r for _, r in reports]
+    )

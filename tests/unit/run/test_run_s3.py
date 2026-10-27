@@ -113,11 +113,11 @@ def test_an_s3_source_is_ingested_and_the_reports_land_on_s3(tmp_path: Path, s3:
     out = go(tmp_path)
     assert out.report_base_path == "s3://b/runs"
     assert pl.read_parquet(tmp_path / "out/accepted").height == 2
-    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    report = json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
     assert report["source"]["path"] == "s3://b/in/"
     assert [f["input_file"] for f in report["files"]] == ["s3://b/in/a.csv"]
-    summary = json.loads(s3.objects["s3://b/runs/run_r1/run.summary.json"])
-    assert summary["report"]["report_file"] == "s3://b/runs/run_r1/run.summary.json"
+    summary = json.loads(s3.objects["s3://b/runs/d/run_r1/run.summary.json"])
+    assert summary["report"]["report_file"] == "s3://b/runs/d/run_r1/run.summary.json"
 
 
 def test_a_rejected_s3_file_is_copied_under_its_source_name(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
@@ -149,7 +149,7 @@ def test_parquet_and_rejected_parts_are_written_to_s3(tmp_path: Path, s3: MemS3)
     accepted = pl.read_parquet(io.BytesIO(s3.objects["s3://b/out/accepted/part-00000.parquet"]))  # fmt: skip
     assert accepted["id"].to_list() == [1]
     [rejected] = parts(s3, "s3://b/out/rejected/")
-    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    report = json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
     assert report["sink"]["accepted"]["path"] == "s3://b/out/accepted"
     assert report["sink"]["rejected"]["path"] == "s3://b/out/rejected"
     assert report["files"][0]["output"]["rejected_path"] == rejected
@@ -178,7 +178,7 @@ def test_file_mode_keeps_its_state_on_s3_and_skips_the_ingested_file(tmp_path: P
     state = json.loads(s3.objects["s3://b/in/.floe/state/d/orders/state.json"])
     assert list(state["files"]) == ["s3://b/in/a.csv"]
     out = go(tmp_path, config)
-    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    report = json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
     assert out.summary["results"]["files_skipped"] == 1
     assert report["files"][0]["skip_reason"] == "already_ingested"
 
@@ -192,7 +192,7 @@ def test_archive_copies_then_deletes_the_s3_input(tmp_path: Path, s3: MemS3) -> 
     [archived] = parts(s3, "s3://b/archive/")
     assert archived.startswith("s3://b/archive/orders/a__run-r1__src-")
     assert "s3://b/in/a.csv" not in s3.objects
-    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    report = json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
     assert report["files"][0]["output"]["archived_path"] == archived
 
 
@@ -252,7 +252,7 @@ def test_d31_a_normal_run_never_lists_a_nested_s3_archive(tmp_path: Path, s3: Me
     go(tmp_path, config)
     s3.write("s3://b/in/b.csv", b"id\n2\n")
     out = go(tmp_path, config)
-    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    report = json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
     assert [f["input_file"] for f in report["files"]] == ["s3://b/in/b.csv"]
     assert report["source"]["resolved_inputs"]["files"] == ["s3://b/in/b.csv"]
     assert out.summary["results"]["accepted_total"] == 1
@@ -299,7 +299,7 @@ def test_d28_a_partitioned_s3_source_loads_by_date_with_derived_columns(tmp_path
     go(tmp_path, config)
     got = pl.read_parquet(tmp_path / "out/accepted")
     assert got.rows() == [(2, date(2026, 10, 24), "bb"), (1, date(2026, 10, 25), "aa")]
-    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    report = json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
     assert report["source"]["resolved_inputs"]["files"] == ["s3://b/in/2026/10/24/bb/x.csv", "s3://b/in/2026/10/25/aa/x.csv"]  # fmt: skip
 
 
@@ -330,7 +330,7 @@ def test_d30_an_s3_file_mode_run_starts_after_the_window(tmp_path: Path, s3: Mem
     monkeypatch.setattr(s3, "list", spy)
     go(tmp_path, config)
     assert ("in/", "in/2026/10/22") in calls
-    report = json.loads(s3.objects["s3://b/runs/run_r1/d/orders/run.json"])
+    report = json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
     assert [f["input_file"] for f in report["files"] if f["status"] == "success"] == ["s3://b/in/2026/10/24/b/x.csv"]  # fmt: skip
     state = json.loads(s3.objects["s3://b/in/.floe/state/d/orders/state.json"])
     assert (len(state["files"]), state["watermark"]) == (4, "2026-10-24")
