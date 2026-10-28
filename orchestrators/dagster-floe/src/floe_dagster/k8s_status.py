@@ -22,6 +22,10 @@ def map_k8s_job_status(job: Any) -> str:
     succeeded = _read(status, "succeeded", 0)
     failed = _read(status, "failed", 0)
     conditions = _read(status, "conditions", []) or []
+    spec = job.get("spec") if isinstance(job, dict) else getattr(job, "spec", None)
+    backoff_limit = _read(spec, "backoff_limit", _read(spec, "backoffLimit", 0))
+    if not isinstance(backoff_limit, int):
+        backoff_limit = 0
 
     for condition in conditions:
         cond_type = _read(condition, "type", "")
@@ -37,7 +41,7 @@ def map_k8s_job_status(job: Any) -> str:
 
     if succeeded > 0:
         return STATUS_SUCCEEDED
-    if failed > 0:
+    if failed > backoff_limit:  # a failed pod is retried until the Job's `Failed` condition
         return STATUS_FAILED
     if active > 0:
         return STATUS_RUNNING

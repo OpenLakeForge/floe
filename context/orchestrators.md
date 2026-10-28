@@ -204,6 +204,14 @@ When `type = kubernetes_job`, the manifest runner definition supports:
 | `domain_resources` | object | Resources per domain name; used by `domain` Jobs in place of `resources` (no key-wise merge) |
 | `env` | object | Plain env-var key→value pairs injected into the container |
 | `secrets` | array | Kubernetes Secret key references: `[{name, secret_name, key}]` |
+| `labels` | object | Pod labels added to the defaults (`app`, `floe-job`); the defaults win on a clash, because `floe-job` is how the pod is found again |
+| `annotations` | object | Pod template annotations |
+| `image_pull_policy` | string | Container `imagePullPolicy` |
+| `security_context` | object | Container `securityContext`, verbatim |
+| `node_selector` | object | Pod `nodeSelector` |
+| `tolerations` | array | Pod `tolerations`, verbatim |
+| `backoff_limit` | integer >= 0 | Job `backoffLimit` (default `0`) |
+| `env_from` | array | Container `envFrom`, verbatim, e.g. `[{secretRef: {name: floe-env}}]` |
 
 These fields are populated automatically when `floe manifest generate` is given a profile with a `kubernetes_job` runner block. The `dagster-floe[kubernetes]` optional extra expresses the Kubernetes client requirement.
 
