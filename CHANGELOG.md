@@ -18,6 +18,10 @@ All notable changes to Floe are documented in this file.
   still need a REST catalog. **D42:** `allow_takeover` is accepted and ignored; 0.8 does not check
   0.7's `floe.managed` ownership marker.
 
+- **`floe run --domain <d>` (#1024)** selects every entity of a domain, for `-c` and `--manifest` runs. It
+  takes several domains (repeatable or comma-separated), fails on an unknown domain, and cannot be combined
+  with `--entities`.
+
 - **A profile's `execution.runner.command` may be a list (#1034)**, e.g. `command: [olf-floe-job, --]`,
   as the manifest and the connectors already accept. A string still works.
 
@@ -27,6 +31,12 @@ All notable changes to Floe are documented in this file.
   used to replace the whole argument list, so every Job ran every entity. `args` now prefix Floe's
   rendered arguments: `command: [python]` + `args: [-m, floe]` runs
   `python -m floe run … --entities …`.
+
+- **`s3://` run reports and manifests are read with boto3 (#1021).** When boto3 is importable (it is whenever the
+  `floe` extra is installed) it replaces fsspec/s3fs for `s3://`, honouring `AWS_ENDPOINT_URL_S3` /
+  `AWS_ENDPOINT_URL`, `AWS_REGION` and `AWS_S3_FORCE_PATH_STYLE`. s3fs no longer has to be installable next to
+  `floe-python`; without it Silver assets lost row counts, rejection counts and check detail. Other schemes, and
+  `s3://` without boto3, still use fsspec.
 
 - **`manifest_name=` in config mode (#1022).** `load_floe_assets`, `build_definitions` and
   `build_job_run_config_from_manifest` accept `manifest_name=` next to `config_path=` and pass it to

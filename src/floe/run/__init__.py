@@ -59,6 +59,14 @@ def select_entities(root: RootConfig, selectors: Sequence[str]) -> list[EntityCo
     return [e for i, e in enumerate(root.entities) if i in picked]
 
 
+def domain_entities(root: RootConfig, domains: Sequence[str]) -> list[str]:
+    """Ids of the entities of these domains, as `select_entities` selectors."""
+    missing = [d for d in dict.fromkeys(domains) if all(e.domain != d for e in root.entities)]  # fmt: skip
+    if missing:
+        raise FloeConfigError(f"domains not found: {', '.join(missing)}")
+    return [e.id for e in root.entities if e.domain in domains]
+
+
 def _rfc3339() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
