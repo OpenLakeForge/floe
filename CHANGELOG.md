@@ -4,6 +4,11 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+### dagster-floe
+
+- **`ManifestEntity` exposes `source_resource` (#1044)**, the entity's `source.resource`, next to
+  `source_ref`, so a `source_key_fn` can build `<source>/<resource>` from the manifest.
+
 ### airflow-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
