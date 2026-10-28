@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from floe_dagster.kubernetes_runner import (
@@ -16,7 +17,7 @@ from floe_dagster.kubernetes_runner import (
     sized_for_domain,
 )
 from floe_dagster.manifest import ManifestRunnerDefinition, load_manifest
-from floe_dagster.runner import LocalRunner
+from floe_dagster.runner import LocalRunner, RunResult
 
 
 def _runner() -> ManifestRunnerDefinition:
@@ -319,3 +320,84 @@ def test_build_k8s_job_spec_without_pod_options_is_unchanged() -> None:
     assert not {"imagePullPolicy", "securityContext", "envFrom"} & container.keys()
     assert not {"nodeSelector", "tolerations"} & template["spec"].keys()
     assert spec["spec"]["backoffLimit"] == 0
+
+
+def _job_with_retries(backoff_limit: int, **status):
+    return {"spec": {"backoffLimit": backoff_limit}, **_job(**status)}
+
+
+def test_a_failed_pod_is_not_terminal_while_the_job_still_retries() -> None:
+    assert map_k8s_job_status(_job_with_retries(2, failed=1, active=1)) == STATUS_RUNNING
+    assert map_k8s_job_status(_job_with_retries(2, failed=1)) == STATUS_SUBMITTED
+    assert map_k8s_job_status(_job_with_retries(2, failed=2)) == STATUS_SUBMITTED
+    assert map_k8s_job_status(_job_with_retries(2, failed=3)) == STATUS_FAILED
+    assert map_k8s_job_status(_job_with_retries(0, failed=1)) == STATUS_FAILED
+    client_job = SimpleNamespace(spec=SimpleNamespace(backoff_limit=2), status=SimpleNamespace(failed=1, active=1))
+    assert map_k8s_job_status(client_job) == STATUS_RUNNING
+
+
+def test_run_kubernetes_job_keeps_polling_through_a_retry() -> None:
+    jobs_api = MagicMock()
+    jobs_api.read_namespaced_job.side_effect = [
+        _job_with_retries(2, failed=1, active=1),
+        _job_with_retries(2, succeeded=1, failed=1, conditions=[{"type": "Complete", "status": "True"}]),
+    ]
+    core_api = MagicMock()
+    core_api.list_namespaced_pod.return_value = MagicMock(items=[])
+
+    with patch("time.sleep") as sleep:
+        result = run_kubernetes_job(
+            ["floe", "run"],
+            entity="orders",
+            runner=replace(_runner(), backoff_limit=2),
+            jobs_api=jobs_api,
+            core_api=core_api,
+        )
+
+    assert result.status == STATUS_SUCCEEDED
+    assert sleep.call_count == 1
+
+
+def _attempt(name: str, phase: str, created: str) -> dict:
+    return {"metadata": {"name": name, "creation_timestamp": created}, "status": {"phase": phase}}
+
+
+def _run_with_pods(pods: list[dict], job: dict) -> RunResult:
+    jobs_api = MagicMock()
+    jobs_api.read_namespaced_job.return_value = job
+    core_api = MagicMock()
+    core_api.list_namespaced_pod.return_value = MagicMock(items=pods)
+    core_api.read_namespaced_pod_log.side_effect = lambda name, namespace: f"logs of {name}"
+    with patch("time.sleep"):
+        return run_kubernetes_job(
+            ["floe", "run"],
+            entity="orders",
+            runner=replace(_runner(), backoff_limit=2),
+            jobs_api=jobs_api,
+            core_api=core_api,
+        )
+
+
+def test_a_succeeded_job_reports_the_pod_that_succeeded() -> None:
+    pods = [
+        _attempt("attempt-1", "Failed", "2026-01-01T10:00:00Z"),
+        _attempt("attempt-2", "Succeeded", "2026-01-01T10:05:00Z"),
+    ]
+    job = _job_with_retries(2, succeeded=1, failed=1, conditions=[{"type": "Complete", "status": "True"}])
+    for ordered in (pods, pods[::-1]):
+        result = _run_with_pods(ordered, job)
+        assert result.stdout == "logs of attempt-2"
+        assert result.backend_metadata["pod_name"] == "attempt-2"
+
+
+def test_a_failed_job_reports_the_latest_attempt() -> None:
+    pods = [
+        _attempt("attempt-1", "Failed", "2026-01-01T10:00:00Z"),
+        _attempt("attempt-2", "Failed", "2026-01-01T10:05:00Z"),
+        _attempt("attempt-3", "Failed", "2026-01-01T10:10:00Z"),
+    ]
+    job = _job_with_retries(2, failed=3, conditions=[{"type": "Failed", "status": "True", "reason": "BackoffLimitExceeded"}])
+    for ordered in (pods, pods[::-1]):
+        result = _run_with_pods(ordered, job)
+        assert result.stdout == "logs of attempt-3"
+        assert result.backend_metadata["pod_name"] == "attempt-3"

@@ -230,13 +230,26 @@ def _make_core_client(batch_client: Any) -> Any:
     return k8s_client.CoreV1Api()
 
 
+def _outcome_pod(core_api: Any, job_name: str, namespace: str) -> Any:
+    """With `backoff_limit` > 0 a Job has several pods: the one that succeeded, else the latest attempt."""
+    pods = core_api.list_namespaced_pod(namespace=namespace, label_selector=f"floe-job={job_name}")
+    items = getattr(pods, "items", None) or pods.get("items", [])
+    if not items:
+        return None
+
+    def attempt(pod: Any) -> tuple[bool, str]:
+        phase = _read(_read(pod, "status", {}), "phase", "")
+        created = _read(_read(pod, "metadata", {}), "creation_timestamp", "")
+        return phase == "Succeeded", str(created)
+
+    return max(items, key=attempt)
+
+
 def _collect_job_logs(core_api: Any, job_name: str, namespace: str) -> str:
     try:
-        pods = core_api.list_namespaced_pod(namespace=namespace, label_selector=f"floe-job={job_name}")
-        items = getattr(pods, "items", None) or pods.get("items", [])
-        if not items:
+        pod = _outcome_pod(core_api, job_name, namespace)
+        if pod is None:
             return ""
-        pod = items[0]
         pod_name = pod.metadata.name if hasattr(pod, "metadata") else pod.get("metadata", {}).get("name", "")
         if not pod_name:
             return ""
@@ -247,11 +260,9 @@ def _collect_job_logs(core_api: Any, job_name: str, namespace: str) -> str:
 
 def _collect_pod_context(core_api: Any, job_name: str, namespace: str) -> dict[str, Any]:
     try:
-        pods = core_api.list_namespaced_pod(namespace=namespace, label_selector=f"floe-job={job_name}")
-        items = getattr(pods, "items", None) or pods.get("items", [])
-        if not items:
+        pod = _outcome_pod(core_api, job_name, namespace)
+        if pod is None:
             return {}
-        pod = items[0]
         pod_name = _read(_read(pod, "metadata", {}), "name", None)
         statuses = _read(_read(pod, "status", {}), "container_statuses", []) or []
         if not statuses:
