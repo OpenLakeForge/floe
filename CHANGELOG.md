@@ -2,6 +2,12 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.1 (unreleased)
+
+- **`floe run --domain <d>` (#1024)** selects every entity of a domain, for `-c` and `--manifest` runs. It
+  takes several domains (repeatable or comma-separated), fails on an unknown domain, and cannot be combined
+  with `--entities`.
+
 ## v0.8.0
 
 Floe 0.8 is the Python core. `pip install floe-python` installs the `floe` command (a pure-Python
