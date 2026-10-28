@@ -18,6 +18,10 @@ All notable changes to Floe are documented in this file.
   still need a REST catalog. **D42:** `allow_takeover` is accepted and ignored; 0.8 does not check
   0.7's `floe.managed` ownership marker.
 
+- **`floe run --domain <d>` (#1024)** selects every entity of a domain, for `-c` and `--manifest` runs. It
+  takes several domains (repeatable or comma-separated), fails on an unknown domain, and cannot be combined
+  with `--entities`.
+
 - **`kubernetes_job` runners can shape the Job's pod (#1023).** `execution.runner` in a profile accepts
   `labels` (added to the defaults), `annotations`, `image_pull_policy`, `security_context`,
   `node_selector`, `tolerations`, `backoff_limit` and `env_from`. They are carried into the manifest
@@ -51,6 +55,11 @@ All notable changes to Floe are documented in this file.
   `build_definitions` accept `source_key_fn=lambda entity: AssetKey([...])` (or `None` for the default key).
   Entities of one named source can depend on different upstream assets, e.g. `crm/orders` and `crm/accounts`,
   and Dagster still orders each after its upstream. No `SourceAsset` is registered for a key you choose.
+
+- **`job_scope: domain` Jobs run `floe run --domain <d>` for a whole domain (#1036).** When the selected
+  entities are exactly every entity of the domain in the manifest, the Job sends `--domain <d>` in place of
+  `--entities a,b,c`; a subset keeps `--entities`. It needs Floe 0.8.1 (`floe run --domain`):
+  a `kubernetes_job` image must be 0.8.1 or newer.
 
 ### airflow-floe
 

@@ -228,6 +228,22 @@ def test_manifest_paths_resolve_against_its_own_directory_and_entities_select(
     assert floe(monkeypatch, "run", "--manifest", "w/m.json", "--entities", "nope") == 1
 
 
+def test_a_manifest_run_selects_a_domain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    work = copy_case("severity_warn", tmp_path / "w")
+    monkeypatch.chdir(work)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    domain = json.loads((work / "m.json").read_text())["entities"][0]["domain"]
+    monkeypatch.chdir(tmp_path)
+    assert floe(monkeypatch, "run", "--manifest", "w/m.json", "--domain", domain) == 0  # fmt: skip
+    assert list((work / "out/accepted/orders").glob("*.parquet"))
+    assert floe(monkeypatch, "run", "--manifest", "w/m.json", "--domain", "nope") == 1
+    assert capsys.readouterr().err.endswith("Error: domains not found: nope\n")
+
+
 def manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config: str) -> Path:
     (tmp_path / "config.yml").write_text(config)
     out = tmp_path / "m.json"

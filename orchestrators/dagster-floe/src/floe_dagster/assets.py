@@ -163,6 +163,7 @@ def build_floe_asset_defs(
                 domain=domain,
                 runner_name=runner_name,
                 entities=members,
+                domain_names={e.name for e in manifest.entities if e.domain == domain},
                 source_keys={e.name: source_keys[e.name] for e in members},
                 config_uri=config_uri,
                 manifest_path=manifest_path,
@@ -489,6 +490,7 @@ def _make_domain_multi_asset(
     domain: str,
     runner_name: str,
     entities: list[ManifestEntity],
+    domain_names: set[str],
     source_keys: dict[str, list[str]],
     config_uri: str,
     manifest_path: str,
@@ -543,13 +545,19 @@ def _make_domain_multi_asset(
         run_id = getattr(run, "run_id", None) if run is not None else None
         # concurrent groups of one Dagster run must not share a Floe run id (it names the summary file)
         floe_run_id = f"{run_id}_{context.op_def.name}" if run_id else None
+        names = [entity.name for entity in chosen]
+        # the whole domain of the manifest: `floe run --domain` says it; a custom template stays as written
+        whole_domain = bool(names) and set(names) == domain_names and execution.per_entity_args == [
+            "--entities",
+            "{entity_name}",
+        ]
         result = runner.run_floe_entities(
             config_uri=config_uri,
             manifest_uri=manifest_uri or manifest_path,
             run_id=floe_run_id,
             domain=domain,
-            entities=[entity.name for entity in chosen],
-            execution=execution,
+            entities=names,
+            execution=replace(execution, per_entity_args=["--domain", domain]) if whole_domain else execution,
             runner_definition=runner_definition,
         )
         finished = _parse_finished(context, result, execution, run_id)
