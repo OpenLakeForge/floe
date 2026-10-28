@@ -8,7 +8,7 @@ version = "0.8.0"
 description = "Floe: a data-contract runtime for file ingestion"
 requires-python = ">=3.11"
 dependencies = [
-    "boto3>=1.43.118",
+    "boto3>=1.36.0",
     "duckdb==1.5.6",
     "fastexcel>=0.21.0",
     "polars>=2.0.0",
@@ -51,4 +51,5 @@ testpaths = ["tests"]
 markers = [
     "polaris: needs a running Polaris, enabled by FLOE_POLARIS_URI",
     "s3: needs an S3-compatible service (set FLOE_S3_ENDPOINT)",
+    "glue: needs a Glue-compatible service and S3 (set FLOE_GLUE_ENDPOINT, FLOE_S3_ENDPOINT)",
 ]

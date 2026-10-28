@@ -70,7 +70,9 @@ def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | N
     catalog = next((c for c in (catalogs.definitions if catalogs else []) if c.name == name), None)  # fmt: skip
     if catalog is None:  # validated; kept for callers that skip validation
         raise FloeConfigError(f"entity.name={entity.name} sink.accepted.iceberg.catalog references unknown catalog {name}")  # fmt: skip
-    namespace = catalog_ident(sink.iceberg.namespace or entity.domain or "default")
+    namespace = catalog_ident(
+        sink.iceberg.namespace or entity.domain or catalog.database or "default"
+    )
     table = catalog_ident(sink.iceberg.table or entity.name)
     field = f"entity.name={entity.name} sink.accepted.storage"
     accepted_uri, storage = resolve_path(storages, config_dir, sink.storage, sink.path, field)  # fmt: skip
@@ -82,6 +84,9 @@ def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | N
         location, storage = resolve_path(storages, config_dir, where, "/".join(p for p in parts if p), field)  # fmt: skip
     else:
         location = accepted_uri
+    # Rust: the Glue database holds the table; the namespace only names its location
+    if catalog.database is not None:
+        namespace = catalog.database
     return IcebergTarget(catalog, storage, namespace, table, location, accepted_uri)  # fmt: skip
 
 
@@ -169,7 +174,7 @@ def write_iceberg(
             raise FloeRunError(f"entity.name={entity.name} iceberg schema evolution failed: merge key columns cannot be added: {', '.join(added)}")  # fmt: skip
     table = ensure_table(
         catalog, target.namespace, target.table, schema, entity.name, target.location.removeprefix("local://"),
-        partition_fields(entity), evolution.mode if evolution else "strict",
+        partition_fields(entity), evolution.mode if evolution else "strict", target.catalog.create_database_if_missing,
     )  # fmt: skip
     merge: dict[str, Any] | None = None
     if mode in ("merge_scd1", "merge_scd2"):
