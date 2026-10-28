@@ -4,7 +4,12 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-### floe-python
+### airflow-floe
+
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
+  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
+
+## v0.8.1
 
 - **floe-python requires `boto3>=1.36.0` (was `>=1.43.118`) (#1028).** The old floor made `s3fs`
   uninstallable next to Floe: current `aiobotocore` caps `botocore` below 1.43.118. 1.36.0 is the
@@ -25,8 +30,8 @@ All notable changes to Floe are documented in this file.
 - **`kubernetes_job` runners can shape the Job's pod (#1023).** `execution.runner` in a profile accepts
   `labels` (added to the defaults), `annotations`, `image_pull_policy`, `security_context`,
   `node_selector`, `tolerations`, `backoff_limit` and `env_from`. They are carried into the manifest
-  runner definition only when set, so existing manifests are unchanged. dagster-floe applies them (see
-  below); airflow-floe ignores them.
+  runner definition only when set, so existing manifests are unchanged. dagster-floe 0.3.1 applies them;
+  airflow-floe ignores them.
 
 - **A profile's `execution.runner.command` may be a list (#1034)**, e.g. `command: [olf-floe-job, --]`,
   as the manifest and the connectors already accept. A string still works.
@@ -35,7 +40,9 @@ All notable changes to Floe are documented in this file.
   so a container run no longer needs the profile file copied in (#1025). `floe manifest generate -p s3://...`
   records the URI as `profile_uri`. `-c` still takes a local path.
 
-### dagster-floe
+## dagster-floe v0.3.1
+
+- **The `floe` extra requires `floe-python>=0.8.1,<0.9` (#1041)**, the first release with `floe run --domain`.
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031).** It
   used to replace the whole argument list, so every Job ran every entity. `args` now prefix Floe's
@@ -52,6 +59,7 @@ All notable changes to Floe are documented in this file.
   (added to `app` and `floe-job`, which are never overridden), `annotations`, `image_pull_policy`,
   `security_context`, `node_selector`, `tolerations`, `backoff_limit` (default 0) and `env_from` in the Job
   it creates. With retries the run waits for the Job's final status and reads the pod that matches it.
+
 - **`manifest_name=` in config mode (#1022).** `load_floe_assets`, `build_definitions` and
   `build_job_run_config_from_manifest` accept `manifest_name=` next to `config_path=` and pass it to
   `floe.build_manifest`. With a fixed name, the op name of a `job_scope: domain` asset stays
@@ -67,11 +75,6 @@ All notable changes to Floe are documented in this file.
   entities are exactly every entity of the domain in the manifest, the Job sends `--domain <d>` in place of
   `--entities a,b,c`; a subset keeps `--entities`. It needs Floe 0.8.1 (`floe run --domain`):
   a `kubernetes_job` image must be 0.8.1 or newer.
-
-### airflow-floe
-
-- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
-  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
 ## v0.8.0
 

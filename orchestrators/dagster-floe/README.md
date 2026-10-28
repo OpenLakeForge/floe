@@ -19,7 +19,8 @@ Current model:
 - Asset generation from `entities[]` (`asset_key`, `group_name` respected).
 - One upstream source asset per entity (`<entity>_source`), or one shared `sources/<project>/<name>` asset per
   named source of the manifest `sources` index (group `sources`; `<project>` is `manifest_name`, else `manifest_id`).
-- Manifests load from a local path or a bucket URI (`s3://...`, `remote` extra; AWS default credential chain).
+- Manifests load from a local path or a bucket URI (`s3://...` with the `floe` extra's boto3, other schemes with the
+  `remote` extra; AWS default credential chain).
 - One Dagster job per manifest (stable job names).
 - Multi-manifest loading (`*.manifest.json`) with collision checks.
 - Local runner (`local_process`) support.
@@ -29,19 +30,20 @@ Current model:
 ## Install
 
 Prereqs:
-- Floe 0.8 (`pip install floe-python`, **or** Docker with the `ghcr.io/openlakeforge/floe` image).
+- Floe 0.8.1 or newer (`pip install floe-python`, **or** Docker with the `ghcr.io/openlakeforge/floe` image).
 - Python 3.10+.
 
 ```bash
 pip install dagster-floe
-pip install "dagster-floe[floe]"   # also installs floe-python>=0.8,<0.9 for the in-process runner
+pip install "dagster-floe[floe]"   # also installs floe-python>=0.8.1,<0.9 for the in-process runner
 ```
 
 ## Supported Floe versions
 
 | dagster-floe | Floe | Manifest `spec_version` |
 | --- | --- | --- |
-| 0.3.x | 0.8 | `0.8` |
+| 0.3.1 | 0.8.1 or newer (`job_scope: domain` Jobs run `floe run --domain`) | `0.8` |
+| 0.3.0 | 0.8 | `0.8` |
 | 0.2.x | 0.7 and earlier | see 0.2.x docs |
 
 ## Development install (from this repo)
@@ -138,8 +140,9 @@ Checks appear in the Dagster UI under each asset, linked to the run that produce
 
 ## Reading manifests and reports from S3
 
-`dagster-floe` reads `s3://` manifests and Floe run reports with `fsspec` (install the `remote`
-extra). It configures S3 the same way the Floe run does, from the environment:
+`dagster-floe` reads `s3://` manifests and Floe run reports with boto3, which the `floe` extra installs
+(without boto3 it falls back to `fsspec` and the `remote` extra). It configures S3 the same way the Floe
+run does, from the environment:
 
 | Variable | Effect |
 | --- | --- |

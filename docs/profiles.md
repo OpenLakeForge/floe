@@ -217,6 +217,7 @@ execution:
     type: kubernetes_job
     image: registry/floe:0.8
     namespace: floe-prod
+    command: [python, -m, floe]              # container command, a string or a list
     labels: {olf.io/flow: ingest}            # added to the defaults (`app`, `floe-job`), which win on a clash
     annotations: {team: data}                # pod template annotations
     image_pull_policy: IfNotPresent
