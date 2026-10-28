@@ -180,6 +180,56 @@ def test_unknown_entity_exits_one(
     assert capsys.readouterr().err == "Error: entities not found: zz\n"
 
 
+def two_domains(tmp_path: Path) -> Path:
+    (tmp_path / "in").mkdir()
+    config = 'version: "0.3"\ndomains:\n  - name: d\n  - name: e\nentities:\n'
+    for name, domain in (("a", "d"), ("b", "e"), ("c", "d")):
+        (tmp_path / "in" / f"{name}.csv").write_text("id\n1\n")
+        config += ENTITY.format(name=name).replace("domain: d", f"domain: {domain}")
+    (tmp_path / "config.yml").write_text(config + "report: {path: ./report}\n")
+    return tmp_path / "config.yml"
+
+
+def test_domain_selects_every_entity_of_the_domain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = two_domains(tmp_path)
+    assert floe(monkeypatch, "run", "-c", str(config), "--domain", "d") == 0
+    (path,) = (tmp_path / "report").glob("d/run_*/run.summary.json")
+    assert [e["name"] for e in json.loads(path.read_text())["entities"]] == ["d.a", "d.c"]  # fmt: skip
+    assert not (tmp_path / "out/accepted/b").exists()
+
+
+def test_domain_is_repeatable_and_comma_separated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = two_domains(tmp_path)
+    assert floe(monkeypatch, "run", "-c", str(config), "--domain", "e", "--domain", "d") == 0  # fmt: skip
+    (path,) = (tmp_path / "report").glob("run_*/run.summary.json")
+    assert [e["name"] for e in json.loads(path.read_text())["entities"]] == ["d.a", "e.b", "d.c"]  # fmt: skip
+
+
+def test_unknown_domain_exits_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = two_domains(tmp_path)
+    assert floe(monkeypatch, "run", "-c", str(config), "--domain", "d,zz") == 1
+    assert capsys.readouterr().err == "Error: domains not found: zz\n"
+    assert not (tmp_path / "out").exists()
+
+
+def test_domain_cannot_be_combined_with_entities(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = two_domains(tmp_path)
+    assert floe(monkeypatch, "run", "-c", str(config), "--domain", "d", "--entities", "a") == 1  # fmt: skip
+    assert capsys.readouterr().err == "Error: --domain cannot be combined with --entities\n"  # fmt: skip
+
+
 def test_full_refresh_overwrites_an_append_sink(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

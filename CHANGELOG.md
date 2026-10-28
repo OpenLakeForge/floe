@@ -18,6 +18,10 @@ All notable changes to Floe are documented in this file.
   still need a REST catalog. **D42:** `allow_takeover` is accepted and ignored; 0.8 does not check
   0.7's `floe.managed` ownership marker.
 
+- **`floe run --domain <d>` (#1024)** selects every entity of a domain, for `-c` and `--manifest` runs. It
+  takes several domains (repeatable or comma-separated), fails on an unknown domain, and cannot be combined
+  with `--entities`.
+
 ### dagster-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031).** It
