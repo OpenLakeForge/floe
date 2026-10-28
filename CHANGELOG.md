@@ -29,8 +29,8 @@ All notable changes to Floe are documented in this file.
 
 - **`job_scope: domain` Jobs run `floe run --domain <d>` for a whole domain (#1036).** When the selected
   entities are exactly every entity of the domain in the manifest, the Job sends `--domain <d>` in place of
-  `--entities a,b,c`; a subset keeps `--entities`. It needs Floe 0.8.1: the `floe` extra now installs
-  `floe-python>=0.8.1,<0.9`, and a `kubernetes_job` image must be 0.8.1 or newer.
+  `--entities a,b,c`; a subset keeps `--entities`. It needs Floe 0.8.1 (`floe run --domain`):
+  a `kubernetes_job` image must be 0.8.1 or newer.
 
 ### airflow-floe
 
