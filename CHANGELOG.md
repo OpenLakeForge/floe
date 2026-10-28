@@ -2,7 +2,22 @@
 
 All notable changes to Floe are documented in this file.
 
-## floe (unreleased)
+## v0.8.0
+
+Floe 0.8 is the Python core. `pip install floe-python` installs the `floe` command (a pure-Python
+`py3-none-any` wheel), and `ghcr.io/openlakeforge/floe` is the Python image. The Rust implementation is
+archived at [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust) (tag `rust-final`).
+Every intentional behaviour change from 0.7 is numbered (D1–D41) in the migration register (#619).
+
+**Upgrading from 0.7:**
+- Regenerate manifests with `floe manifest generate`: manifests carry `spec_version` `0.8`, and the
+  connectors (dagster-floe 0.3, airflow-floe 0.2) reject older ones.
+- PII `hash` keys used through a manifest must be `${ENV_VAR}` references (#1006).
+- `policy.severity: abort` now requires `sink.rejected` at validation (D39).
+- Dropped in 0.8: Delta and DuckDB sinks, the fixed-width reader, and GCS/ADLS storage; Iceberg needs a
+  REST catalog (D26). See `docs/support-matrix.md`.
+- Run reports of a single-domain run live under `<report.path>/<domain>/run_<id>/` (D37), and a policy
+  abort fails only its entity while the run continues (D36).
 
 - **JSON sources run end to end (#998)**, matching Floe 0.7's rows, statuses and rules, with two deliberate
   changes from 0.7:
@@ -42,48 +57,19 @@ All notable changes to Floe are documented in this file.
   - `schema_evolution.mode=add_columns` on a non-Iceberg sink now says it requires `sink.accepted.format=iceberg`.
 - **`floe.run` posts OpenLineage events (#989)**, as `floe run -c` and `floe.run_manifest` already do,
   when the config has a `lineage` block.
-## Floe (unreleased)
-
 - **`floe.build_manifest(config_path, profile_path=None, ...)` (#986).** Returns, as a dict, the
   manifest `floe manifest generate` writes for the same config and profile (deterministic by
   default). `manifest generate` now calls it.
-
-## airflow-floe v0.2.0
-
-Built for Floe 0.8 (`floe-python` 0.8, where `floe` is the Python CLI and `ghcr.io/openlakeforge/floe`
-is the Python image; the command line and image name are unchanged). Floe 0.7 and earlier are not
-targeted by this release.
-
-- **Report paths follow D37.** A run whose entities share one domain writes its reports under
-  `<report.path>/<domain>/run_<id>/`; other runs keep `<report.path>/run_<id>/`. The connector
-  reads report locations from the `run_finished` event, so no configuration changes.
-- Per-domain run pods (`job_scope: domain`, #580) and the in-process runner are dagster-floe only;
-  airflow-floe still runs `floe run` as a subprocess or Kubernetes/Databricks job.
-
-- **Loads Floe 0.8 manifests (#979).** The loader checks `spec_version` against
-  `SUPPORTED_SPEC_VERSIONS = ("0.8",)`, as dagster-floe does, instead of the pre-0.8
-  `schema: "floe.manifest.v1"` field that 0.8 manifests no longer carry. Other versions are
-  rejected; regenerate them with a supported Floe release. `MANIFEST_SCHEMA` is replaced by
-  `SUPPORTED_SPEC_VERSIONS`, and `AirflowManifest.schema` by `AirflowManifest.spec_version`.
-## dagster-floe (unreleased)
-
-- **Config mode (#986).** `load_floe_assets`, `build_definitions` and `build_job_run_config_from_manifest` accept
-  `config_path=` (and `profile_path=`) in place of `manifest_path=`. The manifest is built in memory with
-  `floe.build_manifest` (needs the `floe` extra), and runs take `floe run -c <config> [-p <profile>]` in place of
-  `--manifest <uri>`. `manifest_path=` is unchanged.
-
-## airflow-floe (unreleased)
-
-- **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest
-  (#511).** Only entities whose `domain` is listed land in the context; an unknown domain
-  or an empty list raises `ValueError`. Pass `entities=context.entity_names` to `FloeRunOperator` so the run
-  covers only that slice.
 
 ## dagster-floe v0.3.0
 
 Supports Floe 0.8 (`floe-python` 0.8, manifest `spec_version` `0.8`); older Floe versions are not
 supported. Floe 0.7 and earlier manifests are rejected.
 
+- **Config mode (#986).** `load_floe_assets`, `build_definitions` and `build_job_run_config_from_manifest` accept
+  `config_path=` (and `profile_path=`) in place of `manifest_path=`. The manifest is built in memory with
+  `floe.build_manifest` (needs the `floe` extra), and runs take `floe run -c <config> [-p <profile>]` in place of
+  `--manifest <uri>`. `manifest_path=` is unchanged.
 - **Optional `floe` extra (#973).** `pip install "dagster-floe[floe]"` installs `floe-python>=0.8,<0.9`
   so `build_runner_from_env()` runs Floe in-process (see below) without a separate `floe` install.
 - **Report paths follow D37.** A run whose entities share one domain writes its reports under
@@ -150,6 +136,28 @@ supported. Floe 0.7 and earlier manifests are rejected.
   `AWS_ENDPOINT_URL`) as the endpoint and, when `AWS_S3_FORCE_PATH_STYLE` is `true`/`1`,
   path-style addressing, matching Floe core (#448). Without these variables behaviour is
   unchanged. Requires the existing `remote` extra.
+
+## airflow-floe v0.2.0
+
+Built for Floe 0.8 (`floe-python` 0.8, where `floe` is the Python CLI and `ghcr.io/openlakeforge/floe`
+is the Python image; the command line and image name are unchanged). Floe 0.7 and earlier are not
+targeted by this release.
+
+- **Report paths follow D37.** A run whose entities share one domain writes its reports under
+  `<report.path>/<domain>/run_<id>/`; other runs keep `<report.path>/run_<id>/`. The connector
+  reads report locations from the `run_finished` event, so no configuration changes.
+- Per-domain run pods (`job_scope: domain`, #580) and the in-process runner are dagster-floe only;
+  airflow-floe still runs `floe run` as a subprocess or Kubernetes/Databricks job.
+
+- **Loads Floe 0.8 manifests (#979).** The loader checks `spec_version` against
+  `SUPPORTED_SPEC_VERSIONS = ("0.8",)`, as dagster-floe does, instead of the pre-0.8
+  `schema: "floe.manifest.v1"` field that 0.8 manifests no longer carry. Other versions are
+  rejected; regenerate them with a supported Floe release. `MANIFEST_SCHEMA` is replaced by
+  `SUPPORTED_SPEC_VERSIONS`, and `AirflowManifest.schema` by `AirflowManifest.spec_version`.
+- **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest
+  (#511).** Only entities whose `domain` is listed land in the context; an unknown domain
+  or an empty list raises `ValueError`. Pass `entities=context.entity_names` to `FloeRunOperator` so the run
+  covers only that slice.
 
 ## v0.7.0
 
