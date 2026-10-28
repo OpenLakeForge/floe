@@ -1,0 +1,36 @@
+[
+  {
+    "order": {"id": "o-1001"},
+    "customer": {"id": "c-001"},
+    "totals": {"amount": 120.50, "currency": "USD"},
+    "timestamps": {"created_at": "2024-01-10T09:15:00Z", "order_date": "2024-01-10"},
+    "shipping": {"expedited": true},
+    "items": [
+      {"sku": "sku-001", "quantity": 2},
+      {"sku": "sku-002", "quantity": 1}
+    ],
+    "tags": ["new", "gift"]
+  },
+  {
+    "order": {"id": "o-1002"},
+    "customer": {"id": "c-002"},
+    "totals": {"amount": 89.00, "currency": "EUR"},
+    "timestamps": {"created_at": "2024-01-11T14:45:00Z", "order_date": "2024-01-11"},
+    "shipping": {"expedited": false},
+    "items": [
+      {"sku": "sku-010", "quantity": 1}
+    ],
+    "tags": ["promo"]
+  },
+  {
+    "order": {"id": "o-1003"},
+    "customer": {"id": "c-003"},
+    "totals": {"amount": 45.99, "currency": "USD"},
+    "timestamps": {"created_at": "2024-01-12T08:00:00Z", "order_date": "2024-01-12"},
+    "shipping": {"expedited": false},
+    "items": [
+      {"sku": "sku-020", "quantity": 3}
+    ],
+    "tags": ["wholesale", "priority"]
+  }
+]

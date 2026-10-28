@@ -1,6 +1,5 @@
 """Schema mismatch: missing/extra columns and their policies (Rust: `checks/mismatch.rs`)."""
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,9 +9,11 @@ import polars as pl
 from floe.checks.normalize import normalize_name, resolve_strategy, source_names
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeIoError
+from floe.read.json import json_records
 
 MAX_MISMATCH_COLUMNS = 50
-_NESTED = (".", "[", "/", "@")
+# nested-path markers: `/` and `@` are XML path syntax, but ordinary characters in a JSON key
+_NESTED = {"json": (".", "["), "xml": (".", "[", "/", "@")}
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,7 @@ def declared_names(entity: EntityConfig) -> list[str]:
     names = [
         normalize_name(c.source or c.name, strategy)
         for c in schema.columns
-        if not any(t in (c.source or c.name) for t in _NESTED)
+        if not any(t in (c.source or c.name) for t in _NESTED[entity.source.format])
     ]
     if len(set(names)) != len(names):
         dup = next(n for n in names if names.count(n) > 1)
@@ -118,38 +119,19 @@ def apply_mismatch(df: pl.DataFrame, plan: MismatchOutcome) -> pl.DataFrame:
     return df
 
 
-def json_input_columns(path: Path, mode: str = "array") -> list[str]:
-    """Sorted keys of the first JSON object: the probe Rust's `read_input_columns` runs."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as err:
-        raise FloeIoError(f"failed to read json at {path}: {err}") from err
-    if mode == "ndjson":
-        first_error = None
-        for i, line in enumerate(text.splitlines(), 1):
-            if not line.strip():
-                continue
-            try:
-                value = json.loads(line)
-            except ValueError as err:
-                first_error = first_error or f"json parse error at line {i}: {err}"
-                continue
-            if not isinstance(value, dict):
-                raise FloeIoError(f"expected json object at line {i}")
-            return sorted(value)  # pyright: ignore[reportUnknownArgumentType]
-        raise FloeIoError(first_error or f"no json objects found in {path}")
-    if mode != "array":
+def json_input_columns(path: Path, mode: str = "array") -> list[str] | None:
+    """Sorted top-level keys of every record, read exactly as `read_json` reads them.
+
+    D40: the union over all records, so a key only a later record carries is still an input
+    column (Rust 0.7 probed the first object only). `None` for a file without records (D41), which
+    differs from records that carry no keys (`[]`): those are still checked for missing columns.
+    """
+    if mode not in ("array", "ndjson"):
         raise FloeIoError(
             f"unsupported source.options.json_mode={mode} (allowed: array, ndjson)"
         )
-    try:
-        value = json.loads(text)
-    except ValueError as err:
-        raise FloeIoError(f"json parse error: {err}") from err
-    if not isinstance(value, list):
-        raise FloeIoError("expected json array at root")
-    if not value:
-        raise FloeIoError("json array is empty")
-    if not isinstance(value[0], dict):
-        raise FloeIoError("expected json object at index 0")
-    return sorted(value[0])  # pyright: ignore[reportUnknownArgumentType]
+    # ponytail: the file is parsed twice (probe, then read); fold the probe into the read if it costs
+    keys: set[str] | None = None
+    for _, record in json_records(path, mode):
+        keys = (keys or set[str]()) | {str(k) for k in record}
+    return None if keys is None else sorted(keys)

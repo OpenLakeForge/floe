@@ -1,0 +1,60 @@
+[
+  {
+    "order": {"id": null},
+    "customer": {"id": "c-010"},
+    "totals": {"amount": 100.00, "currency": "USD"},
+    "timestamps": {"created_at": "2024-02-01T10:00:00Z", "order_date": "2024-02-01"},
+    "shipping": {"expedited": true},
+    "items": [
+      {"sku": "sku-100", "quantity": 1}
+    ],
+    "tags": ["spring"],
+    "promo_code": "SPRING"
+  },
+  {
+    "order": {"id": "o-2002"},
+    "customer": {"id": null},
+    "totals": {"amount": 75.00, "currency": "USD"},
+    "timestamps": {"created_at": "2024-02-02T10:00:00Z", "order_date": "2024-02-02"},
+    "shipping": {"expedited": false},
+    "items": [
+      {"sku": "sku-200", "quantity": 2}
+    ],
+    "tags": [],
+    "promo_code": null
+  },
+  {
+    "order": {"id": "o-2003"},
+    "customer": {"id": "c-012"},
+    "totals": {"amount": "abc", "currency": "USD"},
+    "timestamps": {"created_at": "2024-02-03T10:00:00Z", "order_date": "2024-02-03"},
+    "shipping": {"expedited": false},
+    "items": [
+      {"sku": "sku-300", "quantity": 1}
+    ],
+    "tags": ["vip"],
+    "promo_code": "VIP"
+  },
+  {
+    "order": {"id": "o-2004"},
+    "customer": {"id": "c-013"},
+    "totals": {"amount": 50.00, "currency": "USD"},
+    "timestamps": {"created_at": "2024-02-30T10:00:00Z", "order_date": "2024-02-30"},
+    "shipping": {"expedited": "maybe"},
+    "items": [
+      {"sku": "sku-400", "quantity": 1}
+    ],
+    "tags": ["winter"],
+    "promo_code": "WINTER"
+  },
+  {
+    "order": {"id": "o-2002"},
+    "customer": {"id": "c-014"},
+    "totals": {"amount": 80.00, "currency": "USD"},
+    "timestamps": {"created_at": "2024-02-04T10:00:00Z", "order_date": "2024-02-04"},
+    "shipping": {"expedited": false},
+    "items": [],
+    "tags": ["spring"],
+    "promo_code": "SPRING"
+  }
+]

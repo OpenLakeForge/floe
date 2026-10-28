@@ -1,5 +1,6 @@
 """`run_entity`: statuses, outputs and file-level rejections for a local CSV entity."""
 
+import json
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -247,6 +248,86 @@ def test_a_prefixed_xml_selector_keeps_its_value(tmp_path: Path) -> None:
     assert accepted(tmp_path)["id"].to_list() == [1]
 
 
+def test_a_json_source_runs_end_to_end(tmp_path: Path) -> None:
+    """#998: `floe validate` accepts `source.format: json`, so the run must read it too."""
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    config = config.replace('options: {header: true, separator: ","}', "options: {}")
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    (tmp_path / "in" / "a.json").write_text('[{"id": 1}, {"id": 2}]')
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    files = run_entity(entity, tmp_path, "0.3").report["files"]
+    assert [f["status"] for f in files] == ["success"]
+    assert accepted(tmp_path)["id"].to_list() == [1, 2]
+
+
+def test_a_json_source_maps_nested_selectors_to_the_schema_names(
+    tmp_path: Path,
+) -> None:
+    """#998: every row is read and each selector's values land in its schema column, as Rust 0.7."""
+    config = CONFIG.format(
+        severity="reject",
+        mismatch="normalize_columns: {enabled: true, strategy: snake_case}",
+    )
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    config = config.replace('options: {header: true, separator: ","}', "options: {}")
+    config = config.replace(
+        "{name: id, type: int64, nullable: false}",
+        "{name: order_id, source: order.id, type: int64, nullable: false}",
+    )
+    config = config.replace(
+        "{name: name, type: string}",
+        "{name: first_sku, source: 'items[0].sku', type: string}",
+    )
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    rows = '[{"order": {"id": 1}, "items": [{"sku": "a"}]}, {"order": {"id": 2}, "items": []}, {"order": {"id": 3}}]'
+    (tmp_path / "in" / "a.json").write_text(rows)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    (file,) = run_entity(entity, tmp_path, "0.3").report["files"]
+    assert (file["status"], file["row_count"], file["accepted_count"]) == (
+        "success",
+        3,
+        3,
+    )
+    assert file["mismatch"]["extra_columns"] == ["items", "order"]
+    assert accepted(tmp_path).to_dicts() == [
+        {"order_id": 1, "first_sku": "a"},
+        {"order_id": 2, "first_sku": None},
+        {"order_id": 3, "first_sku": None},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("body", "rule"),
+    [
+        ('[{"order": {"id": 1}', "json_parse_error"),
+        ('[{"order": {"id": {"x": 1}}}]', "json_selector_non_scalar"),
+    ],
+)
+def test_an_unreadable_json_file_carries_the_rust_rule(
+    tmp_path: Path, body: str, rule: str
+) -> None:
+    """#998: Rust 0.7's `JsonReadError.rule`, not a generic `json_read_error`."""
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    config = config.replace('options: {header: true, separator: ","}', "options: {}")
+    config = config.replace("{name: id,", "{name: id, source: order.id,")
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    (tmp_path / "in" / "a.json").write_text(body)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    (file,) = run_entity(entity, tmp_path, "0.3").report["files"]
+    assert (file["status"], file["mismatch"]["error"]["rule"]) == ("rejected", rule)
+
+
 def test_append_retry_overwrites_the_rejected_part(tmp_path: Path) -> None:
     """S6 (#919): the same rejecting input run twice leaves one rejected file with the same rows."""
     config = CONFIG.format(severity="reject", mismatch="").replace(
@@ -260,3 +341,118 @@ def test_append_retry_overwrites_the_rejected_part(tmp_path: Path) -> None:
     run_entity(entity, tmp_path, "0.3")
     (part,) = (tmp_path / "out" / "rejected").glob("*.csv")
     assert pl.read_csv(part)["__floe_row_index"].to_list() == [1]
+
+
+def _json_run(
+    tmp_path: Path,
+    body: str,
+    options: str = "{}",
+    id_column: str = "{name: id, type: int64, nullable: false}",
+    severity: str = "reject",
+    mismatch: str = "",
+) -> tuple[list[str], pl.DataFrame | None]:
+    """Run one JSON file through `run_entity`; the file statuses and the accepted rows."""
+    config = CONFIG.format(severity=severity, mismatch=mismatch)
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    config = config.replace(
+        'options: {header: true, separator: ","}', f"options: {options}"
+    )
+    config = config.replace("{name: id, type: int64, nullable: false}", id_column)
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    (tmp_path / "in" / "a.json").write_text(body, encoding="utf-8")
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    has_rows = any((tmp_path / "out" / "accepted").glob("*.parquet"))
+    return [f["status"] for f in report["files"]], accepted(
+        tmp_path
+    ) if has_rows else None
+
+
+def test_ndjson_probe_keeps_a_unicode_line_separator_inside_a_string(
+    tmp_path: Path,
+) -> None:
+    """Codex P1 on #1004: the probe must split records where the reader does (LF), not on U+2028."""
+    body = '{"id": 1, "name": "a\u2028b"}\n'  # the file's only record
+    statuses, rows = _json_run(tmp_path, body, "{json_mode: ndjson}")
+    assert statuses == ["success"]
+    assert rows is not None and rows["name"].to_list() == ["a\u2028b"]
+
+
+def test_ndjson_probe_trims_unicode_whitespace_like_the_reader(tmp_path: Path) -> None:
+    """Codex P1 on #1004: the reader strips Unicode whitespace around a record; the probe must too."""
+    body = '\u3000{"id": 1, "name": "a"}\u00a0\n'  # the file's only record
+    statuses, rows = _json_run(tmp_path, body, "{json_mode: ndjson}")
+    assert statuses == ["success"]
+    assert rows is not None and rows["id"].to_list() == [1]
+
+
+def test_a_json_key_with_an_at_sign_stays_a_declared_column(tmp_path: Path) -> None:
+    """Codex P1 on #1004: `@` and `/` mark nested XML paths, not JSON keys."""
+    statuses, rows = _json_run(
+        tmp_path,
+        '[{"@id": 1}, {"@id": 2}, {"@id": 3}]',
+        id_column="{name: id, source: '@id', type: int64}",
+        severity="warn",
+    )
+    assert statuses == ["success"]
+    assert rows is not None and rows["id"].to_list() == [1, 2, 3]
+
+
+def test_an_unpaired_surrogate_key_rejects_the_file_with_a_report(
+    tmp_path: Path,
+) -> None:
+    """Codex P1 on #1004: the probe must reject it like the reader, not crash the report writer."""
+    (tmp_path / "in").mkdir()
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    config = config.replace('options: {header: true, separator: ","}', "options: {}")
+    (tmp_path / "config.yml").write_text(config)
+    (tmp_path / "in" / "a.json").write_text('[{"id": 1, "\\ud800": 2}]')
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert [f["status"] for f in report["files"]] == ["rejected"]
+    json.dumps(report, ensure_ascii=False).encode(
+        "utf-8"
+    )  # the report writer's encoding
+
+
+def test_d40_the_json_mismatch_check_sees_every_record(tmp_path: Path) -> None:
+    """D40: a key that only a later record carries is still an extra column (Rust probed the first)."""
+    statuses, rows = _json_run(
+        tmp_path,
+        '[{"id": 1, "name": "a"}, {"id": 2, "name": "b", "extra": 1}]',
+        mismatch="mismatch: {extra_columns: reject_file}",
+    )
+    assert statuses == ["rejected"]
+    assert rows is None or rows.height == 0
+
+
+def test_d41_an_empty_json_array_is_zero_rows_not_a_parse_error(tmp_path: Path) -> None:
+    """D41: `[]` is a valid empty extract (Rust 0.7 rejected it as json_parse_error)."""
+    statuses, rows = _json_run(tmp_path, "[]")
+    assert statuses == ["success"]
+    assert rows is None or rows.height == 0
+
+
+def test_d41_an_ndjson_file_without_records_is_zero_rows(tmp_path: Path) -> None:
+    statuses, _ = _json_run(tmp_path, "\n  \n", "{json_mode: ndjson}")
+    assert statuses == ["success"]
+
+
+def test_d41_records_without_keys_still_face_the_missing_columns_policy(
+    tmp_path: Path,
+) -> None:
+    """Codex P0 on #1004: only a file with no records is exempt; `[{}, {}]` is missing every column."""
+    statuses, rows = _json_run(
+        tmp_path,
+        "[{}, {}]",
+        id_column="{name: id, type: int64}",
+        mismatch="mismatch: {missing_columns: reject_file}",
+    )
+    assert statuses == ["rejected"]
+    assert rows is None or rows.height == 0

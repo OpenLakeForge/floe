@@ -173,16 +173,21 @@ def test_json_top_level_selectors_only(tmp_path: Path) -> None:
 
 
 def test_json_probe(tmp_path: Path) -> None:
+    """D40: the union of every record's top-level keys, read as `read_json` reads them."""
     f = tmp_path / "in.json"
     f.write_text('[{"b": 1, "a": 2}, {"c": 3}]')
-    assert json_input_columns(f) == ["a", "b"]
-    f.write_text('\nnot json\n{"z": 1, "y": 2}\n{"q": 1}\n')
-    assert json_input_columns(f, "ndjson") == ["y", "z"]
-    f.write_text("not json\n")
-    with pytest.raises(FloeIoError, match="json parse error at line 1"):
+    assert json_input_columns(f) == ["a", "b", "c"]
+    f.write_text('\n{"z": 1, "y": 2}\n{"q": 1}\n')
+    assert json_input_columns(f, "ndjson") == ["q", "y", "z"]
+    # a bad line fails the probe as it fails the read
+    f.write_text('{"z": 1}\nnot json\n')
+    with pytest.raises(FloeIoError, match="json parse error at line 2"):
         json_input_columns(f, "ndjson")
+    f.write_text("[]")  # D41: no records
+    assert json_input_columns(f) is None
+    f.write_text("[{}, {}]")  # records without keys: checked for missing columns
+    assert json_input_columns(f) == []
     for body, message in (
-        ("[]", "json array is empty"),
         ("{}", "expected json array at root"),
         ("[1]", "expected json object at index 0"),
     ):

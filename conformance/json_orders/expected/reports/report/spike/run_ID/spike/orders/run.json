@@ -1,0 +1,230 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "spike.orders"
+  },
+  "source": {
+    "format": "json",
+    "path": "local://<ROOT>/in",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "json_mode": "array",
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ";"
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "directory",
+      "file_count": 2,
+      "files": [
+        "local://<ROOT>/in/orders_invalid.json",
+        "local://<ROOT>/in/orders_valid.json"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/orders"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/orders"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/orders",
+    "table_root_uri": "local://<ROOT>/out/accepted/orders",
+    "write_mode": "overwrite",
+    "accepted_rows": 3,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 3688,
+    "avg_file_size_mb": 0.00351715087890625,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "unique_constraints": [
+    {
+      "columns": [
+        "order_id"
+      ],
+      "duplicates_count": 1,
+      "batch_duplicates_count": 1,
+      "affected_rows_count": 1,
+      "action": "reject_rows",
+      "status_effect": "rows_rejected",
+      "samples": [
+        {
+          "values": {
+            "order_id": "o-2002"
+          },
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "results": {
+    "files_total": 2,
+    "files_skipped": 0,
+    "rows_total": 8,
+    "accepted_total": 3,
+    "rejected_total": 5,
+    "warnings_total": 0,
+    "errors_total": 8
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/orders_invalid.json",
+      "status": "rejected",
+      "row_count": 5,
+      "accepted_count": 0,
+      "rejected_count": 5,
+      "mismatch": {
+        "declared_columns_count": 0,
+        "input_columns_count": 8,
+        "missing_columns": [],
+        "extra_columns": [
+          "customer",
+          "items",
+          "order",
+          "promo_code",
+          "shipping",
+          "tags",
+          "timestamps",
+          "totals"
+        ],
+        "mismatch_action": "ignored_extras"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/orders",
+        "rejected_path": "<ROOT>/out/rejected/orders/part-00000.csv",
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 8,
+        "warnings": 0,
+        "rules": [
+          {
+            "rule": "not_null",
+            "severity": "reject",
+            "violations": 3,
+            "columns": [
+              {
+                "column": "customer_id",
+                "violations": 1,
+                "source": "customer.id"
+              },
+              {
+                "column": "order_id",
+                "violations": 1,
+                "source": "order.id"
+              },
+              {
+                "column": "totals_amount",
+                "violations": 1,
+                "source": "totals.amount"
+              }
+            ]
+          },
+          {
+            "rule": "cast_error",
+            "severity": "reject",
+            "violations": 4,
+            "columns": [
+              {
+                "column": "shipping_expedited",
+                "violations": 1,
+                "target_type": "boolean",
+                "source": "shipping.expedited"
+              },
+              {
+                "column": "timestamps_created_at",
+                "violations": 1,
+                "target_type": "datetime",
+                "source": "timestamps.created_at"
+              },
+              {
+                "column": "timestamps_order_date",
+                "violations": 1,
+                "target_type": "date",
+                "source": "timestamps.order_date"
+              },
+              {
+                "column": "totals_amount",
+                "violations": 1,
+                "target_type": "number",
+                "source": "totals.amount"
+              }
+            ]
+          },
+          {
+            "rule": "unique",
+            "severity": "reject",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "order_id",
+                "violations": 1,
+                "source": "order.id"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input_file": "local://<ROOT>/in/orders_valid.json",
+      "status": "success",
+      "row_count": 3,
+      "accepted_count": 3,
+      "rejected_count": 0,
+      "mismatch": {
+        "declared_columns_count": 0,
+        "input_columns_count": 7,
+        "missing_columns": [],
+        "extra_columns": [
+          "customer",
+          "items",
+          "order",
+          "shipping",
+          "tags",
+          "timestamps",
+          "totals"
+        ],
+        "mismatch_action": "ignored_extras"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/orders",
+        "rejected_path": null,
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 0,
+        "warnings": 0,
+        "rules": []
+      }
+    }
+  ]
+}

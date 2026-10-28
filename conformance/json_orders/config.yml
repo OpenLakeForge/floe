@@ -1,0 +1,41 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: orders
+    domain: spike
+    source:
+      format: json
+      path: "./in"
+      options:
+        json_mode: array
+      cast_mode: strict
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/orders"
+      rejected:
+        format: csv
+        path: "./out/rejected/orders"
+    policy:
+      severity: reject
+    schema:
+      mismatch:
+        missing_columns: fill_nulls
+        extra_columns: ignore
+      normalize_columns:
+        enabled: true
+        strategy: snake_case
+      columns:
+        - { name: order_id, source: order.id, type: string, nullable: false, unique: true }
+        - { name: customer_id, source: customer.id, type: string, nullable: false }
+        - { name: order_total, source: totals.amount, type: number, nullable: false }
+        - { name: currency, source: totals.currency, type: string }
+        - { name: created_at, source: timestamps.created_at, type: datetime }
+        - { name: order_date, source: timestamps.order_date, type: date }
+        - { name: is_expedited, source: shipping.expedited, type: boolean }
+        - { name: first_item_sku, source: "items[0].sku", type: string }
+        - { name: first_item_qty, source: "items[0].quantity", type: number }
+        - { name: first_tag, source: "tags[0]", type: string }
+report:
+  path: "./report"

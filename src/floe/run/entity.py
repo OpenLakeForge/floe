@@ -21,6 +21,7 @@ from floe.checks.mismatch import (
     MismatchOutcome,
     apply_mismatch,
     declared_names,
+    json_input_columns,
     plan_mismatch,
 )
 from floe.checks.normalize import (
@@ -53,6 +54,7 @@ from floe.iceberg.write import find_committed
 from floe.pii import apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.csv import RAGGED_MESSAGE, read_csv
+from floe.read.json import read_json
 from floe.read.orc import read_orc
 from floe.read.parquet import read_parquet
 from floe.read.xlsx import read_xlsx
@@ -131,6 +133,9 @@ def _chunks(entity: EntityConfig, path: Path, names: list[str]) -> Chunks:
         case "xml":
             for x in read_xml(path, src.options, entity.schema_.columns[: len(names)]):
                 yield x.offset, x.df, None
+        case "json":  # #998
+            for j in read_json(path, src.options, entity.schema_.columns[: len(names)], src.cast_mode):  # fmt: skip
+                yield j.offset, j.df, None
         case other:
             raise FloeRunError(
                 f"entity.name={entity.name} unsupported source format: {other}"
@@ -146,6 +151,12 @@ def _read_rule(fmt: str, message: str) -> str:
         ("invalid selector", "duplicate xml selector")
     ):
         return "xml_selector_invalid"
+    if fmt == "json":  # Rust `JsonReadError.rule`
+        if message.startswith(("invalid selector", "duplicate json selector")):
+            return "json_selector_invalid"
+        if message.startswith("non-scalar value for selector"):
+            return "json_selector_non_scalar"
+        return "json_parse_error"
     return "xml_parse_error" if fmt == "xml" else f"{fmt}_read_error"
 
 
@@ -371,6 +382,10 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     try:
         if entity.source.format == "xml":
             first, probe = [], xml_columns(path, entity.source.options)
+        elif entity.source.format == "json":
+            # D40: every record's top-level keys; D41: only a file without records has nothing to compare
+            json_keys = json_input_columns(path, entity.source.options.json_mode or "array")  # fmt: skip
+            first, probe = [], declared if json_keys is None else json_keys
         else:  # the first chunk's columns are the input columns the plan compares
             first = [next(chunks)]
             probe = list(first[0][1].columns)
