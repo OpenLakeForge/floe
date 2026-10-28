@@ -37,6 +37,12 @@ def _realpath(path: str) -> Path:
         raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
 
 
+def _profile(location: str | None) -> ProfileConfig | None:
+    if not location:
+        return None
+    return parse_profile(location if location.startswith("s3://") else _realpath(location))  # fmt: skip
+
+
 def _load(path: Path, profile: ProfileConfig | None) -> RootConfig:
     variables = (
         resolve_vars(profile.variables, {}, extract_config_env_vars(path))
@@ -50,7 +56,7 @@ def _load(path: Path, profile: ProfileConfig | None) -> RootConfig:
 
 
 def _validate(args: argparse.Namespace) -> int:
-    profile = parse_profile(_realpath(args.profile)) if args.profile else None
+    profile = _profile(args.profile)
     if args.config is None:
         if profile is None:
             raise FloeConfigError(
@@ -75,7 +81,9 @@ def _validate(args: argparse.Namespace) -> int:
         if e.sink.rejected:
             print(f"  Sink rejected: {e.sink.rejected.format} ({e.sink.rejected.path})")  # fmt: skip
         print(f"  Severity: {e.policy.severity}")
-    profile_arg = f" -p {os.path.realpath(args.profile)}" if args.profile else ""
+    profile_arg = ""
+    if args.profile:
+        profile_arg = f" -p {args.profile if args.profile.startswith('s3://') else os.path.realpath(args.profile)}"  # fmt: skip
     print(f"Next: floe run -c {path}{profile_arg}")
     return 0
 
@@ -97,7 +105,7 @@ def _run(args: argparse.Namespace) -> int:
     elif args.config is None:
         raise FloeConfigError("one of --config or --manifest is required")
     else:
-        profile = parse_profile(_realpath(args.profile)) if args.profile else None
+        profile = _profile(args.profile)
         try:  # Rust logs a missing config without `run_started`
             path = _realpath(args.config)
         except FloeError as e:
@@ -177,7 +185,7 @@ def _add_entity(args: argparse.Namespace) -> int:
 def _state(args: argparse.Namespace) -> int:
     if args.state_command == "reset" and not args.yes:
         raise FloeConfigError("state reset is destructive, rerun with --yes to confirm")
-    profile = parse_profile(_realpath(args.profile)) if args.profile else None
+    profile = _profile(args.profile)
     path = _realpath(args.config)
     root = _load(path, profile)
     [entity] = select_entities(root, [args.entity])
@@ -199,7 +207,7 @@ def _state(args: argparse.Namespace) -> int:
 
 
 def _maintain(args: argparse.Namespace) -> int:
-    profile = parse_profile(_realpath(args.profile)) if args.profile else None
+    profile = _profile(args.profile)
     path = _realpath(args.config)
     results = maintain(
         path, _load(path, profile), args.entities, args.older_than_days, args.retain_last,

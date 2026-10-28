@@ -9,7 +9,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
-from floe.errors import FloeStorageError
+from floe.errors import FloeIoError, FloeStorageError
 from floe.storage.paths import fnv1a_hex, parse_s3_uri
 from floe.storage.types import ObjectRef, StoredObject
 
@@ -180,3 +180,11 @@ class S3Client:
             raise FloeStorageError(f"s3 delete object failed: {e}") from e
         except BotoCoreError as e:
             raise FloeStorageError(f"s3 delete object failed: {e}") from e
+
+
+def read_s3(uri: str, what: str) -> bytes:
+    # S3 settings come from the environment (AWS_ENDPOINT_URL, ...), as for `-o s3://`
+    found = S3Client(parse_s3_uri(uri)[0]).read(uri)
+    if found is None:
+        raise FloeIoError(f"{what} not found: {uri}")
+    return found.body

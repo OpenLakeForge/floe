@@ -38,7 +38,7 @@ from floe.config.types import (
 from floe.config.validate import FLOE_VERSION
 from floe.errors import FloeConfigError, FloeIoError
 from floe.storage.paths import normalize_local_path, parse_s3_uri
-from floe.storage.s3 import S3Client
+from floe.storage.s3 import read_s3
 
 Json = dict[str, Any]
 _M = TypeVar("_M", bound=BaseModel)
@@ -226,12 +226,8 @@ def _named_local(m: Json) -> bool:
 
 
 def _read(location: str) -> bytes:
-    # S3 settings come from the environment (AWS_ENDPOINT_URL, ...), as for `-o s3://`
     if location.startswith("s3://"):
-        found = S3Client(parse_s3_uri(location)[0]).read(location)
-        if found is None:
-            raise FloeIoError(f"manifest not found: {location}")
-        return found.body
+        return read_s3(location, "manifest")
     if "://" in location:  # D1: gcs and adls are dropped
         raise FloeConfigError(f"remote manifest is not supported: {location}")
     try:

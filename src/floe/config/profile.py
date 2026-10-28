@@ -16,13 +16,15 @@ from floe.config.validate import check_lineage
 from floe.config.vars import string_map
 from floe.config.yaml import (
     load_yaml,
+    parse_yaml,
     rust_debug,
     validate_known_keys,
     yaml_array,
     yaml_hash,
     yaml_string,
 )
-from floe.errors import FloeConfigError
+from floe.errors import FloeConfigError, FloeIoError
+from floe.storage.s3 import read_s3
 
 Hash = dict[object, object]
 Reader = Callable[[Hash, str, str], object]
@@ -370,8 +372,17 @@ def apply_profile(config: RootConfig, profile: ProfileConfig) -> RootConfig:
     return config.model_copy(update={k: v for k, v in blocks.items() if v is not None})
 
 
-def parse_profile(path: Path) -> ProfileConfig:
-    docs = load_yaml(path)
+def _docs(location: str | Path) -> list[object]:
+    if isinstance(location, Path) or not location.startswith("s3://"):
+        return load_yaml(Path(location))
+    try:
+        return parse_yaml(read_s3(location, "profile").decode())
+    except UnicodeDecodeError as e:
+        raise FloeIoError("stream did not contain valid UTF-8") from e
+
+
+def parse_profile(location: str | Path) -> ProfileConfig:
+    docs = _docs(location)
     if not docs:
         raise FloeConfigError("profile YAML is empty")
     if len(docs) > 1:

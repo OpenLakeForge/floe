@@ -26,6 +26,7 @@ from floe.errors import FloeConfigError, FloeError
 from floe.pii import PiiColumn
 from floe.run import select_entities
 from floe.storage.paths import normalize_local_path
+from floe.storage.s3 import read_s3
 
 Json = dict[str, Any]
 _REMOTE = ("s3://", "gs://", "gcs://", "abfs://", "abfss://", "az://")
@@ -452,9 +453,14 @@ def build_manifest(
     report = _Target(ctx, root.report)
     profile_uri = profile_checksum = None
     if options.profile_arg is not None:  # recorded like `config_uri` and its checksum
-        profile = Path(os.path.realpath(options.profile_arg))
-        profile_uri = _config_uri(options.profile_arg, profile, work_root)
-        profile_checksum = _sha256(profile.read_bytes())
+        # an s3 profile is read from there by the run, so it is recorded as typed
+        if options.profile_arg.startswith("s3://"):
+            profile_uri = options.profile_arg
+            profile_checksum = _sha256(read_s3(profile_uri, "profile"))
+        else:
+            profile = Path(os.path.realpath(options.profile_arg))
+            profile_uri = _config_uri(options.profile_arg, profile, work_root)
+            profile_checksum = _sha256(profile.read_bytes())
     manifest: Json = _put(
         {
             "generated_at_ts_ms": 0,

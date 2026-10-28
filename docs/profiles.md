@@ -49,6 +49,22 @@ All other fields are optional.
 
 ---
 
+## Profile location
+
+A profile is a local path or an `s3://` URI, for `-p` / `--profile` on every command and for `profile_path=`
+in the Python API:
+
+```bash
+floe run -c config.yml -p s3://my-bucket/profiles/prod.yml
+```
+
+An `s3://` profile is read with the AWS default credential chain (`AWS_ENDPOINT_URL_S3` and
+`AWS_S3_FORCE_PATH_STYLE` for S3-compatible stores), as an `s3://` manifest is. A missing object fails with
+`profile not found: <uri>`. `floe manifest generate -p s3://...` records the URI as `profile_uri`, and the
+SHA-256 of the object as `profile_checksum`. The config (`-c`) is still a local path.
+
+---
+
 ## Variable precedence and resolution
 
 When variable sources are merged at runtime the following precedence applies

@@ -2,6 +2,12 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.1 (unreleased)
+
+- `-p` / `--profile` and `profile_path=` accept an `s3://` URI, read as an `s3://` manifest is. A run in a
+  container no longer needs the profile file copied in. `floe manifest generate -p s3://...` records the URI
+  as `profile_uri`. `-c` still takes a local path.
+
 ## v0.8.0
 
 Floe 0.8 is the Python core. `pip install floe-python` installs the `floe` command (a pure-Python

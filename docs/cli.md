@@ -19,6 +19,7 @@
     `image` manifest or the current directory for a `cli` one. An `s3://` `report_base_uri` writes the
     reports there.
   - `-p` applies an environment profile (ignored with `--manifest`: the manifest is already compiled).
+    It takes a local path or an `s3://` URI, read as `--manifest` is (every command that takes `-p` does the same).
   - `-F` / `--full-refresh` rebuilds the accepted output from every input: files the incremental state
     already lists are read again, `append` writes as `overwrite`, and with `sink.archive` the archived files are read
     too (D24). It is rejected with merge modes.
