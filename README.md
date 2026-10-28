@@ -45,10 +45,10 @@ table history through DuckDB, all on a single node.
 - **Inputs:** CSV · TSV · JSON · Parquet · ORC · Avro · XLSX · XML
 - **Accepted outputs:** Parquet · Apache Iceberg
 - **Storage:** local · S3 (and S3-compatible stores)
-- **Catalogs:** Iceberg REST (Polaris)
+- **Catalogs:** Iceberg REST (Polaris) · AWS Glue
 
-Floe 0.8 dropped the Delta, DuckDB and fixed-width formats, the Glue and Unity
-catalogs, and ADLS and GCS storage. The Rust implementation that supported them
+Floe 0.8 dropped the Delta, DuckDB and fixed-width formats, the Unity
+catalog, and ADLS and GCS storage. The Rust implementation that supported them
 (0.7 and earlier) is archived at
 [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
 

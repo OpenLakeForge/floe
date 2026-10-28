@@ -102,8 +102,8 @@ def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunne
     container_args: list[str] = list(cmd_args[1:]) if len(cmd_args) > 1 else []
     if runner.command is not None:
         container_cmd = runner.command
-    if runner.args is not None:
-        container_args = runner.args
+    if runner.args is not None:  # a prefix: replacing the list would drop the entity selection
+        container_args = runner.args + container_args
 
     env_vars: list[dict[str, Any]] = []
     if runner.env:

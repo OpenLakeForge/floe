@@ -14,7 +14,6 @@ These 0.7 features are rejected by `floe validate` with a "not supported in 0.8"
 | Fixed-width input (`source.format: fixed`) | Convert to CSV upstream |
 | Delta Lake accepted sink and Unity Catalog | Iceberg |
 | DuckDB / MotherDuck accepted sink | Iceberg (merges run through DuckDB) |
-| AWS Glue catalog | Iceberg REST catalog (Polaris) |
 | Catalog-less Iceberg tables (filesystem catalog) | Iceberg REST catalog |
 | ADLS and GCS storage | S3 or an S3-compatible store |
 
@@ -49,15 +48,15 @@ Notes:
 | Output | Local | S3 | Notes |
 |---|---|---|---|
 | Accepted: Parquet | ✅ | ✅ (upload) | Writes `part-*.parquet`; `overwrite` and `append` |
-| Accepted: Iceberg | ❌ | ✅ (REST catalog) | `overwrite`, `append`, `merge_scd1` and `merge_scd2` in one catalog commit per entity |
+| Accepted: Iceberg | ❌ | ✅ (REST or Glue catalog) | `overwrite`, `append`, `merge_scd1` and `merge_scd2` in one catalog commit per entity; merges need a REST catalog |
 | Rejected: CSV | ✅ | ✅ (upload) | Dataset parts `part-*.csv`; the only rejected format |
 | Reports: JSON | ✅ | ✅ (upload) | |
 
 Notes:
 - `sink.write_mode` applies to accepted and rejected outputs (`overwrite`, `append`,
   `merge_scd1`, `merge_scd2`). Merge modes need an Iceberg accepted sink.
-- An Iceberg accepted sink requires a REST catalog in `catalogs.definitions` (D26) and S3
-  storage for the table data.
+- An Iceberg accepted sink requires a REST or AWS Glue catalog in `catalogs.definitions` (D26)
+  and S3 storage for the table data.
 - Iceberg `partition_spec` supports `identity`, `year`, `month`, `day`, `hour` and
   `bucket` (with `num_buckets`, D12).
 - `schema.schema_evolution.mode: add_columns` is Iceberg-only and additive-only (D13).
