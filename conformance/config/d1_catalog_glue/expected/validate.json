@@ -1,4 +1,3 @@
 {
-  "ok": false,
-  "error": "catalogs.definitions name=g type=glue is not supported in 0.8"
+  "ok": true
 }

@@ -91,6 +91,25 @@ derives from the config's path and checksum, so every edit of the config renames
 Dagster. The job name (`floe_<manifest_id>_job`) still derives from the manifest id; pin it with
 `build_definitions(job_name=...)`.
 
+## Choose each entity's upstream key
+
+Entities of a source named in the manifest `sources` index share one `sources/<project>/<source>` dependency.
+Pass `source_key_fn` to `load_floe_assets` or `build_definitions` to give each entity its own upstream asset
+instead (for example, to depend on `crm/orders` and `crm/accounts` in domain mode):
+
+```python
+from dagster import AssetKey
+
+defs = build_definitions(
+    manifest_path="manifests/sales.json",
+    source_key_fn=lambda entity: AssetKey(["crm", entity.name]),  # None keeps the default key
+)
+```
+
+The function receives each manifest entity and returns an `AssetKey`, or `None` for the default. The key is a
+dependency of the entity's asset like the default one, so Dagster still orders the asset after its upstream.
+You own the asset behind a key you choose: Floe registers no `SourceAsset` for it, so define it in your code.
+
 ## Run the example (repo-only)
 
 ```bash
