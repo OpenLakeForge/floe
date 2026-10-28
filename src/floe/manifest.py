@@ -274,7 +274,10 @@ _RUNNER_FIELDS = (
     *("resources", "env", "workspace_url", "existing_cluster_id", "config_uri"),
     *("python_file_uri", "job_name", "auth", "env_parameters"),
 )
-_PYTHON_RUNNER_FIELDS = ("job_scope", "domain_resources")  # carried only when set
+_PYTHON_RUNNER_FIELDS = (  # carried only when set
+    *("job_scope", "domain_resources", "labels", "annotations", "image_pull_policy"),
+    *("security_context", "node_selector", "tolerations", "backoff_limit", "env_from"),
+)
 
 
 # Rust `runners_contract`: the fields each profile runner type carries into the manifest

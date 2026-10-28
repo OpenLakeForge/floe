@@ -148,6 +148,23 @@ def _job_scope(hash: Hash, key: str, ctx: str) -> str | None:
     return scope
 
 
+def _str_keyed(value: object, where: str) -> dict[str, object]:
+    hash = yaml_hash(value, where)
+    validate_known_keys(hash, where, hash.keys())  # every key must be a string
+    return cast(dict[str, object], hash)
+
+
+def _object(hash: Hash, key: str, ctx: str) -> dict[str, object] | None:
+    return _str_keyed(hash[key], f"{ctx}.{key}") if key in hash else None
+
+
+def _objects(hash: Hash, key: str, ctx: str) -> list[dict[str, object]] | None:
+    if key not in hash:
+        return None
+    where = f"{ctx}.{key}"
+    return [_str_keyed(item, f"{where}[]") for item in yaml_array(hash[key], where)]
+
+
 def _auth(hash: Hash, key: str, ctx: str) -> dict[str, str | None] | None:
     if key not in hash:
         return None
@@ -180,6 +197,14 @@ _RUNNER_FIELDS: tuple[tuple[str, Reader], ...] = (
     ("env_parameters", _map),
     ("job_scope", _job_scope),
     ("domain_resources", _domain_resources),
+    ("labels", _map),
+    ("annotations", _map),
+    ("image_pull_policy", _string),
+    ("security_context", _object),
+    ("node_selector", _map),
+    ("tolerations", _objects),
+    ("backoff_limit", _u64),
+    ("env_from", _objects),
 )
 
 

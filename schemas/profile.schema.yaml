@@ -234,6 +234,45 @@ $defs:
         description: >
           Kubernetes: container resources per domain name, used by `job_scope: domain`
           Jobs in place of `resources`. A domain not listed uses `resources`.
+      labels:
+        type: object
+        additionalProperties:
+          type: string
+        description: >
+          Kubernetes: labels added to the Job pod's default labels (`app`, `floe-job`);
+          the defaults win on a clash.
+      annotations:
+        type: object
+        additionalProperties:
+          type: string
+        description: "Kubernetes: annotations of the Job's pod."
+      image_pull_policy:
+        type: string
+        description: "Kubernetes: container imagePullPolicy (Always, IfNotPresent or Never)."
+      security_context:
+        type: object
+        description: "Kubernetes: container securityContext, passed through verbatim."
+      node_selector:
+        type: object
+        additionalProperties:
+          type: string
+        description: "Kubernetes: pod nodeSelector."
+      tolerations:
+        type: array
+        items:
+          type: object
+        description: "Kubernetes: pod tolerations, passed through verbatim."
+      backoff_limit:
+        type: integer
+        minimum: 0
+        description: "Kubernetes: Job backoffLimit (default 0: a failed pod is not retried)."
+      env_from:
+        type: array
+        items:
+          type: object
+        description: >
+          Kubernetes: container envFrom entries, passed through verbatim,
+          e.g. `[{secretRef: {name: floe-env}}]`.
       env_parameters:
         type: object
         additionalProperties:

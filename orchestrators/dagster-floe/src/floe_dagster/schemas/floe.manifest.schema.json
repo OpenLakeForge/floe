@@ -588,6 +588,70 @@
                     }
                   }
                 }
+              },
+              "labels": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "annotations": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "image_pull_policy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "security_context": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "node_selector": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "tolerations": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object"
+                }
+              },
+              "backoff_limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "env_from": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object"
+                }
               }
             },
             "allOf": [
