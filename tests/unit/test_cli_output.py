@@ -84,6 +84,12 @@ def test_format_run_output_quiet_mode_keeps_only_the_summary() -> None:
     assert run_output(outcome(), [], "quiet", [{}]).split("\n") == expected
 
 
+def test_run_summary_line_keeps_the_s3_uri_intact() -> None:
+    s3 = RunOutcome("r1", SUMMARY, None, "s3://bucket/reports", "s3://bucket/reports/run_r1", [REPORT])  # fmt: skip
+    last = run_output(s3, [], "quiet", [{}]).splitlines()[-1]
+    assert last == "Run summary: s3://bucket/reports/run_r1/run.summary.json"
+
+
 def test_format_run_output_verbose_mode_echoes_source_and_sinks() -> None:
     lines = run_output(outcome(), [], "verbose", [{}]).splitlines()
     assert lines[4:10] == [

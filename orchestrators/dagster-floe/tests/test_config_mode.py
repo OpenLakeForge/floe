@@ -97,3 +97,28 @@ def test_in_process_runner_runs_from_the_config_and_profile(paths) -> None:
     run_id = calls[0][1]["run_id"]
     expected = [(config, {"entities": [e], "run_id": run_id, "full_refresh": False, "profile_path": None}) for e in ("invoices", "orders")]  # fmt: skip
     assert sorted(calls, key=str) == expected
+
+
+def _domain_op_names(config: str, profile: str, **kwargs: str) -> set[str]:
+    defs = load_floe_assets(config_path=config, profile_path=profile, runner=LocalRunner(), **kwargs)
+    return {a.op.name for a in defs.assets or [] if not isinstance(a, SourceAsset) and a.op.name.startswith("floe_")}
+
+
+def test_manifest_name_keeps_domain_op_names_across_config_edits(paths) -> None:
+    config, profile, _ = paths
+    Path(profile).write_text(PROFILE.replace("namespace: floe-prod", "namespace: floe-prod, job_scope: domain"))
+    named_before = _domain_op_names(config, profile, manifest_name="sales")
+    unnamed_before = _domain_op_names(config, profile)
+    assert named_before and unnamed_before
+
+    with open(config, "a") as f:
+        f.write("\n# an edit that changes the checksum\n")
+    assert _domain_op_names(config, profile, manifest_name="sales") == named_before
+    assert all(name.startswith("floe_sales__") for name in named_before)
+    assert _domain_op_names(config, profile) != unnamed_before  # without a name, as today
+
+
+def test_manifest_name_needs_config_path(paths) -> None:
+    _, _, manifest = paths
+    with pytest.raises(ValueError, match="manifest_name= needs config_path="):
+        load_floe_assets(manifest_path=manifest, manifest_name="sales", runner=LocalRunner())
