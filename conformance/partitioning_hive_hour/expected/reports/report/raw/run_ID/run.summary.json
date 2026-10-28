@@ -2,7 +2,7 @@
   "spec_version": "0.3",
   "tool": {
     "name": "floe",
-    "version": "0.8.0.dev0"
+    "version": "0.8.0"
   },
   "run": {
     "run_id": "<volatile>",
