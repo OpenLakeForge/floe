@@ -2,7 +2,9 @@
 
 All notable changes to Floe are documented in this file.
 
-## v0.8.1 (unreleased)
+## Unreleased
+
+### floe-python
 
 - **AWS Glue catalogs are back.** Floe 0.8.0 rejected `catalogs.definitions[].type: glue`, a
   regression for AWS deployments (OpenLakeForge). A Glue catalog takes the 0.7 keys (`region`,
@@ -11,6 +13,14 @@ All notable changes to Floe are documented in this file.
   `overwrite` and `append` are supported; `merge_scd1`/`merge_scd2` and `floe maintain --compact`
   still need a REST catalog. **D42:** `allow_takeover` is accepted and ignored; 0.8 does not check
   0.7's `floe.managed` ownership marker.
+
+### dagster-floe
+
+- **`manifest_name=` in config mode (#1022).** `load_floe_assets`, `build_definitions` and
+  `build_job_run_config_from_manifest` accept `manifest_name=` next to `config_path=` and pass it to
+  `floe.build_manifest`. With a fixed name, the op name of a `job_scope: domain` asset stays
+  `floe_<name>__<domain>__...` when the config changes; without it the name derives from the config's path and
+  checksum, as before. Passing it with `manifest_path=` raises `ValueError`.
 
 ## v0.8.0
 
