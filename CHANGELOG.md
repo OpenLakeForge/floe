@@ -4,7 +4,15 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-- **dagster-floe: `source_key_fn` picks each entity's upstream source key (#1020).** `load_floe_assets` and
+### dagster-floe
+
+- **`manifest_name=` in config mode (#1022).** `load_floe_assets`, `build_definitions` and
+  `build_job_run_config_from_manifest` accept `manifest_name=` next to `config_path=` and pass it to
+  `floe.build_manifest`. With a fixed name, the op name of a `job_scope: domain` asset stays
+  `floe_<name>__<domain>__...` when the config changes; without it the name derives from the config's path and
+  checksum, as before. Passing it with `manifest_path=` raises `ValueError`.
+
+- **`source_key_fn` picks each entity's upstream source key (#1020).** `load_floe_assets` and
   `build_definitions` accept `source_key_fn=lambda entity: AssetKey([...])` (or `None` for the default key).
   Entities of one named source can depend on different upstream assets, e.g. `crm/orders` and `crm/accounts`,
   and Dagster still orders each after its upstream. No `SourceAsset` is registered for a key you choose.

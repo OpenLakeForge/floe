@@ -85,6 +85,12 @@ defs = build_definitions(config_path="/app/floe.yml", profile_path="/app/prod.ym
   place of `--manifest <uri>`, both in process and as a local subprocess or `kubernetes_job` pod. The config
   and profile paths must therefore exist where the run happens; for a `kubernetes_job`, that's the run image.
 
+In config mode, pass `manifest_name="sales"` (to `load_floe_assets`, `build_definitions` or
+`build_job_run_config_from_manifest`) to keep the op name of a `job_scope: domain` asset stable. Without it the name
+derives from the config's path and checksum, so every edit of the config renames the op and breaks its history in
+Dagster. The job name (`floe_<manifest_id>_job`) still derives from the manifest id; pin it with
+`build_definitions(job_name=...)`.
+
 ## Choose each entity's upstream key
 
 Entities of a source named in the manifest `sources` index share one `sources/<project>/<source>` dependency.

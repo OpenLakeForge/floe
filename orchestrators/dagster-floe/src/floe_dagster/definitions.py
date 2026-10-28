@@ -54,6 +54,7 @@ def build_definitions(
     job_name: str | None = None,
     config_path: str | None = None,
     profile_path: str | None = None,
+    manifest_name: str | None = None,
     source_key_fn: SourceKeyFn | None = None,
 ) -> Definitions:
     """From a manifest file, or (`config_path`, `floe` extra) a manifest built in memory.
@@ -61,7 +62,14 @@ def build_definitions(
     `source_key_fn` picks each entity's upstream source key, see `load_floe_assets`.
     """
     return _build_definitions(
-        sources=[{"manifest_path": manifest_path, "config_path": config_path, "profile_path": profile_path}],
+        sources=[
+            {
+                "manifest_path": manifest_path,
+                "config_path": config_path,
+                "profile_path": profile_path,
+                "manifest_name": manifest_name,
+            }
+        ],
         manifest_uri=manifest_uri,
         entities=entities,
         runner=runner,
@@ -94,7 +102,7 @@ def build_definitions_from_manifest_dir(
     )
 
 
-_Source = dict[str, "str | None"]  # load_manifest_source kwargs: manifest_path, config_path, profile_path
+_Source = dict[str, "str | None"]  # load_manifest_source kwargs: manifest_path, config_path, profile_path, manifest_name
 
 
 def build_definitions_from_manifest_paths(
@@ -222,12 +230,13 @@ def build_job_run_config_from_manifest(
     *,
     config_path: str | None = None,
     profile_path: str | None = None,
+    manifest_name: str | None = None,
 ) -> dict[str, Any] | None:
     """Load a Floe manifest (or build it from `config_path`) and return its Dagster job run-config dict.
 
     Returns ``None`` when the manifest carries no concurrency constraint.
     """
-    manifest, _ = load_manifest_source(manifest_path, config_path, profile_path)
+    manifest, _ = load_manifest_source(manifest_path, config_path, profile_path, manifest_name)
     return resolve_execution_config(manifest.execution)
 
 
