@@ -29,6 +29,12 @@ All notable changes to Floe are documented in this file.
   rendered arguments: `command: [python]` + `args: [-m, floe]` runs
   `python -m floe run … --entities …`.
 
+- **`s3://` run reports and manifests are read with boto3 (#1021).** When boto3 is importable (it is whenever the
+  `floe` extra is installed) it replaces fsspec/s3fs for `s3://`, honouring `AWS_ENDPOINT_URL_S3` /
+  `AWS_ENDPOINT_URL`, `AWS_REGION` and `AWS_S3_FORCE_PATH_STYLE`. s3fs no longer has to be installable next to
+  `floe-python`; without it Silver assets lost row counts, rejection counts and check detail. Other schemes, and
+  `s3://` without boto3, still use fsspec.
+
 - **`manifest_name=` in config mode (#1022).** `load_floe_assets`, `build_definitions` and
   `build_job_run_config_from_manifest` accept `manifest_name=` next to `config_path=` and pass it to
   `floe.build_manifest`. With a fixed name, the op name of a `job_scope: domain` asset stays
