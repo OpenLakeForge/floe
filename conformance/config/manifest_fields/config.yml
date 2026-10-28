@@ -63,7 +63,7 @@ entities:
       columns:
         - name: email
           strategy: hash
-          key: literal-secret
+          # #1006: a literal hash key is refused by manifest generate
         - name: phone
           strategy: hash
           key: "${PII_KEY}"
