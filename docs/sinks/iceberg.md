@@ -67,6 +67,29 @@ Floe passes the S3 storage's `endpoint`, `region` and `path_style_access` to PyI
 DuckDB. Credentials come from the standard AWS credential chain (environment variables, web
 identity / IRSA, container credentials, instance metadata); the catalog does not vend them.
 
+## AWS Glue catalog
+
+A `type: glue` catalog writes the table through the AWS Glue Data Catalog, as Floe 0.7 did:
+
+```yaml
+catalogs:
+  default: "glue"
+  definitions:
+    - name: "glue"
+      type: "glue"
+      region: "eu-west-1"
+      database: "sales_silver"           # the Glue database that holds the tables
+      warehouse_storage: "lakehouse_silver"
+      warehouse_prefix: "warehouse/iceberg"
+      create_database_if_missing: false  # default true
+```
+
+The table is `<database>.<table>`; `sink.accepted.iceberg.namespace` (or `entity.domain`) only
+names its location, `<warehouse_prefix>/<namespace>/<table>`. Glue credentials come from the AWS
+credential chain, as for S3. Glue supports `overwrite` and `append`: `floe validate` rejects a
+merge write mode, and `floe maintain --compact` needs a REST catalog. `allow_takeover` is
+accepted and ignored: Floe 0.8 writes any Iceberg table in the database (D42).
+
 ## REST catalog credentials
 
 REST catalog definitions accept bearer tokens and OAuth2 client credentials:
@@ -119,7 +142,7 @@ Current scope:
 
 ## Supported scope (current)
 
-- Accepted sink only (`sink.accepted.format: iceberg`), through a REST catalog
+- Accepted sink only (`sink.accepted.format: iceberg`), through a REST or AWS Glue catalog
 - S3 storage
 - `sink.write_mode`: `overwrite`, `append`, `merge_scd1` and `merge_scd2`. See [write modes](../write_modes.md).
 - Each entity's write is one catalog commit. `overwrite` replaces every existing data file in

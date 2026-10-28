@@ -10,6 +10,14 @@ All notable changes to Floe are documented in this file.
   uninstallable next to Floe: current `aiobotocore` caps `botocore` below 1.43.118. 1.36.0 is the
   first release with every S3 call and option Floe uses (conditional writes, checksum settings).
 
+- **AWS Glue catalogs are back.** Floe 0.8.0 rejected `catalogs.definitions[].type: glue`, a
+  regression for AWS deployments (OpenLakeForge). A Glue catalog takes the 0.7 keys (`region`,
+  `database`, `create_database_if_missing`, `warehouse_storage`, `warehouse_prefix`) and writes
+  Iceberg tables through PyIceberg's Glue catalog, with credentials from the AWS chain.
+  `overwrite` and `append` are supported; `merge_scd1`/`merge_scd2` and `floe maintain --compact`
+  still need a REST catalog. **D42:** `allow_takeover` is accepted and ignored; 0.8 does not check
+  0.7's `floe.managed` ownership marker.
+
 - **`kubernetes_job` runners can shape the Job's pod (#1023).** `execution.runner` in a profile accepts
   `labels` (added to the defaults), `annotations`, `image_pull_policy`, `security_context`,
   `node_selector`, `tolerations`, `backoff_limit` and `env_from`. They are carried into the manifest
@@ -28,6 +36,11 @@ All notable changes to Floe are documented in this file.
   `floe.build_manifest`. With a fixed name, the op name of a `job_scope: domain` asset stays
   `floe_<name>__<domain>__...` when the config changes; without it the name derives from the config's path and
   checksum, as before. Passing it with `manifest_path=` raises `ValueError`.
+
+- **`source_key_fn` picks each entity's upstream source key (#1020).** `load_floe_assets` and
+  `build_definitions` accept `source_key_fn=lambda entity: AssetKey([...])` (or `None` for the default key).
+  Entities of one named source can depend on different upstream assets, e.g. `crm/orders` and `crm/accounts`,
+  and Dagster still orders each after its upstream. No `SourceAsset` is registered for a key you choose.
 
 ### airflow-floe
 
