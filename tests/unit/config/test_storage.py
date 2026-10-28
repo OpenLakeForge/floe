@@ -82,7 +82,7 @@ def test_parse_storages_errors(value: object, message: str) -> None:
         # parse_catalogs_type_unsupported
         (
             {"definitions": [{"name": "c", "type": "hive"}]},
-            "catalogs.definitions[0]: catalogs.definitions name=c has unsupported type=hive (supported: rest)",
+            "catalogs.definitions[0]: catalogs.definitions name=c has unsupported type=hive (supported: glue, rest)",
         ),
     ],
 )
@@ -121,7 +121,7 @@ def test_parse_catalogs_errors(value: object, message: str) -> None:
         # prof_catalogs_definition_type_unsupported
         (
             {"definitions": [{"name": "r", "type": "hive"}]},
-            "profile.catalogs.definitions[0]: profile.catalogs.definitions name=r has unsupported type=hive (supported: rest)",
+            "profile.catalogs.definitions[0]: profile.catalogs.definitions name=r has unsupported type=hive (supported: glue, rest)",
         ),
         # prof_catalogs_definition_unknown_key
         (
@@ -184,11 +184,6 @@ def test_d1_storages_are_rejected(value: object, message: str) -> None:
 @pytest.mark.parametrize(
     ("definition", "message"),
     [
-        # d1_catalog_glue
-        (
-            {"name": "g", "type": "glue", "region": "eu-west-1", "database": "db"},
-            "catalogs.definitions name=g type=glue is not supported in 0.8",
-        ),
         # d1_catalog_unity
         (
             {
@@ -207,6 +202,34 @@ def test_d1_catalogs_are_rejected(definition: object, message: str) -> None:
     with pytest.raises(FloeConfigError) as err:
         parse_catalogs({"definitions": [definition]})
     assert str(err.value) == message
+
+
+def test_parse_catalogs_reads_a_glue_catalog_as_rust_0_7() -> None:
+    config = parse_catalogs(
+        {
+            "definitions": [
+                {
+                    "name": "g",
+                    "type": "glue",
+                    "region": "eu-west-1",
+                    "database": "sales_silver",
+                    "warehouse_storage": "lake",
+                    "warehouse_prefix": "s3://b/warehouse",
+                    "create_database_if_missing": False,
+                    "allow_takeover": True,
+                }
+            ]
+        }
+    )
+    [glue] = config.definitions
+    assert (glue.type, glue.region, glue.database) == ("glue", "eu-west-1", "sales_silver")  # fmt: skip
+    assert (glue.warehouse_storage, glue.warehouse_prefix) == ("lake", "s3://b/warehouse")  # fmt: skip
+    assert glue.create_database_if_missing is False
+
+
+def test_parse_catalogs_glue_requires_region_and_database() -> None:
+    with pytest.raises(FloeConfigError, match="missing required field catalogs.definitions.database"):  # fmt: skip
+        parse_catalogs({"definitions": [{"name": "g", "type": "glue", "region": "r"}]})
 
 
 def test_parse_storages_reads_s3_with_endpoint_and_path_style() -> None:

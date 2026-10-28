@@ -55,6 +55,14 @@ def test_build_k8s_job_spec_minimal_mapping() -> None:
     assert container["args"] == ["run", "-c", "cfg.yml"]
 
 
+def test_build_k8s_job_spec_args_override_keeps_the_entity_selection() -> None:
+    runner = replace(_runner(), command=["python"], args=["-m", "floe"])
+    spec = build_k8s_job_spec("floe-orders-abc", ["floe", "run", "--manifest", "m.json", "--entities", "orders"], runner)
+    container = spec["spec"]["template"]["spec"]["containers"][0]
+    assert container["command"] == ["python"]
+    assert container["args"] == ["-m", "floe", "run", "--manifest", "m.json", "--entities", "orders"]
+
+
 def test_status_mapping_states() -> None:
     assert map_k8s_job_status(_job(active=1)) == STATUS_RUNNING
     assert map_k8s_job_status(_job(succeeded=1)) == STATUS_SUCCEEDED
