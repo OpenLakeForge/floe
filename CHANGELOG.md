@@ -9,13 +9,15 @@ All notable changes to Floe are documented in this file.
 - **`kubernetes_job` runners can shape the Job's pod (#1023).** `execution.runner` in a profile accepts
   `labels` (added to the defaults), `annotations`, `image_pull_policy`, `security_context`,
   `node_selector`, `tolerations`, `backoff_limit` and `env_from`. They are carried into the manifest
-  runner definition only when set, so existing manifests are unchanged. dagster-floe applies them to the
-  Job it creates (labels are added to `app` and `floe-job`, which are never overridden; `backoff_limit`
-  defaults to 0, and with retries the run waits for the Job's final status and reads the pod that
-  matches it); airflow-floe ignores them.
+  runner definition only when set, so existing manifests are unchanged. dagster-floe applies them (see
+  below); airflow-floe ignores them.
 
 ### dagster-floe
 
+- **`kubernetes_job` pod options are applied to the Job (#1023).** dagster-floe puts the runner's `labels`
+  (added to `app` and `floe-job`, which are never overridden), `annotations`, `image_pull_policy`,
+  `security_context`, `node_selector`, `tolerations`, `backoff_limit` (default 0) and `env_from` in the Job
+  it creates. With retries the run waits for the Job's final status and reads the pod that matches it.
 - **`manifest_name=` in config mode (#1022).** `load_floe_assets`, `build_definitions` and
   `build_job_run_config_from_manifest` accept `manifest_name=` next to `config_path=` and pass it to
   `floe.build_manifest`. With a fixed name, the op name of a `job_scope: domain` asset stays
