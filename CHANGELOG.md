@@ -23,15 +23,15 @@ All notable changes to Floe are documented in this file.
   `floe_<name>__<domain>__...` when the config changes; without it the name derives from the config's path and
   checksum, as before. Passing it with `manifest_path=` raises `ValueError`.
 
-### airflow-floe
-
-- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
-  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
-
 - **`source_key_fn` picks each entity's upstream source key (#1020).** `load_floe_assets` and
   `build_definitions` accept `source_key_fn=lambda entity: AssetKey([...])` (or `None` for the default key).
   Entities of one named source can depend on different upstream assets, e.g. `crm/orders` and `crm/accounts`,
   and Dagster still orders each after its upstream. No `SourceAsset` is registered for a key you choose.
+
+### airflow-floe
+
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
+  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
 ## v0.8.0
 
