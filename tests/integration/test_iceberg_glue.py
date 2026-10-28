@@ -80,3 +80,66 @@ def test_overwrite_then_append_lands_in_the_glue_database(
     table = catalog.load_table((database, "orders"))
     assert table.location() == f"s3://{BUCKET}/{prefix}/sales/orders"
     assert sorted(table.scan().to_arrow()["id"].to_pylist()) == [1, 2, 3, 4, 5]
+
+
+DOMAINS_CONFIG = """\
+version: "0.3"
+storages:
+  default: local
+  definitions:
+    - {{name: local, type: local}}
+    - {{name: lake, type: s3, bucket: {bucket}, region: us-east-1, endpoint: "{s3}", path_style_access: true}}
+catalogs:
+  default: glue
+  definitions:
+    - {{name: glue, type: glue, region: us-east-1, database: "{database}_{{domain}}", warehouse_storage: lake, warehouse_prefix: "{prefix}"}}
+domains:
+  - name: sales
+  - name: finance
+entities:
+  - name: orders
+    domain: sales
+    source: {{format: csv, path: {orders}, options: {{header: true}}}}
+    sink:
+      accepted: {{format: iceberg, path: orders, storage: lake, iceberg: {{table: orders}}}}
+    policy: {{severity: warn}}
+    schema:
+      columns:
+        - {{name: id, type: int64}}
+  - name: ledger
+    domain: finance
+    source: {{format: csv, path: {ledger}, options: {{header: true}}}}
+    sink:
+      accepted: {{format: iceberg, path: ledger, storage: lake, iceberg: {{table: ledger}}}}
+    policy: {{severity: warn}}
+    schema:
+      columns:
+        - {{name: id, type: int64}}
+"""
+
+
+def test_domain_token_writes_each_domain_to_its_own_glue_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", os.environ.get("AWS_ACCESS_KEY_ID", "test"))
+    monkeypatch.setenv(
+        "AWS_SECRET_ACCESS_KEY", os.environ.get("AWS_SECRET_ACCESS_KEY", "test")
+    )
+    monkeypatch.setenv("AWS_ENDPOINT_URL_GLUE", GLUE or "")
+    database, prefix = f"floe_{uuid.uuid4().hex[:8]}", f"glue-it/{uuid.uuid4().hex[:8]}"
+    s3 = boto3.client("s3", endpoint_url=S3, region_name="us-east-1")
+    try:
+        s3.create_bucket(Bucket=BUCKET)
+    except s3.exceptions.BucketAlreadyOwnedByYou:
+        pass
+    (tmp_path / "orders.csv").write_text("id\n1\n2\n")
+    (tmp_path / "ledger.csv").write_text("id\n7\n")
+    config = tmp_path / "floe.yml"
+    config.write_text(DOMAINS_CONFIG.format(bucket=BUCKET, s3=S3, database=database, prefix=prefix, orders=tmp_path / "orders.csv", ledger=tmp_path / "ledger.csv"))  # fmt: skip
+    run(config, parse_config(config), run_id="r-domains")
+
+    catalog = load_catalog("glue", type="glue", **{"glue.region": "us-east-1", "s3.endpoint": S3 or "", "s3.region": "us-east-1"})  # fmt: skip
+    for domain, table, ids in (("sales", "orders", [1, 2]), ("finance", "ledger", [7])):
+        loaded = catalog.load_table((f"{database}_{domain}", table))
+        assert loaded.location() == f"s3://{BUCKET}/{prefix}/{domain}/{table}"
+        assert sorted(loaded.scan().to_arrow()["id"].to_pylist()) == ids
