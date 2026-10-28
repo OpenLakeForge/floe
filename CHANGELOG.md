@@ -4,6 +4,12 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+### floe-python
+
+- **floe-python requires `boto3>=1.36.0` (was `>=1.43.118`) (#1028).** The old floor made `s3fs`
+  uninstallable next to Floe: current `aiobotocore` caps `botocore` below 1.43.118. 1.36.0 is the
+  first release with every S3 call and option Floe uses (conditional writes, checksum settings).
+
 ### dagster-floe
 
 - **`manifest_name=` in config mode (#1022).** `load_floe_assets`, `build_definitions` and
