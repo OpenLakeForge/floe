@@ -146,14 +146,45 @@ def test_multi_asset_accepted_key_matches_entity_asset_key() -> None:
 def test_multi_asset_rejected_key_present_when_policy_is_reject() -> None:
     """employees has policy_severity='reject' → rejected output exposed."""
     asset_def, entity = _get_asset_def(FIXTURE, "employees")
-    rejected_key = AssetKey(entity.asset_key[:-1] + [entity.asset_key[-1] + "_rejected"])
+    rejected_key = AssetKey([*entity.asset_key[:-1], "rejected", entity.asset_key[-1]])
     assert rejected_key in asset_def.keys
+
+
+def test_rejected_key_is_a_segment_between_domain_and_table() -> None:
+    """[sales, orders] → [sales, rejected, orders]."""
+    from floe_dagster.assets import _rejected_key
+
+    _, entity = _get_asset_def(FIXTURE, "orders")
+    assert entity.asset_key == ["sales", "orders"]
+    assert _rejected_key(entity) == ["sales", "rejected", "orders"]
+
+
+def test_table_named_like_the_old_rejected_suffix_does_not_collide(tmp_path) -> None:
+    """A real `employees_rejected` table next to `employees` (which has a rejected sink)."""
+    import copy
+    import json
+
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    employees = payload["entities"][0]
+    sibling = copy.deepcopy(employees)
+    sibling["name"] = "employees_rejected"
+    sibling["asset_key"] = ["hr", "employees_rejected"]
+    payload["entities"].append(sibling)
+    manifest_path = tmp_path / "manifest.sibling.json"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    defs = build_definitions(manifest_path=str(manifest_path), runner=_NoopRunner(), with_job=False)
+    defs.resolve_implicit_global_asset_job_def()  # raises on a duplicate asset key
+    keys = {key for asset in defs.assets if hasattr(asset, "keys") for key in asset.keys}
+    assert AssetKey(["hr", "employees_rejected"]) in keys
+    assert AssetKey(["hr", "rejected", "employees"]) in keys
+    assert AssetKey(["hr", "rejected", "employees_rejected"]) in keys
 
 
 def test_multi_asset_no_rejected_key_when_policy_is_warn() -> None:
     """orders has policy_severity='warn' → no rejected output (rows discarded silently)."""
     asset_def, entity = _get_asset_def(FIXTURE, "orders")
-    rejected_key = AssetKey(entity.asset_key[:-1] + [entity.asset_key[-1] + "_rejected"])
+    rejected_key = AssetKey([*entity.asset_key[:-1], "rejected", entity.asset_key[-1]])
     assert rejected_key not in asset_def.keys
 
 
@@ -169,7 +200,7 @@ def test_multi_asset_rejected_key_present_when_policy_is_abort(tmp_path) -> None
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
 
     asset_def, entity = _get_asset_def(manifest_path, "employees")
-    rejected_key = AssetKey(entity.asset_key[:-1] + [entity.asset_key[-1] + "_rejected"])
+    rejected_key = AssetKey([*entity.asset_key[:-1], "rejected", entity.asset_key[-1]])
     assert rejected_key in asset_def.keys
 
 

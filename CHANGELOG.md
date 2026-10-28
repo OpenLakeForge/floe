@@ -4,6 +4,13 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+### dagster-floe
+
+- **Breaking: rejected assets are keyed `<domain>/rejected/<table>` (#1046).** They were
+  `<domain>/<table>_rejected`, which collided with a real table named `<table>_rejected`. Upgrade:
+  the history of the rejected assets restarts under the new key, and any selection, sensor or
+  automation condition that names the old keys must be updated.
+
 ### airflow-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
