@@ -61,6 +61,14 @@ Every intentional behaviour change from 0.7 is numbered (D1–D41) in the migrat
   manifest `floe manifest generate` writes for the same config and profile (deterministic by
   default). `manifest generate` now calls it.
 
+## dagster-floe (unreleased)
+
+- **`s3://` run reports and manifests are read with boto3 (#1021).** When boto3 is importable (it is whenever the
+  `floe` extra is installed) it replaces fsspec/s3fs for `s3://`, honouring `AWS_ENDPOINT_URL_S3` /
+  `AWS_ENDPOINT_URL`, `AWS_REGION` and `AWS_S3_FORCE_PATH_STYLE`. s3fs no longer has to be installable next to
+  `floe-python`; without it Silver assets lost row counts, rejection counts and check detail. Other schemes, and
+  `s3://` without boto3, still use fsspec.
+
 ## dagster-floe v0.3.0
 
 Supports Floe 0.8 (`floe-python` 0.8, manifest `spec_version` `0.8`); older Floe versions are not

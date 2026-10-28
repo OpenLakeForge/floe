@@ -29,6 +29,7 @@ from .manifest import (
     ManifestExecution,
     ManifestEntity,
     ManifestRunnerDefinition,
+    _boto3_read_text,
     _fsspec_storage_options,
     entity_table,
     load_manifest_source,
@@ -639,6 +640,9 @@ def _read_json_text(ref: str, config_uri: str) -> str:
 
 
 def _fsspec_read_text(uri: str) -> str:
+    text = _boto3_read_text(uri)
+    if text is not None:
+        return text
     try:
         import fsspec
     except ImportError as exc:
