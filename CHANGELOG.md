@@ -22,6 +22,12 @@ All notable changes to Floe are documented in this file.
   takes several domains (repeatable or comma-separated), fails on an unknown domain, and cannot be combined
   with `--entities`.
 
+- **`kubernetes_job` runners can shape the Job's pod (#1023).** `execution.runner` in a profile accepts
+  `labels` (added to the defaults), `annotations`, `image_pull_policy`, `security_context`,
+  `node_selector`, `tolerations`, `backoff_limit` and `env_from`. They are carried into the manifest
+  runner definition only when set, so existing manifests are unchanged. dagster-floe applies them in a
+  follow-up PR; the manifest and profile schemas accept them now.
+
 ### dagster-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031).** It
