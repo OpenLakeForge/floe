@@ -2,7 +2,9 @@
 
 All notable changes to Floe are documented in this file.
 
-## v0.8.1 (unreleased)
+## Unreleased
+
+### floe-python
 
 - **`kubernetes_job` runners can shape the Job's pod (#1023).** `execution.runner` in a profile accepts
   `labels` (added to the defaults), `annotations`, `image_pull_policy`, `security_context`,
@@ -11,6 +13,14 @@ All notable changes to Floe are documented in this file.
   Job it creates (labels are added to `app` and `floe-job`, which are never overridden; `backoff_limit`
   defaults to 0, and with retries the run waits for the Job's final status and reads the pod that
   matches it); airflow-floe ignores them.
+
+### dagster-floe
+
+- **`manifest_name=` in config mode (#1022).** `load_floe_assets`, `build_definitions` and
+  `build_job_run_config_from_manifest` accept `manifest_name=` next to `config_path=` and pass it to
+  `floe.build_manifest`. With a fixed name, the op name of a `job_scope: domain` asset stays
+  `floe_<name>__<domain>__...` when the config changes; without it the name derives from the config's path and
+  checksum, as before. Passing it with `manifest_path=` raises `ValueError`.
 
 ## v0.8.0
 
