@@ -31,8 +31,7 @@ from .manifest import (
     ManifestRunnerDefinition,
     _fsspec_storage_options,
     entity_table,
-    load_manifest,
-    resolve_config_uri,
+    load_manifest_source,
     resolve_entity_runner,
 )
 from .runner import RunResult, Runner
@@ -43,14 +42,19 @@ TABLE_TAG = "floe/table"
 
 
 def load_floe_assets(
-    manifest_path: str,
-    runner: Runner,
+    manifest_path: str | None = None,
+    runner: Runner | None = None,
     entities: list[str] | None = None,
     register_source_assets: bool = True,
     manifest_uri: str | None = None,
     domains: list[str] | None = None,
+    config_path: str | None = None,
+    profile_path: str | None = None,
 ) -> Definitions:
     """Build a Dagster Definitions for the given manifest.
+
+    config_path/profile_path: in place of manifest_path, build the manifest in memory from the
+        Floe config (needs the `floe` extra); runs then take `floe run -c <config> [-p <profile>]`.
 
     register_source_assets: if False, skip SourceAsset registration for source keys.
         Set to False when another Dagster pipeline in the same workspace already
@@ -68,20 +72,27 @@ def load_floe_assets(
         register_source_assets=register_source_assets,
         manifest_uri=manifest_uri,
         domains=domains,
+        config_path=config_path,
+        profile_path=profile_path,
     )
     return Definitions(assets=[*assets_defs, *source_assets])
 
 
 def build_floe_asset_defs(
-    manifest_path: str,
-    runner: Runner,
+    manifest_path: str | None = None,
+    runner: Runner | None = None,
     entities: list[str] | None = None,
     register_source_assets: bool = True,
     manifest_uri: str | None = None,
     domains: list[str] | None = None,
+    config_path: str | None = None,
+    profile_path: str | None = None,
 ) -> tuple[list[Any], list[SourceAsset], list[ManifestEntity]]:
-    manifest = load_manifest(manifest_path)
-    config_uri = resolve_config_uri(manifest_path, manifest.config_uri)
+    if runner is None:
+        raise TypeError("runner is required")
+    manifest, config_uri = load_manifest_source(manifest_path, config_path, profile_path)
+    # in config mode it names the source in errors; no `{manifest_uri}` token is left to render
+    manifest_path = manifest_path or config_path
     entity_items = selected_manifest_entities(manifest, entities)
     if domains is not None:
         unknown = sorted(set(domains) - {e.domain for e in manifest.entities})

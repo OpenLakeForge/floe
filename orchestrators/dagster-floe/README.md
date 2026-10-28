@@ -60,6 +60,31 @@ floe manifest generate \
   --output orchestrators/dagster-floe/example/manifest.dagster.json
 ```
 
+## Manifest file or config: two ways to load
+
+```python
+from floe_dagster.assets import load_floe_assets
+from floe_dagster.definitions import build_definitions, build_job_run_config_from_manifest
+
+# 1. A manifest file generated beforehand (`floe manifest generate`)
+assets = load_floe_assets(manifest_path="manifests/sales.json", runner=runner, domains=["sales"])
+
+# 2. The Floe config (+ profile): the manifest is built in memory (`pip install "dagster-floe[floe]"`)
+assets = load_floe_assets(config_path="/app/floe.yml", profile_path="/app/prod.yml", runner=runner, domains=["sales"])
+run_config = build_job_run_config_from_manifest(config_path="/app/floe.yml", profile_path="/app/prod.yml")
+defs = build_definitions(config_path="/app/floe.yml", profile_path="/app/prod.yml")
+```
+
+`manifest_path=` and `config_path=` are mutually exclusive, and both give the same assets and jobs.
+
+- **Manifest file**: for CI/CD promotion (generate the manifest once, deploy it as an artifact), for Airflow, or
+  when the Dagster image does not ship the Floe config or the `floe` Python core.
+- **Config**: for an image that ships its config and the `floe` Python core. There's no separate
+  `manifest generate` and upload step. The manifest is built in memory with `floe.build_manifest`, the same
+  code path as `floe manifest generate`. Runs take `floe run -c <config> [-p <profile>] --entities ...` in
+  place of `--manifest <uri>`, both in process and as a local subprocess or `kubernetes_job` pod. The config
+  and profile paths must therefore exist where the run happens; for a `kubernetes_job`, that's the run image.
+
 ## Run the example (repo-only)
 
 ```bash
@@ -129,7 +154,7 @@ See [docs/lineage.md](../../docs/lineage.md) for the full lineage config referen
 
 ## Notes
 
-- This connector does **not** parse YAML directly; it consumes Floe manifests (`spec_version` `0.8`).
+- This connector does **not** parse YAML directly; it consumes Floe manifests (`spec_version` `0.8`), read from a file or built by `floe.build_manifest` in config mode.
 - Connector logic lives under `src/floe_dagster/`; local wiring for demo lives in `example/definitions.py`.
 - For local development without an installed `floe` command, you can point `LocalRunner` to a custom command, e.g.:
   - `LocalRunner("python -m floe")`

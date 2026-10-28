@@ -8,7 +8,7 @@ from typing import Any, Iterable
 from dagster import AssetSelection, Definitions, define_asset_job
 
 from .assets import _has_rejected_asset, _rejected_key, build_floe_asset_defs
-from .manifest import ManifestExecution, load_manifest
+from .manifest import ManifestExecution, load_manifest_source
 from .runner import InProcessRunner, LocalRunner, Runner
 
 
@@ -46,15 +46,18 @@ def _timeout_from_env() -> float | None:
 
 def build_definitions(
     *,
-    manifest_path: str,
+    manifest_path: str | None = None,
     manifest_uri: str | None = None,
     entities: list[str] | None = None,
     runner: Runner | None = None,
     with_job: bool = True,
     job_name: str | None = None,
+    config_path: str | None = None,
+    profile_path: str | None = None,
 ) -> Definitions:
-    return build_definitions_from_manifest_paths(
-        manifest_paths=[manifest_path],
+    """From a manifest file, or (`config_path`, `floe` extra) a manifest built in memory."""
+    return _build_definitions(
+        sources=[{"manifest_path": manifest_path, "config_path": config_path, "profile_path": profile_path}],
         manifest_uri=manifest_uri,
         entities=entities,
         runner=runner,
@@ -86,6 +89,9 @@ def build_definitions_from_manifest_dir(
     )
 
 
+_Source = dict[str, "str | None"]  # load_manifest_source kwargs: manifest_path, config_path, profile_path
+
+
 def build_definitions_from_manifest_paths(
     *,
     manifest_paths: Iterable[str],
@@ -98,9 +104,28 @@ def build_definitions_from_manifest_paths(
     manifest_paths_list = list(manifest_paths)
     if not manifest_paths_list:
         raise ValueError("manifest_paths cannot be empty")
-    if job_name is not None and len(manifest_paths_list) != 1:
+    return _build_definitions(
+        sources=[{"manifest_path": path} for path in manifest_paths_list],
+        manifest_uri=manifest_uri,
+        entities=entities,
+        runner=runner,
+        with_job=with_job,
+        job_name=job_name,
+    )
+
+
+def _build_definitions(
+    *,
+    sources: list[_Source],
+    manifest_uri: str | None,
+    entities: list[str] | None,
+    runner: Runner | None,
+    with_job: bool,
+    job_name: str | None,
+) -> Definitions:
+    if job_name is not None and len(sources) != 1:
         raise ValueError("job_name override is only supported for a single manifest")
-    if manifest_uri is not None and len(manifest_paths_list) != 1:
+    if manifest_uri is not None and len(sources) != 1:
         raise ValueError("manifest_uri override is only supported for a single manifest")
 
     runner_impl = runner or build_runner_from_env()
@@ -109,11 +134,12 @@ def build_definitions_from_manifest_paths(
     seen_asset_keys: set[tuple[str, ...]] = set()
     seen_job_names: set[str] = set()
 
-    for manifest_path in manifest_paths_list:
-        manifest = load_manifest(manifest_path)
+    for source in sources:
+        manifest, _ = load_manifest_source(**source)
+        manifest_path = source.get("manifest_path") or source["config_path"]  # names the job
         selected_entities = None if entities is None else list(entities)
         manifest_assets, manifest_source_assets, manifest_entities = build_floe_asset_defs(
-            manifest_path=manifest_path,
+            **source,
             manifest_uri=manifest_uri,
             runner=runner_impl,
             entities=selected_entities,
@@ -132,7 +158,7 @@ def build_definitions_from_manifest_paths(
         if with_job and manifest_entities:
             manifest_job_name = (
                 job_name
-                if job_name is not None and len(manifest_paths_list) == 1
+                if job_name is not None and len(sources) == 1
                 else _default_job_name(manifest_path, manifest.manifest_id)
             )
             if manifest_job_name in seen_job_names:
@@ -185,13 +211,16 @@ def resolve_execution_config(
 
 
 def build_job_run_config_from_manifest(
-    manifest_path: str,
+    manifest_path: str | None = None,
+    *,
+    config_path: str | None = None,
+    profile_path: str | None = None,
 ) -> dict[str, Any] | None:
-    """Load a Floe manifest and return its Dagster job run-config dict.
+    """Load a Floe manifest (or build it from `config_path`) and return its Dagster job run-config dict.
 
     Returns ``None`` when the manifest carries no concurrency constraint.
     """
-    manifest = load_manifest(manifest_path)
+    manifest, _ = load_manifest_source(manifest_path, config_path, profile_path)
     return resolve_execution_config(manifest.execution)
 
 

@@ -3,6 +3,7 @@
 import hashlib
 import io
 import json
+import sys
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,9 @@ import polars as pl
 import pytest
 
 import floe
+import floe.manifest_run as manifest_run_module
 import floe.storage.resolve as resolve_module
+from floe._cli import main
 from floe.config.parse import parse_config
 from floe.errors import FloeConfigError, FloeRunError
 from floe.run import run
@@ -100,6 +103,7 @@ def s3(monkeypatch: pytest.MonkeyPatch) -> MemS3:
         return store
 
     monkeypatch.setattr(resolve_module, "S3Client", client, raising=False)
+    monkeypatch.setattr(manifest_run_module, "S3Client", client)
     return store
 
 
@@ -366,3 +370,41 @@ def test_d30_an_s3_file_mode_run_starts_after_the_window(tmp_path: Path, s3: Mem
     assert [f["input_file"] for f in report["files"] if f["status"] == "success"] == ["s3://b/in/2026/10/24/b/x.csv"]  # fmt: skip
     state = json.loads(s3.objects["s3://b/in/.floe/state/d/orders/state.json"])
     assert (len(state["files"]), state["watermark"]) == (4, "2026-10-24")
+
+
+def upload_manifest(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], config: str, **edit: object) -> None:  # fmt: skip
+    (tmp_path / "config.yml").write_text(config)
+    monkeypatch.setattr(sys, "argv", ["floe", "manifest", "generate", "-c", str(tmp_path / "config.yml"), "-o", "-"])  # fmt: skip
+    main()
+    s3.write("s3://b/m.json", json.dumps(json.loads(capsys.readouterr().out) | edit).encode())  # fmt: skip
+
+
+def test_1003_floe_run_reads_an_s3_manifest_and_writes_its_reports_on_s3(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:  # fmt: skip
+    upload_manifest(tmp_path, s3, monkeypatch, capsys, CONFIG)
+    s3.write("s3://b/in/a.csv", b"id\n1\n2\n")
+    # Rust 0.7: a remote `cli` manifest resolves relative paths under the cwd
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["floe", "run", "--manifest", "s3://b/m.json", "--run-id", "r1"])  # fmt: skip
+    assert main() == 0
+    assert pl.read_parquet(tmp_path / "out/accepted").height == 2
+    summary = json.loads(s3.objects["s3://b/runs/d/run_r1/run.summary.json"])
+    assert summary["config"]["path"] == "s3://b/m.json"
+    assert json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])["results"]["accepted_total"] == 2  # fmt: skip
+
+
+LOCAL = CONFIG.replace("    - {name: lake, type: s3, bucket: b, region: us-east-1}\n", "").replace("storage: lake, ", "").replace("report: {path: runs, storage: lake}", "report: {path: runs}")  # fmt: skip
+
+
+@pytest.mark.parametrize("storages", [True, False])
+def test_1003_run_manifest_api_reads_s3_and_reports_under_an_s3_base_without_a_storage(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], storages: bool) -> None:  # fmt: skip
+    """No storage names bucket `b`: a synthetic one carries the report; `work_root` beats the cwd."""
+    config = LOCAL if storages else LOCAL.split("domains:")[0].split("storages:")[0] + "domains:" + LOCAL.split("domains:")[1]  # fmt: skip
+    upload_manifest(tmp_path, s3, monkeypatch, capsys, config, report_base_uri="s3://b/runs", work_root=str(tmp_path))  # fmt: skip
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in/a.csv").write_text("id\n1\n")
+    monkeypatch.chdir(tmp_path.parent)
+    out = floe.run_manifest("s3://b/m.json", run_id="r1")
+    assert out.summary["run"]["exit_code"] == 0
+    assert pl.read_parquet(tmp_path / "out/accepted").height == 1
+    assert "s3://b/runs/d/run_r1/run.summary.json" in s3.objects
+    assert "s3://b/runs/d/run_r1/d/orders/run.json" in s3.objects

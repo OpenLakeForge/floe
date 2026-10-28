@@ -85,16 +85,15 @@ def _run(args: argparse.Namespace) -> int:
     console = Console(args.log_format, run_id)
     if args.manifest is not None:  # Rust ignores `-p` here: the manifest is compiled
         try:  # Rust logs a manifest that fails to load after a `run_started`
-            if "://" in args.manifest:  # ponytail: S3 in `floe run` is #834
-                raise FloeConfigError(f"remote manifest is not supported yet (#834): {args.manifest}")  # fmt: skip
-            root, observed = load_manifest(_realpath(args.manifest))
+            root, observed, path = load_manifest(args.manifest)
         except FloeIoError as e:  # Rust: a bare io error, logged with code `error`
             console.failed(FloeError(str(e)), args.manifest)
             raise
         except FloeError as e:
             console.failed(e, args.manifest)
             raise
-        path = Path(args.manifest)  # the report keeps it as typed, as Rust's does
+        # the report keeps a remote manifest as typed, as Rust's does
+        config_uri = args.manifest if "://" in args.manifest else None
         job = ""  # Rust names the lineage job `floe-run` (or `job_name`)
     elif args.config is None:
         raise FloeConfigError("one of --config or --manifest is required")
@@ -110,14 +109,15 @@ def _run(args: argparse.Namespace) -> int:
         except FloeError as e:
             console.failed(e, str(path))
             raise
-        observed, job = root.entities, str(path)
+        observed, job, config_uri = root.entities, str(path), None
     try:
         outcome = run_with_lineage(
             path, root, observed, job, console, validate=args.manifest is None,
             run_id=run_id, entities=args.entities, dry_run=args.dry_run, full_refresh=args.full_refresh,
+            config_uri=config_uri,
         )  # fmt: skip
     except FloeError as e:
-        console.failed(e, str(path))
+        console.failed(e, config_uri or str(path))
         raise
     mode = "quiet" if args.quiet else "verbose" if args.verbose else "default"
     out = run_output(outcome, root.entities, mode, console.timings)

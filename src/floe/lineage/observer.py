@@ -233,6 +233,7 @@ def run_with_lineage(
     entities: Sequence[str],
     dry_run: bool,
     full_refresh: bool,
+    config_uri: str | None = None,
 ) -> RunOutcome:
     """`run`, posting OpenLineage events when the config has a `lineage` block (Rust: the CLI run path)."""
     lineage = OpenLineageObserver(root.lineage, observed, job) if root.lineage else None
@@ -249,7 +250,7 @@ def run_with_lineage(
             validate_config(root)
         return run(
             path, root, run_id=run_id, entities=entities, dry_run=dry_run,
-            full_refresh=full_refresh, observer=observe,
+            full_refresh=full_refresh, observer=observe, config_uri=config_uri,
         )  # fmt: skip
     except FloeError:
         if lineage:

@@ -6,7 +6,7 @@
   "manifest_revision": "<volatile>",
   "runtime_env": "cli",
   "config_uri": "local://<ROOT>/work/config.yml",
-  "config_checksum": "sha256:114c3f8acd1ec64293cfdb9928c92946a4d094b9c5d0a8b7eb4722c67b160ef4",
+  "config_checksum": "sha256:8295bf1e2f215601e9daaaf0bef7883c37f8c86ea46ff1fab98509526107535b",
   "report_base_uri": "local://<ROOT>/work/report",
   "domains": [
     {
