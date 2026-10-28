@@ -9,6 +9,9 @@ All notable changes to Floe are documented in this file.
 - **`ManifestEntity` exposes `source_resource` (#1044)**, the entity's `source.resource`, next to
   `source_ref`, so a `source_key_fn` can build `<source>/<resource>` from the manifest.
 
+- **Accepted and rejected assets carry `floe/entity` and `floe/output` metadata (#1045)**: the entity
+  name and `"accepted"` or `"rejected"`, so callers no longer parse the `<op>__accepted` output names.
+
 - **Breaking: rejected assets are keyed `<domain>/rejected/<table>` (#1046).** They were
   `<domain>/<table>_rejected`, which collided with a real table named `<table>_rejected`. Upgrade:
   the history of the rejected assets restarts under the new key, and any selection, sensor or

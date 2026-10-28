@@ -181,6 +181,15 @@ def test_table_named_like_the_old_rejected_suffix_does_not_collide(tmp_path) -> 
     assert AssetKey(["hr", "rejected", "employees_rejected"]) in keys
 
 
+def test_multi_asset_outputs_carry_entity_and_output_metadata() -> None:
+    asset_def, entity = _get_asset_def(FIXTURE, "employees")
+    by_output = {spec.metadata["floe/output"]: spec for spec in asset_def.specs}
+    assert set(by_output) == {"accepted", "rejected"}
+    assert all(spec.metadata["floe/entity"] == entity.name for spec in by_output.values())
+    assert by_output["accepted"].key == AssetKey(entity.asset_key)
+    assert by_output["rejected"].key == AssetKey([*entity.asset_key[:-1], "rejected", entity.asset_key[-1]])
+
+
 def test_multi_asset_no_rejected_key_when_policy_is_warn() -> None:
     """orders has policy_severity='warn' → no rejected output (rows discarded silently)."""
     asset_def, entity = _get_asset_def(FIXTURE, "orders")

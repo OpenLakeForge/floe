@@ -220,6 +220,11 @@ def _has_rejected_asset(entity: ManifestEntity) -> bool:
     return entity.rejected_sink_uri is not None
 
 
+def _out_metadata(entity: ManifestEntity, output: str) -> dict[str, str]:
+    """Lets callers tell accepted from rejected outputs without parsing dagster-floe's output names."""
+    return {"floe/entity": entity.name, "floe/output": output}
+
+
 def _safe_int(val: Any, default: int = 0) -> int:
     try:
         return int(val)
@@ -284,10 +289,14 @@ def _make_entity_multi_asset(
     entity_name = entity.name
 
     outs: dict[str, AssetOut] = {
-        "accepted": AssetOut(key=AssetKey(accepted_key), is_required=True),
+        "accepted": AssetOut(
+            key=AssetKey(accepted_key), is_required=True, metadata=_out_metadata(entity, "accepted")
+        ),
     }
     if has_rejected:
-        outs["rejected"] = AssetOut(key=AssetKey(rejected_key), is_required=False)
+        outs["rejected"] = AssetOut(
+            key=AssetKey(rejected_key), is_required=False, metadata=_out_metadata(entity, "rejected")
+        )
 
     @multi_asset(
         name=asset_name,
@@ -507,11 +516,17 @@ def _make_domain_multi_asset(
         op = _op_name(entity)
         # optional: a subsettable asset yields only its selected outputs, and fails the step itself
         outs[f"{op}__accepted"] = AssetOut(
-            key=AssetKey(entity.asset_key), group_name=entity.group_name, is_required=False
+            key=AssetKey(entity.asset_key),
+            group_name=entity.group_name,
+            is_required=False,
+            metadata=_out_metadata(entity, "accepted"),
         )
         if _has_rejected_asset(entity):
             outs[f"{op}__rejected"] = AssetOut(
-                key=AssetKey(_rejected_key(entity)), group_name=entity.group_name, is_required=False
+                key=AssetKey(_rejected_key(entity)),
+                group_name=entity.group_name,
+                is_required=False,
+                metadata=_out_metadata(entity, "rejected"),
             )
         check_specs.extend(build_asset_check_specs(list(entity.asset_key)))
     # each output keeps its own entity's source, so selecting one source's downstream runs one entity
