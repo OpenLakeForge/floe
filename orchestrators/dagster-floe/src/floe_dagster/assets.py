@@ -477,7 +477,8 @@ def _entity_events(
 
 
 def _rejected_key(entity: ManifestEntity) -> list[str]:
-    return list(entity.asset_key[:-1]) + [entity.asset_key[-1] + "_rejected"]
+    # A `rejected` segment, not a suffix: `orders_rejected` may be a real table next to `orders`.
+    return [*entity.asset_key[:-1], "rejected", entity.asset_key[-1]]
 
 
 # Each entity is reported from its own summary status: `rejected` and `success_with_warnings` entities
