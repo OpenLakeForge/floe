@@ -190,6 +190,30 @@ Per-run env vars and `existing_cluster_id`:
   process still reads `env_parameters.FLOE_ENV` to render `{env}` in
   `job_name`, but does not push it to the running task.
 
+### kubernetes.yml (pod options)
+
+A `kubernetes_job` runner can shape the Job's pod. Every option is optional and is carried into the
+manifest runner definition only when set; dagster-floe applies them (airflow-floe ignores them).
+
+```yaml
+execution:
+  runner:
+    type: kubernetes_job
+    image: registry/floe:0.8
+    namespace: floe-prod
+    labels: {olf.io/flow: ingest}            # added to the defaults (`app`, `floe-job`), which win on a clash
+    annotations: {team: data}                # pod template annotations
+    image_pull_policy: IfNotPresent
+    security_context: {runAsNonRoot: true}   # container securityContext, verbatim
+    node_selector: {pool: batch}
+    tolerations: [{key: batch, operator: Exists, effect: NoSchedule}]   # verbatim
+    backoff_limit: 2                         # Job backoffLimit, default 0
+    env_from: [{secretRef: {name: floe-env}}]   # container envFrom, verbatim
+```
+
+`labels`, `annotations` and `node_selector` are string maps, `backoff_limit` is a non-negative integer,
+and `security_context`, `tolerations` and `env_from` are copied as written: Kubernetes validates them.
+
 ---
 
 ## Using profile variables in a Floe config
