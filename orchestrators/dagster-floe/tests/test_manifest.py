@@ -396,3 +396,37 @@ def test_runner_definition_rejects_unknown_job_scope(tmp_path: Path):
 
     with pytest.raises(ValueError, match="job_scope"):
         load_manifest(path)
+
+
+def test_runner_definition_reads_the_pod_options(tmp_path: Path):
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    default = payload["runners"]["default"]
+    options = {
+        "labels": {"olf.io/flow": "ingest"},
+        "annotations": {"team": "data"},
+        "image_pull_policy": "Always",
+        "security_context": {"runAsUser": 1000},
+        "node_selector": {"pool": "batch"},
+        "tolerations": [{"key": "batch", "operator": "Exists"}],
+        "backoff_limit": 3,
+        "env_from": [{"secretRef": {"name": "floe-env"}}],
+    }
+    payload["runners"]["definitions"][default].update(options)
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    definition = load_manifest(path).runners.definitions[default]
+
+    assert {name: getattr(definition, name) for name in options} == options
+
+
+def test_runner_definition_rejects_a_negative_backoff_limit(tmp_path: Path):
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    payload["runners"]["definitions"][payload["runners"]["default"]]["backoff_limit"] = -1
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="backoff_limit"):
+        load_manifest(path)

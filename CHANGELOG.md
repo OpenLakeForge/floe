@@ -7,8 +7,9 @@ All notable changes to Floe are documented in this file.
 - **`kubernetes_job` runners can shape the Job's pod (#1023).** `execution.runner` in a profile accepts
   `labels` (added to the defaults), `annotations`, `image_pull_policy`, `security_context`,
   `node_selector`, `tolerations`, `backoff_limit` and `env_from`. They are carried into the manifest
-  runner definition only when set, so existing manifests are unchanged. dagster-floe applies them in a
-  follow-up PR; the manifest and profile schemas accept them now.
+  runner definition only when set, so existing manifests are unchanged. dagster-floe applies them to the
+  Job it creates (labels are added to `app` and `floe-job`, which are never overridden; `backoff_limit`
+  defaults to 0); airflow-floe ignores them.
 
 ## v0.8.0
 

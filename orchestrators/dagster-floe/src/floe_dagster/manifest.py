@@ -161,6 +161,14 @@ class ManifestRunnerDefinition:
     resources: dict[str, Any] | None = None
     job_scope: str | None = None  # "entity" (when unset) or "domain"
     domain_resources: dict[str, dict[str, Any]] | None = None  # by domain, replaces `resources`
+    labels: dict[str, str] | None = None  # pod labels, added to the defaults
+    annotations: dict[str, str] | None = None
+    image_pull_policy: str | None = None
+    security_context: dict[str, Any] | None = None  # container securityContext, verbatim
+    node_selector: dict[str, str] | None = None
+    tolerations: list[dict[str, Any]] | None = None  # verbatim
+    backoff_limit: int | None = None  # Job backoffLimit, 0 when unset
+    env_from: list[dict[str, Any]] | None = None  # container envFrom, verbatim
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "ManifestRunnerDefinition":
@@ -195,6 +203,14 @@ class ManifestRunnerDefinition:
             resources=data.get("resources"),
             job_scope=_optional_str(data, "job_scope"),
             domain_resources=data.get("domain_resources"),
+            labels=_optional_string_map(data, "labels"),
+            annotations=_optional_string_map(data, "annotations"),
+            image_pull_policy=_optional_str(data, "image_pull_policy"),
+            security_context=data.get("security_context"),
+            node_selector=_optional_string_map(data, "node_selector"),
+            tolerations=_optional_object_list(data, "tolerations"),
+            backoff_limit=_optional_int(data, "backoff_limit"),
+            env_from=_optional_object_list(data, "env_from"),
         )
 
 

@@ -276,3 +276,46 @@ def test_run_floe_entities_creates_one_job_named_for_the_domain() -> None:
     container = body["spec"]["template"]["spec"]["containers"][0]
     assert container["args"][container["args"].index("--entities") + 1] == "orders,returns,refunds"
     assert container["resources"] == {"requests": {"cpu": "2"}}
+
+
+def _pod_options_runner() -> ManifestRunnerDefinition:
+    return replace(
+        _runner(),
+        labels={"olf.io/flow": "ingest", "floe-job": "hijacked"},
+        annotations={"team": "data"},
+        image_pull_policy="IfNotPresent",
+        security_context={"runAsNonRoot": True, "capabilities": {"drop": ["ALL"]}},
+        node_selector={"pool": "batch"},
+        tolerations=[{"key": "batch", "operator": "Exists", "effect": "NoSchedule"}],
+        backoff_limit=2,
+        env_from=[{"secretRef": {"name": "floe-env"}}],
+    )
+
+
+def test_build_k8s_job_spec_applies_the_pod_options() -> None:
+    spec = build_k8s_job_spec("floe-orders-abc", ["floe", "run"], _pod_options_runner())
+    template = spec["spec"]["template"]
+    container = template["spec"]["containers"][0]
+    assert template["metadata"]["labels"] == {
+        "app": "floe-runner",
+        "floe-job": "floe-orders-abc",
+        "olf.io/flow": "ingest",
+    }
+    assert template["metadata"]["annotations"] == {"team": "data"}
+    assert container["imagePullPolicy"] == "IfNotPresent"
+    assert container["securityContext"] == {"runAsNonRoot": True, "capabilities": {"drop": ["ALL"]}}
+    assert container["envFrom"] == [{"secretRef": {"name": "floe-env"}}]
+    assert template["spec"]["nodeSelector"] == {"pool": "batch"}
+    assert template["spec"]["tolerations"] == [{"key": "batch", "operator": "Exists", "effect": "NoSchedule"}]
+    assert spec["spec"]["backoffLimit"] == 2
+    assert spec["metadata"]["labels"] == {"app": "floe-runner"}
+
+
+def test_build_k8s_job_spec_without_pod_options_is_unchanged() -> None:
+    spec = build_k8s_job_spec("floe-orders-abc", ["floe", "run"], _runner())
+    template = spec["spec"]["template"]
+    container = template["spec"]["containers"][0]
+    assert template["metadata"] == {"labels": {"app": "floe-runner", "floe-job": "floe-orders-abc"}}
+    assert not {"imagePullPolicy", "securityContext", "envFrom"} & container.keys()
+    assert not {"nodeSelector", "tolerations"} & template["spec"].keys()
+    assert spec["spec"]["backoffLimit"] == 0
