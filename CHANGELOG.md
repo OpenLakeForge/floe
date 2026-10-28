@@ -7,8 +7,9 @@ All notable changes to Floe are documented in this file.
 ### floe-python
 
 - **A Glue catalog can write one database per domain (#1043).** `database` may contain `{domain}`,
-  e.g. `"{{STAGE}}_{domain}_silver"`: per entity it expands to `sink.accepted.iceberg.namespace`,
-  else `entity.domain`, so one catalog writes `dev_sales_silver` and `dev_finance_silver`. An entity
+  e.g. `dev_{domain}_silver`: per entity it expands to `sink.accepted.iceberg.namespace`, else
+  `entity.domain`, so one catalog writes `dev_sales_silver` and `dev_finance_silver`. Put the catalog in
+  each stage's profile (`catalogs:` replaces the config's) to vary the prefix per stage. An entity
   with neither is a `floe validate` error. A `database` without `{domain}` behaves as before.
 
 ### dagster-floe

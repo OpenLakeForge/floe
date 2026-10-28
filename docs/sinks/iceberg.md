@@ -86,12 +86,13 @@ catalogs:
 
 The table is `<database>.<table>`; `sink.accepted.iceberg.namespace` (or `entity.domain`) only
 names its location, `<warehouse_prefix>/<namespace>/<table>`. To write one database per domain from
-a single catalog, put `{domain}` in `database`, e.g. `database: "{{STAGE}}_{domain}_silver"`: per
+a single catalog, put `{domain}` in `database`, e.g. `database: dev_{domain}_silver`: per
 entity it becomes `sink.accepted.iceberg.namespace`, else `entity.domain`, normalized like the
 namespace (lowercase, `[a-z0-9_-]`), so the `sales` and `finance` domains write to `dev_sales_silver`
 and `dev_finance_silver`. An entity with neither a namespace nor a domain is a `floe validate`
-error. Glue credentials come from the AWS
-credential chain, as for S3. Glue supports `overwrite` and `append`: `floe validate` rejects a
+error. `{{VAR}}` placeholders are not applied to catalog definitions: to vary the prefix per stage,
+define the catalog in each stage's profile ([profile catalogs](../profiles.md#environment-catalog-overrides)
+replace the config's). Glue credentials come from the AWS credential chain, as for S3. Glue supports `overwrite` and `append`: `floe validate` rejects a
 merge write mode, and `floe maintain --compact` needs a REST catalog. `allow_takeover` is
 accepted and ignored: Floe 0.8 writes any Iceberg table in the database (D42).
 

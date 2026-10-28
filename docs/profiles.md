@@ -303,7 +303,8 @@ Profiles can carry a `catalogs:` block with the same catalog definition shape as
 main Floe configs. When a command is run with both `--config` and `--profile`,
 the profile `catalogs:` block replaces the config-level `catalogs:` block for
 that invocation. This keeps entity logic in the shared config while moving
-REST Iceberg catalog endpoints (the only catalog type in 0.8) into environment-specific files.
+Iceberg catalog endpoints and Glue databases (e.g. `database: dev_{domain}_silver`) into
+environment-specific files.
 
 ```yaml
 apiVersion: floe/v1
