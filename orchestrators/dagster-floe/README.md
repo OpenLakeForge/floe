@@ -97,14 +97,15 @@ Dagster. The job name (`floe_<manifest_id>_job`) still derives from the manifest
 
 Entities of a source named in the manifest `sources` index share one `sources/<project>/<source>` dependency.
 Pass `source_key_fn` to `load_floe_assets` or `build_definitions` to give each entity its own upstream asset
-instead (for example, to depend on `crm/orders` and `crm/accounts` in domain mode):
+instead (for example, to depend on `crm/orders` and `crm/accounts` in domain mode). `entity.source_ref` and
+`entity.source_resource` carry the entity's `source.ref` and `source.resource` (`None` when absent):
 
 ```python
 from dagster import AssetKey
 
 defs = build_definitions(
     manifest_path="manifests/sales.json",
-    source_key_fn=lambda entity: AssetKey(["crm", entity.name]),  # None keeps the default key
+    source_key_fn=lambda e: AssetKey([e.source_ref, e.source_resource]) if e.source_resource else None,  # None: default key
 )
 ```
 

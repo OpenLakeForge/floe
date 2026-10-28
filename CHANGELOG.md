@@ -6,6 +6,9 @@ All notable changes to Floe are documented in this file.
 
 ### dagster-floe
 
+- **`ManifestEntity` exposes `source_resource` (#1044)**, the entity's `source.resource`, next to
+  `source_ref`, so a `source_key_fn` can build `<source>/<resource>` from the manifest.
+
 - **Accepted and rejected assets carry `floe/entity` and `floe/output` metadata (#1045)**: the entity
   name and `"accepted"` or `"rejected"`, so callers no longer parse the `<op>__accepted` output names.
 
