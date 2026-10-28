@@ -61,6 +61,13 @@ Every intentional behaviour change from 0.7 is numbered (D1–D41) in the migrat
   manifest `floe manifest generate` writes for the same config and profile (deterministic by
   default). `manifest generate` now calls it.
 
+## dagster-floe (unreleased)
+
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031).** It
+  used to replace the whole argument list, so every Job ran every entity. `args` now prefix Floe's
+  rendered arguments: `command: [python]` + `args: [-m, floe]` runs
+  `python -m floe run … --entities …`.
+
 ## dagster-floe v0.3.0
 
 Supports Floe 0.8 (`floe-python` 0.8, manifest `spec_version` `0.8`); older Floe versions are not
@@ -136,6 +143,11 @@ supported. Floe 0.7 and earlier manifests are rejected.
   `AWS_ENDPOINT_URL`) as the endpoint and, when `AWS_S3_FORCE_PATH_STYLE` is `true`/`1`,
   path-style addressing, matching Floe core (#448). Without these variables behaviour is
   unchanged. Requires the existing `remote` extra.
+
+## airflow-floe (unreleased)
+
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
+  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
 ## airflow-floe v0.2.0
 
