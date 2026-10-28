@@ -6,6 +6,10 @@ All notable changes to Floe are documented in this file.
 
 ### floe-python
 
+- **floe-python requires `boto3>=1.36.0` (was `>=1.43.118`) (#1028).** The old floor made `s3fs`
+  uninstallable next to Floe: current `aiobotocore` caps `botocore` below 1.43.118. 1.36.0 is the
+  first release with every S3 call and option Floe uses (conditional writes, checksum settings).
+
 - **`kubernetes_job` runners can shape the Job's pod (#1023).** `execution.runner` in a profile accepts
   `labels` (added to the defaults), `annotations`, `image_pull_policy`, `security_context`,
   `node_selector`, `tolerations`, `backoff_limit` and `env_from`. They are carried into the manifest
@@ -14,11 +18,21 @@ All notable changes to Floe are documented in this file.
 
 ### dagster-floe
 
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031).** It
+  used to replace the whole argument list, so every Job ran every entity. `args` now prefix Floe's
+  rendered arguments: `command: [python]` + `args: [-m, floe]` runs
+  `python -m floe run … --entities …`.
+
 - **`manifest_name=` in config mode (#1022).** `load_floe_assets`, `build_definitions` and
   `build_job_run_config_from_manifest` accept `manifest_name=` next to `config_path=` and pass it to
   `floe.build_manifest`. With a fixed name, the op name of a `job_scope: domain` asset stays
   `floe_<name>__<domain>__...` when the config changes; without it the name derives from the config's path and
   checksum, as before. Passing it with `manifest_path=` raises `ValueError`.
+
+### airflow-floe
+
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
+  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
 ## v0.8.0
 
