@@ -16,7 +16,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "manifest.json"
 NAMES = ["orders", "returns", "refunds"]
 
 
-def _manifest(tmp_path: Path, *, job_scope: str | None = "domain") -> Path:
+def _manifest(tmp_path: Path, *, job_scope: str | None = "domain", split_runner: bool = False) -> Path:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     template = next(e for e in payload["entities"] if e["name"] == "orders")
     payload["entities"] = []
@@ -27,6 +27,9 @@ def _manifest(tmp_path: Path, *, job_scope: str | None = "domain") -> Path:
         payload["entities"].append(entity)
     payload["runners"]["definitions"]["k8s"]["job_scope"] = job_scope
     payload["runners"]["definitions"]["k8s"]["domain_resources"] = {"sales": {"cpu": "2", "memory_mb": 4096}}
+    if split_runner:
+        payload["runners"]["definitions"]["k8s_big"] = payload["runners"]["definitions"]["k8s"]
+        payload["entities"][-1]["runner"] = "k8s_big"
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
@@ -64,8 +67,12 @@ def _run(tmp_path: Path, statuses: dict[str, str], *, exit_code: int = 0, select
     return result, jobs_api
 
 
+def _args(jobs_api: MagicMock) -> list[str]:
+    return jobs_api.create_namespaced_job.call_args.kwargs["body"]["spec"]["template"]["spec"]["containers"][0]["args"]
+
+
 def _entities_arg(jobs_api: MagicMock) -> str:
-    args = jobs_api.create_namespaced_job.call_args.kwargs["body"]["spec"]["template"]["spec"]["containers"][0]["args"]
+    args = _args(jobs_api)
     return args[args.index("--entities") + 1]
 
 
@@ -78,9 +85,10 @@ def test_domain_scope_runs_the_entities_in_one_job_with_a_materialization_each(t
 
     assert result.success
     jobs_api.create_namespaced_job.assert_called_once()
-    assert _entities_arg(jobs_api) == "orders,returns,refunds"
+    args = _args(jobs_api)
+    assert args[args.index("--domain") + 1] == "sales"  # every entity of the domain: no list
+    assert "--entities" not in args
     assert _materialized(result) == {"sales/orders", "sales/returns", "sales/refunds"}
-    args = jobs_api.create_namespaced_job.call_args.kwargs["body"]["spec"]["template"]["spec"]["containers"][0]["args"]
     assert args[args.index("--run-id") + 1].startswith(f"{result.run_id}_floe_")  # one Floe run id per group
 
 
@@ -92,6 +100,18 @@ def test_domain_scope_subset_runs_only_the_selected_entities(tmp_path: Path) -> 
     jobs_api.create_namespaced_job.assert_called_once()
     assert _entities_arg(jobs_api) == "orders,refunds"
     assert _materialized(result) == {"sales/orders", "sales/refunds"}
+
+
+def test_domain_scope_a_group_short_of_the_whole_domain_keeps_the_entity_list(tmp_path: Path) -> None:
+    """`refunds` runs on another runner, so the Job's entities are not the manifest's whole domain."""
+    selection = [AssetKey(["sales", "orders"]), AssetKey(["sales", "returns"])]
+    result, jobs_api = _run(
+        tmp_path, {"orders": "success", "returns": "success"}, selection=selection, split_runner=True
+    )
+
+    assert result.success
+    assert _entities_arg(jobs_api) == "orders,returns"
+    assert "--domain" not in _args(jobs_api)
 
 
 def test_domain_scope_failed_entity_fails_alone_and_the_ones_before_it_materialize(tmp_path: Path) -> None:

@@ -189,7 +189,8 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
     }
   },
 
-  // Runner definitions (local, kubernetes, databricks, etc.)
+  // Runner definitions (local, kubernetes, databricks, etc.). A `kubernetes_job` definition also
+  // carries the profile's pod options (`labels`, `security_context`, ...) when set; see profiles.md.
   "runners": {
     "default": "local",
     "definitions": {

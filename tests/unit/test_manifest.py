@@ -574,6 +574,102 @@ def test_580_job_scope_must_be_entity_or_domain(
     )
 
 
+K8S_POD_OPTIONS: dict[str, Any] = {
+    "labels": {"olf.io/flow": "ingest"},
+    "annotations": {"team": "data"},
+    "image_pull_policy": "IfNotPresent",
+    "security_context": {
+        "runAsNonRoot": True,
+        "runAsUser": 1000,
+        "capabilities": {"drop": ["ALL"]},
+    },
+    "node_selector": {"pool": "batch"},
+    "tolerations": [{"key": "batch", "operator": "Exists", "effect": "NoSchedule"}],
+    "backoff_limit": 2,
+    "env_from": [{"secretRef": {"name": "floe-env"}}],
+}
+
+
+def k8s_runner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    setting: str,
+) -> dict[str, Any]:
+    (tmp_path / "prod.yml").write_text(
+        K8S.replace("    command", f"    {setting}\n    command")
+    )
+    argv = ("-o", "-", "-p", str(tmp_path / "prod.yml"))
+    assert generate(tmp_path, monkeypatch, *argv) == 0
+    return json.loads(capsys.readouterr().out)["runners"]["definitions"]["default"]
+
+
+def test_1023_pod_options_ride_the_k8s_runner_only_when_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    unset = k8s_runner(tmp_path, monkeypatch, capsys, "poll_interval_seconds: 5")
+    assert not K8S_POD_OPTIONS.keys() & unset.keys()
+    # a YAML flow mapping is valid JSON
+    settings = "\n    ".join(
+        f"{k}: {json.dumps(v)}" for k, v in K8S_POD_OPTIONS.items()
+    )
+    runner = k8s_runner(tmp_path, monkeypatch, capsys, settings)
+    assert {k: runner[k] for k in K8S_POD_OPTIONS} == K8S_POD_OPTIONS
+
+
+@pytest.mark.parametrize(
+    ("setting", "message"),
+    [
+        ("labels: x", "expected map at profile.execution.runner.labels"),
+        ("labels: {a: 1}", "expected string at profile.execution.runner.labels"),
+        ("annotations: [a]", "expected map at profile.execution.runner.annotations"),
+        (
+            "image_pull_policy: [Always]",
+            "expected string at profile.execution.runner.image_pull_policy",
+        ),
+        (
+            "security_context: x",
+            "expected map at profile.execution.runner.security_context",
+        ),
+        (
+            "security_context: {1: a}",
+            "expected string key at profile.execution.runner.security_context",
+        ),
+        (
+            "node_selector: {a: 1}",
+            "expected string at profile.execution.runner.node_selector",
+        ),
+        (
+            "tolerations: {a: b}",
+            "expected array at profile.execution.runner.tolerations",
+        ),
+        ("tolerations: [x]", "expected map at profile.execution.runner.tolerations[]"),
+        ("env_from: [[a]]", "expected map at profile.execution.runner.env_from[]"),
+        (
+            "backoff_limit: -1",
+            "profile.execution.runner.backoff_limit must be a non-negative integer",
+        ),
+        (
+            "backoff_limit: two",
+            "profile.execution.runner.backoff_limit must be a non-negative integer",
+        ),
+    ],
+)
+def test_1023_a_malformed_pod_option_is_rejected(
+    setting: str,
+    message: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "prod.yml").write_text(
+        K8S.replace("    command", f"    {setting}\n    command")
+    )
+    argv = ("-o", "-", "-p", str(tmp_path / "prod.yml"))
+    assert generate(tmp_path, monkeypatch, *argv) != 0
+    assert message in capsys.readouterr().err
+
+
 def test_d28_the_entity_source_carries_its_partitioning(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
