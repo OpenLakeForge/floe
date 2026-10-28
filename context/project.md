@@ -43,9 +43,9 @@ Local · AWS S3 (and S3-compatible stores)
 
 ## Supported catalogs
 
-Iceberg REST (Polaris)
+Iceberg REST (Polaris) and AWS Glue (restored in 0.8.1; overwrite and append only)
 
-Floe 0.8 dropped Delta, DuckDB/MotherDuck, fixed-width, Glue, Unity, ADLS and GCS (D1, D26 in
+Floe 0.8 dropped Delta, DuckDB/MotherDuck, fixed-width, Unity, ADLS and GCS (D1, D26 in
 #619). The Rust implementation that had them is archived at
 [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
 

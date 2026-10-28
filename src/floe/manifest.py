@@ -351,6 +351,13 @@ def _blocks(root: RootConfig) -> Json:
                     {
                         "name": c.name,
                         "type_config": {
+                            "type": "glue",
+                            "region": c.region,
+                            "database": c.database,
+                            "create_database_if_missing": c.create_database_if_missing,
+                        }
+                        if c.type == "glue"
+                        else {
                             "type": "rest",
                             "uri": c.uri,
                             "credential": c.credential

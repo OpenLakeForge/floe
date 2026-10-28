@@ -2,6 +2,16 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.1 (unreleased)
+
+- **AWS Glue catalogs are back.** Floe 0.8.0 rejected `catalogs.definitions[].type: glue`, a
+  regression for AWS deployments (OpenLakeForge). A Glue catalog takes the 0.7 keys (`region`,
+  `database`, `create_database_if_missing`, `warehouse_storage`, `warehouse_prefix`) and writes
+  Iceberg tables through PyIceberg's Glue catalog, with credentials from the AWS chain.
+  `overwrite` and `append` are supported; `merge_scd1`/`merge_scd2` and `floe maintain --compact`
+  still need a REST catalog. **D42:** `allow_takeover` is accepted and ignored; 0.8 does not check
+  0.7's `floe.managed` ownership marker.
+
 ## v0.8.0
 
 Floe 0.8 is the Python core. `pip install floe-python` installs the `floe` command (a pure-Python

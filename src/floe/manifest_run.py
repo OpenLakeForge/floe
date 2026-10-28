@@ -180,8 +180,7 @@ def _storage_def(d: Json) -> Json:
 
 
 def _catalog_def(d: Json) -> Json:
-    rest = {k: v for k, v in d["type_config"].items() if k != "type"}  # D1: REST only
-    return {k: v for k, v in d.items() if k != "type_config"} | rest
+    return {k: v for k, v in d.items() if k != "type_config"} | d["type_config"]
 
 
 def _report(base: str, storages: StoragesConfig | None) -> tuple[ReportConfig, StoragesConfig | None]:  # fmt: skip
