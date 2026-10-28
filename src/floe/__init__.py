@@ -30,7 +30,7 @@ from floe.errors import (
 from floe.lineage.observer import run_with_lineage
 from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, ORPHAN_DELAY_DAYS
 from floe.maintain import maintain as _maintain
-from floe.manifest_run import load_manifest
+from floe.manifest_run import load_manifest, shown
 from floe.report.summary import id_path
 from floe.run.entity import state_uri
 from floe.run.events import (
@@ -206,7 +206,7 @@ def run_manifest(
     out = run_with_lineage(
         path, root, observed, "", _emit, validate=False, run_id=run_id,
         entities=entities or [], dry_run=dry_run, full_refresh=full_refresh,
-        config_uri=manifest_path if "://" in manifest_path else None,
+        config_uri=shown(manifest_path),
     )  # fmt: skip
     return _outcome(root, entities, out)
 

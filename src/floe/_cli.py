@@ -22,7 +22,7 @@ from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import run_with_lineage
 from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, ORPHAN_DELAY_DAYS, maintain
-from floe.manifest_run import load_manifest
+from floe.manifest_run import load_manifest, shown
 from floe.run import select_entities
 from floe.run.entity import state_uri
 from floe.state import dump_state, read_state, reset
@@ -92,8 +92,7 @@ def _run(args: argparse.Namespace) -> int:
         except FloeError as e:
             console.failed(e, args.manifest)
             raise
-        # the report keeps a remote manifest as typed, as Rust's does
-        config_uri = args.manifest if "://" in args.manifest else None
+        config_uri = shown(args.manifest)  # as typed, as Rust
         job = ""  # Rust names the lineage job `floe-run` (or `job_name`)
     elif args.config is None:
         raise FloeConfigError("one of --config or --manifest is required")
