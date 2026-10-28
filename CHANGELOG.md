@@ -4,6 +4,11 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+### dagster-floe
+
+- **Accepted and rejected assets carry `floe/entity` and `floe/output` metadata (#1045)**: the entity
+  name and `"accepted"` or `"rejected"`, so callers no longer parse the `<op>__accepted` output names.
+
 ### airflow-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in

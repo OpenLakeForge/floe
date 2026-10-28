@@ -180,6 +180,10 @@ floe manifest generate -c orders.yml -p prod.yml --output manifests/orders.json
 
 See [docs/lineage.md](../../docs/lineage.md) for the full lineage config reference.
 
+## Output metadata
+
+Every accepted and rejected asset carries `floe/entity` (the manifest entity name) and `floe/output` (`"accepted"` or `"rejected"`) in its asset metadata, so tooling can tell the two apart without parsing dagster-floe's output names: `spec.metadata["floe/output"]` on each `AssetSpec` of `multi_asset.specs`.
+
 ## Notes
 
 - This connector does **not** parse YAML directly; it consumes Floe manifests (`spec_version` `0.8`), read from a file or built by `floe.build_manifest` in config mode.
