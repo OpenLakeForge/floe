@@ -2,6 +2,11 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.1 (unreleased)
+
+- **A profile's `execution.runner.command` may be a list (#1034)**, e.g. `command: [olf-floe-job, --]`,
+  as the manifest and the connectors already accept. A string still works.
+
 ## v0.8.0
 
 Floe 0.8 is the Python core. `pip install floe-python` installs the `floe` command (a pure-Python

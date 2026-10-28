@@ -65,6 +65,13 @@ def _strings(hash: Hash, key: str, ctx: str) -> list[str] | None:
     return [yaml_string(item, f"{ctx}.{key}[]") for item in items]
 
 
+def _command(hash: Hash, key: str, ctx: str) -> str | list[str] | None:
+    """A string, or a list as the manifest and the connectors take it."""
+    if isinstance(hash.get(key), list):
+        return _strings(hash, key, ctx)
+    return _string(hash, key, ctx)
+
+
 def _u64(hash: Hash, key: str, ctx: str) -> int | None:
     if key not in hash:
         return None
@@ -153,7 +160,7 @@ def _auth(hash: Hash, key: str, ctx: str) -> dict[str, str | None] | None:
 
 # Rust reads the runner fields in this order, so the first malformed one is the one reported.
 _RUNNER_FIELDS: tuple[tuple[str, Reader], ...] = (
-    ("command", _string),
+    ("command", _command),
     ("args", _strings),
     ("timeout_seconds", _u64),
     ("ttl_seconds_after_finished", _u64),
