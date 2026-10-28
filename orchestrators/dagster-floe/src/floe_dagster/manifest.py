@@ -31,6 +31,7 @@ class ManifestEntity:
     write_mode: str | None = None
     incremental_mode: str | None = None
     source_ref: str | None = None
+    source_resource: str | None = None
     iceberg: dict[str, Any] | None = None  # sinks.accepted.iceberg when the sink is Iceberg
 
     @staticmethod
@@ -56,6 +57,7 @@ class ManifestEntity:
             write_mode=_optional_str(data, "write_mode"),
             incremental_mode=_optional_str(data, "incremental_mode"),
             source_ref=_optional_str(source, "ref") if isinstance(source, dict) else None,
+            source_resource=_optional_str(source, "resource") if isinstance(source, dict) else None,
             iceberg=iceberg,
         )
 
