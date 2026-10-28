@@ -105,7 +105,7 @@ from dagster import AssetKey
 
 defs = build_definitions(
     manifest_path="manifests/sales.json",
-    source_key_fn=lambda entity: AssetKey([entity.source_ref, entity.source_resource]),  # None keeps the default key
+    source_key_fn=lambda e: AssetKey([e.source_ref, e.source_resource]) if e.source_resource else None,  # None: default key
 )
 ```
 
