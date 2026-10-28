@@ -91,8 +91,8 @@ entities:
 - `catalogs` (optional)
   - Defines named Iceberg REST catalogs (Polaris, Nessie, Snowflake Open Catalog, etc.).
     An Iceberg accepted sink requires one (D26).
-  - Supported type: `rest`. `glue` and `unity` were dropped in 0.8 (D1) and fail validation;
-    the archived [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust) documents them for 0.7.
+  - Supported types: `rest` and `glue` (AWS Glue, restored in 0.8.1). `unity` was dropped in 0.8
+    (D1) and fails validation; the archived [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust) documents them for 0.7.
   - Keys:
     - `default` (optional): default catalog name used by `sink.accepted.iceberg.catalog` when omitted.
     - `definitions` (required): array of catalog definitions.
@@ -105,6 +105,10 @@ entities:
       - `scope` (optional): OAuth2 scope
       - `warehouse_storage` (optional): storage name for table location resolution; must be an S3 storage
       - `warehouse_prefix` (optional): prefix for deterministic table locations
+    - Glue definitions (`type: glue`) take `name`, `region` (required), `database` (required:
+      the Glue database that holds the tables), `create_database_if_missing` (optional, default
+      `true`), `warehouse_storage` (must be an S3 storage) and `warehouse_prefix`. Glue supports
+      `overwrite` and `append`; merges need a REST catalog. See [Iceberg sink](sinks/iceberg.md).
 - `lineage` (optional)
   - Enables OpenLineage event emission for this run.
   - `url` (required): base URL of the OpenLineage-compatible endpoint (e.g. `http://marquez:5000`)

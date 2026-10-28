@@ -74,12 +74,14 @@ def _credential_props(catalog: str, credential: str) -> dict[str, str]:
 def open_catalog(
     definition: CatalogDefinition, storage: StorageDefinition | None = None
 ) -> Catalog:
-    """Credentials for S3 come from the environment; the catalog never vends them (as in Rust)."""
+    """Credentials for S3 and Glue come from the environment; the catalog never vends them (as in Rust)."""
     props = {
         "type": "rest",
         "uri": definition.uri,
         "header.X-Iceberg-Access-Delegation": "",
     }
+    if definition.type == "glue":
+        props = {"type": "glue", "glue.region": definition.region or ""}
     if definition.warehouse is not None:
         props["warehouse"] = definition.warehouse
     if definition.credential is not None:
@@ -99,7 +101,7 @@ def open_catalog(
             props["s3.force-virtual-addressing"] = str(
                 not storage.path_style_access
             ).lower()
-    with run_error("rest catalog init failed"):
+    with run_error(f"{definition.type} catalog init failed"):
         return load_catalog(definition.name, **props)
 
 
@@ -167,6 +169,9 @@ def open_duckdb(
     definition: CatalogDefinition, storage: StorageDefinition | None = None
 ) -> duckdb.DuckDBPyConnection:
     """DuckDB with the catalog attached as `DUCKDB_CATALOG`."""
+    # validation rejects Glue merges; compaction lands here too
+    if definition.type != "rest":
+        raise FloeConfigError(f"iceberg catalog {definition.name}: merges and compaction require a rest catalog (got {definition.type})")  # fmt: skip
     statements = _duckdb_setup(definition, storage)
     with run_error("duckdb catalog attach failed"):
         # ponytail: DuckDB's default memory_limit and spill dir; set the ADR's limits when the run wires merges
@@ -292,8 +297,9 @@ def ensure_table(
     location: str | None = None,
     partition_fields: PartitionFields | None = None,
     schema_evolution: SchemaEvolutionMode = "strict",
+    create_namespace: bool = True,
 ) -> Table:
-    """Create the namespace and table if missing; otherwise check the table matches (Rust's append path).
+    """Create the namespace (unless `create_namespace` is off) and table if missing; otherwise check the table matches (Rust's append path).
 
     With `add_columns`, columns new in `schema` are added as optional (D13); partition changes stay rejected.
     """
@@ -301,6 +307,8 @@ def ensure_table(
     with run_error("rest catalog namespace_exists check failed"):
         namespace_exists = catalog.namespace_exists(ident)
     if not namespace_exists:
+        if not create_namespace:
+            raise FloeRunError(f"entity.name={entity} iceberg namespace {namespace} does not exist and create_database_if_missing is false")  # fmt: skip
         with run_error("rest catalog namespace create failed"):
             catalog.create_namespace(ident)
     identifier = (namespace, name)

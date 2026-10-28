@@ -1,5 +1,7 @@
 """Storage and catalog definitions, ported from `config/parse.rs` (`parse_storages`, `parse_catalogs_with_context`)."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from floe.config.yaml import (
@@ -37,16 +39,22 @@ class StoragesConfig(_Model):
 
 
 class CatalogDefinition(_Model):
-    """An Iceberg REST catalog; Glue and Unity are rejected (D1)."""
+    """An Iceberg REST or AWS Glue catalog; Unity is rejected (D1)."""
 
     name: str
-    uri: str
-    credential: SecretStr | None
-    warehouse: str | None
-    oauth2_server_uri: str | None
-    scope: str | None
+    type: Literal["rest", "glue"] = "rest"
+    # REST only
+    uri: str = ""
+    credential: SecretStr | None = None
+    warehouse: str | None = None
+    oauth2_server_uri: str | None = None
+    scope: str | None = None
     warehouse_storage: str | None
     warehouse_prefix: str | None
+    # Glue only; Rust 0.7's `allow_takeover` is accepted and ignored (D42)
+    region: str | None = None
+    database: str | None = None
+    create_database_if_missing: bool = True
 
 
 class CatalogsConfig(_Model):
@@ -88,11 +96,11 @@ _CATALOG_KEYS = (
     "scope",
     "warehouse_storage",
     "warehouse_prefix",
-    # Glue and Unity keys stay allowed, as in Rust, so a typo reports the key first
     "region",
     "database",
     "create_database_if_missing",
     "allow_takeover",
+    # Unity keys stay allowed, as in Rust, so a typo reports the key first
     "host",
     "catalog",
     "schema",
@@ -127,13 +135,24 @@ def _catalog(value: object, ctx: str) -> CatalogDefinition:
     validate_known_keys(hash, ctx, _CATALOG_KEYS)
     name = get_string(hash, "name", ctx)
     catalog_type = get_string(hash, "type", ctx)
-    if catalog_type in ("glue", "unity"):
+    if catalog_type == "unity":
         raise _Unsupported(
             f"{ctx} name={name} type={catalog_type} is not supported in 0.8"
         )
+    if catalog_type == "glue":
+        return CatalogDefinition(
+            name=name,
+            type="glue",
+            region=get_string(hash, "region", ctx),
+            database=get_string(hash, "database", ctx),
+            create_database_if_missing=opt_bool(hash, "create_database_if_missing", ctx)
+            is not False,
+            warehouse_storage=opt_string(hash, "warehouse_storage", ctx),
+            warehouse_prefix=opt_string(hash, "warehouse_prefix", ctx),
+        )
     if catalog_type != "rest":
         raise FloeConfigError(
-            f"{ctx} name={name} has unsupported type={catalog_type} (supported: rest)"
+            f"{ctx} name={name} has unsupported type={catalog_type} (supported: glue, rest)"
         )
     uri = get_string(hash, "uri", ctx)
     credential = opt_string(hash, "credential", ctx)

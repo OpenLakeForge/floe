@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -40,6 +41,8 @@ from .runner import RunResult, Runner
 # `tag_concurrency_limits` entry on this key keeps their runs apart.
 TABLE_TAG = "floe/table"
 
+SourceKeyFn = Callable[[ManifestEntity], AssetKey | None]
+
 
 def load_floe_assets(
     manifest_path: str | None = None,
@@ -51,6 +54,7 @@ def load_floe_assets(
     config_path: str | None = None,
     profile_path: str | None = None,
     manifest_name: str | None = None,
+    source_key_fn: SourceKeyFn | None = None,
 ) -> Definitions:
     """Build a Dagster Definitions for the given manifest.
 
@@ -67,6 +71,10 @@ def load_floe_assets(
         args for kubernetes_job and databricks_job runners. When omitted, manifest_path
         is used. Set this when the Dagster code server loads the manifest from a local
         path but the runner pod must reference it via object storage (e.g. s3://).
+
+    source_key_fn: optional `(entity) -> AssetKey | None` choosing each entity's upstream source
+        key; None keeps the default. The key is wired like the default one (a dep of the entity's
+        asset), and no SourceAsset is registered for it: the caller owns that asset.
     """
     assets_defs, source_assets, _selected_entities = build_floe_asset_defs(
         manifest_path=manifest_path,
@@ -78,6 +86,7 @@ def load_floe_assets(
         config_path=config_path,
         profile_path=profile_path,
         manifest_name=manifest_name,
+        source_key_fn=source_key_fn,
     )
     return Definitions(assets=[*assets_defs, *source_assets])
 
@@ -92,6 +101,7 @@ def build_floe_asset_defs(
     config_path: str | None = None,
     profile_path: str | None = None,
     manifest_name: str | None = None,
+    source_key_fn: SourceKeyFn | None = None,
 ) -> tuple[list[Any], list[SourceAsset], list[ManifestEntity]]:
     if runner is None:
         raise TypeError("runner is required")
@@ -117,11 +127,16 @@ def build_floe_asset_defs(
                 f"{op_name!r} in {manifest_path}; rename one of them"
             )
 
+    scope = _source_scope(manifest)
+    chosen = {e.name: key for e in entity_items if source_key_fn and (key := source_key_fn(e)) is not None}
+    source_keys = {
+        e.name: list(chosen[e.name].path) if e.name in chosen else _source_key(e, manifest.sources, scope)
+        for e in entity_items
+    }
     assets_defs = []
     domain_groups: dict[tuple[str, str], list[ManifestEntity]] = {}
     for entity in entity_items:
         runner_definition = resolve_entity_runner(manifest, entity)
-        source_key = _source_key(entity, manifest.sources, _source_scope(manifest))
         if runner_definition.runner_type == "kubernetes_job" and runner_definition.job_scope == "domain":
             # one Job per (domain, runner): an entity with its own runner gets its own Job
             group = (entity.domain or "default", entity.runner or manifest.runners.default)
@@ -136,7 +151,7 @@ def build_floe_asset_defs(
                 runner=runner,
                 execution=manifest.execution,
                 runner_definition=runner_definition,
-                source_key=source_key,
+                source_key=source_keys[entity.name],
                 table=entity_table(manifest, entity),
             )
         )
@@ -148,9 +163,7 @@ def build_floe_asset_defs(
                 runner_name=runner_name,
                 entities=members,
                 domain_names={e.name for e in manifest.entities if e.domain == domain},
-                source_keys={
-                    e.name: _source_key(e, manifest.sources, _source_scope(manifest)) for e in members
-                },
+                source_keys={e.name: source_keys[e.name] for e in members},
                 config_uri=config_uri,
                 manifest_path=manifest_path,
                 manifest_uri=manifest_uri,
@@ -160,8 +173,15 @@ def build_floe_asset_defs(
             )
         )
 
+    chosen_keys = set(chosen.values())  # theirs, whichever entity would have generated them
     source_assets = (
-        _build_source_assets(entity_items, manifest.sources, _source_scope(manifest)) if register_source_assets else []
+        [
+            sa
+            for sa in _build_source_assets([e for e in entity_items if e.name not in chosen], manifest.sources, scope)
+            if sa.key not in chosen_keys
+        ]
+        if register_source_assets
+        else []
     )
     entity_key_set = {tuple(e.asset_key) for e in entity_items}
     for sa in source_assets:

@@ -65,8 +65,8 @@ CLI reference, including `manifest generate`, `add-entity`, `state inspect`,
 
 - Floe runs as a lightweight single-node Python runtime using Polars, PyIceberg
   and DuckDB.
-- Floe 0.8 dropped the Delta, DuckDB and fixed-width formats, the Glue and Unity
-  catalogs, and ADLS and GCS storage (see [support-matrix.md](support-matrix.md)).
+- Floe 0.8 dropped the Delta, DuckDB and fixed-width formats, the Unity
+  catalog, and ADLS and GCS storage (see [support-matrix.md](support-matrix.md)).
 - File-based incremental ingestion is implemented. Row-based incremental mode
   remains a contract-level value for future work.
 - Floe reports write-time metrics and metadata for accepted outputs where the
