@@ -304,7 +304,35 @@ def _fsspec_storage_options(uri: str) -> dict[str, Any]:
     return options
 
 
+def _boto3_read_text(uri: str) -> str | None:
+    """Read an ``s3://`` object with boto3, or return None to fall back to fsspec.
+
+    s3fs cannot be installed next to floe-python (aiobotocore pins an older botocore), but
+    boto3 always is. Same env handling as ``_fsspec_storage_options``, plus ``AWS_REGION``.
+    """
+    if not uri.startswith("s3://"):
+        return None
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError:
+        return None
+    options = _fsspec_storage_options(uri)
+    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or None
+    client = boto3.client(
+        "s3",
+        region_name=region,
+        config=Config(**options.get("config_kwargs", {})),
+        **options.get("client_kwargs", {}),
+    )
+    bucket, _, key = uri[len("s3://"):].partition("/")
+    return client.get_object(Bucket=bucket, Key=key)["Body"].read().decode("utf-8")
+
+
 def _read_remote_text(uri: str) -> str:
+    text = _boto3_read_text(uri)
+    if text is not None:
+        return text
     try:
         import fsspec
     except ImportError as exc:

@@ -31,6 +31,12 @@ All notable changes to Floe are documented in this file.
   rendered arguments: `command: [python]` + `args: [-m, floe]` runs
   `python -m floe run … --entities …`.
 
+- **`s3://` run reports and manifests are read with boto3 (#1021).** When boto3 is importable (it is whenever the
+  `floe` extra is installed) it replaces fsspec/s3fs for `s3://`, honouring `AWS_ENDPOINT_URL_S3` /
+  `AWS_ENDPOINT_URL`, `AWS_REGION` and `AWS_S3_FORCE_PATH_STYLE`. s3fs no longer has to be installable next to
+  `floe-python`; without it Silver assets lost row counts, rejection counts and check detail. Other schemes, and
+  `s3://` without boto3, still use fsspec.
+
 - **`kubernetes_job` pod options are applied to the Job (#1023).** dagster-floe puts the runner's `labels`
   (added to `app` and `floe-job`, which are never overridden), `annotations`, `image_pull_policy`,
   `security_context`, `node_selector`, `tolerations`, `backoff_limit` (default 0) and `env_from` in the Job
