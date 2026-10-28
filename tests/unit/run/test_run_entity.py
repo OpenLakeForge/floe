@@ -306,7 +306,6 @@ def test_a_json_source_maps_nested_selectors_to_the_schema_names(
 @pytest.mark.parametrize(
     ("body", "rule"),
     [
-        ("[]", "json_parse_error"),
         ('[{"order": {"id": 1}', "json_parse_error"),
         ('[{"order": {"id": {"x": 1}}}]', "json_selector_non_scalar"),
     ],
@@ -350,9 +349,10 @@ def _json_run(
     options: str = "{}",
     id_column: str = "{name: id, type: int64, nullable: false}",
     severity: str = "reject",
+    mismatch: str = "",
 ) -> tuple[list[str], pl.DataFrame | None]:
     """Run one JSON file through `run_entity`; the file statuses and the accepted rows."""
-    config = CONFIG.format(severity=severity, mismatch="")
+    config = CONFIG.format(severity=severity, mismatch=mismatch)
     config = config.replace(
         "format: csv\n      path: ./in", "format: json\n      path: ./in"
     )
@@ -419,3 +419,26 @@ def test_an_unpaired_surrogate_key_rejects_the_file_with_a_report(
     json.dumps(report, ensure_ascii=False).encode(
         "utf-8"
     )  # the report writer's encoding
+
+
+def test_d40_the_json_mismatch_check_sees_every_record(tmp_path: Path) -> None:
+    """D40: a key that only a later record carries is still an extra column (Rust probed the first)."""
+    statuses, rows = _json_run(
+        tmp_path,
+        '[{"id": 1, "name": "a"}, {"id": 2, "name": "b", "extra": 1}]',
+        mismatch="mismatch: {extra_columns: reject_file}",
+    )
+    assert statuses == ["rejected"]
+    assert rows is None or rows.height == 0
+
+
+def test_d41_an_empty_json_array_is_zero_rows_not_a_parse_error(tmp_path: Path) -> None:
+    """D41: `[]` is a valid empty extract (Rust 0.7 rejected it as json_parse_error)."""
+    statuses, rows = _json_run(tmp_path, "[]")
+    assert statuses == ["success"]
+    assert rows is None or rows.height == 0
+
+
+def test_d41_an_ndjson_file_without_records_is_zero_rows(tmp_path: Path) -> None:
+    statuses, _ = _json_run(tmp_path, "\n  \n", "{json_mode: ndjson}")
+    assert statuses == ["success"]

@@ -7,10 +7,9 @@ from typing import Any
 import polars as pl
 
 from floe.checks.normalize import normalize_name, resolve_strategy, source_names
-from floe.config.entity import WHITE_SPACE
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeIoError
-from floe.read.json import json_loads
+from floe.read.json import json_records
 
 MAX_MISMATCH_COLUMNS = 50
 # nested-path markers: `/` and `@` are XML path syntax, but ordinary characters in a JSON key
@@ -121,47 +120,17 @@ def apply_mismatch(df: pl.DataFrame, plan: MismatchOutcome) -> pl.DataFrame:
 
 
 def json_input_columns(path: Path, mode: str = "array") -> list[str]:
-    """Sorted keys of the first JSON object: the probe Rust's `read_input_columns` runs.
+    """Sorted top-level keys of every record, read exactly as `read_json` reads them.
 
-    NDJSON skips unparseable lines up to the first object, as Rust's probe does, but splits, trims
-    and parses each line exactly as `read_json` does (LF only, Unicode whitespace, strict JSON), so
-    the probe never rejects a record the reader accepts (#998).
+    D40: the union over all records, so a key only a later record carries is still an input
+    column (Rust 0.7 probed the first object only). A file without records has no keys (D41).
     """
-    if mode == "ndjson":
-        first_error = None
-        try:
-            with path.open("rb") as handle:
-                for i, raw in enumerate(handle, 1):
-                    try:
-                        line = raw.decode("utf-8").strip(WHITE_SPACE)
-                        if not line:
-                            continue
-                        value = json_loads(line)
-                    except ValueError as err:  # includes UnicodeDecodeError
-                        first_error = (
-                            first_error or f"json parse error at line {i}: {err}"
-                        )
-                        continue
-                    if not isinstance(value, dict):
-                        raise FloeIoError(f"expected json object at line {i}")
-                    return sorted(value)  # pyright: ignore[reportUnknownArgumentType]
-        except OSError as err:
-            raise FloeIoError(f"failed to read json at {path}: {err}") from err
-        raise FloeIoError(first_error or f"no json objects found in {path}")
-    if mode != "array":
+    if mode not in ("array", "ndjson"):
         raise FloeIoError(
             f"unsupported source.options.json_mode={mode} (allowed: array, ndjson)"
         )
-    try:
-        value = json_loads(path.read_text(encoding="utf-8"))
-    except OSError as err:
-        raise FloeIoError(f"failed to read json at {path}: {err}") from err
-    except ValueError as err:  # includes UnicodeDecodeError and unpaired surrogates
-        raise FloeIoError(f"json parse error: {err}") from err
-    if not isinstance(value, list):
-        raise FloeIoError("expected json array at root")
-    if not value:
-        raise FloeIoError("json array is empty")
-    if not isinstance(value[0], dict):
-        raise FloeIoError("expected json object at index 0")
-    return sorted(value[0])  # pyright: ignore[reportUnknownArgumentType]
+    # ponytail: the file is parsed twice (probe, then read); fold the probe into the read if it costs
+    keys: set[str] = set()
+    for _, record in json_records(path, mode):
+        keys.update(record)
+    return sorted(keys)

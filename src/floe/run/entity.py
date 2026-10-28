@@ -383,8 +383,9 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
         if entity.source.format == "xml":
             first, probe = [], xml_columns(path, entity.source.options)
         elif entity.source.format == "json":
-            # #998: Rust compares the first object's top-level keys, not the selected columns
+            # D40: every record's top-level keys; D41: a file without records has nothing to compare
             first, probe = [], json_input_columns(path, entity.source.options.json_mode or "array")  # fmt: skip
+            probe = probe or declared
         else:  # the first chunk's columns are the input columns the plan compares
             first = [next(chunks)]
             probe = list(first[0][1].columns)

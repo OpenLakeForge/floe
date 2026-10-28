@@ -149,7 +149,7 @@ def json_loads(text: str) -> Any:
     return value
 
 
-def _rows(path: Path, mode: str) -> Iterator[tuple[str, Any]]:
+def json_records(path: Path, mode: str) -> Iterator[tuple[str, Any]]:
     """Yield (location, object) per row; `where` is `line N` for ndjson, `index N` for arrays."""
     try:
         if mode == "ndjson":
@@ -221,7 +221,7 @@ def read_json(
     exact = [decimal_type(c.column_type) is not None for c in columns]
     rows: list[list[str | None]] = []
     done = 0
-    for where, value in _rows(path, mode):
+    for where, value in json_records(path, mode):
         rows.append(
             [
                 _cell(value, p, n, cast_mode, where, e)

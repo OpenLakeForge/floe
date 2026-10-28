@@ -4,6 +4,12 @@ All notable changes to Floe are documented in this file.
 
 ## floe (unreleased)
 
+- **JSON sources run end to end (#998)**, matching Floe 0.7's rows, statuses and rules, with two deliberate
+  changes from 0.7:
+  - **D40:** the column-mismatch check compares the top-level keys of *every* record, not just the first,
+    so `schema.mismatch.extra_columns`/`missing_columns` apply to the whole file;
+  - **D41:** an empty array `[]` (or an NDJSON file without records) is a valid empty extract: 0 rows,
+    success. Floe 0.7 rejected it as `json_parse_error`. A file that is not valid JSON is still rejected.
 - **`floe validate` requires `sink.rejected` for `policy.severity: abort` (D39, #1007).** Abort writes the
   failing file to the rejected sink, so a config without one could only fail at its first violation, as in
   Rust 0.7. It is now refused up front with the same message as `reject`.
