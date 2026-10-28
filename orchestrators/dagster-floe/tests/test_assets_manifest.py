@@ -302,6 +302,21 @@ def test_source_key_fn_returning_none_keeps_the_default_key(tmp_path) -> None:
     assert [sa.key for sa in source_assets] == [shared]
 
 
+def test_source_key_fn_key_equal_to_a_default_key_is_not_generated_for_other_entities(tmp_path) -> None:
+    """A key the callback returned is the caller's, even when another entity's default key is the same."""
+    manifest_path = _crm_manifest(tmp_path, "sales", "s3://b/crm")
+    shared = AssetKey(["sources", "sales", "crm"])
+    own = multi_asset(name="crm_source", outs={"out": AssetOut(key=shared)})(lambda: None)
+
+    asset_defs, source_assets, _entities = build_floe_asset_defs(
+        manifest_path=str(manifest_path),
+        runner=_NoopRunner(),
+        source_key_fn=lambda entity: shared if entity.name == "orders" else None,
+    )
+    assert source_assets == []
+    Definitions(assets=[*asset_defs, *source_assets, own])  # no duplicate asset key
+
+
 def test_build_definitions_orders_each_entity_after_its_own_upstream(tmp_path) -> None:
     """`build_definitions` threads `source_key_fn`; the job runs each entity after its own upstream asset."""
     manifest_path = _crm_manifest(tmp_path, "sales", "s3://b/crm")

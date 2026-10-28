@@ -167,8 +167,13 @@ def build_floe_asset_defs(
             )
         )
 
+    chosen_keys = set(chosen.values())  # theirs, whichever entity would have generated them
     source_assets = (
-        _build_source_assets([e for e in entity_items if e.name not in chosen], manifest.sources, scope)
+        [
+            sa
+            for sa in _build_source_assets([e for e in entity_items if e.name not in chosen], manifest.sources, scope)
+            if sa.key not in chosen_keys
+        ]
         if register_source_assets
         else []
     )
