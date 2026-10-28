@@ -1,5 +1,6 @@
 """`run_entity`: statuses, outputs and file-level rejections for a local CSV entity."""
 
+import json
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -341,3 +342,80 @@ def test_append_retry_overwrites_the_rejected_part(tmp_path: Path) -> None:
     run_entity(entity, tmp_path, "0.3")
     (part,) = (tmp_path / "out" / "rejected").glob("*.csv")
     assert pl.read_csv(part)["__floe_row_index"].to_list() == [1]
+
+
+def _json_run(
+    tmp_path: Path,
+    body: str,
+    options: str = "{}",
+    id_column: str = "{name: id, type: int64, nullable: false}",
+    severity: str = "reject",
+) -> tuple[list[str], pl.DataFrame | None]:
+    """Run one JSON file through `run_entity`; the file statuses and the accepted rows."""
+    config = CONFIG.format(severity=severity, mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    config = config.replace(
+        'options: {header: true, separator: ","}', f"options: {options}"
+    )
+    config = config.replace("{name: id, type: int64, nullable: false}", id_column)
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    (tmp_path / "in" / "a.json").write_text(body, encoding="utf-8")
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    has_rows = any((tmp_path / "out" / "accepted").glob("*.parquet"))
+    return [f["status"] for f in report["files"]], accepted(
+        tmp_path
+    ) if has_rows else None
+
+
+def test_ndjson_probe_keeps_a_unicode_line_separator_inside_a_string(
+    tmp_path: Path,
+) -> None:
+    """Codex P1 on #1004: the probe must split records where the reader does (LF), not on U+2028."""
+    body = '{"id": 1, "name": "a\u2028b"}\n'  # the file's only record
+    statuses, rows = _json_run(tmp_path, body, "{json_mode: ndjson}")
+    assert statuses == ["success"]
+    assert rows is not None and rows["name"].to_list() == ["a\u2028b"]
+
+
+def test_ndjson_probe_trims_unicode_whitespace_like_the_reader(tmp_path: Path) -> None:
+    """Codex P1 on #1004: the reader strips Unicode whitespace around a record; the probe must too."""
+    body = '\u3000{"id": 1, "name": "a"}\u00a0\n'  # the file's only record
+    statuses, rows = _json_run(tmp_path, body, "{json_mode: ndjson}")
+    assert statuses == ["success"]
+    assert rows is not None and rows["id"].to_list() == [1]
+
+
+def test_a_json_key_with_an_at_sign_stays_a_declared_column(tmp_path: Path) -> None:
+    """Codex P1 on #1004: `@` and `/` mark nested XML paths, not JSON keys."""
+    statuses, rows = _json_run(
+        tmp_path,
+        '[{"@id": 1}, {"@id": 2}, {"@id": 3}]',
+        id_column="{name: id, source: '@id', type: int64}",
+        severity="warn",
+    )
+    assert statuses == ["success"]
+    assert rows is not None and rows["id"].to_list() == [1, 2, 3]
+
+
+def test_an_unpaired_surrogate_key_rejects_the_file_with_a_report(
+    tmp_path: Path,
+) -> None:
+    """Codex P1 on #1004: the probe must reject it like the reader, not crash the report writer."""
+    (tmp_path / "in").mkdir()
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    config = config.replace('options: {header: true, separator: ","}', "options: {}")
+    (tmp_path / "config.yml").write_text(config)
+    (tmp_path / "in" / "a.json").write_text('[{"id": 1, "\\ud800": 2}]')
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert [f["status"] for f in report["files"]] == ["rejected"]
+    json.dumps(report, ensure_ascii=False).encode(
+        "utf-8"
+    )  # the report writer's encoding

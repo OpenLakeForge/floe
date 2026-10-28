@@ -138,7 +138,8 @@ def _int(text: str) -> float:
     return value if -(1 << 63) <= value < 1 << 64 else _float(text)
 
 
-def _loads(text: str) -> Any:
+def json_loads(text: str) -> Any:
+    """`json.loads` with serde's rules: no NaN/Infinity, big numbers kept, unpaired surrogates rejected."""
     value = json.loads(
         text, parse_constant=_reject_constant, parse_float=_float, parse_int=_int
     )
@@ -158,7 +159,7 @@ def _rows(path: Path, mode: str) -> Iterator[tuple[str, Any]]:
                         line = raw.decode("utf-8").strip(WHITE_SPACE)  # Rust str::trim
                         if not line:
                             continue
-                        value = _loads(line)
+                        value = json_loads(line)
                     except ValueError as err:  # includes UnicodeDecodeError
                         raise FloeIoError(
                             f"json parse error at line {number}: {err}"
@@ -169,7 +170,7 @@ def _rows(path: Path, mode: str) -> Iterator[tuple[str, Any]]:
             return
         # ponytail: array mode parses the whole file in memory, as Rust; stream if arrays outgrow it
         try:
-            array: Any = _loads(path.read_text(encoding="utf-8"))
+            array: Any = json_loads(path.read_text(encoding="utf-8"))
         except ValueError as err:
             raise FloeIoError(f"json parse error: {err}") from err
     except OSError as err:

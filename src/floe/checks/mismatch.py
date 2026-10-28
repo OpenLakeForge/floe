@@ -1,6 +1,5 @@
 """Schema mismatch: missing/extra columns and their policies (Rust: `checks/mismatch.rs`)."""
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -8,11 +7,14 @@ from typing import Any
 import polars as pl
 
 from floe.checks.normalize import normalize_name, resolve_strategy, source_names
+from floe.config.entity import WHITE_SPACE
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeIoError
+from floe.read.json import json_loads
 
 MAX_MISMATCH_COLUMNS = 50
-_NESTED = (".", "[", "/", "@")
+# nested-path markers: `/` and `@` are XML path syntax, but ordinary characters in a JSON key
+_NESTED = {"json": (".", "["), "xml": (".", "[", "/", "@")}
 
 
 @dataclass(frozen=True)
@@ -40,7 +42,7 @@ def declared_names(entity: EntityConfig) -> list[str]:
     names = [
         normalize_name(c.source or c.name, strategy)
         for c in schema.columns
-        if not any(t in (c.source or c.name) for t in _NESTED)
+        if not any(t in (c.source or c.name) for t in _NESTED[entity.source.format])
     ]
     if len(set(names)) != len(names):
         dup = next(n for n in names if names.count(n) > 1)
@@ -119,32 +121,42 @@ def apply_mismatch(df: pl.DataFrame, plan: MismatchOutcome) -> pl.DataFrame:
 
 
 def json_input_columns(path: Path, mode: str = "array") -> list[str]:
-    """Sorted keys of the first JSON object: the probe Rust's `read_input_columns` runs."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as err:
-        raise FloeIoError(f"failed to read json at {path}: {err}") from err
+    """Sorted keys of the first JSON object: the probe Rust's `read_input_columns` runs.
+
+    NDJSON skips unparseable lines up to the first object, as Rust's probe does, but splits, trims
+    and parses each line exactly as `read_json` does (LF only, Unicode whitespace, strict JSON), so
+    the probe never rejects a record the reader accepts (#998).
+    """
     if mode == "ndjson":
         first_error = None
-        for i, line in enumerate(text.splitlines(), 1):
-            if not line.strip():
-                continue
-            try:
-                value = json.loads(line)
-            except ValueError as err:
-                first_error = first_error or f"json parse error at line {i}: {err}"
-                continue
-            if not isinstance(value, dict):
-                raise FloeIoError(f"expected json object at line {i}")
-            return sorted(value)  # pyright: ignore[reportUnknownArgumentType]
+        try:
+            with path.open("rb") as handle:
+                for i, raw in enumerate(handle, 1):
+                    try:
+                        line = raw.decode("utf-8").strip(WHITE_SPACE)
+                        if not line:
+                            continue
+                        value = json_loads(line)
+                    except ValueError as err:  # includes UnicodeDecodeError
+                        first_error = (
+                            first_error or f"json parse error at line {i}: {err}"
+                        )
+                        continue
+                    if not isinstance(value, dict):
+                        raise FloeIoError(f"expected json object at line {i}")
+                    return sorted(value)  # pyright: ignore[reportUnknownArgumentType]
+        except OSError as err:
+            raise FloeIoError(f"failed to read json at {path}: {err}") from err
         raise FloeIoError(first_error or f"no json objects found in {path}")
     if mode != "array":
         raise FloeIoError(
             f"unsupported source.options.json_mode={mode} (allowed: array, ndjson)"
         )
     try:
-        value = json.loads(text)
-    except ValueError as err:
+        value = json_loads(path.read_text(encoding="utf-8"))
+    except OSError as err:
+        raise FloeIoError(f"failed to read json at {path}: {err}") from err
+    except ValueError as err:  # includes UnicodeDecodeError and unpaired surrogates
         raise FloeIoError(f"json parse error: {err}") from err
     if not isinstance(value, list):
         raise FloeIoError("expected json array at root")
