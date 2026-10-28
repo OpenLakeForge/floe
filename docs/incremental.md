@@ -164,8 +164,12 @@ this run's claims so the same files can be retried later. If a file aborts the
 entity, the files before it are still written. With `append` and the merge
 modes, Floe promotes those and releases only the aborted file and the files
 after it: once the aborted file is fixed, a rerun writes it without writing the
-earlier files again. With `overwrite`, Floe releases every claim, because the
-rerun rebuilds the output from all the files. Either way the claims are settled
+earlier files again. With `overwrite`, Floe releases every claim of the run.
+
+Note that `overwrite` always replaces the output with the files *this run* lists. In `file`
+mode a run lists only the new files, so the output holds just the latest batch: that suits a
+"latest snapshot" load, where each file is a full extract. To accumulate every file, use
+`append` or a merge mode. Either way the claims are settled
 before the next entity starts, which runs as usual (D36).
 
 If a file URI is already in `files` but its size or mtime changed, Floe emits an

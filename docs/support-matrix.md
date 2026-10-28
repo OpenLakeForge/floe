@@ -49,7 +49,7 @@ Notes:
 | Output | Local | S3 | Notes |
 |---|---|---|---|
 | Accepted: Parquet | ✅ | ✅ (upload) | Writes `part-*.parquet`; `overwrite` and `append` |
-| Accepted: Iceberg | ❌ | ✅ (REST catalog) | `overwrite`, `append` and `merge_scd1` in one catalog commit per entity; `merge_scd2` is not runnable yet (#654) |
+| Accepted: Iceberg | ❌ | ✅ (REST catalog) | `overwrite`, `append`, `merge_scd1` and `merge_scd2` in one catalog commit per entity |
 | Rejected: CSV | ✅ | ✅ (upload) | Dataset parts `part-*.csv`; the only rejected format |
 | Reports: JSON | ✅ | ✅ (upload) | |
 
