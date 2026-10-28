@@ -179,6 +179,19 @@ def test_an_image_runtime_manifest_with_sources_and_metadata_runs(
     assert actual == expected
 
 
+def test_1008_a_manifest_generated_outside_the_config_directory_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Relative paths resolve beside `config_uri`, as at generation, not beside the manifest."""
+    work = copy_case("severity_warn", tmp_path / "w")
+    monkeypatch.chdir(work)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "build/m.json") == 0  # fmt: skip
+    assert floe(monkeypatch, "run", "--manifest", "build/m.json", "--run-id", "r") == 0
+    assert list((work / "out/accepted/orders").glob("*.parquet"))
+    summary = json.loads((work / "report/spike/run_r/run.summary.json").read_text())
+    assert summary["config"]["path"] == "build/m.json"
+
+
 def test_manifest_paths_resolve_against_its_own_directory_and_entities_select(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -37,7 +37,7 @@ from floe.config.types import (
 )
 from floe.config.validate import FLOE_VERSION
 from floe.errors import FloeConfigError, FloeIoError
-from floe.storage.paths import parse_s3_uri
+from floe.storage.paths import normalize_local_path, parse_s3_uri
 from floe.storage.s3 import S3Client
 
 Json = dict[str, Any]
@@ -240,9 +240,20 @@ def _read(location: str) -> bytes:
         raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
 
 
+def shown(location: str) -> str:
+    """The manifest as the run reports it: a remote one as typed."""
+    return location if "://" in location else str(normalize_local_path(Path(location)))
+
+
 def _replay_base(location: str, m: Json) -> Path:
-    """Rust `manifest_replay_config_base`: a remote manifest resolves local paths under its work root."""
+    """Rust `manifest_replay_config_base`: a remote manifest resolves local paths under its work root.
+
+    A local one resolves them beside `config_uri`, where `manifest generate` resolved them (#1008).
+    """
     if not location.startswith("s3://"):
+        config = m.get("config_uri")
+        if isinstance(config, str) and config.startswith("local:///"):
+            return Path(config.removeprefix("local://"))
         return Path(location)
     env = os.environ.get("FLOE_WORK_ROOT", "")
     image = str(m.get("runtime_env") or "").lower() == "image"
