@@ -46,6 +46,11 @@ All notable changes to Floe are documented in this file.
   Entities of one named source can depend on different upstream assets, e.g. `crm/orders` and `crm/accounts`,
   and Dagster still orders each after its upstream. No `SourceAsset` is registered for a key you choose.
 
+- **`job_scope: domain` Jobs run `floe run --domain <d>` for a whole domain (#1036).** When the selected
+  entities are exactly every entity of the domain in the manifest, the Job sends `--domain <d>` in place of
+  `--entities a,b,c`; a subset keeps `--entities`. It needs Floe 0.8.1 (`floe run --domain`):
+  a `kubernetes_job` image must be 0.8.1 or newer.
+
 ### airflow-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
