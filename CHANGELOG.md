@@ -67,6 +67,13 @@ Every intentional behaviour change from 0.7 is numbered (D1–D41) in the migrat
   manifest `floe manifest generate` writes for the same config and profile (deterministic by
   default). `manifest generate` now calls it.
 
+## dagster-floe (unreleased)
+
+- **`job_scope: domain` Jobs run `floe run --domain <d>` for a whole domain (#1036).** When the selected
+  entities are exactly every entity of the domain in the manifest, the Job sends `--domain <d>` in place of
+  `--entities a,b,c`; a subset keeps `--entities`. It needs Floe 0.8.1: the `floe` extra now installs
+  `floe-python>=0.8.1,<0.9`, and a `kubernetes_job` image must be 0.8.1 or newer.
+
 ## dagster-floe v0.3.0
 
 Supports Floe 0.8 (`floe-python` 0.8, manifest `spec_version` `0.8`); older Floe versions are not
