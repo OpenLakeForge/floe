@@ -197,6 +197,17 @@ def test_entity_policy_severity_defaults_to_none_when_absent():
     assert manifest.entities[0].policy_severity is None
 
 
+def test_entity_source_resource_parsed_and_defaults_to_none():
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    payload["entities"][0]["source"].update({"ref": "crm", "resource": "orders"})
+    payload["entities"][1]["source"].pop("resource", None)
+
+    entities = DagsterManifest.from_dict(payload).entities
+    assert (entities[0].source_ref, entities[0].source_resource) == ("crm", "orders")
+    assert entities[1].source_resource is None
+
+
 def test_manifest_schema_accepts_databricks_runner_fields(tmp_path: Path):
     fixture = Path(__file__).parent / "fixtures" / "manifest.json"
     payload = json.loads(fixture.read_text(encoding="utf-8"))
