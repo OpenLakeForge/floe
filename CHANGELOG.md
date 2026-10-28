@@ -6,11 +6,21 @@ All notable changes to Floe are documented in this file.
 
 ### dagster-floe
 
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031).** It
+  used to replace the whole argument list, so every Job ran every entity. `args` now prefix Floe's
+  rendered arguments: `command: [python]` + `args: [-m, floe]` runs
+  `python -m floe run … --entities …`.
+
 - **`manifest_name=` in config mode (#1022).** `load_floe_assets`, `build_definitions` and
   `build_job_run_config_from_manifest` accept `manifest_name=` next to `config_path=` and pass it to
   `floe.build_manifest`. With a fixed name, the op name of a `job_scope: domain` asset stays
   `floe_<name>__<domain>__...` when the config changes; without it the name derives from the config's path and
   checksum, as before. Passing it with `manifest_path=` raises `ValueError`.
+
+### airflow-floe
+
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
+  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
 ## v0.8.0
 
@@ -70,13 +80,6 @@ Every intentional behaviour change from 0.7 is numbered (D1–D41) in the migrat
 - **`floe.build_manifest(config_path, profile_path=None, ...)` (#986).** Returns, as a dict, the
   manifest `floe manifest generate` writes for the same config and profile (deterministic by
   default). `manifest generate` now calls it.
-
-## dagster-floe (unreleased)
-
-- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031).** It
-  used to replace the whole argument list, so every Job ran every entity. `args` now prefix Floe's
-  rendered arguments: `command: [python]` + `args: [-m, floe]` runs
-  `python -m floe run … --entities …`.
 
 ## dagster-floe v0.3.0
 
@@ -153,11 +156,6 @@ supported. Floe 0.7 and earlier manifests are rejected.
   `AWS_ENDPOINT_URL`) as the endpoint and, when `AWS_S3_FORCE_PATH_STYLE` is `true`/`1`,
   path-style addressing, matching Floe core (#448). Without these variables behaviour is
   unchanged. Requires the existing `remote` extra.
-
-## airflow-floe (unreleased)
-
-- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
-  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
 ## airflow-floe v0.2.0
 
