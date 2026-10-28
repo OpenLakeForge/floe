@@ -2,6 +2,12 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.1 (unreleased)
+
+- **floe-python requires `boto3>=1.36.0` (was `>=1.43.118`) (#1028).** The old floor made `s3fs`
+  uninstallable next to Floe: current `aiobotocore` caps `botocore` below 1.43.118. 1.36.0 is the
+  first release with every S3 call and option Floe uses (conditional writes, checksum settings).
+
 ## v0.8.0
 
 Floe 0.8 is the Python core. `pip install floe-python` installs the `floe` command (a pure-Python
