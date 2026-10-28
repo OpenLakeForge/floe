@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from dagster import AssetKey
+from dagster import AssetKey, AssetOut, Definitions, multi_asset
 
 from floe_dagster.assets import (
     _count_files_with_rejections,
@@ -13,7 +13,7 @@ from floe_dagster.assets import (
     build_floe_asset_defs,
     load_floe_assets,
 )
-from floe_dagster.definitions import build_definitions_from_manifest_paths
+from floe_dagster.definitions import build_definitions, build_definitions_from_manifest_paths
 from floe_dagster.manifest import ManifestRunnerDefinition
 from floe_dagster.runner import LocalRunner, RunResult, Runner
 
@@ -269,6 +269,74 @@ def test_entities_sharing_a_named_source_depend_on_one_source_asset(tmp_path) ->
     assert source_assets[0].metadata["dagster/uri"].url == "s3://b/crm"
     for asset_def in asset_defs:
         assert shared in set(asset_def.keys_by_input_name.values())
+
+
+def test_source_key_fn_gives_entities_of_one_named_source_their_own_upstream(tmp_path) -> None:
+    """The key from `source_key_fn` replaces the shared named-source key, and stays an op input."""
+    manifest_path = _crm_manifest(tmp_path, "sales", "s3://b/crm")
+
+    asset_defs, source_assets, _entities = build_floe_asset_defs(
+        manifest_path=str(manifest_path),
+        runner=_NoopRunner(),
+        source_key_fn=lambda entity: AssetKey(["crm", entity.name]),
+    )
+    inputs = {a.op.name.split("__")[-1]: set(a.keys_by_input_name.values()) for a in asset_defs}
+    assert inputs == {
+        "employees": {AssetKey(["crm", "employees"])},
+        "orders": {AssetKey(["crm", "orders"])},
+    }
+    assert source_assets == []  # the caller owns the keys it chose
+
+
+def test_source_key_fn_returning_none_keeps_the_default_key(tmp_path) -> None:
+    manifest_path = _crm_manifest(tmp_path, "sales", "s3://b/crm")
+
+    asset_defs, source_assets, _entities = build_floe_asset_defs(
+        manifest_path=str(manifest_path),
+        runner=_NoopRunner(),
+        source_key_fn=lambda entity: AssetKey(["crm", "orders"]) if entity.name == "orders" else None,
+    )
+    inputs = {a.op.name.split("__")[-1]: set(a.keys_by_input_name.values()) for a in asset_defs}
+    shared = AssetKey(["sources", "sales", "crm"])
+    assert inputs == {"employees": {shared}, "orders": {AssetKey(["crm", "orders"])}}
+    assert [sa.key for sa in source_assets] == [shared]
+
+
+def test_source_key_fn_key_equal_to_a_default_key_is_not_generated_for_other_entities(tmp_path) -> None:
+    """A key the callback returned is the caller's, even when another entity's default key is the same."""
+    manifest_path = _crm_manifest(tmp_path, "sales", "s3://b/crm")
+    shared = AssetKey(["sources", "sales", "crm"])
+    own = multi_asset(name="crm_source", outs={"out": AssetOut(key=shared)})(lambda: None)
+
+    asset_defs, source_assets, _entities = build_floe_asset_defs(
+        manifest_path=str(manifest_path),
+        runner=_NoopRunner(),
+        source_key_fn=lambda entity: shared if entity.name == "orders" else None,
+    )
+    assert source_assets == []
+    Definitions(assets=[*asset_defs, *source_assets, own])  # no duplicate asset key
+
+
+def test_build_definitions_orders_each_entity_after_its_own_upstream(tmp_path) -> None:
+    """`build_definitions` threads `source_key_fn`; the job runs each entity after its own upstream asset."""
+    manifest_path = _crm_manifest(tmp_path, "sales", "s3://b/crm")
+    upstream = [
+        multi_asset(name=f"crm_{n}", outs={"out": AssetOut(key=AssetKey(["crm", n]))})(lambda: None)
+        for n in ("employees", "orders")
+    ]
+    defs = Definitions.merge(
+        build_definitions(
+            manifest_path=str(manifest_path),
+            runner=_NoopRunner(),
+            with_job=False,
+            source_key_fn=lambda entity: AssetKey(["crm", entity.name]),
+        ),
+        Definitions(assets=upstream),
+    )
+    job = defs.resolve_implicit_global_asset_job_def()
+    for op, name in (("sales__hr__employees", "employees"), ("sales__sales__orders", "orders")):
+        parents = {out.node_name for out in job.dependency_structure.all_upstream_outputs_from_node(op)}
+        assert parents == {f"crm_{name}"}
 
 
 def test_named_source_without_a_shared_location_has_no_uri_metadata(tmp_path) -> None:

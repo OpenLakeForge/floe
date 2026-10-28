@@ -185,3 +185,16 @@ def test_runners_whose_names_sanitize_alike_get_distinct_ops(tmp_path: Path) -> 
     definitions = build_definitions_from_manifest_paths(manifest_paths=[str(manifest)])
 
     assert definitions.resolve_all_job_defs()  # conflicting op names raise here
+
+
+def test_source_key_fn_gives_each_domain_output_its_own_upstream(tmp_path: Path) -> None:
+    assets, sources, _ = build_floe_asset_defs(
+        manifest_path=str(_manifest(tmp_path)),
+        runner=LocalRunner(),
+        source_key_fn=lambda entity: AssetKey(["crm", entity.name]),
+    )
+    (domain_asset,) = assets
+    assert set(domain_asset.keys_by_input_name.values()) == {AssetKey(["crm", n]) for n in NAMES}
+    for name in NAMES:
+        assert domain_asset.asset_deps[AssetKey(["sales", name])] == {AssetKey(["crm", name])}
+    assert sources == []
