@@ -183,7 +183,9 @@ def test_json_probe(tmp_path: Path) -> None:
     f.write_text('{"z": 1}\nnot json\n')
     with pytest.raises(FloeIoError, match="json parse error at line 2"):
         json_input_columns(f, "ndjson")
-    f.write_text("[]")  # D41: no records, no keys
+    f.write_text("[]")  # D41: no records
+    assert json_input_columns(f) is None
+    f.write_text("[{}, {}]")  # records without keys: checked for missing columns
     assert json_input_columns(f) == []
     for body, message in (
         ("{}", "expected json array at root"),

@@ -442,3 +442,17 @@ def test_d41_an_empty_json_array_is_zero_rows_not_a_parse_error(tmp_path: Path) 
 def test_d41_an_ndjson_file_without_records_is_zero_rows(tmp_path: Path) -> None:
     statuses, _ = _json_run(tmp_path, "\n  \n", "{json_mode: ndjson}")
     assert statuses == ["success"]
+
+
+def test_d41_records_without_keys_still_face_the_missing_columns_policy(
+    tmp_path: Path,
+) -> None:
+    """Codex P0 on #1004: only a file with no records is exempt; `[{}, {}]` is missing every column."""
+    statuses, rows = _json_run(
+        tmp_path,
+        "[{}, {}]",
+        id_column="{name: id, type: int64}",
+        mismatch="mismatch: {missing_columns: reject_file}",
+    )
+    assert statuses == ["rejected"]
+    assert rows is None or rows.height == 0

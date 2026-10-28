@@ -119,18 +119,19 @@ def apply_mismatch(df: pl.DataFrame, plan: MismatchOutcome) -> pl.DataFrame:
     return df
 
 
-def json_input_columns(path: Path, mode: str = "array") -> list[str]:
+def json_input_columns(path: Path, mode: str = "array") -> list[str] | None:
     """Sorted top-level keys of every record, read exactly as `read_json` reads them.
 
     D40: the union over all records, so a key only a later record carries is still an input
-    column (Rust 0.7 probed the first object only). A file without records has no keys (D41).
+    column (Rust 0.7 probed the first object only). `None` for a file without records (D41), which
+    differs from records that carry no keys (`[]`): those are still checked for missing columns.
     """
     if mode not in ("array", "ndjson"):
         raise FloeIoError(
             f"unsupported source.options.json_mode={mode} (allowed: array, ndjson)"
         )
     # ponytail: the file is parsed twice (probe, then read); fold the probe into the read if it costs
-    keys: set[str] = set()
+    keys: set[str] | None = None
     for _, record in json_records(path, mode):
-        keys.update(record)
-    return sorted(keys)
+        keys = (keys or set[str]()) | {str(k) for k in record}
+    return None if keys is None else sorted(keys)
