@@ -217,13 +217,13 @@ class BuildJobSpecTests(unittest.TestCase):
 
     def test_full_spec_with_all_optional_fields(self) -> None:
         runner = _full_runner()
-        spec = build_k8s_job_spec("floe-full-abc", ["ignored"], runner)
+        spec = build_k8s_job_spec("floe-full-abc", ["floe", "run", "--entities", "orders"], runner)
 
         container = spec["spec"]["template"]["spec"]["containers"][0]
 
-        # Command/args overrides from runner definition
+        # Command override replaces the binary; args prefix the rendered arguments
         self.assertEqual(container["command"], ["python"])
-        self.assertEqual(container["args"], ["-m", "floe"])
+        self.assertEqual(container["args"], ["-m", "floe", "run", "--entities", "orders"])
 
         # Service account
         self.assertEqual(
