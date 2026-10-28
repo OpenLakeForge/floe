@@ -330,7 +330,10 @@ def _check_iceberg(
         raise _fail(
             entity, f"sink.accepted.iceberg.catalog references unknown catalog {name}"
         )
-    # Unity and Glue are rejected at parse (D1); the registry checked `warehouse_storage`.
+    # Unity is rejected at parse (D1); the registry checked `warehouse_storage`.
+    if definition.type == "glue" and entity.sink.write_mode.startswith("merge"):
+        # ponytail: merges run through DuckDB, attached to REST catalogs only; attach Glue when a merge needs it
+        raise _fail(entity, f"sink.write_mode={entity.sink.write_mode} requires a rest catalog (glue supports overwrite and append)")  # fmt: skip
     if definition.warehouse_storage is None:
         kind = _storage_type(config, accepted_storage)
         if kind not in ("s3", "gcs"):
@@ -708,7 +711,13 @@ def _check_storages(config: RootConfig) -> None:
                     f"catalogs.definitions name={c.name} warehouse_storage "
                     f"references unknown storage {wh}"
                 )
-            if (kind := _storage_type(config, wh)) not in ("s3", "gcs"):
+            kind = _storage_type(config, wh)
+            if c.type == "glue" and kind != "s3":
+                raise FloeConfigError(
+                    f"catalogs.definitions name={c.name} warehouse_storage must "
+                    f"reference s3 storage for glue catalog (got {kind})"
+                )
+            if kind not in ("s3", "gcs"):
                 raise FloeConfigError(
                     f"catalogs.definitions name={c.name} warehouse_storage must "
                     f"reference s3 or gcs storage for rest catalog (got {kind})"
