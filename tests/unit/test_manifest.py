@@ -467,6 +467,17 @@ def test_profile_execution_shapes_the_runner_and_orchestration(
     assert json.dumps(manifest["runners"]) == json.dumps(runners)  # key order too
 
 
+def test_profile_runner_command_may_be_a_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The manifest and the connectors take a list; the profile took only a string."""
+    profile = K8S.replace("    command: floe\n", "    command: [olf-floe-job, --]\n")
+    (tmp_path / "prod.yml").write_text(profile)
+    assert generate(tmp_path, monkeypatch, "-o", "-", "-p", str(tmp_path / "prod.yml")) == 0  # fmt: skip
+    runner = json.loads(capsys.readouterr().out)["runners"]["definitions"]["default"]
+    assert runner["command"] == ["olf-floe-job", "--"]
+
+
 def test_580_domain_scope_fields_ride_the_k8s_runner_only_when_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

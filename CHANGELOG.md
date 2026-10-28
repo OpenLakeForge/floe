@@ -28,6 +28,9 @@ All notable changes to Floe are documented in this file.
   runner definition only when set, so existing manifests are unchanged. dagster-floe applies them (see
   below); airflow-floe ignores them.
 
+- **A profile's `execution.runner.command` may be a list (#1034)**, e.g. `command: [olf-floe-job, --]`,
+  as the manifest and the connectors already accept. A string still works.
+
 ### dagster-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031).** It

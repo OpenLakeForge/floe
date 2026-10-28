@@ -1407,12 +1407,15 @@ class ConfigSchemaTest(unittest.TestCase):
             "S25 image": runner(image=""),
             "S25 namespace": runner(namespace=""),
             "S26": profile(catalogs={"default": None, "definitions": [{"name": "r", "type": "rest", "uri": "u"}]}),
+            "#1034 command list": runner(command=["olf-floe-job", "--"]),
         }
         for name, document in cases.items():
             with self.subTest(id=name):
                 self.assert_valid(validator, document)
         self.assert_invalid(validator, runner(env_parameters={"A": 1}))
         self.assert_invalid(validator, runner(job_name=1))
+        self.assert_invalid(validator, runner(command=1))
+        self.assert_invalid(validator, runner(command=["floe", 1]))
         self.assert_invalid(validator, runner(timeout_seconds=-1))
         self.assert_invalid(validator, runner(resources={"memory_mb": -1}))
         for name in ("storages", "lineage"):
