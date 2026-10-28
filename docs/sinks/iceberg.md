@@ -121,8 +121,7 @@ Current scope:
 
 - Accepted sink only (`sink.accepted.format: iceberg`), through a REST catalog
 - S3 storage
-- `sink.write_mode`: `overwrite`, `append` and `merge_scd1` (D2); `merge_scd2` passes
-  validation but fails at run time (#654). See [write modes](../write_modes.md).
+- `sink.write_mode`: `overwrite`, `append`, `merge_scd1` and `merge_scd2`. See [write modes](../write_modes.md).
 - Each entity's write is one catalog commit. `overwrite` replaces every existing data file in
   that snapshot; `append` adds files; `merge_scd1` runs a DuckDB `MERGE INTO` (merge-on-read).
 - `append` snapshots carry `floe.run_id` and `floe.input_hash`, so a retry finds a batch a dead

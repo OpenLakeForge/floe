@@ -6,8 +6,7 @@ Supported values:
 - `overwrite` (default): existing output parts are replaced before writing new output.
 - `append`: new output parts are added without deleting existing ones.
 - `merge_scd1`: SCD1 upsert keyed by `schema.primary_key` on Iceberg accepted sinks (D2).
-- `merge_scd2`: SCD2 merge keyed by `schema.primary_key`. `floe validate` accepts it on Iceberg
-  sinks, but `floe run` does not support it yet and fails the entity (#654).
+- `merge_scd2`: SCD2 merge keyed by `schema.primary_key` on Iceberg accepted sinks.
 
 Parquet accepted sinks support `overwrite` and `append` only. The Delta and DuckDB sinks were
 dropped in 0.8 (D1).
@@ -48,10 +47,12 @@ Each entity's accepted rows land in one Iceberg catalog commit.
 
 ## `merge_scd2` semantics
 
-Not runnable on Iceberg in 0.8 (#654): validation accepts the mode and its
-`sink.accepted.merge.scd2` options (system column names `__floe_is_current`,
-`__floe_valid_from`, `__floe_valid_to` by default; custom names must be non-empty, unique, and
-must not collide with schema columns), and `floe run` fails the entity.
+Runs on Iceberg accepted sinks through a DuckDB `MERGE`. The table carries three system columns,
+named by `sink.accepted.merge.scd2` (`__floe_is_current`, `__floe_valid_from`, `__floe_valid_to` by
+default; custom names must be non-empty, unique, and must not collide with schema columns). A changed
+row closes its current version (`valid_to` set, `is_current` false) and inserts the new one as current;
+unchanged rows are left alone. `compare_columns` and `ignore_columns` choose which columns count as a
+change. The report adds `closed_count` and `unchanged_count` to the merge metrics.
 
 ## Rejected output behavior
 

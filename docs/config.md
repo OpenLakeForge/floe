@@ -378,14 +378,14 @@ state file shape, and CAS behavior.
     - requires `sink.accepted.format: iceberg`
     - requires non-empty `schema.primary_key`
     - optional merge behavior can be configured in `sink.accepted.merge`
-    - source rows must be unique on `schema.primary_key` (duplicates abort the entity merge)
+    - source rows must be unique on `schema.primary_key`: duplicates of the key are rejected before the merge, even under `policy.severity: warn`
   - `merge_scd2`: history mode keyed by `schema.primary_key`.
     - closes changed current rows and inserts new current versions
-    - `floe validate` accepts it with `sink.accepted.format: iceberg`, but `floe run` does not
-      support it yet and fails the entity (#654).
+    - requires `sink.accepted.format: iceberg`; the table carries the SCD2 system columns
+      (`sink.accepted.merge.scd2`), and the report adds `closed_count` and `unchanged_count`
     - requires non-empty `schema.primary_key`
     - optional merge behavior can be configured in `sink.accepted.merge`
-    - source rows must be unique on `schema.primary_key` (duplicates abort the entity merge)
+    - source rows must be unique on `schema.primary_key`: duplicates of the key are rejected before the merge, even under `policy.severity: warn`
   - Applies to both accepted and rejected outputs.
 - `accepted` (required)
   - `format`: `parquet` or `iceberg`.
@@ -462,8 +462,8 @@ state file shape, and CAS behavior.
     - Runtime support is Iceberg-only and additive-only (D13).
     - `mode: add_columns` adds new source columns to the Iceberg table as nullable columns.
     - Unsupported changes such as drops, renames, type changes, and non-nullable-to-nullable drift still fail the write.
-    - When enabled, Floe audits the outcome in the entity report `schema_evolution` block and emits a `schema_evolution_applied` lifecycle event when columns are added.
-- `rejected` (required when `policy.severity: reject`)
+    - The columns are added, but 0.8 does not report it yet: the entity report's `schema_evolution` block stays `applied: false` and no `schema_evolution_applied` event is emitted (#994).
+- `rejected` (required when `policy.severity` is `reject` or `abort`; D39)
   - `format`: `csv` (v0.1).
 - `path`: output directory for rejected rows.
   - Supports `{{var}}` templating (see "Templating & domains").

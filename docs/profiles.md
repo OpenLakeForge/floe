@@ -1,7 +1,7 @@
 # Environment Profiles
 
 Environment Profiles let you define per-environment configuration values
-(variables, runner settings, validation strictness) in a standalone YAML file.
+(variables, runner settings) in a standalone YAML file.
 Profile variables feed into the same `{{VAR}}` placeholder substitution used in
 Floe config files, giving you a clean separation between logic (the config) and
 environment-specific values (the profile).
