@@ -73,5 +73,4 @@ CLI reference, including `manifest generate`, `add-entity`, `state inspect`,
   sink exposes them cheaply and reliably.
 - `floe maintain` expires old Iceberg snapshots and removes orphan files, as a
   separate command run after ingestion; compaction is experimental.
-- Iceberg supports additive schema evolution (`add_columns`) and `merge_scd1`;
-  `merge_scd2` is not runnable yet (#654).
+- Iceberg supports additive schema evolution (`add_columns`), `merge_scd1` and `merge_scd2`.
