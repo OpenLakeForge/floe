@@ -36,6 +36,8 @@ All notable changes to Floe are documented in this file.
   - `schema_evolution.mode=add_columns` on a non-Iceberg sink now says it requires `sink.accepted.format=iceberg`.
 - **`floe.run` posts OpenLineage events (#989)**, as `floe run -c` and `floe.run_manifest` already do,
   when the config has a `lineage` block.
+## Floe (unreleased)
+
 - **`floe.build_manifest(config_path, profile_path=None, ...)` (#986).** Returns, as a dict, the
   manifest `floe manifest generate` writes for the same config and profile (deterministic by
   default). `manifest generate` now calls it.
@@ -57,6 +59,14 @@ targeted by this release.
   `schema: "floe.manifest.v1"` field that 0.8 manifests no longer carry. Other versions are
   rejected; regenerate them with a supported Floe release. `MANIFEST_SCHEMA` is replaced by
   `SUPPORTED_SPEC_VERSIONS`, and `AirflowManifest.schema` by `AirflowManifest.spec_version`.
+## dagster-floe (unreleased)
+
+- **Config mode (#986).** `load_floe_assets`, `build_definitions` and `build_job_run_config_from_manifest` accept
+  `config_path=` (and `profile_path=`) in place of `manifest_path=`. The manifest is built in memory with
+  `floe.build_manifest` (needs the `floe` extra), and runs take `floe run -c <config> [-p <profile>]` in place of
+  `--manifest <uri>`. `manifest_path=` is unchanged.
+
+## airflow-floe (unreleased)
 
 - **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest
   (#511).** Only entities whose `domain` is listed land in the context; an unknown domain

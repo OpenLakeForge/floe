@@ -430,3 +430,11 @@ def test_public_api_exports_new_helpers() -> None:
     import floe_dagster
     assert hasattr(floe_dagster, "build_job_run_config_from_manifest")
     assert hasattr(floe_dagster, "resolve_execution_config")
+
+
+def test_config_mode_without_the_floe_core_fails_clearly() -> None:
+    import sys
+    from unittest.mock import patch
+
+    with patch.dict(sys.modules, {"floe": None}), pytest.raises(ImportError, match=r"dagster-floe\[floe\]"):
+        build_definitions(config_path="config.yml", runner=_NoopRunner())
