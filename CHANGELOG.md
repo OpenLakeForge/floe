@@ -31,6 +31,10 @@ All notable changes to Floe are documented in this file.
 - **A profile's `execution.runner.command` may be a list (#1034)**, e.g. `command: [olf-floe-job, --]`,
   as the manifest and the connectors already accept. A string still works.
 
+- **`-p s3://...`.** `-p` / `--profile` and `profile_path=` accept an `s3://` URI, read as an `s3://` manifest is,
+  so a container run no longer needs the profile file copied in (#1025). `floe manifest generate -p s3://...`
+  records the URI as `profile_uri`. `-c` still takes a local path.
+
 ### dagster-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031).** It

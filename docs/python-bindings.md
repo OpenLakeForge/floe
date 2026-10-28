@@ -146,7 +146,7 @@ All events have an `event` key (string discriminator) and `ts_ms` (Unix timestam
 Profiles let you override config variables, storage credentials, or lineage settings without editing the YAML. There are two ways to provide them:
 
 ```python
-# Option 1: load a profile YAML file
+# Option 1: load a profile YAML file (a local path or an s3:// URI)
 floe.run("orders.yml", profile_path="prod.yml")
 
 # Option 2: pass overrides inline (useful in notebooks and CI)

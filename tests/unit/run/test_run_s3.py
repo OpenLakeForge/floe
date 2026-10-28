@@ -12,8 +12,8 @@ import polars as pl
 import pytest
 
 import floe
-import floe.manifest_run as manifest_run_module
 import floe.storage.resolve as resolve_module
+import floe.storage.s3 as s3_module
 from floe._cli import main
 from floe.config.parse import parse_config
 from floe.errors import FloeConfigError, FloeRunError
@@ -103,7 +103,7 @@ def s3(monkeypatch: pytest.MonkeyPatch) -> MemS3:
         return store
 
     monkeypatch.setattr(resolve_module, "S3Client", client, raising=False)
-    monkeypatch.setattr(manifest_run_module, "S3Client", client)
+    monkeypatch.setattr(s3_module, "S3Client", client)
     return store
 
 

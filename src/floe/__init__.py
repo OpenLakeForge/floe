@@ -132,7 +132,7 @@ def _profile(
     if path is None:
         return None if variables is None else ProfileConfig("", {}, variables, None, None, None)  # fmt: skip
     try:
-        profile = parse_profile(Path(path))
+        profile = parse_profile(path)
     except FloeError as e:
         raise FloeConfigError(f"failed to load profile {_debug(path)}: {e}") from e
     return ProfileConfig(profile.name, profile.runner, profile.variables | (variables or {}),
@@ -225,10 +225,11 @@ def build_manifest(
 ) -> dict[str, Any]:
     """What `floe manifest generate` writes; `manifest_uri` is a remote `-o` (where it is deployed)."""
     from floe._cli import _load as _cli_load  # pyright: ignore[reportPrivateUsage] -- the CLI's config loading, so both build the same manifest
+    from floe._cli import _profile as _cli_profile  # pyright: ignore[reportPrivateUsage] -- as above
     from floe._cli import _realpath  # pyright: ignore[reportPrivateUsage] -- as above
 
     path = _realpath(config_path)
-    profile = parse_profile(_realpath(profile_path)) if profile_path else None
+    profile = _cli_profile(profile_path)
     root = _cli_load(path, profile)
     validate_config(root)
     options = _manifest.Options(
