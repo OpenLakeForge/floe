@@ -6,6 +6,9 @@ All notable changes to Floe are documented in this file.
 
 ### dagster-floe
 
+- **`ManifestEntity` exposes `source_resource` (#1044)**, the entity's `source.resource`, next to
+  `source_ref`, so a `source_key_fn` can build `<source>/<resource>` from the manifest.
+
 - **Breaking: rejected assets are keyed `<domain>/rejected/<table>` (#1046).** They were
   `<domain>/<table>_rejected`, which collided with a real table named `<table>_rejected`. Upgrade:
   the history of the rejected assets restarts under the new key, and any selection, sensor or
