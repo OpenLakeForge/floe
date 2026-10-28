@@ -23,7 +23,7 @@ from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import run_with_lineage
 from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, ORPHAN_DELAY_DAYS, maintain
 from floe.manifest_run import load_manifest, shown
-from floe.run import select_entities
+from floe.run import domain_entities, select_entities
 from floe.run.entity import state_uri
 from floe.state import dump_state, read_state, reset
 from floe.storage.paths import normalize_local_path, parse_s3_uri
@@ -88,6 +88,14 @@ def _validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _selectors(root: RootConfig, args: argparse.Namespace) -> list[str]:
+    if not args.domain:
+        return args.entities
+    if args.entities:
+        raise FloeConfigError("--domain cannot be combined with --entities")
+    return domain_entities(root, args.domain)
+
+
 def _run(args: argparse.Namespace) -> int:
     run_id = args.run_id or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S.%fZ")
     console = Console(args.log_format, run_id)
@@ -120,7 +128,7 @@ def _run(args: argparse.Namespace) -> int:
     try:
         outcome = run_with_lineage(
             path, root, observed, job, console, validate=args.manifest is None,
-            run_id=run_id, entities=args.entities, dry_run=args.dry_run, full_refresh=args.full_refresh,
+            run_id=run_id, entities=_selectors(root, args), dry_run=args.dry_run, full_refresh=args.full_refresh,
             config_uri=config_uri,
         )  # fmt: skip
     except FloeError as e:
@@ -234,6 +242,7 @@ def _parser() -> argparse.ArgumentParser:
     run_source = run.add_mutually_exclusive_group()
     run_source.add_argument("-c", "--config")
     run_source.add_argument("--manifest")
+    run.add_argument("--domain", action="extend", type=lambda s: s.split(","), default=[])  # fmt: skip
     run.add_argument("--run-id")
     run.add_argument("-F", "--full-refresh", action="store_true")
     run.add_argument("--dry-run", action="store_true")
