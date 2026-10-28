@@ -18,6 +18,11 @@ All notable changes to Floe are documented in this file.
   `floe_<name>__<domain>__...` when the config changes; without it the name derives from the config's path and
   checksum, as before. Passing it with `manifest_path=` raises `ValueError`.
 
+- **`job_scope: domain` Jobs run `floe run --domain <d>` for a whole domain (#1036).** When the selected
+  entities are exactly every entity of the domain in the manifest, the Job sends `--domain <d>` in place of
+  `--entities a,b,c`; a subset keeps `--entities`. It needs Floe 0.8.1: the `floe` extra now installs
+  `floe-python>=0.8.1,<0.9`, and a `kubernetes_job` image must be 0.8.1 or newer.
+
 ## v0.8.0
 
 Floe 0.8 is the Python core. `pip install floe-python` installs the `floe` command (a pure-Python
@@ -76,13 +81,6 @@ Every intentional behaviour change from 0.7 is numbered (D1–D41) in the migrat
 - **`floe.build_manifest(config_path, profile_path=None, ...)` (#986).** Returns, as a dict, the
   manifest `floe manifest generate` writes for the same config and profile (deterministic by
   default). `manifest generate` now calls it.
-
-## dagster-floe (unreleased)
-
-- **`job_scope: domain` Jobs run `floe run --domain <d>` for a whole domain (#1036).** When the selected
-  entities are exactly every entity of the domain in the manifest, the Job sends `--domain <d>` in place of
-  `--entities a,b,c`; a subset keeps `--entities`. It needs Floe 0.8.1: the `floe` extra now installs
-  `floe-python>=0.8.1,<0.9`, and a `kubernetes_job` image must be 0.8.1 or newer.
 
 ## dagster-floe v0.3.0
 
