@@ -150,6 +150,15 @@ def test_multi_asset_rejected_key_present_when_policy_is_reject() -> None:
     assert rejected_key in asset_def.keys
 
 
+def test_multi_asset_outputs_carry_entity_and_output_metadata() -> None:
+    asset_def, entity = _get_asset_def(FIXTURE, "employees")
+    by_output = {spec.metadata["floe/output"]: spec for spec in asset_def.specs}
+    assert set(by_output) == {"accepted", "rejected"}
+    assert all(spec.metadata["floe/entity"] == entity.name for spec in by_output.values())
+    assert by_output["accepted"].key == AssetKey(entity.asset_key)
+    assert by_output["rejected"].key == AssetKey(entity.asset_key[:-1] + [entity.asset_key[-1] + "_rejected"])
+
+
 def test_multi_asset_no_rejected_key_when_policy_is_warn() -> None:
     """orders has policy_severity='warn' → no rejected output (rows discarded silently)."""
     asset_def, entity = _get_asset_def(FIXTURE, "orders")

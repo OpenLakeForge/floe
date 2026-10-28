@@ -126,6 +126,23 @@ def test_domain_scope_failed_entity_fails_alone_and_the_ones_before_it_materiali
     assert "entities returns; not run: refunds" in message
 
 
+def test_domain_scope_outputs_carry_entity_and_output_metadata(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path)
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    for entity in payload["entities"]:
+        entity["policy_severity"] = "reject"
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    assets, _, _ = build_floe_asset_defs(manifest_path=str(manifest), runner=LocalRunner())
+    [domain_asset] = assets
+    seen = {(spec.metadata["floe/entity"], spec.metadata["floe/output"]): spec.key for spec in domain_asset.specs}
+    assert seen == {
+        (name, output): AssetKey(["sales", name + suffix])
+        for name in NAMES
+        for output, suffix in (("accepted", ""), ("rejected", "_rejected"))
+    }
+
+
 def test_entity_scope_is_unchanged_when_job_scope_is_unset(tmp_path: Path) -> None:
     result, jobs_api = _run(tmp_path, {"orders": "success"}, job_scope=None, selection=[AssetKey(["sales", "orders"])])
 
