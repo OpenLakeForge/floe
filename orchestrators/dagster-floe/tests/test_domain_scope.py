@@ -137,9 +137,9 @@ def test_domain_scope_outputs_carry_entity_and_output_metadata(tmp_path: Path) -
     [domain_asset] = assets
     seen = {(spec.metadata["floe/entity"], spec.metadata["floe/output"]): spec.key for spec in domain_asset.specs}
     assert seen == {
-        (name, output): AssetKey(["sales", name + suffix])
+        (name, output): AssetKey(["sales", *segment, name])
         for name in NAMES
-        for output, suffix in (("accepted", ""), ("rejected", "_rejected"))
+        for output, segment in (("accepted", []), ("rejected", ["rejected"]))
     }
 
 
