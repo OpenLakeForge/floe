@@ -1,10 +1,12 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from floe_dagster.manifest import (
     DagsterManifest,
+    entity_table,
     load_manifest,
     render_execution_args,
     resolve_config_uri,
@@ -195,6 +197,22 @@ def test_entity_policy_severity_defaults_to_none_when_absent():
 
     manifest = DagsterManifest.from_dict(payload)
     assert manifest.entities[0].policy_severity is None
+
+
+def test_entity_table_expands_the_domain_token_of_a_glue_database():
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    glue = {"name": "glue", "type_config": {"type": "glue", "region": "eu-west-1", "database": "dev_{domain}_silver"}}
+    payload["catalogs"] = {"default": "glue", "definitions": [glue]}
+    manifest = DagsterManifest.from_dict(payload)
+    entity = manifest.entities[0]
+
+    def table(domain: str | None, namespace: str | None) -> str | None:
+        iceberg = {"table": "orders", **({"namespace": namespace} if namespace else {})}
+        return entity_table(manifest, replace(entity, domain=domain, iceberg=iceberg))
+
+    assert table("Sales", None) == "glue.dev_sales_silver.orders"
+    assert table("sales", "Finance EU") == "glue.dev_finance_eu_silver.orders"
 
 
 def test_manifest_schema_accepts_databricks_runner_fields(tmp_path: Path):

@@ -67,6 +67,73 @@ def test_glue_target_uses_the_database_and_the_warehouse_prefix(
     assert target.location == "s3://silver-bucket/warehouse/iceberg/sales/orders"
 
 
+ENTITY = """\
+  - name: {name}
+    {domain}
+    source: {{format: csv, path: in/{name}.csv, storage: silver}}
+    sink:
+      accepted:
+        format: iceberg
+        path: {name}
+        iceberg: {{catalog: glue{namespace}}}
+    policy: {{severity: warn}}
+    schema:
+      primary_key: [id]
+      columns:
+        - {{name: id, type: string, nullable: false}}
+"""
+
+
+def per_domain_config(tmp_path: Path, database: str, *entities: tuple[str, str | None, str | None]) -> Path:  # fmt: skip
+    """`entities` are (name, domain, namespace); the Glue `database` is the given template."""
+    head = CONFIG.split("entities:")[0].format(mode="").replace("database: sales_silver", f"database: {database!r}")  # fmt: skip
+    body = "".join(
+        ENTITY.format(name=n, domain=f"domain: {d}" if d else "", namespace=f", namespace: {ns}" if ns else "")
+        for n, d, ns in entities
+    )  # fmt: skip
+    path = tmp_path / "floe.yml"
+    path.write_text(
+        head
+        + "domains:\n  - {name: sales, incoming_dir: in/sales}\n  - {name: finance, incoming_dir: in/finance}\nentities:\n"
+        + body
+    )
+    return path
+
+
+def targets(path: Path) -> list[tuple[str, str]]:
+    root = parse_config(path)
+    validate_config(root)
+    found = [resolve_target(root.storages, root.catalogs, path.parent, e) for e in root.entities]  # fmt: skip
+    return [(t.namespace, t.location) for t in found]
+
+
+def test_glue_database_domain_token_expands_per_entity(tmp_path: Path) -> None:
+    path = per_domain_config(tmp_path, "dev_{domain}", ("orders", "sales", None), ("ledger", "finance", None))  # fmt: skip
+    assert targets(path) == [
+        ("dev_sales", "s3://silver-bucket/warehouse/iceberg/sales/orders"),
+        ("dev_finance", "s3://silver-bucket/warehouse/iceberg/finance/ledger"),
+    ]  # the location keeps the plain namespace, never the template
+
+
+def test_glue_database_domain_token_uses_the_namespace_over_the_domain(tmp_path: Path) -> None:  # fmt: skip
+    path = per_domain_config(tmp_path, "dev_{domain}_silver", ("orders", "sales", "Sales EU"))  # fmt: skip
+    assert targets(path) == [("dev_sales_eu_silver", "s3://silver-bucket/warehouse/iceberg/sales_eu/orders")]  # fmt: skip
+
+
+def test_glue_database_without_the_token_is_unchanged(tmp_path: Path) -> None:
+    path = per_domain_config(tmp_path, "fixed", ("orders", "sales", None), ("ledger", "finance", None))  # fmt: skip
+    assert [db for db, _ in targets(path)] == ["fixed", "fixed"]
+
+
+def test_glue_database_domain_token_needs_a_namespace_or_domain(tmp_path: Path) -> None:  # fmt: skip
+    path = per_domain_config(tmp_path, "dev_{domain}", ("orders", None, None))
+    with pytest.raises(FloeConfigError) as err:
+        validate_config(parse_config(path))
+    assert str(err.value) == (
+        "entity.name=orders sink.accepted.iceberg.namespace or domain is required for catalog glue database containing {domain}"
+    )
+
+
 def test_glue_catalog_opens_through_pyiceberg(tmp_path: Path) -> None:
     root = parse_config(config(tmp_path))
     assert root.catalogs is not None

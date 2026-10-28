@@ -330,6 +330,8 @@ def _check_iceberg(
         raise _fail(
             entity, f"sink.accepted.iceberg.catalog references unknown catalog {name}"
         )
+    if definition.type == "glue" and "{domain}" in (definition.database or "") and not (iceberg.namespace or entity.domain):  # fmt: skip
+        raise _fail(entity, f"sink.accepted.iceberg.namespace or domain is required for catalog {name} database containing {{domain}}")  # fmt: skip
     # Unity is rejected at parse (D1); the registry checked `warehouse_storage`.
     if definition.type == "glue" and entity.sink.write_mode.startswith("merge"):
         # ponytail: merges run through DuckDB, attached to REST catalogs only; attach Glue when a merge needs it
