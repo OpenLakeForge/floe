@@ -562,6 +562,16 @@ def test_table_tag_default_table_is_the_unqualified_entity_name(tmp_path) -> Non
     assert set(_table_tags(path).values()) == {"rest.sales.orders"}
 
 
+def test_glue_table_tag_uses_the_database_the_run_writes(tmp_path) -> None:
+    glue = {"name": "glue", "type_config": {"type": "glue", "region": "eu-west-1", "database": "sales_silver"}}
+    path = _iceberg_manifest(
+        tmp_path,
+        [("a", "sales", {"namespace": "sales", "table": "orders"}), ("b", "other", {"namespace": "other", "table": "orders"})],
+        catalogs={"default": "glue", "definitions": [glue]},
+    )
+    assert set(_table_tags(path).values()) == {"glue.sales_silver.orders"}
+
+
 def test_non_iceberg_entity_has_no_table_tag() -> None:
     asset_def, _entity = _get_asset_def(FIXTURE, "employees")
     assert "floe/table" not in asset_def.op.tags

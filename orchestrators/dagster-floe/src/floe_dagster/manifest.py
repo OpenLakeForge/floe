@@ -419,6 +419,10 @@ def entity_table(manifest: DagsterManifest, entity: ManifestEntity) -> str | Non
     if not catalog:
         return None
     namespace = entity.iceberg.get("namespace") or entity.domain or "default"
+    definitions = (manifest.catalogs or {}).get("definitions") or []
+    config = next((d.get("type_config") or {} for d in definitions if d.get("name") == catalog), {})
+    if config.get("type") == "glue":  # the run writes the Glue database; the namespace only names the location
+        namespace = config.get("database") or namespace
     table = entity.iceberg.get("table") or entity.asset_key[-1]  # the run's unqualified name
     return ".".join(_ident(part) for part in (catalog, namespace, table))
 
