@@ -2,6 +2,13 @@
 
 All notable changes to Floe are documented in this file.
 
+## Unreleased
+
+- **dagster-floe: `source_key_fn` picks each entity's upstream source key (#1020).** `load_floe_assets` and
+  `build_definitions` accept `source_key_fn=lambda entity: AssetKey([...])` (or `None` for the default key).
+  Entities of one named source can depend on different upstream assets, e.g. `crm/orders` and `crm/accounts`,
+  and Dagster still orders each after its upstream. No `SourceAsset` is registered for a key you choose.
+
 ## v0.8.0
 
 Floe 0.8 is the Python core. `pip install floe-python` installs the `floe` command (a pure-Python

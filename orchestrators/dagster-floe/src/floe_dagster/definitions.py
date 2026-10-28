@@ -7,7 +7,7 @@ from typing import Any, Iterable
 
 from dagster import AssetSelection, Definitions, define_asset_job
 
-from .assets import _has_rejected_asset, _rejected_key, build_floe_asset_defs
+from .assets import SourceKeyFn, _has_rejected_asset, _rejected_key, build_floe_asset_defs
 from .manifest import ManifestExecution, load_manifest_source
 from .runner import InProcessRunner, LocalRunner, Runner
 
@@ -54,8 +54,12 @@ def build_definitions(
     job_name: str | None = None,
     config_path: str | None = None,
     profile_path: str | None = None,
+    source_key_fn: SourceKeyFn | None = None,
 ) -> Definitions:
-    """From a manifest file, or (`config_path`, `floe` extra) a manifest built in memory."""
+    """From a manifest file, or (`config_path`, `floe` extra) a manifest built in memory.
+
+    `source_key_fn` picks each entity's upstream source key, see `load_floe_assets`.
+    """
     return _build_definitions(
         sources=[{"manifest_path": manifest_path, "config_path": config_path, "profile_path": profile_path}],
         manifest_uri=manifest_uri,
@@ -63,6 +67,7 @@ def build_definitions(
         runner=runner,
         with_job=with_job,
         job_name=job_name,
+        source_key_fn=source_key_fn,
     )
 
 
@@ -122,6 +127,7 @@ def _build_definitions(
     runner: Runner | None,
     with_job: bool,
     job_name: str | None,
+    source_key_fn: SourceKeyFn | None = None,
 ) -> Definitions:
     if job_name is not None and len(sources) != 1:
         raise ValueError("job_name override is only supported for a single manifest")
@@ -143,6 +149,7 @@ def _build_definitions(
             manifest_uri=manifest_uri,
             runner=runner_impl,
             entities=selected_entities,
+            source_key_fn=source_key_fn,
         )
         assets_defs.extend(manifest_assets)
         assets_defs.extend(manifest_source_assets)

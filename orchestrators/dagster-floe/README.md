@@ -85,6 +85,25 @@ defs = build_definitions(config_path="/app/floe.yml", profile_path="/app/prod.ym
   place of `--manifest <uri>`, both in process and as a local subprocess or `kubernetes_job` pod. The config
   and profile paths must therefore exist where the run happens; for a `kubernetes_job`, that's the run image.
 
+## Choose each entity's upstream key
+
+Entities of a source named in the manifest `sources` index share one `sources/<project>/<source>` dependency.
+Pass `source_key_fn` to `load_floe_assets` or `build_definitions` to give each entity its own upstream asset
+instead (for example, to depend on `crm/orders` and `crm/accounts` in domain mode):
+
+```python
+from dagster import AssetKey
+
+defs = build_definitions(
+    manifest_path="manifests/sales.json",
+    source_key_fn=lambda entity: AssetKey(["crm", entity.name]),  # None keeps the default key
+)
+```
+
+The function receives each manifest entity and returns an `AssetKey`, or `None` for the default. The key is a
+dependency of the entity's asset like the default one, so Dagster still orders the asset after its upstream.
+You own the asset behind a key you choose: Floe registers no `SourceAsset` for it, so define it in your code.
+
 ## Run the example (repo-only)
 
 ```bash
