@@ -110,3 +110,21 @@ def test_errors_use_rust_messages(
         bad.write(f"{base}/k", b"")
     with pytest.raises(FloeStorageError, match="^s3 list objects failed for bucket "):
         bad.list("")
+
+
+def test_profile_is_read_from_s3(
+    s3: S3Client, base: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1025: `-p s3://...` reads the profile through the environment's endpoint, as a manifest is."""
+    from floe.config.profile import parse_profile
+    from floe.errors import FloeIoError
+
+    monkeypatch.setenv("AWS_ENDPOINT_URL_S3", os.environ["FLOE_S3_ENDPOINT"])
+    monkeypatch.setenv("AWS_S3_FORCE_PATH_STYLE", "true")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    uri = f"{base}/profiles/prod.yml"
+    s3.write(uri, b"apiVersion: floe/v1\nkind: EnvironmentProfile\nmetadata: {name: prod}\nvariables: {ZONE: bronze}\n")  # fmt: skip
+    profile = parse_profile(uri)
+    assert (profile.name, profile.variables) == ("prod", {"ZONE": "bronze"})
+    with pytest.raises(FloeIoError, match="^profile not found: "):
+        parse_profile(f"{base}/profiles/absent.yml")
