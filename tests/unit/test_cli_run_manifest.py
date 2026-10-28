@@ -1,5 +1,6 @@
 """`floe run --manifest`: a run from a generated manifest matches the config run (Rust: `run_with_manifest_path`)."""
 
+import hmac
 import json
 import re
 import shutil
@@ -190,6 +191,28 @@ def test_1008_a_manifest_generated_outside_the_config_directory_runs(
     assert list((work / "out/accepted/orders").glob("*.parquet"))
     summary = json.loads((work / "report/spike/run_r/run.summary.json").read_text())
     assert summary["config"]["path"] == "build/m.json"
+
+
+def test_an_env_pii_hash_key_hashes_the_same_from_the_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1006: the `${PII_KEY}` reference reaches the manifest, so both runs use the same HMAC."""
+    pii = '    pii: {columns: [{name: name, strategy: hash, key: "${PII_KEY}"}]}\n'
+    config = NAMED.replace("report:", pii + "report:").replace(
+        "header: true", 'header: true, separator: ","'
+    )
+    by_config, by_manifest = copy_case("severity_warn", tmp_path / "c"), copy_case("severity_warn", tmp_path / "m")  # fmt: skip
+    for work in (by_config, by_manifest):
+        (work / "config.yml").write_text(config)
+    monkeypatch.setenv("PII_KEY", "k")
+    monkeypatch.chdir(by_config)
+    assert floe(monkeypatch, "run", "-c", "config.yml", "--run-id", "r") == 0
+    monkeypatch.chdir(by_manifest)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 0
+    expected = outputs(by_config)["out/accepted/orders"]
+    assert outputs(by_manifest)["out/accepted/orders"] == expected
+    assert expected[0]["name"] == hmac.digest(b"k", b"a", "sha256").hex()
 
 
 def test_manifest_paths_resolve_against_its_own_directory_and_entities_select(

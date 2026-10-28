@@ -4,10 +4,16 @@ All notable changes to Floe are documented in this file.
 
 ## floe (unreleased)
 
+- **`floe validate` requires `sink.rejected` for `policy.severity: abort` (D39, #1007).** Abort writes the
+  failing file to the rejected sink, so a config without one could only fail at its first violation, as in
+  Rust 0.7. It is now refused up front with the same message as `reject`.
 - **`floe run --manifest` and `floe.run_manifest` take an `s3://` manifest (#1003)**, and write the run
   reports under an `s3://` `report_base_uri`, as Floe 0.7 did. Relative local paths in a remote manifest
   resolve under its `work_root`, else `FLOE_WORK_ROOT`, else the current directory (`/work` for an `image`
   manifest).
+- **`floe manifest generate` refuses a literal PII hash key (#1006).** It used to write `key: null`, so
+  `floe run --manifest` hashed with unsalted SHA-256 instead of the config run's HMAC. Set the key to a
+  `${ENV_VAR}` reference; the manifest keeps it and both runs produce the same hashes.
 - **Validation messages no longer point to Delta (#995).** Wording only:
   - `sink.accepted.merge` on a format without merge now says it requires `sink.accepted.format=iceberg`;
   - `sink.accepted.partition_by` now says it is not supported in 0.8 and points to `sink.accepted.partition_spec`
@@ -30,6 +36,8 @@ All notable changes to Floe are documented in this file.
   - `schema_evolution.mode=add_columns` on a non-Iceberg sink now says it requires `sink.accepted.format=iceberg`.
 - **`floe.run` posts OpenLineage events (#989)**, as `floe run -c` and `floe.run_manifest` already do,
   when the config has a `lineage` block.
+## Floe (unreleased)
+
 - **`floe.build_manifest(config_path, profile_path=None, ...)` (#986).** Returns, as a dict, the
   manifest `floe manifest generate` writes for the same config and profile (deterministic by
   default). `manifest generate` now calls it.
@@ -51,6 +59,14 @@ targeted by this release.
   `schema: "floe.manifest.v1"` field that 0.8 manifests no longer carry. Other versions are
   rejected; regenerate them with a supported Floe release. `MANIFEST_SCHEMA` is replaced by
   `SUPPORTED_SPEC_VERSIONS`, and `AirflowManifest.schema` by `AirflowManifest.spec_version`.
+## dagster-floe (unreleased)
+
+- **Config mode (#986).** `load_floe_assets`, `build_definitions` and `build_job_run_config_from_manifest` accept
+  `config_path=` (and `profile_path=`) in place of `manifest_path=`. The manifest is built in memory with
+  `floe.build_manifest` (needs the `floe` extra), and runs take `floe run -c <config> [-p <profile>]` in place of
+  `--manifest <uri>`. `manifest_path=` is unchanged.
+
+## airflow-floe (unreleased)
 
 - **`build_dag_manifest_context(domains=[...])` loads one domain slice of a project manifest
   (#511).** Only entities whose `domain` is listed land in the context; an unknown domain

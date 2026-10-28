@@ -275,7 +275,8 @@ For production deployments where the manifest is uploaded to object storage and 
 
 ### Remote config and profile
 
-`-c` and `-p` accept remote URIs directly — the same scheme support as `floe run`:
+`-c` and `-p` take local paths only in 0.8 (copy a remote config locally first). The
+example below shows the intended remote form, which is not supported yet:
 
 ```bash
 floe manifest generate \
@@ -284,7 +285,7 @@ floe manifest generate \
   --output manifests/sales.manifest.json
 ```
 
-The file is downloaded to a temp directory for generation. The manifest records the URI as `config_uri` and `profile_uri`, so the contract already points at the deployed source.
+When this lands, the manifest will record the URIs as `config_uri` and `profile_uri`.
 
 ### `--output` accepts remote URIs — writes and embeds in one step
 
@@ -387,3 +388,14 @@ If the diff is non-empty, the committed manifest is stale. Commit manifests in t
 - [Dagster connector](../orchestrators/dagster-floe/README.md)
 - [Airflow connector](../orchestrators/airflow-floe/README.md)
 - [Full manifest JSON Schema](../orchestrators/schemas/floe.manifest.schema.json)
+
+## Known limits of manifest runs in 0.8
+
+- `report.formatter` is not carried in the manifest, so `floe run --manifest` writes the rejected
+  rows' `__floe_errors` as JSON even when the config sets `csv` or `text` (as in Floe 0.7). Run
+  with `-c` if you need another formatter (#1009).
+- Entity `metadata` is reduced to its `data_product`, `domain` and `owner` tags in the manifest, so
+  the run report's entity block carries no other metadata (#1009).
+- PII `hash` keys must be `${ENV_VAR}` references: a manifest never stores secrets, so
+  `manifest generate` refuses a literal key (#1006).
+

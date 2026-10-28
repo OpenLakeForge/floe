@@ -183,7 +183,7 @@ _IN_PROCESS_LOCK = threading.Lock()
 
 
 class InProcessRunner(LocalRunner):
-    """Runs a local `floe run --manifest` through the `floe` Python API; anything else as LocalRunner."""
+    """Runs a local `floe run --manifest` (or `-c [-p]`) through the `floe` Python API; anything else as LocalRunner."""
 
     def run_floe_entity(
         self,
@@ -211,15 +211,18 @@ class InProcessRunner(LocalRunner):
         # killed, gets its own env); an in-process cancel/timeout lifts the timeout case.
         known = {"--log-format", "json", "--quiet", "--entities", entity, "--full-refresh"}
         known |= {"--run-id", run_id} if run_id else set()
+        # config mode (`manifest_from_config`): `run -c <config> [-p <profile>]`
+        profile = args[4] if args[1:2] == ["-c"] and args[3:4] == ["-p"] else None
+        head = 5 if profile else 3
         if (
             self._timeout is not None
             or execution is None
             or execution.defaults.env
             or execution.defaults.workdir
             or (runner_definition is not None and runner_definition.runner_type != "local_process")
-            or args[:2] != ["run", "--manifest"]
-            or len(args) < 3
-            or not set(args[3:]) <= known
+            or args[:2] not in (["run", "--manifest"], ["run", "-c"])
+            or len(args) < head
+            or not set(args[head:]) <= known
             or args.count("--entities") != 1
             or args[args.index("--entities") + 1 :][:1] != [entity]  # it selects only `entity`
         ):
@@ -235,9 +238,14 @@ class InProcessRunner(LocalRunner):
         with _IN_PROCESS_LOCK, patch.dict(os.environ, job):
             floe.set_observer(events.append)
             try:
-                outcome = floe.run_manifest(
-                    args[2], entities=[entity], run_id=run_id,
-                    full_refresh="--full-refresh" in args,
+                full_refresh = "--full-refresh" in args
+                outcome = (
+                    floe.run_manifest(args[2], entities=[entity], run_id=run_id, full_refresh=full_refresh)
+                    if args[1] == "--manifest"
+                    else floe.run(
+                        args[2], entities=[entity], run_id=run_id,
+                        full_refresh=full_refresh, profile_path=profile,
+                    )
                 )  # fmt: skip
                 stderr, exit_code = "", outcome.summary["run"]["exit_code"]
             except floe.FloeError as exc:  # as the CLI: the message on stderr, exit code 1

@@ -22,7 +22,8 @@ from floe.config.project import ReportConfig, RootConfig
 from floe.config.storage import StoragesConfig
 from floe.config.types import ArchiveTarget, EntityConfig, SinkTarget, SourceConfig
 from floe.config.validate import FLOE_VERSION
-from floe.errors import FloeError
+from floe.errors import FloeConfigError, FloeError
+from floe.pii import PiiColumn
 from floe.run import select_entities
 from floe.storage.paths import normalize_local_path
 
@@ -134,9 +135,19 @@ class _Target:
         return ({"format": fmt} if fmt else {}) | fields | {"resolved": self.resolved}
 
 
-def _redact_key(key: str | None) -> str | None:
-    """Only an exact `${VAR}` reference survives: literal HMAC keys never reach a manifest."""
-    return key if key and re.fullmatch(r"\$\{[^{}]+\}", key) else None
+def _pii_key(entity: EntityConfig, column: PiiColumn) -> str | None:
+    """Only an exact `${VAR}` reference reaches a manifest (D20: no secrets). A literal hash key is
+    refused, not dropped: dropping it makes a manifest run hash with unsalted SHA-256 (#1006)."""
+    key = column.key
+    if key is None or re.fullmatch(r"\$\{[^{}]+\}", key):
+        return key
+    if column.strategy != "hash":
+        return None  # `key` is ignored by every other strategy
+    raise FloeConfigError(
+        f"entity.name={entity.name} pii.columns[name={column.name}].key: a manifest never "
+        "carries secrets, so a literal hash key cannot be written to it; "
+        "set key to a ${ENV_VAR} reference"
+    )
 
 
 def _sink(ctx: _Context, target: SinkTarget) -> Json:
@@ -172,7 +183,7 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
     pii = entity.pii and _sorted(
         {
             "columns": [
-                asdict(c) | {"key": _redact_key(c.key)} for c in entity.pii.columns
+                asdict(c) | {"key": _pii_key(entity, c)} for c in entity.pii.columns
             ]
         }
     )
