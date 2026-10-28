@@ -2,11 +2,21 @@
 
 All notable changes to Floe are documented in this file.
 
-## v0.8.1 (unreleased)
+## Unreleased
 
-- `-p` / `--profile` and `profile_path=` accept an `s3://` URI, read as an `s3://` manifest is. A run in a
-  container no longer needs the profile file copied in. `floe manifest generate -p s3://...` records the URI
-  as `profile_uri`. `-c` still takes a local path.
+### floe-python
+
+- **`-p s3://...`.** `-p` / `--profile` and `profile_path=` accept an `s3://` URI, read as an `s3://` manifest is,
+  so a container run no longer needs the profile file copied in (#1025). `floe manifest generate -p s3://...`
+  records the URI as `profile_uri`. `-c` still takes a local path.
+
+### dagster-floe
+
+- **`manifest_name=` in config mode (#1022).** `load_floe_assets`, `build_definitions` and
+  `build_job_run_config_from_manifest` accept `manifest_name=` next to `config_path=` and pass it to
+  `floe.build_manifest`. With a fixed name, the op name of a `job_scope: domain` asset stays
+  `floe_<name>__<domain>__...` when the config changes; without it the name derives from the config's path and
+  checksum, as before. Passing it with `manifest_path=` raises `ValueError`.
 
 ## v0.8.0
 
