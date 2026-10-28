@@ -158,8 +158,14 @@ $defs:
             - "kubernetes_job": delegate execution to a Kubernetes Job (connector-side).
             - "databricks_job": delegate execution to a Databricks Job (connector-side).
       command:
-        type: string
-        description: Override the entrypoint command (e.g. "floe" or a wrapper script path).
+        anyOf:
+          - type: string
+          - type: array
+            items:
+              type: string
+        description: >
+          Override the entrypoint command: a string (e.g. "floe" or a wrapper script path) or a
+          list of strings (e.g. [olf-floe-job, --]).
       args:
         type: array
         items:
