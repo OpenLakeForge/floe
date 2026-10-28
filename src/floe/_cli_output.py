@@ -2,7 +2,6 @@
 
 import json
 import time
-from pathlib import Path
 from typing import Any
 
 from floe.config.types import EntityConfig
@@ -158,11 +157,11 @@ def run_output(
     timings: list[dict[str, int]],
 ) -> str:
     """Rust's `format_run_output`; `mode` is `default`, `quiet` or `verbose`."""
-    run_dir = Path(outcome.run_dir)
+    run_dir = outcome.run_dir  # a URI on remote storage: join with `/`, never `Path`
     head = [f"run id: {outcome.run_id}", f"report base: {outcome.report_base_path}"]
     if outcome.dry_run is not None:
         by_id = {e.id: e for e in entities}
-        blocks = [_preview(by_id[i], files, str(run_dir / id_path(by_id[i]) / "run.json"), mode == "verbose")
+        blocks = [_preview(by_id[i], files, f"{run_dir}/{id_path(by_id[i])}/run.json", mode == "verbose")
                   for i, files in outcome.dry_run.items()]  # fmt: skip
         results = dict.fromkeys(("files_total", "rows_total", "accepted_total", "rejected_total", "files_skipped"), 0)  # fmt: skip
         status, exit_code = "success", 0
@@ -182,6 +181,6 @@ def run_output(
     lines += [
         f"Totals: files={results['files_total']} rows={results['rows_total']} accepted={results['accepted_total']} rejected={results['rejected_total']}{skipped}",
         f"Overall: {status} (exit_code={exit_code})",
-        f"Run summary: {run_dir / 'run.summary.json'}",
+        f"Run summary: {run_dir}/run.summary.json",
     ]  # fmt: skip
     return "\n".join(lines)

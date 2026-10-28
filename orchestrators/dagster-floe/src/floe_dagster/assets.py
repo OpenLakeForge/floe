@@ -50,11 +50,14 @@ def load_floe_assets(
     domains: list[str] | None = None,
     config_path: str | None = None,
     profile_path: str | None = None,
+    manifest_name: str | None = None,
 ) -> Definitions:
     """Build a Dagster Definitions for the given manifest.
 
     config_path/profile_path: in place of manifest_path, build the manifest in memory from the
         Floe config (needs the `floe` extra); runs then take `floe run -c <config> [-p <profile>]`.
+    manifest_name: config mode only; the manifest's stable name. Without it the name of a domain-scope op
+        derives from the config's path and checksum, so every config edit renames the op.
 
     register_source_assets: if False, skip SourceAsset registration for source keys.
         Set to False when another Dagster pipeline in the same workspace already
@@ -74,6 +77,7 @@ def load_floe_assets(
         domains=domains,
         config_path=config_path,
         profile_path=profile_path,
+        manifest_name=manifest_name,
     )
     return Definitions(assets=[*assets_defs, *source_assets])
 
@@ -87,10 +91,11 @@ def build_floe_asset_defs(
     domains: list[str] | None = None,
     config_path: str | None = None,
     profile_path: str | None = None,
+    manifest_name: str | None = None,
 ) -> tuple[list[Any], list[SourceAsset], list[ManifestEntity]]:
     if runner is None:
         raise TypeError("runner is required")
-    manifest, config_uri = load_manifest_source(manifest_path, config_path, profile_path)
+    manifest, config_uri = load_manifest_source(manifest_path, config_path, profile_path, manifest_name)
     # in config mode it names the source in errors; no `{manifest_uri}` token is left to render
     manifest_path = manifest_path or config_path
     entity_items = selected_manifest_entities(manifest, entities)
