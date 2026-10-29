@@ -19,6 +19,13 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+### floe-python
+
+- **`add_columns` schema evolution on Iceberg is reported and emitted.** An entity run that adds columns to
+  the table now sets `schema_evolution.applied` and lists them in `schema_evolution.added_columns` in `run.json`,
+  emits the `schema_evolution_applied` event, and `schema_evolution.enabled` is `true` whenever the mode is
+  `add_columns`. They were always `false` and the event was never emitted. (#994)
+
 ### airflow-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in

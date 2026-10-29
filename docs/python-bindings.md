@@ -137,7 +137,7 @@ The callback is **swappable between calls** — calling `set_observer` again rep
 | `run_finished` | `run_id`, `status`, `exit_code`, `files`, `rows`, `accepted`, `rejected`, `summary_uri` |
 | `log` | `run_id`, `log_level`, `code`, `message`, `entity`, `input` |
 
-All events have an `event` key (string discriminator) and `ts_ms` (Unix timestamp in milliseconds). Each event type is exported as a TypedDict (`floe.RunStartedEvent`, …, `floe.LogEvent`; `floe.RunEvent` is their union), defined in [`src/floe/run/events.py`](../src/floe/run/events.py). `schema_evolution_applied` is part of the contract but is not emitted in 0.8.
+All events have an `event` key (string discriminator) and `ts_ms` (Unix timestamp in milliseconds). Each event type is exported as a TypedDict (`floe.RunStartedEvent`, …, `floe.LogEvent`; `floe.RunEvent` is their union), defined in [`src/floe/run/events.py`](../src/floe/run/events.py).
 
 ---
 
