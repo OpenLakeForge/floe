@@ -4,6 +4,10 @@ All notable changes to Floe are documented in this file.
 
 ## v0.8.3 (unreleased)
 
+- **A Parquet or CSV `overwrite` keeps the previous parts until the new ones are written (#1054)**: the
+  new parts are staged as `_staging-*` files, and the old parts are removed only after every new part
+  was written, so a failed write no longer empties the sink. A crash during the final swap can still
+  leave a mix of old and new parts; see [the Parquet sink](docs/sinks/parquet.md).
 - **Iceberg merges and compaction run DuckDB with `memory_limit=4GB` and a bounded spill directory (#1055).**
   DuckDB defaulted to 80% of the host's RAM, so a large merge in a Kubernetes pod was OOM-killed
   instead of spilling. It now caps memory at 4GB and spills to a temporary directory (at most
