@@ -12,7 +12,20 @@ All notable changes to Floe are documented in this file.
   each stage's profile (`catalogs:` replaces the config's) to vary the prefix per stage. An entity
   with neither is a `floe validate` error. A `database` without `{domain}` behaves as before.
 
-### dagster-floe
+### airflow-floe
+
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
+  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
+
+## dagster-floe v0.4.0
+
+**Upgrading from 0.3:** rejected assets move to new keys (below). Works with Floe 0.8.1 or newer; a Glue
+`database` with `{domain}` needs Floe 0.8.2.
+
+- **Breaking: rejected assets are keyed `<domain>/rejected/<table>` (#1046).** They were
+  `<domain>/<table>_rejected`, which collided with a real table named `<table>_rejected`. Upgrade:
+  the history of the rejected assets restarts under the new key, and any selection, sensor or
+  automation condition that names the old keys must be updated.
 
 - **`ManifestEntity` exposes `source_resource` (#1044)**, the entity's `source.resource`, next to
   `source_ref`, so a `source_key_fn` can build `<source>/<resource>` from the manifest.
@@ -20,18 +33,8 @@ All notable changes to Floe are documented in this file.
 - **Accepted and rejected assets carry `floe/entity` and `floe/output` metadata (#1045)**: the entity
   name and `"accepted"` or `"rejected"`, so callers no longer parse the `<op>__accepted` output names.
 
-- **Breaking: rejected assets are keyed `<domain>/rejected/<table>` (#1046).** They were
-  `<domain>/<table>_rejected`, which collided with a real table named `<table>_rejected`. Upgrade:
-  the history of the rejected assets restarts under the new key, and any selection, sensor or
-  automation condition that names the old keys must be updated.
-
 - **The `floe/table` asset tag of a Glue entity expands `{domain}` in `database` (#1043)**, so it
   names the database the run writes.
-
-### airflow-floe
-
-- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
-  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
 ## v0.8.1
 
