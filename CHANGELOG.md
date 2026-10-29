@@ -19,6 +19,13 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+### floe-python
+
+- **Columns that normalise to the same name now fail `floe validate`, not the run (#1005).** With
+  `normalize_columns`, a column `order_id` and a JSON or XML selector `order.id` (or `order/id`) both become
+  `order_id`; `floe validate` passed and `floe run` then failed. Validate now rejects it, and the message names both
+  columns or selectors and the shared name.
+
 ### dagster-floe
 
 - **Silver lineage events from a `kubernetes_job` run now carry the Dagster parent run (#1076).** The Job

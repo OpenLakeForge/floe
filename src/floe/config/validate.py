@@ -4,7 +4,12 @@ import re
 
 from floe import __version__
 from floe.checks.cast import decimal_type
-from floe.checks.normalize import normalize_name, output_names
+from floe.checks.normalize import (
+    normalize_name,
+    output_names,
+    resolve_strategy,
+    source_names,
+)
 from floe.config.project import (
     LineageConfig,
     RootConfig,
@@ -410,6 +415,10 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
             f"schema.normalize_columns.strategy={strategy} is unsupported "
             f"(allowed: {', '.join(NORMALIZE_STRATEGIES)})",
         )
+    try:
+        source_names(schema.columns, resolve_strategy(schema))
+    except FloeConfigError as err:
+        raise _fail(entity, str(err)) from err
     mismatch = schema.mismatch
     if mismatch is not None:
         for field, policy, allowed in (
