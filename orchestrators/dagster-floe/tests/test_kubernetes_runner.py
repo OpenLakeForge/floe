@@ -5,6 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+from dagster._core.errors import DagsterExecutionInterruptedError
+
 from floe_dagster.kubernetes_runner import (
     STATUS_FAILED,
     STATUS_RUNNING,
@@ -409,3 +412,57 @@ def test_a_failed_job_reports_the_latest_attempt() -> None:
         result = _run_with_pods(ordered, job)
         assert result.stdout == "logs of attempt-3"
         assert result.backend_metadata["pod_name"] == "attempt-3"
+
+
+@pytest.mark.parametrize("interrupt", [DagsterExecutionInterruptedError, KeyboardInterrupt])
+def test_an_interrupted_poll_deletes_the_job(interrupt) -> None:
+    jobs_api, core_api = MagicMock(), MagicMock()
+    jobs_api.read_namespaced_job.return_value = _job(active=1)
+    with patch("time.sleep", side_effect=interrupt), pytest.raises(interrupt):
+        run_kubernetes_job(["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api)
+    name = jobs_api.create_namespaced_job.call_args.kwargs["body"]["metadata"]["name"]
+    jobs_api.delete_namespaced_job.assert_called_once_with(name, "data", propagation_policy="Background")
+
+
+def test_a_failing_deletion_does_not_mask_the_interrupt() -> None:
+    jobs_api, core_api = MagicMock(), MagicMock()
+    jobs_api.read_namespaced_job.return_value = _job(active=1)
+    jobs_api.delete_namespaced_job.side_effect = RuntimeError("forbidden")
+    with patch("time.sleep", side_effect=KeyboardInterrupt), pytest.raises(KeyboardInterrupt):
+        run_kubernetes_job(["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api)
+    jobs_api.delete_namespaced_job.assert_called_once()
+
+
+def test_a_poll_timeout_collects_logs_then_deletes_the_job_and_still_reports_timeout() -> None:
+    order: list[str] = []
+    jobs_api, core_api = MagicMock(), MagicMock()
+    jobs_api.read_namespaced_job.return_value = _job(active=1)
+    jobs_api.delete_namespaced_job.side_effect = lambda *a, **k: order.append("delete")
+    pod = MagicMock()
+    pod.metadata.name = "pod-1"
+    core_api.list_namespaced_pod.return_value = MagicMock(items=[pod])
+    core_api.read_namespaced_pod_log.side_effect = lambda **k: order.append("logs") or "last words"
+    with patch("time.sleep"), patch("time.monotonic", side_effect=[0, 61]):
+        result = run_kubernetes_job(["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api)
+    assert result.status == STATUS_TIMEOUT
+    assert result.stdout == "last words"
+    assert result.backend_metadata["pod_name"] == "pod-1"
+    assert order == ["logs", "delete"]
+    name = jobs_api.create_namespaced_job.call_args.kwargs["body"]["metadata"]["name"]
+    jobs_api.delete_namespaced_job.assert_called_once_with(name, "data", propagation_policy="Background")
+
+
+@pytest.mark.parametrize(
+    "job",
+    [
+        _job(succeeded=1, conditions=[{"type": "Complete", "status": "True"}]),
+        _job(failed=1, conditions=[{"type": "Failed", "status": "True", "reason": "BackoffLimitExceeded"}]),
+        _job(failed=1, conditions=[{"type": "Failed", "status": "True", "reason": "DeadlineExceeded"}]),
+    ],
+)
+def test_a_job_in_a_final_state_is_not_deleted(job) -> None:
+    jobs_api, core_api = MagicMock(), MagicMock()
+    jobs_api.read_namespaced_job.return_value = job
+    core_api.list_namespaced_pod.return_value = MagicMock(items=[])
+    run_kubernetes_job(["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api)
+    jobs_api.delete_namespaced_job.assert_not_called()

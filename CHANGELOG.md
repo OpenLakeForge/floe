@@ -15,6 +15,13 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+### dagster-floe
+
+- **A `kubernetes_job` Job is deleted, with its pods, when the run stops watching it (#1070).** An
+  interrupt (a cancelled Dagster run), any error while polling, or the poll timeout used to leave the Job
+  writing tables, so a re-run could collide with it. A Job that reached a final state is left alone, so
+  `ttl_seconds_after_finished` still controls how long its logs stay.
+
 ### airflow-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
