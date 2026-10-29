@@ -2,7 +2,7 @@
 
 All notable changes to Floe are documented in this file.
 
-## v0.8.3 (unreleased)
+## v0.8.3
 
 - **`-p env:NAME` (#1068).** `-p` / `--profile` and `profile_path=` accept `env:NAME`, which reads the profile YAML
   from environment variable `NAME`, so a `kubernetes_job` run needs no profile file in the Job (part of #1047).
