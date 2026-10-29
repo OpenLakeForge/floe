@@ -37,6 +37,12 @@ All notable changes to Floe are documented in this file.
   is read to the end, so a late read error or an `abort` still drops all of that file's rows. `append`
   stages its Parquet parts like `overwrite` does, so a killed run leaves no visible part for a retry to duplicate.
 
+- **`unique` checks with `append` read the target's keys once per entity (#1057)**: an Iceberg table's key columns
+  were scanned once per chunk, and a Parquet sink's parts were loaded into memory in full, so cost and memory
+  grew with chunks times history. The key columns are now written once to a local file in the entity's temp
+  directory, and each chunk joins its keys against that file. Flags and counts are unchanged; the temp
+  directory needs room for the history's key columns.
+
 ### dagster-floe
 
 - **Silver lineage events from a `kubernetes_job` run now carry the Dagster parent run (#1076).** The Job

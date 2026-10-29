@@ -8,7 +8,10 @@ from typing import Any
 import polars as pl
 import pytest
 
+from floe.checks.unique import UniqueTracker
 from floe.config.parse import parse_config
+from floe.errors import FloeRunError
+from floe.read.csv import read_csv
 from floe.read.xml import read_xml
 from floe.run import entity as entity_module  # `floe.run` is the public function
 from floe.run.entity import run_entity
@@ -170,6 +173,53 @@ def test_append_runs_reject_keys_already_in_the_sink(tmp_path: Path) -> None:
     (unique,) = report["unique_constraints"]
     assert unique["target_duplicates_count"] == 1
     assert "batch_duplicates_count" not in unique
+
+
+def test_append_seeds_only_the_history_keys_a_chunk_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1057: the tracker held every key of the sink's history."""
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "    sink:\n", "    sink:\n      write_mode: append\n"
+    )
+    config = config.replace("type: int64, nullable: false", "type: int64, unique: true")
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    for ids in (range(1, 51), range(51, 101)):  # two parts
+        (tmp_path / "in" / "orders.csv").write_text("id,name\n" + "".join(f"{i},n\n" for i in ids))  # fmt: skip
+        run_entity(entity, tmp_path, "0.3")
+    seeded: list[list[int]] = []
+    seed = UniqueTracker.seed
+
+    def spy(tracker: UniqueTracker, df: pl.DataFrame) -> None:
+        seeded.append(df["id"].to_list())
+        seed(tracker, df)
+
+    monkeypatch.setattr(UniqueTracker, "seed", spy)
+    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=1))
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n7,a\n200,b\n")
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert sorted(i for ids in seeded for i in ids) == [
+        7
+    ]  # never the 100 ids of the history
+    assert sorted(accepted(tmp_path)["id"].to_list()) == [*range(1, 101), 200]
+    (unique,) = report["unique_constraints"]
+    assert unique["target_duplicates_count"] == 1
+
+
+def test_append_fails_when_a_sink_part_lacks_a_unique_key_column(tmp_path: Path) -> None:  # fmt: skip
+    config = CONFIG.format(severity="reject", mismatch="").replace("    sink:\n", "    sink:\n      write_mode: append\n")  # fmt: skip
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
+    (tmp_path / "config.yml").write_text(config.replace("type: int64, nullable: false", "type: int64, unique: true"))  # fmt: skip
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    run_entity(entity, tmp_path, "0.3")
+    (part,) = (tmp_path / "out" / "accepted").glob("part-*.parquet")
+    pl.read_parquet(part).drop("id").write_parquet(part)
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n2,b\n")
+    with pytest.raises(FloeRunError, match=r"^entity.name=orders cannot seed unique keys from .*part-.*\.parquet: "):  # fmt: skip
+        run_entity(entity, tmp_path, "0.3")
 
 
 def test_an_unreadable_file_leaves_no_unique_keys_behind(

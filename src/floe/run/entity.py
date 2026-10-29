@@ -39,7 +39,12 @@ from floe.checks.rows import (
     not_null_check,
     split_rows,
 )
-from floe.checks.unique import UniqueResult, UniqueTracker, resolve_unique_keys
+from floe.checks.unique import (
+    UniqueResult,
+    UniqueTracker,
+    resolve_unique_keys,
+    seed_from_history,
+)
 from floe.config.storage import CatalogsConfig, StorageDefinition, StoragesConfig
 from floe.config.types import EntityConfig, with_partition_columns
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
@@ -49,7 +54,7 @@ from floe.iceberg.sink import (
     resolve_target,
     write_iceberg,
 )
-from floe.iceberg.unique import seed_from_table
+from floe.iceberg.unique import cache_table_keys
 from floe.iceberg.write import find_committed
 from floe.pii import apply_pii_masking
 from floe.read.avro import read_avro
@@ -253,6 +258,9 @@ class _Plan:
     table: Table | None = (
         None  # the Iceberg target whose keys seed the tracker (append)
     )
+    history: pl.LazyFrame | None = (
+        None  # the target's key columns, cached on local disk (append, #1057)
+    )
     merge_key: str | None = (
         None  # the merge key's unique check; its duplicates are rejected even under warn (Rust `enforce_reject`)
     )
@@ -354,9 +362,8 @@ def _typed(
     if entity.policy.severity == "abort" and any(c.mask.any() for c in cast_checks):
         return typed, cast_checks  # fmt: skip  # Rust: abort-mode cast errors skip not_null and unique
     required = [not_null_check(typed, n) for n in plan.required]
-    if plan.table is not None:
-        # ponytail: one key scan of the table per chunk; a DuckDB anti-join (ADR) if large histories make it slow
-        seed_from_table(plan.tracker, plan.table, typed, plan.out_map)
+    if plan.history is not None:
+        seed_from_history(plan.tracker, plan.history, typed, plan.out_map)
     return typed, [*required, *cast_checks, *plan.tracker.check(typed)]
 
 
@@ -469,19 +476,27 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
     return out, [] if out["status"] == "aborted" else _replay(plan, accepted)
 
 
-def _seed_unique(plan: _Plan, client: StorageClient, base: str, columns: list[str]) -> None:  # fmt: skip
-    """Append mode: the keys already in the sink's parts count as seen (Rust `seed_unique_tracker_for_append`)."""
-    if not columns:
-        return  # no unique keys: never read the history
-    stored = {n: plan.out_map.get(n, n) for n in columns}  # the sink holds output names
-    for uri in part_uris(client, base.rstrip("/"), "parquet"):
-        part = uri.removeprefix("local://")
-        try:  # only the key columns are read
-            body = client.read(uri)
-            keys = pl.read_parquet(io.BytesIO(body.body if body else b""), columns=list(stored.values()))  # fmt: skip
-        except pl.exceptions.PolarsError as err:
-            raise FloeRunError(f"entity.name={plan.entity.name} cannot seed unique keys from {part}: {err}") from err  # fmt: skip
-        plan.tracker.seed(keys.rename({v: k for k, v in stored.items()}))
+def _key_cache(plan: _Plan, client: StorageClient, base: str, temp: Path) -> pl.LazyFrame | None:  # fmt: skip
+    """Append mode: the key columns of the target's existing data, written once to local disk (#1057).
+
+    Each chunk then joins its keys against this cache, so the target is read once per entity and
+    memory follows the chunk, not the history (Rust `seed_unique_tracker_for_append`).
+    """
+    cache = temp / "unique-keys"
+    cache.mkdir()
+    if plan.table is not None:
+        cache_table_keys(plan.table, plan.tracker.keys, plan.out_map, cache / "table.parquet")  # fmt: skip
+    else:
+        columns = sorted({plan.out_map.get(n, n) for k in plan.tracker.keys for n in k})  # the sink holds output names  # fmt: skip
+        for i, uri in enumerate(part_uris(client, base.rstrip("/"), "parquet")):
+            part = uri.removeprefix("local://")
+            try:  # only the key columns are read
+                body = client.read(uri)
+                keys = pl.read_parquet(io.BytesIO(body.body if body else b""), columns=columns)  # fmt: skip
+            except pl.exceptions.PolarsError as err:
+                raise FloeRunError(f"entity.name={plan.entity.name} cannot seed unique keys from {part}: {err}") from err  # fmt: skip
+            keys.write_parquet(cache / f"{i}.parquet")
+    return pl.scan_parquet(cache / "*.parquet") if any(cache.iterdir()) else None
 
 
 def _report_names(
@@ -876,14 +891,7 @@ def _run_entity(
             pk[0] if len(pk) == 1 else f"[{','.join(pk)}]"
         )  # the tracker's check name
     accepted_client = storage_client(accepted)
-    if sink.write_mode == "append" and target is None:
-        _seed_unique(
-            plan,
-            accepted_client,
-            base,
-            sorted({runtime.get(c, c) for k in keys for c in k}),
-        )
-    elif sink.write_mode == "append" and target is not None:
+    if sink.write_mode == "append" and target is not None:
         plan.table = existing_table(target)  # fmt: skip  # Rust `seed_unique_tracker`, and the retry guard
 
     def source() -> ResolvedInputs:
@@ -926,6 +934,8 @@ def _run_entity(
         try:
             # Rust `localize_input`: a remote input is read from a local copy
             with tempfile.TemporaryDirectory(prefix="floe-") as temp_dir:
+                if pending and sink.write_mode == "append" and plan.tracker.keys and (target is None or plan.table is not None):  # fmt: skip
+                    plan.history = _key_cache(plan, accepted_client, base, Path(temp_dir))  # fmt: skip
                 for f in pending:
                     emit("file_started", entity=entity.name, input=f.source_uri)
                     timer = time.monotonic()

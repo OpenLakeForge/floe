@@ -7,9 +7,11 @@ happened in machine-readable reports.
 
 The runtime is a lightweight single-node Python package. Floe reads and validates
 with Polars, writes Iceberg tables through PyIceberg (one catalog commit per
-entity), and runs Iceberg merges and unique checks against the table's history
-through DuckDB, which spills to disk. The libraries exchange data as Arrow, so
-no extra serialization step sits between them.
+entity), and runs Iceberg merges through DuckDB, which spills to disk. With
+`append`, a unique check against the target's history reads the target's key
+columns once per entity into a local file, and each chunk checks its keys
+against that file. The libraries exchange data as Arrow, so no extra
+serialization step sits between them.
 
 This document describes the canonical ingestion pipeline Floe uses for each
 entity. The order is deterministic and is reflected in reports.
