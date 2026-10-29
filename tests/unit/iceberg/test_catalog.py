@@ -222,9 +222,10 @@ def test_duckdb_without_s3_storage_creates_no_s3_secret() -> None:
 def test_open_duckdb_sets_the_adr_limits_and_cleans_the_spill_dir(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        "floe.iceberg.catalog._duckdb_setup", lambda *_: list[str]()
-    )  # no catalog to attach
+    def no_statements(*_: object) -> list[str]:  # no catalog to attach
+        return []
+
+    monkeypatch.setattr("floe.iceberg.catalog._duckdb_setup", no_statements)
     con = open_duckdb(rest_catalog("id:secret"))
     memory, spill, size = con.execute(
         "SELECT current_setting('memory_limit'), current_setting('temp_directory'), current_setting('max_temp_directory_size')"
