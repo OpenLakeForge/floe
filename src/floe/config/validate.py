@@ -6,6 +6,7 @@ from floe import __version__
 from floe.checks.cast import decimal_type
 from floe.checks.normalize import (
     normalize_name,
+    output_column_mapping,
     output_names,
     resolve_strategy,
     source_names,
@@ -416,7 +417,9 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
             f"(allowed: {', '.join(NORMALIZE_STRATEGIES)})",
         )
     try:
-        source_names(schema.columns, resolve_strategy(schema))
+        resolved = resolve_strategy(schema)
+        source_names(schema.columns, resolved)
+        output_column_mapping(schema.columns, resolved)
     except FloeConfigError as err:
         raise _fail(entity, str(err)) from err
     mismatch = schema.mismatch
