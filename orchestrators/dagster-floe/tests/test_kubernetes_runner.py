@@ -466,3 +466,42 @@ def test_a_job_in_a_final_state_is_not_deleted(job) -> None:
     core_api.list_namespaced_pod.return_value = MagicMock(items=[])
     run_kubernetes_job(["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api)
     jobs_api.delete_namespaced_job.assert_not_called()
+
+
+def _profile_container(tmp_path: Path, args_tail: list[str], profile_text: str = "") -> dict:
+    profile = tmp_path / "profile.yml"
+    profile.write_text(profile_text, encoding="utf-8")
+    args = ["floe", "run", "-c", "cfg.yml", *[str(profile) if a == "<profile>" else a for a in args_tail]]
+    spec = build_k8s_job_spec("floe-orders-abc", args, _runner())
+    return spec["spec"]["template"]["spec"]["containers"][0]
+
+
+def test_a_profile_path_is_passed_to_the_job_as_content(tmp_path: Path) -> None:
+    text = "version: 1\nstorage:\n  secret: ${SECRET}\n"
+    container = _profile_container(tmp_path, ["-p", "<profile>", "--entities", "orders"], text)
+    assert container["args"] == ["run", "-c", "cfg.yml", "-p", "env:FLOE_PROFILE_CONTENT", "--entities", "orders"]
+    assert str(tmp_path) not in " ".join(container["args"])
+    env = {e["name"]: e for e in container["env"]}
+    assert env["FLOE_PROFILE_CONTENT"] == {"name": "FLOE_PROFILE_CONTENT", "value": text}  # ${SECRET} unexpanded
+    assert env["LOG_LEVEL"]["value"] == "INFO"
+
+
+def test_the_long_profile_flag_is_replaced_too(tmp_path: Path) -> None:
+    container = _profile_container(tmp_path, ["--profile", "<profile>"], "a: 1\n")
+    assert container["args"] == ["run", "-c", "cfg.yml", "-p", "env:FLOE_PROFILE_CONTENT"]
+    assert {"name": "FLOE_PROFILE_CONTENT", "value": "a: 1\n"} in container["env"]
+
+
+def test_a_remote_profile_passes_through(tmp_path: Path) -> None:
+    args = ["floe", "run", "-c", "cfg.yml", "-p", "s3://bucket/profile.yml"]
+    container = build_k8s_job_spec("floe-orders-abc", args, _runner())["spec"]["template"]["spec"]["containers"][0]
+    assert container["args"] == ["run", "-c", "cfg.yml", "-p", "s3://bucket/profile.yml"]
+    assert "FLOE_PROFILE_CONTENT" not in {e["name"] for e in container["env"]}
+
+
+def test_a_run_without_a_profile_is_unchanged() -> None:
+    container = build_k8s_job_spec("floe-orders-abc", ["floe", "run", "-c", "cfg.yml"], _runner())["spec"]["template"][
+        "spec"
+    ]["containers"][0]
+    assert container["args"] == ["run", "-c", "cfg.yml"]
+    assert container["env"] == [{"name": "LOG_LEVEL", "value": "INFO"}]

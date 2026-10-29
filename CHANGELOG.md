@@ -17,6 +17,11 @@ All notable changes to Floe are documented in this file.
 
 ### dagster-floe
 
+- **A `kubernetes_job` Job gets the profile as content, not as a pod-local path (#1069).** A run with a
+  profile reads it in the run pod and sets it as the Job's `FLOE_PROFILE_CONTENT` env var, with
+  `-p env:FLOE_PROFILE_CONTENT` in place of `-p <path>`; `${VAR}` references stay unexpanded and a remote
+  profile (`s3://...`) is passed as is. The Job image needs Floe 0.8.3 or newer for these runs.
+
 - **A `kubernetes_job` Job is deleted, with its pods, when the run stops watching it (#1070).** An
   interrupt (a cancelled Dagster run), any error while polling, or the poll timeout used to leave the Job
   writing tables, so a re-run could collide with it. A Job that reached a final state is left alone, so
