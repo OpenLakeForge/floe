@@ -6,8 +6,9 @@
 import hashlib
 import json
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
+from itertools import chain
 from pathlib import Path
 from typing import Any
 
@@ -112,23 +113,30 @@ def input_hash(entity: EntityConfig, files: Sequence[InputFile]) -> str:
 _WIDER: dict[pl.DataType, pl.DataType] = {pl.UInt8(): pl.Int32(), pl.UInt16(): pl.Int32(), pl.UInt32(): pl.Int64()}  # fmt: skip
 
 
-def _reader(entity: EntityConfig, frames: list[pl.DataFrame], names: list[str]) -> pa.RecordBatchReader:  # fmt: skip
-    """Output columns in schema order; `nullable: false` columns are required, as in Rust."""
+def _reader(entity: EntityConfig, frames: Iterator[pl.DataFrame], names: list[str]) -> pa.RecordBatchReader:  # fmt: skip
+    """Output columns in schema order, from at least one frame; `nullable: false` columns are required, as in Rust."""
     columns = entity.schema_.columns
-    for name, c in zip(names, columns, strict=True):
-        if c.nullable is False and any(f[name].null_count() for f in frames):
-            raise FloeRunError(f"iceberg write rejected nulls for non-nullable column {name}")  # fmt: skip
 
     def arrow(df: pl.DataFrame) -> pa.Table:  # Iceberg has no unsigned types
         return df.select(pl.col(n).cast(_WIDER.get(df.schema[n], df.schema[n])) for n in names).to_arrow()  # fmt: skip
 
-    schema = arrow(frames[0].head(0)).schema
+    def checked(df: pl.DataFrame) -> pl.DataFrame:
+        for name, c in zip(names, columns, strict=True):
+            if c.nullable is False and df[name].null_count():
+                raise FloeRunError(f"iceberg write rejected nulls for non-nullable column {name}")  # fmt: skip
+        return df
+
+    first = checked(
+        next(frames)
+    )  # a violation in the first chunk fails before the table is created
+    schema = arrow(first.head(0)).schema
+    frames = chain([first], frames)  # `batches` must not keep `first` alive
     for i, c in enumerate(columns):
         schema = schema.set(i, schema.field(i).with_nullable(c.nullable is not False))
 
     def batches() -> Iterator[pa.RecordBatch]:
         for df in frames:
-            yield from arrow(df).cast(schema).to_batches()
+            yield from arrow(checked(df)).cast(schema).to_batches()
 
     return pa.RecordBatchReader.from_batches(schema, batches())
 
@@ -144,13 +152,13 @@ def partition_fields(entity: EntityConfig) -> PartitionFields | None:
 def write_iceberg(
     entity: EntityConfig,
     target: IcebergTarget,
-    frames: list[pl.DataFrame],
+    frames: Iterator[pl.DataFrame],
     names: list[str],
     mode: WriteMode,
     run_id: str,
-    digest: str,
+    digest: Callable[[], str],
 ) -> tuple[IcebergWriteResult, dict[str, Any], dict[str, Any] | None, list[str]]:
-    """`frames` hold the output columns `names`; returns the result, its `accepted_output` table and merge fields, and the columns `add_columns` added."""
+    """`frames` (at least one) hold the output columns `names` and are read while the data files are written; returns the result, its `accepted_output` table and merge fields, and the columns `add_columns` added."""
     reader = _reader(entity, frames, names)
     options = entity.sink.accepted.merge
     scd2 = options.scd2 if options else None

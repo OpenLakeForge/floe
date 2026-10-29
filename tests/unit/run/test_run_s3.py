@@ -222,8 +222,8 @@ def test_full_refresh_fails_on_a_source_listing_error(tmp_path: Path, s3: MemS3)
 
 def test_overwrite_at_the_bucket_root_clears_the_old_parts(s3: MemS3) -> None:
     df = pl.DataFrame({"id": [1]})
-    write_accepted(df, s3, "s3://b", "append")
-    write_accepted(df, s3, "s3://b", "overwrite")
+    write_accepted([df], s3, "s3://b", "append")
+    write_accepted([df], s3, "s3://b", "overwrite")
     assert parts(s3, "s3://b/") == ["s3://b/part-00000.parquet"]
 
 

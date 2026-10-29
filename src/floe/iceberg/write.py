@@ -5,7 +5,7 @@
 
 import itertools
 import uuid
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import PurePosixPath
@@ -82,7 +82,7 @@ def write_table(
     reader: pa.RecordBatchReader,
     mode: WriteMode,
     run_id: str,
-    input_hash: str,
+    input_hash: str | Callable[[], str],
     small_file_threshold_bytes: int = SMALL_FILE_THRESHOLD_BYTES,
     chunk_rows: int = CHUNK_ROWS,
     unique_keys: Sequence[Sequence[str]] = (),
@@ -104,6 +104,9 @@ def write_table(
                 table.metadata, chunk, table.io, write_uuid, counter
             )
         ]
+    digest = (
+        input_hash() if callable(input_hash) else input_hash
+    )  # known once the stream has been read
     base = (
         table.metadata.current_snapshot_id
     )  # only commits after it can be a rival's copy of this batch
@@ -112,9 +115,7 @@ def write_table(
             _backoff(attempt - 1)
             with run_error("rest iceberg table refresh failed"):
                 table.refresh()
-                seen = mode == "append" and find_committed(
-                    table, input_hash, after=base
-                )
+                seen = mode == "append" and find_committed(table, digest, after=base)
             if seen:
                 return replace(write_result(table, [], small_file_threshold_bytes), already_committed=True)  # fmt: skip
             if mode == "append":
@@ -131,7 +132,7 @@ def write_table(
                 table.metadata = table.metadata.model_copy(update={"properties": {**table.properties, TableProperties.COMMIT_NUM_RETRIES: "0"}})  # fmt: skip
                 tx = table.transaction()
                 update = tx.update_snapshot(
-                    snapshot_properties={RUN_ID: run_id, INPUT_HASH: input_hash}
+                    snapshot_properties={RUN_ID: run_id, INPUT_HASH: digest}
                 )
                 with (
                     update.overwrite()

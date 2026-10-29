@@ -26,7 +26,10 @@ Semantics:
 
 Large accepted datasets are split into multiple part files. The split threshold is controlled by
 `sink.accepted.options.max_size_per_file` (default 256 MB), measured on the in-memory size of
-the rows. The entity's accepted rows are written once, after every input file is read.
+the rows. Accepted rows are written as the input is read, so memory holds about one part plus one
+chunk of input, not the whole entity. Every part is staged as a `_staging-<id>-part-*` file and
+copied to its `part-*` name only once the whole input was read and written, so a write that fails
+(or a killed run) leaves no visible part of that run; orphaned `_staging-*` files are safe to delete.
 
 ```yaml
 sink:

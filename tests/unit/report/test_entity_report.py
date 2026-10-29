@@ -129,7 +129,7 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
             rejected_path = UUID_PART.sub("part-<uuid>", rejected_path)
         files.append(file_report(entity, uri, df.height, bad.height, checks, plan, rejected_path))  # fmt: skip
     write = write_accepted(
-        pl.concat(accepted), LocalClient(), f"local://{out}/accepted/{entity.name}"
+        [pl.concat(accepted)], LocalClient(), f"local://{out}/accepted/{entity.name}"
     )
     rel = Path(entity.source.path).as_posix().removeprefix("./")
     listed = [f["input_file"] for f in files]

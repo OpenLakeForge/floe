@@ -31,6 +31,12 @@ All notable changes to Floe are documented in this file.
   emits the `schema_evolution_applied` event, and `schema_evolution.enabled` is `true` whenever the mode is
   `add_columns`. They were always `false` and the event was never emitted. (#994)
 
+- **Accepted rows now reach the sink chunk by chunk (#1056)**: an entity no longer holds all its accepted rows
+  in memory before the write. The Parquet sink writes parts as the input is read, and the Iceberg sink writes
+  data files into the same single commit. A file's chunks after the first wait on local disk until the file
+  is read to the end, so a late read error or an `abort` still drops all of that file's rows. `append`
+  stages its Parquet parts like `overwrite` does, so a killed run leaves no visible part for a retry to duplicate.
+
 ### dagster-floe
 
 - **Silver lineage events from a `kubernetes_job` run now carry the Dagster parent run (#1076).** The Job

@@ -3,6 +3,7 @@
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingTypeStubs=false
 # ^ pyarrow ships no type stubs
 
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -127,6 +128,21 @@ def test_a_commit_between_load_and_commit_is_retried_on_the_fresh_table(catalog:
     assert len(snapshots) == 2  # exactly one extra snapshot
     assert snapshots[-1].snapshot_id == result.snapshot_id
     assert snapshots[-1].summary and snapshots[-1].summary[INPUT_HASH] == "mine"
+
+
+def test_the_input_hash_is_asked_for_once_the_stream_was_read(catalog: SharedCatalog) -> None:  # fmt: skip
+    """#1056: the files read in full are known only when the last chunk was pulled."""
+    read: list[int] = []
+    schema = pa.schema([pa.field("id", pa.int64(), nullable=True)])
+
+    def batches() -> Iterator[pa.RecordBatch]:
+        for i in (1, 2):
+            read.append(i)
+            yield pa.record_batch([pa.array([i], pa.int64())], schema=schema)
+
+    write_table(catalog.load_table(IDENTIFIER), pa.RecordBatchReader.from_batches(schema, batches()), "append", "run", lambda: f"read-{len(read)}")  # fmt: skip
+    (snapshot,) = catalog.load_table(IDENTIFIER).metadata.snapshots
+    assert snapshot.summary and snapshot.summary[INPUT_HASH] == "read-2"
 
 
 def test_a_conflict_with_the_same_batch_stops_and_reports_it_committed(catalog: SharedCatalog) -> None:  # fmt: skip
