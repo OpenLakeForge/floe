@@ -4,14 +4,6 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-### floe-python
-
-- **A Glue catalog can write one database per domain (#1043).** `database` may contain `{domain}`,
-  e.g. `dev_{domain}_silver`: per entity it expands to `sink.accepted.iceberg.namespace`, else
-  `entity.domain`, so one catalog writes `dev_sales_silver` and `dev_finance_silver`. Put the catalog in
-  each stage's profile (`catalogs:` replaces the config's) to vary the prefix per stage. An entity
-  with neither is a `floe validate` error. A `database` without `{domain}` behaves as before.
-
 ### dagster-floe
 
 - **`ManifestEntity` exposes `source_resource` (#1044)**, the entity's `source.resource`, next to
@@ -32,6 +24,14 @@ All notable changes to Floe are documented in this file.
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
   dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
+
+## v0.8.2
+
+- **A Glue catalog can write one database per domain (#1043).** `database` may contain `{domain}`,
+  e.g. `dev_{domain}_silver`: per entity it expands to `sink.accepted.iceberg.namespace`, else
+  `entity.domain`, so one catalog writes `dev_sales_silver` and `dev_finance_silver`. Put the catalog in
+  each stage's profile (`catalogs:` replaces the config's) to vary the prefix per stage. An entity
+  with neither is a `floe validate` error. A `database` without `{domain}` behaves as before.
 
 ## v0.8.1
 
