@@ -19,7 +19,7 @@ from pyiceberg.types import NestedField
 
 from floe.config.storage import CatalogDefinition, StorageDefinition
 from floe.config.types import SchemaEvolutionMode
-from floe.errors import FloeConfigError, FloeRunError
+from floe.errors import FloeConfigError, FloeError, FloeRunError
 
 # (column, transform) pairs, as in the entity's `sink.accepted.partition_spec`;
 # a bucket is `bucket[N]` (PyIceberg's notation) with N its `num_buckets` (D12)
@@ -44,6 +44,10 @@ def transform_name(field: PartitionField) -> str:
 def run_error(context: str) -> Generator[None]:
     try:
         yield
+    except (
+        FloeError
+    ):  # already worded for the user, e.g. raised by the stream a write reads
+        raise
     except Exception as e:  # PyIceberg has no common base exception
         raise FloeRunError(f"{context}: {e}") from e
 

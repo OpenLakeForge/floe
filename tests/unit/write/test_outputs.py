@@ -10,7 +10,7 @@ CSV byte for byte).
 
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import polars as pl
@@ -28,6 +28,7 @@ from floe.read.avro import read_avro
 from floe.read.orc import read_orc
 from floe.read.parquet import read_parquet
 from floe.storage.local import LocalClient
+from floe.storage.types import StorageClient
 from floe.write.outputs import write_accepted, write_rejected
 
 LOCAL = LocalClient()
@@ -79,7 +80,7 @@ def emit(
     mode: WriteMode = "overwrite",
 ) -> None:
     accepted, rejected = frames
-    write_accepted(accepted, LOCAL, f"local://{base}/accepted/{entity}", mode)
+    write_accepted([accepted], LOCAL, f"local://{base}/accepted/{entity}", mode)
     if rejected.height:
         write_rejected(rejected, LOCAL, f"local://{base}/rejected/{entity}", mode)
 
@@ -162,10 +163,10 @@ def test_append_gives_unique_part_names_and_overwrite_clears_them(
     tmp_path: Path,
 ) -> None:
     df = pl.DataFrame({"a": [1, 2]})
-    write_accepted(df, LOCAL, f"local://{tmp_path}", "append")
-    write_accepted(df, LOCAL, f"local://{tmp_path}", "append")
+    write_accepted([df], LOCAL, f"local://{tmp_path}", "append")
+    write_accepted([df], LOCAL, f"local://{tmp_path}", "append")
     assert len(list(tmp_path.glob("part-*.parquet"))) == 2
-    result = write_accepted(df, LOCAL, f"local://{tmp_path}", "overwrite")
+    result = write_accepted([df], LOCAL, f"local://{tmp_path}", "overwrite")
     assert [p.name for p in tmp_path.glob("*.parquet")] == ["part-00000.parquet"]
     assert result.part_files == ["part-00000.parquet"]
 
@@ -197,9 +198,9 @@ class PartialWriteClient(LocalClient):
 def test_overwrite_partial_staged_write_is_cleaned_up(tmp_path: Path) -> None:
     base = f"local://{tmp_path}"
     old = pl.DataFrame({"a": [1, 2, 3]})
-    write_accepted(old, LOCAL, base, "overwrite")
+    write_accepted([old], LOCAL, base, "overwrite")
     with pytest.raises(FloeError):
-        write_accepted(pl.DataFrame({"a": [9]}), PartialWriteClient(), base, "overwrite")  # fmt: skip
+        write_accepted([pl.DataFrame({"a": [9]})], PartialWriteClient(), base, "overwrite")  # fmt: skip
     assert [p.name for p in tmp_path.iterdir()] == ["part-00000.parquet"]
     assert pl.read_parquet(tmp_path).equals(old)
 
@@ -216,7 +217,7 @@ def test_overwrite_replaces_a_symlinked_part_without_touching_its_target(tmp_pat
     (sink / "part-00000.parquet").symlink_to(external)
     (sink / "part-00001.parquet").symlink_to(external)
     new = pl.DataFrame({"a": [7]})
-    write_accepted(new, LOCAL, f"local://{sink}", "overwrite")
+    write_accepted([new], LOCAL, f"local://{sink}", "overwrite")
     assert external.read_bytes() == before
     assert [p.name for p in sink.iterdir()] == ["part-00000.parquet"]
     assert not (sink / "part-00000.parquet").is_symlink()
@@ -227,12 +228,12 @@ def test_overwrite_failing_on_part_two_keeps_the_previous_parts(tmp_path: Path) 
     """#1054: the old parts are deleted only after every new part was written."""
     base = f"local://{tmp_path}"
     old = pl.DataFrame({"a": [1, 2, 3]})
-    write_accepted(old, LOCAL, base, "overwrite")
+    write_accepted([old], LOCAL, base, "overwrite")
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
     options = SinkOptions(compression="snappy", row_group_size=10, max_size_per_file=8 * 2)  # fmt: skip
     new = pl.DataFrame({"a": list(range(100, 110))})
     with pytest.raises(FloeError):
-        write_accepted(new, FailingClient(2), base, "overwrite", options)
+        write_accepted([new], FailingClient(2), base, "overwrite", options)
     assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
     assert pl.read_parquet(tmp_path).equals(old)
 
@@ -240,10 +241,10 @@ def test_overwrite_failing_on_part_two_keeps_the_previous_parts(tmp_path: Path) 
 def test_overwrite_replaces_more_old_parts_with_fewer_new_ones(tmp_path: Path) -> None:
     base = f"local://{tmp_path}"
     options = SinkOptions(compression="snappy", row_group_size=10, max_size_per_file=8 * 40)  # fmt: skip
-    write_accepted(pl.DataFrame({"a": list(range(100))}), LOCAL, base, "overwrite", options)  # fmt: skip
+    write_accepted([pl.DataFrame({"a": list(range(100))})], LOCAL, base, "overwrite", options)  # fmt: skip
     assert len(list(tmp_path.glob("part-*.parquet"))) == 3
     new = pl.DataFrame({"a": [7]})
-    assert write_accepted(new, LOCAL, base, "overwrite").part_files == ["part-00000.parquet"]  # fmt: skip
+    assert write_accepted([new], LOCAL, base, "overwrite").part_files == ["part-00000.parquet"]  # fmt: skip
     assert [p.name for p in tmp_path.iterdir()] == ["part-00000.parquet"]
     assert pl.read_parquet(tmp_path).equals(new)
 
@@ -261,12 +262,44 @@ def test_splits_at_max_size_per_file_and_writes_an_empty_part(tmp_path: Path) ->
     options = SinkOptions(
         compression="snappy", row_group_size=10, max_size_per_file=8 * 40
     )
-    result = write_accepted(df, LOCAL, f"local://{tmp_path}/big", "overwrite", options)
+    result = write_accepted(
+        [df], LOCAL, f"local://{tmp_path}/big", "overwrite", options
+    )
     assert result.files_written == 3
     assert pl.read_parquet(tmp_path / "big").height == 100
-    empty = write_accepted(df.clear(), LOCAL, f"local://{tmp_path}/empty")
+    empty = write_accepted([df.clear()], LOCAL, f"local://{tmp_path}/empty")
     assert empty.part_files == ["part-00000.parquet"]
     assert pl.read_parquet(tmp_path / "empty").columns == ["a"]
+
+
+def test_frames_are_regrouped_into_parts_as_they_arrive(tmp_path: Path) -> None:
+    """#1056: the stream is pooled up to a part, never collected whole."""
+    options = SinkOptions(compression="snappy", row_group_size=10, max_size_per_file=8 * 40)  # fmt: skip
+    pulled: list[int] = []
+
+    def frames() -> Iterator[pl.DataFrame]:
+        for start in range(0, 120, 30):
+            pulled.append(start)
+            yield pl.DataFrame({"a": list(range(start, start + 30))})
+
+    seen: list[int] = []
+
+    class Spy(LocalClient):
+        def write(self, uri: str, body: bytes) -> None:
+            seen.append(len(pulled))  # frames pulled when each part is put
+            super().write(uri, body)
+
+    result = write_accepted(frames(), Spy(), f"local://{tmp_path}", "append", options)
+    assert result.files_written == 3
+    assert seen == [2, 3, 4]
+    assert [pl.read_parquet(p).height for p in sorted(tmp_path.glob("part-*"))] == [40] * 3  # fmt: skip
+
+
+def test_append_failing_on_part_two_deletes_the_part_it_wrote(tmp_path: Path) -> None:
+    options = SinkOptions(compression="snappy", row_group_size=10, max_size_per_file=8 * 2)  # fmt: skip
+    with pytest.raises(FloeError):
+        write_accepted([pl.DataFrame({"a": list(range(10))})], FailingClient(2), f"local://{tmp_path}", "append", options)  # fmt: skip
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_avro_and_orc_read(tmp_path: Path) -> None:
@@ -281,7 +314,11 @@ def test_avro_and_orc_read(tmp_path: Path) -> None:
     check("orc_read", tmp_path, ["orc_read"])
 
 
-@pytest.mark.parametrize("write", [write_accepted, write_rejected])
+def write_one_accepted(df: pl.DataFrame, client: StorageClient, base: str) -> object:
+    return write_accepted([df], client, base)
+
+
+@pytest.mark.parametrize("write", [write_one_accepted, write_rejected])
 def test_write_oserror_is_a_floe_error(
     tmp_path: Path, write: Callable[..., object]
 ) -> None:

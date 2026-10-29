@@ -5,9 +5,10 @@
 
 import json
 import sys
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,10 @@ from test_merge_commit_retry import (  # pyright: ignore[reportMissingImports] -
     RestCatalog,
     server,  # noqa: F401  # pyright: ignore[reportUnusedImport] -- the fixture, used by name
 )
+from test_run_stream import (  # pyright: ignore[reportMissingImports] -- a sibling test module
+    CHUNK,
+    Probe,
+)
 
 import floe
 import floe.iceberg.sink as sink_module
@@ -44,6 +49,7 @@ from floe.iceberg.catalog import open_catalog, open_duckdb
 from floe.iceberg.merge import MergeResult
 from floe.iceberg.sink import input_hash, partition_fields
 from floe.iceberg.write import INPUT_HASH, RUN_ID, find_committed, write_result
+from floe.read.csv import read_csv
 from floe.run import entity as entity_module  # `floe.run` is the public function
 from floe.run import run as run_project
 from floe.run.entity import run_entity
@@ -286,6 +292,47 @@ def test_nulls_in_a_required_column_fail_the_write(tmp_path: Path, catalog: Loca
     with pytest.raises(FloeRunError, match="^iceberg write rejected nulls for non-nullable column id$"):  # fmt: skip
         run(tmp_path, "id,name\n,a\n", severity="warn")
     assert not catalog.tables
+
+
+@pytest.mark.parametrize("mode", ["overwrite", "append"])
+def test_an_entity_of_many_chunks_lands_as_one_snapshot(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch, mode: str) -> None:  # fmt: skip
+    """#1056: chunks are written as they are read, still in one commit."""
+    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=3))
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "a.csv").write_text("id,name\n" + "".join(f"{i},n{i}\n" for i in range(20)))  # fmt: skip
+    report = run(tmp_path, "id,name\n" + "".join(f"{i},n{i}\n" for i in range(20, 31)), mode=mode)  # fmt: skip
+    assert [r[0] for r in rows(catalog)] == list(range(31))
+    assert report["accepted_output"]["accepted_rows"] == 31
+    assert catalog.commits == 1
+    assert len(catalog.tables["sales.orders"].metadata.snapshots) == 1
+
+
+def test_a_null_in_a_late_chunk_fails_the_write_and_commits_nothing(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=2))
+    with pytest.raises(FloeRunError, match="^iceberg write rejected nulls for non-nullable column id$"):  # fmt: skip
+        run(tmp_path, "id,name\n1,a\n2,b\n3,c\n,d\n", severity="warn")
+    assert catalog.commits == 0
+
+
+def test_peak_rows_in_memory_follow_the_chunk_not_the_entity(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    probe = Probe()
+    monkeypatch.setattr(entity_module, "read_csv", probe.reader())
+    write = sink_module.write_table
+
+    def tapped(
+        table: Table, reader: pa.RecordBatchReader, *rest: Any, **kwargs: Any
+    ) -> Any:
+        def sampled() -> Iterator[pa.RecordBatch]:
+            for batch in reader:
+                probe.sample()
+                yield batch
+
+        return write(table, pa.RecordBatchReader.from_batches(reader.schema, sampled()), *rest, **kwargs)  # fmt: skip
+
+    monkeypatch.setattr(sink_module, "write_table", tapped)
+    report = run(tmp_path, "id,name\n" + "".join(f"{i},n{i}\n" for i in range(100 * CHUNK)))  # fmt: skip
+    assert report["accepted_output"]["accepted_rows"] == 100 * CHUNK
+    assert probe.peak <= 10 * CHUNK
 
 
 Merges = list[tuple[list[str], set[str]]]

@@ -4,7 +4,7 @@ import io
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -360,8 +360,24 @@ def _typed(
     return typed, [*required, *cast_checks, *plan.tracker.check(typed)]
 
 
-def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
-    """The file's report and its accepted frames (none when it aborted the run); `path` is the local copy."""
+def _unspill(path: Path) -> pl.DataFrame:
+    df = pl.read_ipc(path)
+    path.unlink()
+    return df
+
+
+def _replay(plan: _Plan, held: list[pl.DataFrame | Path]) -> Iterator[pl.DataFrame]:
+    while held:
+        item = held.pop(0)
+        yield _output(plan, item if isinstance(item, pl.DataFrame) else _unspill(item))
+
+
+def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict[str, Any], Iterable[pl.DataFrame]]:  # fmt: skip
+    """The file's report and its accepted frames, one by one (none when it aborted the run); `path` is the local copy.
+
+    A file's rows are accepted only once it is read to the end (a late read error or an abort drops them all), so
+    every chunk after the first waits in `spill`, not in memory.
+    """
     entity, uri = plan.entity, file.source_uri
     severity = entity.policy.severity
     derived = plan.derived.get(uri, [])
@@ -372,7 +388,7 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     chunks = _chunks(entity, path, file_names)
     keys = plan.tracker.snapshot()
 
-    def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
+    def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], Iterable[pl.DataFrame]]:  # fmt: skip
         # Rust skips the raw copy under PII: the file cannot be masked
         plan.tracker.restore(keys)  # the unreadable file leaves no keys behind
         keep = entity.pii is None and entity.sink.rejected is not None
@@ -403,7 +419,7 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
 
     rows, bad_total, forced_total = 0, 0, 0
     masks: dict[tuple[str, str, str], list[pl.Series]] = {}
-    accepted: list[pl.DataFrame] = []
+    accepted: list[pl.DataFrame | Path] = []
     rejected: list[pl.DataFrame] = []
     errors: list[tuple[int, str]] = []
     try:
@@ -423,7 +439,12 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
                 forced = forced.fill_null(False)
                 forced_total += int(forced.sum())
                 typed = typed.filter(~forced)
-            accepted.append(good if severity == "reject" else typed)
+            frame = good if severity == "reject" else typed
+            if accepted:
+                frame.write_ipc(spilled := spill / f"{len(accepted)}.ipc")
+                accepted.append(spilled)
+            else:
+                accepted.append(frame)
             if severity == "reject" and bad.height:
                 rejected.append(bad)
     except FloeIoError as err:
@@ -445,7 +466,7 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
         errors_path = _error_report(plan, file.source_stem, errors)
     plan.to_archive.append(file)
     out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path, None, errors_path, forced_total)  # fmt: skip
-    return out, [] if out["status"] == "aborted" else [_output(plan, df) for df in accepted]  # fmt: skip
+    return out, [] if out["status"] == "aborted" else _replay(plan, accepted)
 
 
 def _seed_unique(plan: _Plan, client: StorageClient, base: str, columns: list[str]) -> None:  # fmt: skip
@@ -894,52 +915,68 @@ def _run_entity(
         plan.to_archive += [f for f in pending if f.source_uri in skip]
         pending = [f for f in pending if f.source_uri not in skip]
     plan.input_hash = input_hash(entity, pending)
-    frames: list[pl.DataFrame] = []
     # #545: the snapshot's fingerprint names only the files it holds in full, never an aborted batch
     complete: list[InputFile] = []
     skipped = len(files)
     downloader = None if isinstance(client, LocalClient) else client
-    # Rust `localize_input`: a remote input is read from a local copy
-    with tempfile.TemporaryDirectory(prefix="floe-") as temp_dir:
-        for f in pending:
-            emit("file_started", entity=entity.name, input=f.source_uri)
-            timer = time.monotonic()
-            local = localize_input(f, downloader, Path(temp_dir))
-            report, kept = _run_file(plan, f, local.local_path)
-            if local.is_ephemeral:
-                local.local_path.unlink()
-            emit("file_finished", entity=entity.name, input=f.source_uri, status=report["status"],
-                 rows=report["row_count"], accepted=report["accepted_count"],
-                 rejected=report["rejected_count"], elapsed_ms=int((time.monotonic() - timer) * 1000))  # fmt: skip
-            files.append(report)
-            frames += kept
-            if report["status"] == "aborted":
-                break
-            complete.append(f)
-    files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
+    failure: list[Exception] = []
+
+    def accepted_frames() -> Generator[pl.DataFrame]:
+        """Files are read as the sink pulls (#1056); `files` and `complete` are final once it is exhausted."""
+        try:
+            # Rust `localize_input`: a remote input is read from a local copy
+            with tempfile.TemporaryDirectory(prefix="floe-") as temp_dir:
+                for f in pending:
+                    emit("file_started", entity=entity.name, input=f.source_uri)
+                    timer = time.monotonic()
+                    local = localize_input(f, downloader, Path(temp_dir))
+                    report, kept = _run_file(plan, f, local.local_path, Path(temp_dir))
+                    if local.is_ephemeral:
+                        local.local_path.unlink()
+                    emit("file_finished", entity=entity.name, input=f.source_uri, status=report["status"],
+                         rows=report["row_count"], accepted=report["accepted_count"],
+                         rejected=report["rejected_count"], elapsed_ms=int((time.monotonic() - timer) * 1000))  # fmt: skip
+                    files.append(report)
+                    yield from kept
+                    if report["status"] == "aborted":
+                        break
+                    complete.append(f)
+        except Exception as err:
+            # the sinks wrap what they read; this error reaches the caller as it is
+            failure.append(err)
+            raise
 
     table: dict[str, Any] | None = None
     merge: dict[str, Any] | None = None
-    if pending and (
-        frames or sink.write_mode == "overwrite"
-    ):  # Rust writes nothing when every input was skipped
-        empty = pl.DataFrame(schema=dict.fromkeys(names, pl.String)).select(
-            cast_column(n, c.column_type)[0]
-            for n, c in zip(names, columns, strict=True)
-        )
-        frames = frames or [_output(plan, empty)]
-        if target is None:
-            write = write_accepted(pl.concat(frames), accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
+    stream = accepted_frames()
+    try:
+        first = next(stream, None)  # Rust writes nothing when every input was skipped
+        if pending and (first is not None or sink.write_mode == "overwrite"):
+            empty = pl.DataFrame(schema=dict.fromkeys(names, pl.String)).select(
+                cast_column(n, c.column_type)[0]
+                for n, c in zip(names, columns, strict=True)
+            )
+            frames = chain([_output(plan, empty) if first is None else first], stream)
+            del first  # the sink holds the chunk it is on, not the first
+            if target is None:
+                write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
+            else:
+                outputs = [plan.out_map.get(n, n) for n in names]
+                result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, lambda: input_hash(entity, complete))  # fmt: skip
+                write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
+                                      result.avg_file_size_mb, result.small_files_count)  # fmt: skip
+                if result.already_committed:  # #920: the commit conflicted and the guard found this batch in the table
+                    done = {f.source_uri for f in complete}
+                    files[:] = [skipped_report(r["input_file"], "already_committed") if r["input_file"] in done else r for r in files]  # fmt: skip
         else:
-            outputs = [plan.out_map.get(n, n) for n in names]
-            result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, input_hash(entity, complete))  # fmt: skip
-            write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
-                                  result.avg_file_size_mb, result.small_files_count)  # fmt: skip
-            if result.already_committed:  # #920: the commit conflicted and the guard found this batch in the table
-                done = {f.source_uri for f in complete}
-                files[:] = [skipped_report(r["input_file"], "already_committed") if r["input_file"] in done else r for r in files]  # fmt: skip
-    else:
-        write = AcceptedWrite(0, [], 0, 0.0, 0)
+            write = AcceptedWrite(0, [], 0, 0.0, 0)
+    except Exception:
+        if not failure:
+            raise
+        raise failure[0] from failure[0].__cause__
+    finally:
+        stream.close()
+    files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
     inc.committed = files  # #915: from here on a failure promotes the written files
     # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source (Rust archives before)
     by_uri = {r["input_file"]: r for r in files}
