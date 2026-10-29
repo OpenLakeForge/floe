@@ -54,6 +54,13 @@ row closes its current version (`valid_to` set, `is_current` false) and inserts 
 unchanged rows are left alone. `compare_columns` and `ignore_columns` choose which columns count as a
 change. The report adds `closed_count` and `unchanged_count` to the merge metrics.
 
+### Sizing merge pods
+
+Merges and compaction run DuckDB with `memory_limit=4GB`, spilling to a temporary directory capped at
+`max_temp_directory_size=50GB` (removed when the run ends). DuckDB's resident memory overshoots its limit
+by 0.2-1.9 GiB, more as delete files accumulate, so size the pod at `memory_limit` + 2 GiB (6 GiB), and give
+it ephemeral disk for the spill.
+
 ## Rejected output behavior
 
 `sink.write_mode` is shared with rejected output:
