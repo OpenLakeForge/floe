@@ -69,6 +69,11 @@ gates below pass.
 | `merge_scd1` / `merge_scd2` | Chunks staged as Parquet, then one DuckDB `MERGE INTO` (merge-on-read, positional deletes). SCD2 sends each changed row twice: once to close the current version, once to insert the new one. | Spills to disk |
 | `unique` vs target history | DuckDB anti-join between staged keys and the table's key columns | Spills to disk |
 
+> **Note (2026-10-29, #1084):** the `unique` row above is no longer how the check runs. Since #1057
+> the target's key columns are cached locally once per entity, and each chunk semi-joins against that
+> cache with Polars (`src/floe/iceberg/unique.py`). DuckDB runs the merges only. The G6 result below
+> was measured with the DuckDB anti-join.
+
 Re-running an SCD1 merge with the same batch leaves the table unchanged, and an SCD2 batch with
 no changes adds no versions. Only `append` needs the retry guard.
 
