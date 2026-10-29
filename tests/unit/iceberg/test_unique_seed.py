@@ -6,8 +6,9 @@
 import math
 import random
 import struct
+import tempfile
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import polars as pl
@@ -45,9 +46,9 @@ from pyiceberg.types import (
     TimestampType,
 )
 
-from floe.checks.unique import UniqueTracker
+from floe.checks.unique import UniqueTracker, seed_from_history
 from floe.errors import FloeRunError
-from floe.iceberg.unique import seed_from_table
+from floe.iceberg.unique import cache_table_keys
 
 SCHEMA = Schema(
     NestedField(1, "id", LongType()),
@@ -164,6 +165,16 @@ def reference(
             flagged[idx] = T if k in seeded else B
         seen.add(k)
     return flagged
+
+
+def seed_from_table(
+    tracker: UniqueTracker, table: Table, batch: pl.DataFrame, stored: Mapping[str, str]
+) -> None:
+    """What a run does per entity: cache the table's key columns, then seed from the cache."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "keys.parquet"
+        if cache_table_keys(table, tracker.keys, stored, path):
+            seed_from_history(tracker, pl.scan_parquet(path), batch, stored)
 
 
 def check(

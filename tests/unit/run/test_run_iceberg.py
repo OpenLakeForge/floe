@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+import polars as pl
 import pyarrow as pa
 import pytest
 from jsonschema import Draft202012Validator
@@ -254,6 +255,25 @@ def test_append_rejects_keys_already_in_the_table(tmp_path: Path, catalog: Local
     # 1 is in the table; 2 only repeats the batch, though orders.csv also seeds 1
     assert (unique["duplicates_count"], unique["target_duplicates_count"]) == (2, 1)
     assert unique["batch_duplicates_count"] == 1
+
+
+def test_append_scans_the_table_once_however_many_chunks_the_batch_has(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#1057: the history was scanned once per chunk."""
+    run(tmp_path, "id,name\n1,a\n3,c\n", mode="append")
+    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=2))
+    scans: list[Table] = []
+    scan_iceberg = pl.scan_iceberg
+
+    def counting(table: Table) -> pl.LazyFrame:
+        scans.append(table)
+        return scan_iceberg(table)
+
+    monkeypatch.setattr(pl, "scan_iceberg", counting)
+    report = run(tmp_path, "id,name\n5,e\n1,a\n6,f\n7,g\n3,c\n8,h\n", mode="append")  # 3 chunks  # fmt: skip
+    assert len(scans) == 1
+    assert rows(catalog) == [(1, "a"), (3, "c"), (5, "e"), (6, "f"), (7, "g"), (8, "h")]
+    (unique,) = report["unique_constraints"]
+    assert (unique["duplicates_count"], unique["target_duplicates_count"]) == (2, 2)
 
 
 def test_append_to_a_missing_table_seeds_nothing(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
