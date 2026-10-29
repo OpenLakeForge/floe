@@ -433,13 +433,21 @@ def test_a_failing_deletion_does_not_mask_the_interrupt() -> None:
     jobs_api.delete_namespaced_job.assert_called_once()
 
 
-def test_a_poll_timeout_deletes_the_job_and_still_reports_timeout() -> None:
+def test_a_poll_timeout_collects_logs_then_deletes_the_job_and_still_reports_timeout() -> None:
+    order: list[str] = []
     jobs_api, core_api = MagicMock(), MagicMock()
     jobs_api.read_namespaced_job.return_value = _job(active=1)
-    core_api.list_namespaced_pod.return_value = MagicMock(items=[])
+    jobs_api.delete_namespaced_job.side_effect = lambda *a, **k: order.append("delete")
+    pod = MagicMock()
+    pod.metadata.name = "pod-1"
+    core_api.list_namespaced_pod.return_value = MagicMock(items=[pod])
+    core_api.read_namespaced_pod_log.side_effect = lambda **k: order.append("logs") or "last words"
     with patch("time.sleep"), patch("time.monotonic", side_effect=[0, 61]):
         result = run_kubernetes_job(["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api)
     assert result.status == STATUS_TIMEOUT
+    assert result.stdout == "last words"
+    assert result.backend_metadata["pod_name"] == "pod-1"
+    assert order == ["logs", "delete"]
     name = jobs_api.create_namespaced_job.call_args.kwargs["body"]["metadata"]["name"]
     jobs_api.delete_namespaced_job.assert_called_once_with(name, "data", propagation_policy="Background")
 

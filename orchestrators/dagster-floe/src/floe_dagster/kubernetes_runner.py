@@ -66,13 +66,13 @@ def run_kubernetes_job(
                 status = STATUS_TIMEOUT
                 break
             time.sleep(poll_interval)
+        # before any deletion: with background propagation the pod would be gone
+        stdout = _collect_job_logs(core_api, job_name, namespace)
+        pod_ctx = _collect_pod_context(core_api, job_name, namespace)
     finally:
         # an interrupt, an error or the poll timeout leaves a Job nobody watches: it would keep writing
         if not reached_final_state:
             _delete_job(jobs_api, job_name, namespace)
-
-    stdout = _collect_job_logs(core_api, job_name, namespace)
-    pod_ctx = _collect_pod_context(core_api, job_name, namespace)
 
     failure_reason = _resolve_failure_reason(status=status, job=last_job, pod_ctx=pod_ctx)
     if status == STATUS_SUCCEEDED:
