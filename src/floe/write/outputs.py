@@ -79,8 +79,8 @@ def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str) -> Gener
 
     def put_staged(body: bytes) -> str:
         name = f"part-{len(names):05}.{ext}"
+        names.append(name)  # before the write: a partial file needs cleanup too
         client.write(f"{base}/{stage}{name}", body)
-        names.append(name)
         return name
 
     try:

@@ -101,6 +101,7 @@ class LocalClient:
         try:
             dst.parent.mkdir(parents=True, exist_ok=True)
             mode = src.stat().st_mode & 0o777
+            dst.unlink(missing_ok=True)  # not through a symlink or shared inode
             fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
             os.fchmod(fd, mode)  # #779: the open mode applies on create only
             with src.open("rb") as fin, os.fdopen(fd, "wb") as fout:

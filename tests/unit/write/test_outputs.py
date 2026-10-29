@@ -22,7 +22,7 @@ from floe.checks.cast import CAST_ERROR_MESSAGE, cast_column
 from floe.checks.rows import RowCheck, not_null_check, split_rows
 from floe.checks.unique import UniqueTracker
 from floe.config.types import SinkOptions, WriteMode
-from floe.errors import FloeError
+from floe.errors import FloeError, FloeStorageError
 from floe.pii import PiiColumn, apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.orc import read_orc
@@ -181,6 +181,46 @@ class FailingClient(LocalClient):
         if self.writes == self.fail_on:
             raise OSError(28, "No space left on device")
         super().write(uri, body)
+
+
+class PartialWriteClient(LocalClient):
+    """A local client whose  leaves half the body on disk, then raises (disk full)."""
+
+    def __init__(self) -> None:
+        pass
+
+    def write(self, uri: str, body: bytes) -> None:
+        super().write(uri, body[: len(body) // 2])
+        raise FloeStorageError("disk full") from OSError(28, "No space left on device")
+
+
+def test_overwrite_partial_staged_write_is_cleaned_up(tmp_path: Path) -> None:
+    base = f"local://{tmp_path}"
+    old = pl.DataFrame({"a": [1, 2, 3]})
+    write_accepted(old, LOCAL, base, "overwrite")
+    with pytest.raises(FloeError):
+        write_accepted(pl.DataFrame({"a": [9]}), PartialWriteClient(), base, "overwrite")  # fmt: skip
+    assert [p.name for p in tmp_path.iterdir()] == ["part-00000.parquet"]
+    assert pl.read_parquet(tmp_path).equals(old)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="symlinks need privileges on Windows"
+)
+def test_overwrite_replaces_a_symlinked_part_without_touching_its_target(tmp_path: Path) -> None:  # fmt: skip
+    sink = tmp_path / "sink"
+    sink.mkdir()
+    external = tmp_path / "external.parquet"
+    pl.DataFrame({"a": [42]}).write_parquet(external)
+    before = external.read_bytes()
+    (sink / "part-00000.parquet").symlink_to(external)
+    (sink / "part-00001.parquet").symlink_to(external)
+    new = pl.DataFrame({"a": [7]})
+    write_accepted(new, LOCAL, f"local://{sink}", "overwrite")
+    assert external.read_bytes() == before
+    assert [p.name for p in sink.iterdir()] == ["part-00000.parquet"]
+    assert not (sink / "part-00000.parquet").is_symlink()
+    assert pl.read_parquet(sink).equals(new)
 
 
 def test_overwrite_failing_on_part_two_keeps_the_previous_parts(tmp_path: Path) -> None:
