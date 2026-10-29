@@ -6,8 +6,8 @@ All notable changes to Floe are documented in this file.
 
 - **`-p env:NAME` (#1068).** `-p` / `--profile` and `profile_path=` accept `env:NAME`, which reads the profile YAML
   from environment variable `NAME`, so a `kubernetes_job` run needs no profile file in the Job (part of #1047).
-  An unset or empty variable is a `FloeConfigError` naming it. Relative paths in the profile resolve against the
-  current working directory. `execution.runner` stays validate-only.
+  An unset or empty variable is a `FloeConfigError` naming it. Relative paths a profile supplies resolve against
+  the config's directory, as for a file profile. `execution.runner` stays validate-only.
 
 - **Iceberg merges and compaction run DuckDB with `memory_limit=4GB` and a bounded spill directory (#1055).**
   DuckDB defaulted to 80% of the host's RAM, so a large merge in a Kubernetes pod was OOM-killed

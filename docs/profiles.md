@@ -70,8 +70,9 @@ FLOE_PROFILE_CONTENT="$(cat profile.yml)" floe run -c config.yml -p env:FLOE_PRO
 ```
 
 An unset or empty variable fails with a `FloeConfigError` naming it. The profile behaves exactly as a file one
-(`${VAR}` references are expanded the same way), except that relative paths inside it resolve against the current
-working directory. `execution.runner` is validated only: `floe run` always runs in-process and never launches
+(`${VAR}` references are expanded the same way). A profile never rebases paths, so a relative path it supplies
+(e.g. through `variables`) resolves against the config's directory, as for a file profile; there is no profile
+directory to resolve against. `execution.runner` is validated only: `floe run` always runs in-process and never launches
 a runner, so a Job started with its own profile does not start another Job. `floe manifest generate -p env:NAME`
 records `env:NAME` as `profile_uri` and the SHA-256 of the variable's content as `profile_checksum`.
 
