@@ -70,9 +70,12 @@ def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | N
     catalog = next((c for c in (catalogs.definitions if catalogs else []) if c.name == name), None)  # fmt: skip
     if catalog is None:  # validated; kept for callers that skip validation
         raise FloeConfigError(f"entity.name={entity.name} sink.accepted.iceberg.catalog references unknown catalog {name}")  # fmt: skip
-    namespace = catalog_ident(
-        sink.iceberg.namespace or entity.domain or catalog.database or "default"
-    )
+    # what `{domain}` in the database stands for (validated: set when the database has the token)
+    scope = sink.iceberg.namespace or entity.domain
+    database = catalog.database
+    if database is not None:
+        database = database.replace("{domain}", catalog_ident(scope or ""))
+    namespace = catalog_ident(scope or database or "default")
     table = catalog_ident(sink.iceberg.table or entity.name)
     field = f"entity.name={entity.name} sink.accepted.storage"
     accepted_uri, storage = resolve_path(storages, config_dir, sink.storage, sink.path, field)  # fmt: skip
@@ -85,8 +88,8 @@ def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | N
     else:
         location = accepted_uri
     # Rust: the Glue database holds the table; the namespace only names its location
-    if catalog.database is not None:
-        namespace = catalog.database
+    if database is not None:
+        namespace = database
     return IcebergTarget(catalog, storage, namespace, table, location, accepted_uri)  # fmt: skip
 
 

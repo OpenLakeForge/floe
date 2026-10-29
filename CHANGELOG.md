@@ -4,6 +4,14 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+### floe-python
+
+- **A Glue catalog can write one database per domain (#1043).** `database` may contain `{domain}`,
+  e.g. `dev_{domain}_silver`: per entity it expands to `sink.accepted.iceberg.namespace`, else
+  `entity.domain`, so one catalog writes `dev_sales_silver` and `dev_finance_silver`. Put the catalog in
+  each stage's profile (`catalogs:` replaces the config's) to vary the prefix per stage. An entity
+  with neither is a `floe validate` error. A `database` without `{domain}` behaves as before.
+
 ### dagster-floe
 
 - **`ManifestEntity` exposes `source_resource` (#1044)**, the entity's `source.resource`, next to
@@ -16,6 +24,9 @@ All notable changes to Floe are documented in this file.
   `<domain>/<table>_rejected`, which collided with a real table named `<table>_rejected`. Upgrade:
   the history of the rejected assets restarts under the new key, and any selection, sensor or
   automation condition that names the old keys must be updated.
+
+- **The `floe/table` asset tag of a Glue entity expands `{domain}` in `database` (#1043)**, so it
+  names the database the run writes.
 
 ### airflow-floe
 

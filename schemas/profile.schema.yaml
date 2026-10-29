@@ -445,7 +445,7 @@ $defs:
         description: Glue catalog region; required when type is glue.
       database:
         type: string
-        description: Glue database; required when type is glue.
+        description: Glue database; required when type is glue. "{domain}" expands per entity to its iceberg namespace or domain.
       create_database_if_missing:
         type: boolean
       allow_takeover:
