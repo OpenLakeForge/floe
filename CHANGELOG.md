@@ -26,6 +26,11 @@ All notable changes to Floe are documented in this file.
   `order_id`; `floe validate` passed and `floe run` then failed. Validate now rejects it, and the message names both
   columns or selectors and the shared name.
 
+- **`add_columns` schema evolution on Iceberg is reported and emitted.** An entity run that adds columns to
+  the table now sets `schema_evolution.applied` and lists them in `schema_evolution.added_columns` in `run.json`,
+  emits the `schema_evolution_applied` event, and `schema_evolution.enabled` is `true` whenever the mode is
+  `add_columns`. They were always `false` and the event was never emitted. (#994)
+
 - **Accepted rows now reach the sink chunk by chunk (#1056)**: an entity no longer holds all its accepted rows
   in memory before the write. The Parquet sink writes parts as the input is read, and the Iceberg sink writes
   data files into the same single commit. A file's chunks after the first wait on local disk until the file

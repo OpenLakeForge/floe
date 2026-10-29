@@ -948,6 +948,7 @@ def _run_entity(
 
     table: dict[str, Any] | None = None
     merge: dict[str, Any] | None = None
+    added: list[str] = []
     stream = accepted_frames()
     try:
         first = next(stream, None)  # Rust writes nothing when every input was skipped
@@ -962,9 +963,11 @@ def _run_entity(
                 write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
             else:
                 outputs = [plan.out_map.get(n, n) for n in names]
-                result, table, merge = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, lambda: input_hash(entity, complete))  # fmt: skip
+                result, table, merge, added = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, lambda: input_hash(entity, complete))  # fmt: skip
                 write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
                                       result.avg_file_size_mb, result.small_files_count)  # fmt: skip
+                if added:
+                    emit("schema_evolution_applied", entity=entity.name, mode="add_columns", added_columns=added)  # fmt: skip
                 if result.already_committed:  # #920: the commit conflicted and the guard found this batch in the table
                     done = {f.source_uri for f in complete}
                     files[:] = [skipped_report(r["input_file"], "already_committed") if r["input_file"] in done else r for r in files]  # fmt: skip
@@ -996,5 +999,6 @@ def _run_entity(
         table_root_uri=target.location if target and table else None,
         table=table,
         merge=merge,
+        added_columns=added,
     )
     return EntityRun(report, any(f["status"] == "aborted" for f in files))

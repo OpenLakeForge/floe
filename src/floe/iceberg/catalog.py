@@ -312,10 +312,10 @@ def ensure_table(
     partition_fields: PartitionFields | None = None,
     schema_evolution: SchemaEvolutionMode = "strict",
     create_namespace: bool = True,
-) -> Table:
+) -> tuple[Table, list[str]]:
     """Create the namespace (unless `create_namespace` is off) and table if missing; otherwise check the table matches (Rust's append path).
 
-    With `add_columns`, columns new in `schema` are added as optional (D13); partition changes stay rejected.
+    With `add_columns`, columns new in `schema` are added as optional (D13) and returned by name; partition changes stay rejected.
     """
     ident = (namespace,)
     with run_error("rest catalog namespace_exists check failed"):
@@ -352,16 +352,17 @@ def ensure_table(
                     for field in added:
                         update.add_column(field.name, field.field_type, required=False)
                 table.refresh()
-        return table
+        return table, [f.name for f in added]
     spec = (
         None
         if partition_fields is None
         else build_partition_spec(schema, partition_fields, entity)
     )
     with run_error("rest catalog create_table failed"):
-        return catalog.create_table(  # pyright: ignore[reportUnknownMemberType] -- PyIceberg's `schema` is `Schema | Unknown`
+        created = catalog.create_table(  # pyright: ignore[reportUnknownMemberType] -- PyIceberg's `schema` is `Schema | Unknown`
             identifier,
             schema,
             location=location,
             partition_spec=spec if spec is not None else PartitionSpec(),
         )
+    return created, []

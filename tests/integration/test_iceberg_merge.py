@@ -178,7 +178,7 @@ def table(request: pytest.FixtureRequest, catalog: Catalog) -> Iterator[Table]:
 
 def test_scd1_golden_then_rerun_changes_nothing(catalog: Catalog, table: Table) -> None:
     con = open_duckdb(CATALOG, STORAGE)  # opened before the schema change on purpose
-    table = ensure_table(
+    table, _ = ensure_table(
         catalog, NAMESPACE, table.name()[1], WIDER, "e", schema_evolution="add_columns"
     )
     commits = len(table.metadata.metadata_log)
@@ -263,7 +263,7 @@ def test_scd2_golden_then_rerun_changes_nothing(
     catalog: Catalog, scd2_table: Table
 ) -> None:
     con = open_duckdb(CATALOG, STORAGE)
-    table = ensure_table(
+    table, _ = ensure_table(
         catalog,
         NAMESPACE,
         scd2_table.name()[1],

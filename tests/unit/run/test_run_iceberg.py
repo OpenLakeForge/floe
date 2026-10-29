@@ -172,13 +172,15 @@ def config(tmp_path: Path, **values: str) -> RootConfig:
     return parse_config(tmp_path / "config.yml")
 
 
-def run(tmp_path: Path, rows: str, **values: str) -> dict[str, Any]:
+def run(
+    tmp_path: Path, rows: str, emit: Emitter = NO_EVENTS, **values: str
+) -> dict[str, Any]:
     (tmp_path / "in").mkdir(exist_ok=True)
     (tmp_path / "in" / "orders.csv").write_text(rows)
     root = config(tmp_path, **values)
     return run_entity(
         root.entities[0], tmp_path, "0.3", storages=root.storages,
-        emit=NO_EVENTS, catalogs=root.catalogs,
+        emit=emit, catalogs=root.catalogs,
     ).report  # fmt: skip
 
 
@@ -269,6 +271,25 @@ def test_add_columns_evolves_the_table(tmp_path: Path, catalog: LocalCatalog) ->
         extra="- {name: qty, type: int32}",
     )  # fmt: skip
     assert rows(catalog) == [(1, "a", None), (2, "b", 5)]
+
+
+def test_add_columns_reports_and_emits_the_columns_it_added(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    """#994"""
+    seen: list[dict[str, Any]] = []
+    emit = Emitter(seen.append, "r")
+    evolution = "schema_evolution: {mode: add_columns}"
+    first = run(tmp_path, "id,name\n1,a\n", emit, mode="append", evolution=evolution)
+    assert first["schema_evolution"] == {"enabled": True, "mode": "add_columns", "applied": False, "incompatible_changes_detected": False}  # fmt: skip
+    assert not [e for e in seen if e["event"] == "schema_evolution_applied"]
+    unchanged = run(
+        tmp_path, "id,name\n2,b\n", emit, mode="append", evolution=evolution
+    )
+    assert unchanged["schema_evolution"]["applied"] is False
+    assert not [e for e in seen if e["event"] == "schema_evolution_applied"]
+    wider = run(tmp_path, "id,name,qty\n3,c,5\n", emit, mode="append", evolution=evolution, extra="- {name: qty, type: int32}")  # fmt: skip
+    assert wider["schema_evolution"] == {"enabled": True, "mode": "add_columns", "applied": True, "added_columns": ["qty"], "incompatible_changes_detected": False}  # fmt: skip
+    (event,) = [e for e in seen if e["event"] == "schema_evolution_applied"]
+    assert (event["run_id"], event["entity"], event["mode"], event["added_columns"]) == ("r", "Orders", "add_columns", ["qty"])  # fmt: skip
 
 
 def test_partition_spec_is_applied(tmp_path: Path, catalog: LocalCatalog) -> None:
