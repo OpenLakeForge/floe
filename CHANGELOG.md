@@ -2,6 +2,13 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.5
+
+- **An output column name collision now fails `floe validate`, not the run (#1080).** A column with an explicit
+  `source` keeps its `name`; a column without one is normalised. When the two end on the same output name,
+  `floe validate` passed and `floe run` then failed. Validate now rejects it, and the message names the two
+  columns as written instead of their normalised sources.
+
 ## v0.8.4
 
 - **Columns that normalise to the same name now fail `floe validate`, not the run (#1005).** With
