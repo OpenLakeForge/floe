@@ -43,16 +43,16 @@ All notable changes to Floe are documented in this file.
   directory, and each chunk joins its keys against that file. Flags and counts are unchanged; the temp
   directory needs room for the history's key columns.
 
-### dagster-floe
-
-- **Silver lineage events from a `kubernetes_job` run now carry the Dagster parent run (#1076).** The Job
-  container gets `DAGSTER_RUN_ID` and `DAGSTER_JOB_NAME`, and the Job and its pod a `dagster/run-id` label;
-  both `job_scope`s were missing them.
-
 ### airflow-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
   dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
+
+## dagster-floe v0.4.2
+
+- **Silver lineage events from a `kubernetes_job` run now carry the Dagster parent run (#1076).** The Job
+  container gets `DAGSTER_RUN_ID` and `DAGSTER_JOB_NAME`, and the Job and its pod a `dagster/run-id` label;
+  both `job_scope`s were missing them.
 
 ## dagster-floe v0.4.1
 
