@@ -92,6 +92,16 @@ def test_domain_scope_runs_the_entities_in_one_job_with_a_materialization_each(t
     assert args[args.index("--run-id") + 1].startswith(f"{result.run_id}_floe_")  # one Floe run id per group
 
 
+def test_domain_scope_job_carries_the_dagster_run_for_lineage(tmp_path: Path) -> None:
+    result, jobs_api = _run(tmp_path, dict.fromkeys(NAMES, "success"))
+
+    body = jobs_api.create_namespaced_job.call_args.kwargs["body"]
+    env = {e["name"]: e.get("value") for e in body["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["DAGSTER_RUN_ID"] == result.run_id
+    assert env["DAGSTER_JOB_NAME"]
+    assert body["metadata"]["labels"]["dagster/run-id"] == result.run_id
+
+
 def test_domain_scope_subset_runs_only_the_selected_entities(tmp_path: Path) -> None:
     selection = [AssetKey(["sales", "orders"]), AssetKey(["sales", "refunds"])]
     result, jobs_api = _run(tmp_path, {"orders": "success", "refunds": "success"}, selection=selection)

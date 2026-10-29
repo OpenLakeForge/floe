@@ -561,6 +561,7 @@ def _make_domain_multi_asset(
         run_id = getattr(run, "run_id", None) if run is not None else None
         # concurrent groups of one Dagster run must not share a Floe run id (it names the summary file)
         floe_run_id = f"{run_id}_{context.op_def.name}" if run_id else None
+        dagster_job_name = getattr(run, "job_name", None) if run is not None else None
         names = [entity.name for entity in chosen]
         # the whole domain of the manifest: `floe run --domain` says it; a custom template stays as written
         whole_domain = bool(names) and set(names) == domain_names and execution.per_entity_args == [
@@ -575,6 +576,8 @@ def _make_domain_multi_asset(
             entities=names,
             execution=replace(execution, per_entity_args=["--domain", domain]) if whole_domain else execution,
             runner_definition=runner_definition,
+            dagster_run_id=run_id,
+            dagster_job_name=dagster_job_name,
         )
         finished = _parse_finished(context, result, execution, run_id)
         summary = _load_run_summary(context, finished, config_uri)
