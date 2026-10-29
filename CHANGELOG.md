@@ -19,7 +19,15 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-### dagster-floe
+### airflow-floe
+
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
+  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
+
+## dagster-floe v0.4.1
+
+**Upgrading from 0.4.0:** the `floe` extra now requires Floe 0.8.3 or newer, and so does the image a
+`kubernetes_job` runs when the run has a profile.
 
 - **A `kubernetes_job` Job gets the profile as content, not as a pod-local path (#1069).** A run with a
   profile reads it in the run pod and sets it as the Job's `FLOE_PROFILE_CONTENT` env var, with
@@ -30,11 +38,6 @@ All notable changes to Floe are documented in this file.
   interrupt (a cancelled Dagster run), any error while polling, or the poll timeout used to leave the Job
   writing tables, so a re-run could collide with it. A Job that reached a final state is left alone, so
   `ttl_seconds_after_finished` still controls how long its logs stay.
-
-### airflow-floe
-
-- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
-  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
 ## dagster-floe v0.4.0
 

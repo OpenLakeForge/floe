@@ -30,18 +30,19 @@ Current model:
 ## Install
 
 Prereqs:
-- Floe 0.8.1 or newer (`pip install floe-python`, **or** Docker with the `ghcr.io/openlakeforge/floe` image).
+- Floe 0.8.3 or newer (`pip install floe-python`, **or** Docker with the `ghcr.io/openlakeforge/floe` image).
 - Python 3.10+.
 
 ```bash
 pip install dagster-floe
-pip install "dagster-floe[floe]"   # also installs floe-python>=0.8.1,<0.9 for the in-process runner
+pip install "dagster-floe[floe]"   # also installs floe-python>=0.8.3,<0.9 for the in-process runner
 ```
 
 ## Supported Floe versions
 
 | dagster-floe | Floe | Manifest `spec_version` |
 | --- | --- | --- |
+| 0.4.1 | 0.8.3 or newer (`kubernetes_job` runs pass the profile as `-p env:FLOE_PROFILE_CONTENT`) | `0.8` |
 | 0.4.0 | 0.8.1 or newer (a Glue `{domain}` database needs 0.8.2) | `0.8` |
 | 0.3.1 | 0.8.1 or newer (`job_scope: domain` Jobs run `floe run --domain`) | `0.8` |
 | 0.3.0 | 0.8 | `0.8` |
