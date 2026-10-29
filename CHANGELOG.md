@@ -4,14 +4,6 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-### floe-python
-
-- **A Glue catalog can write one database per domain (#1043).** `database` may contain `{domain}`,
-  e.g. `dev_{domain}_silver`: per entity it expands to `sink.accepted.iceberg.namespace`, else
-  `entity.domain`, so one catalog writes `dev_sales_silver` and `dev_finance_silver`. Put the catalog in
-  each stage's profile (`catalogs:` replaces the config's) to vary the prefix per stage. An entity
-  with neither is a `floe validate` error. A `database` without `{domain}` behaves as before.
-
 ### airflow-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
@@ -35,6 +27,14 @@ All notable changes to Floe are documented in this file.
 
 - **The `floe/table` asset tag of a Glue entity expands `{domain}` in `database` (#1043)**, so it
   names the database the run writes.
+
+## v0.8.2
+
+- **A Glue catalog can write one database per domain (#1043).** `database` may contain `{domain}`,
+  e.g. `dev_{domain}_silver`: per entity it expands to `sink.accepted.iceberg.namespace`, else
+  `entity.domain`, so one catalog writes `dev_sales_silver` and `dev_finance_silver`. Put the catalog in
+  each stage's profile (`catalogs:` replaces the config's) to vary the prefix per stage. An entity
+  with neither is a `floe validate` error. A `database` without `{domain}` behaves as before.
 
 ## v0.8.1
 
