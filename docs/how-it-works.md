@@ -7,9 +7,10 @@ happened in machine-readable reports.
 
 The runtime is a lightweight single-node Python package. Floe reads and validates
 with Polars, writes Iceberg tables through PyIceberg (one catalog commit per
-entity), and runs Iceberg merges and unique checks against the table's history
-through DuckDB, which spills to disk. The libraries exchange data as Arrow, so
-no extra serialization step sits between them.
+entity), and runs Iceberg merges through DuckDB, which spills to disk. Unique
+checks against the accepted data's history are Polars joins that stream the key
+columns, once per entity (see D). The libraries exchange data as Arrow, so no
+extra serialization step sits between them.
 
 This document describes the canonical ingestion pipeline Floe uses for each
 entity. The order is deterministic and is reflected in reports.
@@ -68,6 +69,11 @@ After row-level validation, uniqueness is evaluated across the **entire entity**
 in file order. The first occurrence is accepted; later duplicates are flagged.
 With `append`, keys already in the accepted sink count as seen,
 so a row that duplicates the existing history is flagged too.
+Floe reads the key columns of the inputs once ahead of the checks, then streams the
+sink's key columns (the Iceberg table, or one Parquet part at a time) through one join
+against those keys. Only the history keys the batch also holds are kept in memory, and
+the history is scanned once per entity, not once per chunk. The cost is a second read of the
+inputs (a remote input is downloaded twice).
 
 ### E) Entity-level accepted output (across files)
 

@@ -8,6 +8,7 @@ from typing import Any
 import polars as pl
 import pytest
 
+from floe.checks.unique import UniqueTracker
 from floe.config.parse import parse_config
 from floe.read.xml import read_xml
 from floe.run import entity as entity_module  # `floe.run` is the public function
@@ -170,6 +171,36 @@ def test_append_runs_reject_keys_already_in_the_sink(tmp_path: Path) -> None:
     (unique,) = report["unique_constraints"]
     assert unique["target_duplicates_count"] == 1
     assert "batch_duplicates_count" not in unique
+
+
+def test_append_seeds_only_the_history_keys_the_batch_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1057: every key of the sink's parts was seeded, so memory followed the history."""
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "    sink:\n", "    sink:\n      write_mode: append\n"
+    )
+    config = config.replace("type: int64, nullable: false", "type: int64, unique: true")
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    history = "".join(f"{i},h\n" for i in range(1, 101))
+    (tmp_path / "in" / "orders.csv").write_text(f"id,name\n{history}")
+    run_entity(entity, tmp_path, "0.3")
+    seeded: list[list[int]] = []
+    seed = UniqueTracker.seed
+
+    def spy(self: UniqueTracker, df: pl.DataFrame) -> None:
+        seeded.append(df["id"].to_list())
+        seed(self, df)
+
+    monkeypatch.setattr(UniqueTracker, "seed", spy)
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n7,a\n200,b\n")
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert seeded == [[7]]
+    (unique,) = report["unique_constraints"]
+    assert unique["target_duplicates_count"] == 1
+    assert sorted(accepted(tmp_path)["id"].to_list()) == [*range(1, 101), 200]
 
 
 def test_an_unreadable_file_leaves_no_unique_keys_behind(

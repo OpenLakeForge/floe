@@ -39,7 +39,12 @@ from floe.checks.rows import (
     not_null_check,
     split_rows,
 )
-from floe.checks.unique import UniqueResult, UniqueTracker, resolve_unique_keys
+from floe.checks.unique import (
+    UniqueResult,
+    UniqueTracker,
+    resolve_unique_keys,
+    seed_from_scans,
+)
 from floe.config.storage import CatalogsConfig, StorageDefinition, StoragesConfig
 from floe.config.types import EntityConfig, with_partition_columns
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
@@ -96,7 +101,7 @@ from floe.storage.partitioning import (
 from floe.storage.paths import normalize_local_path
 from floe.storage.resolve import resolve_path, storage_client
 from floe.storage.s3 import S3Client
-from floe.storage.types import StorageClient
+from floe.storage.types import Downloader, StorageClient
 from floe.write.outputs import (
     AcceptedWrite,
     part_uris,
@@ -354,20 +359,47 @@ def _typed(
     if entity.policy.severity == "abort" and any(c.mask.any() for c in cast_checks):
         return typed, cast_checks  # fmt: skip  # Rust: abort-mode cast errors skip not_null and unique
     required = [not_null_check(typed, n) for n in plan.required]
-    if plan.table is not None:
-        # ponytail: one key scan of the table per chunk; a DuckDB anti-join (ADR) if large histories make it slow
-        seed_from_table(plan.tracker, plan.table, typed, plan.out_map)
     return typed, [*required, *cast_checks, *plan.tracker.check(typed)]
+
+
+def _file_columns(plan: _Plan, uri: str) -> tuple[list[str], list[pl.Expr]]:
+    """D28: the derived columns come last in the schema and are not in the file."""
+    derived = plan.derived.get(uri, [])
+    file_names = plan.names[: len(plan.names) - len(derived)]
+    return file_names, [e.alias(n) for e, n in zip(derived, plan.names[len(file_names) :], strict=True)]  # fmt: skip
+
+
+def _batch_keys(plan: _Plan, files: list[InputFile], downloader: Downloader | None, temp_dir: Path) -> pl.DataFrame | None:  # fmt: skip
+    """#1057: the typed key columns of every input, distinct per chunk, so the history is scanned once per entity.
+
+    Reads the inputs ahead of the checks (a remote one is downloaded again). A key the checks never look
+    at (an unreadable file, a chunk that fails to cast) only adds a lookup; `_run_file` reports the failure.
+    ponytail: a second full parse of the inputs; project the key columns in the readers if that costs.
+    """
+    cols = list(dict.fromkeys(c for key in plan.tracker.keys for c in key))
+    columns = dict(zip(plan.names, plan.entity.schema_.columns, strict=True))
+    parts: list[pl.DataFrame] = []
+    for f in files:
+        local = localize_input(f, downloader, temp_dir)
+        file_names, derived = _file_columns(plan, f.source_uri)
+        try:
+            for _, raw, _ in _chunks(plan.entity, local.local_path, file_names):
+                df = normalize_columns(raw, plan.strategy).with_columns(derived)
+                df = df.select(pl.col(n) if n in df.columns else pl.lit(None, pl.String).alias(n) for n in cols)  # fmt: skip
+                casts = (cast_column(n, columns[n].column_type, plan.entity.source.cast_mode, df.schema[n])[0] for n in cols)  # fmt: skip
+                parts.append(df.select(casts).unique())
+        except (FloeIoError, pl.exceptions.InvalidOperationError):
+            pass
+        if local.is_ephemeral:
+            local.local_path.unlink()
+    return pl.concat(parts) if parts else None
 
 
 def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any], list[pl.DataFrame]]:  # fmt: skip
     """The file's report and its accepted frames (none when it aborted the run); `path` is the local copy."""
     entity, uri = plan.entity, file.source_uri
     severity = entity.policy.severity
-    derived = plan.derived.get(uri, [])
-    # D28: the derived columns come last in the schema and are not in the file
-    file_names = plan.names[: len(plan.names) - len(derived)]
-    derived = [e.alias(n) for e, n in zip(derived, plan.names[len(file_names) :], strict=True)]  # fmt: skip
+    file_names, derived = _file_columns(plan, uri)
     declared = [n for n in declared_names(entity) if n not in plan.names[len(file_names) :]]  # fmt: skip
     chunks = _chunks(entity, path, file_names)
     keys = plan.tracker.snapshot()
@@ -448,19 +480,22 @@ def _run_file(plan: _Plan, file: InputFile, path: Path) -> tuple[dict[str, Any],
     return out, [] if out["status"] == "aborted" else [_output(plan, df) for df in accepted]  # fmt: skip
 
 
-def _seed_unique(plan: _Plan, client: StorageClient, base: str, columns: list[str]) -> None:  # fmt: skip
-    """Append mode: the keys already in the sink's parts count as seen (Rust `seed_unique_tracker_for_append`)."""
-    if not columns:
-        return  # no unique keys: never read the history
-    stored = {n: plan.out_map.get(n, n) for n in columns}  # the sink holds output names
-    for uri in part_uris(client, base.rstrip("/"), "parquet"):
-        part = uri.removeprefix("local://")
-        try:  # only the key columns are read
-            body = client.read(uri)
-            keys = pl.read_parquet(io.BytesIO(body.body if body else b""), columns=list(stored.values()))  # fmt: skip
-        except pl.exceptions.PolarsError as err:
-            raise FloeRunError(f"entity.name={plan.entity.name} cannot seed unique keys from {part}: {err}") from err  # fmt: skip
-        plan.tracker.seed(keys.rename({v: k for k, v in stored.items()}))
+def _seed_unique(plan: _Plan, client: StorageClient, base: str, batch: pl.DataFrame) -> None:  # fmt: skip
+    """Append mode: the keys of the sink's parts that `batch` also holds count as seen (Rust `seed_unique_tracker_for_append`).
+
+    One part is in memory at a time, key columns only: the seed follows the batch, not the sink's history (#1057).
+    """
+    stored = {n: plan.out_map.get(n, n) for key in plan.tracker.keys for n in key}
+
+    def parts() -> Iterator[pl.LazyFrame]:
+        for uri in part_uris(client, base.rstrip("/"), "parquet"):
+            try:  # only the key columns are read
+                body = client.read(uri)
+                yield pl.read_parquet(io.BytesIO(body.body if body else b""), columns=list(stored.values())).lazy()  # fmt: skip
+            except pl.exceptions.PolarsError as err:
+                raise FloeRunError(f"entity.name={plan.entity.name} cannot seed unique keys from {uri.removeprefix('local://')}: {err}") from err  # fmt: skip
+
+    seed_from_scans(plan.tracker, plan.tracker.keys, parts(), batch, stored)
 
 
 def _report_names(
@@ -855,14 +890,7 @@ def _run_entity(
             pk[0] if len(pk) == 1 else f"[{','.join(pk)}]"
         )  # the tracker's check name
     accepted_client = storage_client(accepted)
-    if sink.write_mode == "append" and target is None:
-        _seed_unique(
-            plan,
-            accepted_client,
-            base,
-            sorted({runtime.get(c, c) for k in keys for c in k}),
-        )
-    elif sink.write_mode == "append" and target is not None:
+    if sink.write_mode == "append" and target is not None:
         plan.table = existing_table(target)  # fmt: skip  # Rust `seed_unique_tracker`, and the retry guard
 
     def source() -> ResolvedInputs:
@@ -901,6 +929,13 @@ def _run_entity(
     downloader = None if isinstance(client, LocalClient) else client
     # Rust `localize_input`: a remote input is read from a local copy
     with tempfile.TemporaryDirectory(prefix="floe-") as temp_dir:
+        history = plan.table is not None or (sink.write_mode == "append" and target is None)  # fmt: skip
+        batch = _batch_keys(plan, pending, downloader, Path(temp_dir)) if pending and history and plan.tracker.keys else None  # fmt: skip
+        if batch is not None:
+            if plan.table is not None:
+                seed_from_table(plan.tracker, plan.table, batch, plan.out_map)
+            else:
+                _seed_unique(plan, accepted_client, base, batch)
         for f in pending:
             emit("file_started", entity=entity.name, input=f.source_uri)
             timer = time.monotonic()

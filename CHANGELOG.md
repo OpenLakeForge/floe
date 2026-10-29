@@ -19,6 +19,15 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+### floe-python
+
+- **`unique` checks against the accepted data's history scan it once per entity (#1057).** With `append`,
+  an Iceberg table's key columns were scanned once per chunk, and a Parquet sink's parts were seeded in
+  full, so the cost and memory grew with chunks times history. Floe now reads the inputs' key columns
+  first, then joins the history against them once and keeps only the keys the batch holds. Flagged rows,
+  counts and samples are unchanged. The cost is a second read of the inputs (a remote input is downloaded
+  twice), only for `append` entities with unique keys.
+
 ### airflow-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in

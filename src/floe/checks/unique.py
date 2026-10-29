@@ -4,7 +4,7 @@
 # pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false
 
 import math
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -111,6 +111,56 @@ def _text(value: object) -> str:
     return str(value)
 
 
+def seed_from_scans(
+    tracker: "UniqueTracker",
+    keys: Sequence[Sequence[str]],
+    scans: Iterable[pl.LazyFrame],
+    batch: pl.DataFrame,
+    stored: Mapping[str, str],
+) -> None:
+    """Seed `tracker` with the keys of `scans` (the key columns of the history) that `batch` also holds.
+
+    `stored` maps runtime to stored names. A target key the batch lacks is never hit, so the flags are
+    Rust's while memory follows the batch: each scan is streamed, key columns only. The join matches
+    -0.0 to 0.0 and NaN to any NaN; the tracker then compares float bits, so those extra keys are
+    never hit.
+    """
+    # positional names (k0, b0, ...): no stored column name can collide with a temporary
+    lookups: list[tuple[list[str], list[str], pl.DataFrame]] = []
+    for key in keys:
+        ids = [f"k{i}" for i in range(len(key))]
+        distinct = (
+            batch.select(pl.col(c).alias(k) for c, k in zip(key, ids, strict=True))
+            .drop_nulls()
+            .unique()
+        )
+        if distinct.height:  # all-NULL keys are never checked; nothing to look up
+            lookups.append((list(key), ids, distinct))
+    for scan in scans:
+        for key, ids, distinct in lookups:
+            names = [stored.get(c, c) for c in key]
+            lazy = scan.select(pl.col(n).alias(k) for n, k in zip(names, ids, strict=True))  # fmt: skip
+            # distinct by float bits, as the tracker keys them: `unique` on a float merges -0.0 with 0.0
+            floats = [k for c, k in zip(key, ids, strict=True) if batch.schema[c].is_float()]  # fmt: skip
+            bits = {f"b{k}": pl.col(k).map_batches(_float_bits, return_dtype=pl.UInt64, is_elementwise=True) for k in floats}  # fmt: skip
+            subset = [k for k in ids if k not in floats] + list(bits)
+            # the history's dtypes can differ (unsigned widened, datetimes in us); a key the history
+            # cannot hold casts to NULL, which never matches
+            lookup = distinct.cast(lazy.collect_schema(), strict=False).lazy()
+            hits = (
+                lazy.join(lookup, on=ids, how="semi")
+                .with_columns(**bits)
+                # distinct keys only: memory follows the batch, not the history
+                .unique(subset)
+                .drop(*bits)
+                .collect(engine="streaming")
+            )
+            back = pl.Schema(
+                {k: batch.schema[c] for c, k in zip(key, ids, strict=True)}
+            )
+            tracker.seed(hits.cast(back).rename(dict(zip(ids, key, strict=True))))
+
+
 @dataclass
 class _Constraint:
     columns: list[str]
@@ -172,7 +222,7 @@ class UniqueTracker:
                 valid = keys.select(pl.all_horizontal(pl.all().is_not_null()))[c.ids[0]]
                 fresh = keys.filter(valid).unique()
                 c.seen = pl.concat([c.seen, fresh]).unique() if c.seen.width else fresh
-                # Iceberg seeds chunk by chunk: keys the batch already holds stay batch keys
+                # Parquet seeds part by part
                 c.seeded = (
                     pl.concat([c.seeded, fresh]).unique() if c.seeded.width else fresh
                 )

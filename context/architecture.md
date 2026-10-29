@@ -59,7 +59,7 @@ The CLI and the Python API share the same functions: `_cli.py` parses arguments 
 |---|---|
 | Polars | Reading (CSV, JSON, Parquet, Avro), casting, checks, the accepted/rejected split, Parquet and CSV output |
 | PyIceberg (+ `pyiceberg-core`) | Polaris REST catalog, table creation, schema evolution, overwrite/append commits, maintenance |
-| DuckDB (pinned) | Iceberg `MERGE INTO`, unique checks against table history, compaction; spills to disk |
+| DuckDB (pinned) | Iceberg `MERGE INTO`, compaction; spills to disk |
 | pyarrow | Arrow exchange between the three, ORC reads |
 | fastexcel | XLSX |
 | boto3 | S3 storage client |
@@ -80,8 +80,9 @@ them (see `context/decisions/polars-and-arrow.md`).
    → reject_file: copy the raw file to the rejected location, next file
 
 3. Row-level checks (per file, in bounded chunks)
-   cast to declared types → not_null → unique (within the run; with `append`, seeded from
-   the accepted sink) → rows with errors get `__floe_row_index` + `__floe_errors`
+   cast to declared types → not_null → unique (within the run; with `append`, seeded once per
+   entity from the accepted sink: a first pass reads the inputs' key columns, then one Polars
+   join streams the sink's keys and keeps those the batch holds, #1057) → rows with errors get `__floe_row_index` + `__floe_errors`
    → severity decides: warn keeps them, reject routes them to rejected CSV, abort fails the entity
 
 4. Write outputs (once per entity)
