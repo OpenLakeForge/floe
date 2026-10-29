@@ -94,12 +94,12 @@ def output_column_mapping(
     targets: dict[str, str] = {}
     mapping: dict[str, str] = {}
     for column, target in zip(columns, output_names(columns, strategy), strict=True):
-        source = normalize_name(column.source or column.name, strategy)
         if target in targets:
             raise FloeConfigError(
-                f"output column name collision: {targets[target]} and {source} -> {target}"
+                f"output column name collision: {targets[target]} and {column.name} -> {target}"
             )
-        targets[target] = source
+        targets[target] = column.name
+        source = normalize_name(column.source or column.name, strategy)
         if source != target:
             mapping[source] = target
     return mapping

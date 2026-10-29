@@ -194,6 +194,17 @@ def test_columns_that_normalise_to_one_name_fail_validation(
     assert str(err.value) == f"entity.name=orders column source collision: {message}"
 
 
+def test_output_column_name_collision_fails_validation(tmp_path: Path) -> None:
+    columns = "[{name: a, source: X, type: string}, {name: A, type: string}]"
+    schema = f"{{columns: {columns}, normalize_columns: {{enabled: true}}}}"
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, schema)
+    assert (
+        str(err.value)
+        == "entity.name=orders output column name collision: a and A -> a"
+    )
+
+
 def test_valid_spellings(tmp_path: Path) -> None:
     check(
         tmp_path,
