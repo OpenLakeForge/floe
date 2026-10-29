@@ -170,6 +170,52 @@ def test_append_gives_unique_part_names_and_overwrite_clears_them(
     assert result.part_files == ["part-00000.parquet"]
 
 
+class FailingClient(LocalClient):
+    """A local client whose `write` raises on its `fail_on`-th call (1-based)."""
+
+    def __init__(self, fail_on: int) -> None:
+        self.fail_on, self.writes = fail_on, 0
+
+    def write(self, uri: str, body: bytes) -> None:
+        self.writes += 1
+        if self.writes == self.fail_on:
+            raise OSError(28, "No space left on device")
+        super().write(uri, body)
+
+
+def test_overwrite_failing_on_part_two_keeps_the_previous_parts(tmp_path: Path) -> None:
+    """#1054: the old parts are deleted only after every new part was written."""
+    base = f"local://{tmp_path}"
+    old = pl.DataFrame({"a": [1, 2, 3]})
+    write_accepted(old, LOCAL, base, "overwrite")
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    options = SinkOptions(compression="snappy", row_group_size=10, max_size_per_file=8 * 2)  # fmt: skip
+    new = pl.DataFrame({"a": list(range(100, 110))})
+    with pytest.raises(FloeError):
+        write_accepted(new, FailingClient(2), base, "overwrite", options)
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
+    assert pl.read_parquet(tmp_path).equals(old)
+
+
+def test_overwrite_replaces_more_old_parts_with_fewer_new_ones(tmp_path: Path) -> None:
+    base = f"local://{tmp_path}"
+    options = SinkOptions(compression="snappy", row_group_size=10, max_size_per_file=8 * 40)  # fmt: skip
+    write_accepted(pl.DataFrame({"a": list(range(100))}), LOCAL, base, "overwrite", options)  # fmt: skip
+    assert len(list(tmp_path.glob("part-*.parquet"))) == 3
+    new = pl.DataFrame({"a": [7]})
+    assert write_accepted(new, LOCAL, base, "overwrite").part_files == ["part-00000.parquet"]  # fmt: skip
+    assert [p.name for p in tmp_path.iterdir()] == ["part-00000.parquet"]
+    assert pl.read_parquet(tmp_path).equals(new)
+
+
+def test_rejected_overwrite_failure_keeps_the_previous_part(tmp_path: Path) -> None:
+    base = f"local://{tmp_path}"
+    write_rejected(pl.DataFrame({"id": ["1"]}), LOCAL, base)
+    with pytest.raises(FloeError):
+        write_rejected(pl.DataFrame({"id": ["2"]}), FailingClient(1), base)
+    assert [p.read_text() for p in tmp_path.iterdir()] == ["id\n1\n"]
+
+
 def test_splits_at_max_size_per_file_and_writes_an_empty_part(tmp_path: Path) -> None:
     df = pl.DataFrame({"a": list(range(100))})
     options = SinkOptions(

@@ -18,7 +18,7 @@ entities:
 Semantics:
 - `sink.accepted.format: parquet` writes one or more part files under `sink.accepted.path`.
 - Write mode comes from `sink.write_mode`:
-  - `overwrite`: remove the existing `part-*.parquet` files, then write `part-00000.parquet`, `part-00001.parquet`, ...
+  - `overwrite`: write the new parts as `part-00000.parquet`, `part-00001.parquet`, ... and remove the old `part-*.parquet` files once every new part was written
   - `append`: add new `part-<uuid>.parquet` files alongside existing ones.
   - `merge_scd1` / `merge_scd2`: not supported for Parquet; use the [Iceberg](iceberg.md) sink.
 
@@ -60,10 +60,14 @@ with valid output files in the accepted directory.
 
 **Overwrite is not atomic**
 
-`overwrite` deletes the old part files before it writes the new ones. A failure in between
-leaves the directory empty or partly written until the next run. The run report and
-incremental state are not committed in that case, so Floe re-processes the same inputs on the
-next run.
+`overwrite` first writes every new part under a `_staging-<id>-part-NNNNN.parquet` name, which
+readers of `part-*.parquet` do not see. Only when all of them were written does it copy them to
+`part-NNNNN.parquet`, delete the old parts that were not replaced, then delete the staged files.
+A write failure leaves the previous parts untouched (the staged files are removed). A crash or a
+storage error during the final copy and delete steps can leave a mix of new and old parts (rows
+duplicated or missing) and orphaned `_staging-*` files, which are safe to delete. The run report
+and incremental state are not committed in that case, so Floe re-processes the same inputs on
+the next run and a re-run restores a clean directory.
 
 **If you need transactional accepted writes, use the [Iceberg](iceberg.md) sink instead.**
 Each entity's Iceberg write is one atomic catalog commit.

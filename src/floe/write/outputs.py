@@ -4,10 +4,9 @@ import io
 import math
 import re
 import uuid
-from collections.abc import Generator, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Generator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
-from itertools import count
 
 import polars as pl
 
@@ -58,15 +57,46 @@ def part_uris(client: StorageClient, base: str, ext: str) -> list[str]:
     return sorted(u for u in uris if u.rpartition("/")[0] == base and u.endswith(f".{ext}") and _PART.fullmatch(u.rpartition("/")[2].removesuffix(f".{ext}")))  # fmt: skip
 
 
-def _part_names(client: StorageClient, base: str, mode: WriteMode, ext: str) -> Iterator[str]:  # fmt: skip
-    """Overwrite clears the old parts and numbers from 0 (`part-00000`); other modes use `part-<uuid>`."""
+@contextmanager
+def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str) -> Generator[Callable[[bytes], str]]:  # fmt: skip
+    """Yield `put(body) -> name`. Non-overwrite modes write `part-<uuid>` directly.
+
+    Overwrite stages every part as `_staging-<id>-part-NNNNN` (invisible to `part_uris`) and
+    only when all were written copies them over `part-NNNNN`, deletes the old parts that no new
+    part replaced, then the staged copies (#1054). A failed write leaves the old parts untouched.
+    """
     if mode != "overwrite":
-        while True:
-            yield f"part-{uuid.uuid4()}.{ext}"
-    for uri in part_uris(client, base, ext):
+
+        def put(body: bytes) -> str:
+            name = f"part-{uuid.uuid4()}.{ext}"
+            client.write(f"{base}/{name}", body)
+            return name
+
+        yield put
+        return
+    stage = f"_staging-{uuid.uuid4()}-"
+    names: list[str] = []
+
+    def put_staged(body: bytes) -> str:
+        name = f"part-{len(names):05}.{ext}"
+        client.write(f"{base}/{stage}{name}", body)
+        names.append(name)
+        return name
+
+    try:
+        yield put_staged
+    except BaseException:
+        for name in names:
+            with suppress(FloeError, OSError):  # best effort: the original error wins
+                client.delete(f"{base}/{stage}{name}")
+        raise
+    old = part_uris(client, base, ext)
+    for name in names:
+        client.copy(f"{base}/{stage}{name}", f"{base}/{name}")
+    for uri in set(old) - {f"{base}/{n}" for n in names}:
         client.delete(uri)
-    for i in count():
-        yield f"part-{i:05}.{ext}"
+    for name in names:
+        client.delete(f"{base}/{stage}{name}")
 
 
 def write_accepted(
@@ -78,7 +108,6 @@ def write_accepted(
 ) -> AcceptedWrite:
     """Write `df` as `part-*.parquet` files under `base`, split so each holds about `max_size_per_file`."""
     base = base.rstrip("/")
-    names = _part_names(client, base, mode, "parquet")
     max_size = (options and options.max_size_per_file) or DEFAULT_MAX_SIZE_PER_FILE
     avg_row = max(1, math.ceil(df.estimated_size() / df.height)) if df.height else 1
     rows = max(1, max_size // avg_row)
@@ -89,14 +118,12 @@ def write_accepted(
         kwargs["row_group_size"] = options.row_group_size
     files: list[str] = []
     sizes: list[int] = []
-    with _os_errors():
+    with _os_errors(), _parts(client, base, mode, "parquet") as put:
         for chunk in [df.slice(i, rows) for i in range(0, df.height, rows)] or [df]:
-            name = next(names)
             # ponytail: a part is held in memory (≤ max_size_per_file) before the put; stream multipart uploads if that is too much
             body = io.BytesIO()
             chunk.write_parquet(body, **kwargs)  # pyright: ignore[reportArgumentType]  # ponytail: kwargs loses the compression Literal; validated by the config
-            client.write(f"{base}/{name}", body.getvalue())
-            files.append(name)
+            files.append(put(body.getvalue()))
             sizes.append(body.tell())
     total = sum(sizes)
     return AcceptedWrite(
@@ -115,7 +142,10 @@ def write_rejected(df: pl.DataFrame, client: StorageClient, base: str, mode: Wri
     """
     with _os_errors():
         base = base.rstrip("/")
-        name = f"part-{uuid.uuid5(uuid.NAMESPACE_URL, key)}.csv" if key and mode != "overwrite" else next(_part_names(client, base, mode, "csv"))  # fmt: skip
-        uri = f"{base}/{name}"
-        client.write(uri, df.write_csv().encode())
-    return uri
+        if key and mode != "overwrite":
+            name = f"part-{uuid.uuid5(uuid.NAMESPACE_URL, key)}.csv"
+            client.write(f"{base}/{name}", df.write_csv().encode())
+        else:
+            with _parts(client, base, mode, "csv") as put:
+                name = put(df.write_csv().encode())
+    return f"{base}/{name}"
