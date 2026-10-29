@@ -32,7 +32,8 @@ Context: `context/architecture.md` and `context/decisions/python-core-for-olf.md
 
 - No per-row Python loops on data. Use Polars or DuckDB expressions.
 - Keep memory bounded by the chunk or the batch, not the table: read in chunks, and let DuckDB
-  do anything that scans the target table (merges, unique checks against history).
+  do the merges. Unique checks against history semi-join each chunk with Polars against a local
+  cache of the target's key columns.
 
 ## Comments
 
