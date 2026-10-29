@@ -32,6 +32,8 @@ class Runner:
         execution: ManifestExecution,
         runner_definition: ManifestRunnerDefinition,
         manifest_uri: str | None = None,
+        dagster_run_id: str | None = None,
+        dagster_job_name: str | None = None,
     ) -> RunResult:
         """One run for several entities of `domain`, one after another (`job_scope: domain`)."""
         raise NotImplementedError
@@ -64,6 +66,8 @@ class LocalRunner(Runner):
         execution: ManifestExecution,
         runner_definition: ManifestRunnerDefinition,
         manifest_uri: str | None = None,
+        dagster_run_id: str | None = None,
+        dagster_job_name: str | None = None,
     ) -> RunResult:
         if runner_definition.runner_type != "kubernetes_job":
             raise NotImplementedError("job_scope: domain needs a kubernetes_job runner")
@@ -81,7 +85,11 @@ class LocalRunner(Runner):
         from .kubernetes_runner import run_kubernetes_job, sized_for_domain
 
         return run_kubernetes_job(
-            args, entity=domain, runner=sized_for_domain(runner_definition, domain)
+            args,
+            entity=domain,
+            runner=sized_for_domain(runner_definition, domain),
+            dagster_run_id=dagster_run_id,
+            dagster_job_name=dagster_job_name,
         )
 
     def run_floe_entity(
@@ -110,7 +118,13 @@ class LocalRunner(Runner):
             )
             from .kubernetes_runner import run_kubernetes_job
 
-            return run_kubernetes_job(args, entity=entity, runner=runner_definition)
+            return run_kubernetes_job(
+                args,
+                entity=entity,
+                runner=runner_definition,
+                dagster_run_id=run_id,
+                dagster_job_name=dagster_job_name,
+            )
 
         if runner_definition is not None and runner_definition.runner_type == "databricks_job":
             if execution is None:

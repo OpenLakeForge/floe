@@ -290,6 +290,80 @@ def test_run_floe_entities_creates_one_job_named_for_the_domain() -> None:
     assert container["resources"] == {"requests": {"cpu": "2"}}
 
 
+def test_run_floe_entities_job_carries_the_dagster_run_for_lineage() -> None:
+    execution = load_manifest(Path(__file__).parent / "fixtures" / "manifest.json").execution
+    jobs_api, core_api = MagicMock(), MagicMock()
+    jobs_api.read_namespaced_job.return_value = _job(
+        succeeded=1, conditions=[{"type": "Complete", "status": "True"}]
+    )
+    core_api.list_namespaced_pod.return_value.items = []
+    runner = replace(_runner(), labels={"dagster/run-id": "hijacked"})
+
+    with (
+        patch("floe_dagster.kubernetes_runner._make_batch_client", return_value=jobs_api),
+        patch("floe_dagster.kubernetes_runner._make_core_client", return_value=core_api),
+    ):
+        LocalRunner().run_floe_entities(
+            config_uri="cfg.yml",
+            run_id="run-1_floe_sales",
+            domain="sales",
+            entities=["orders"],
+            execution=execution,
+            runner_definition=runner,
+            dagster_run_id="run-1",
+            dagster_job_name="daily",
+        )
+
+    body = jobs_api.create_namespaced_job.call_args.kwargs["body"]
+    env = {e["name"]: e["value"] for e in body["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["DAGSTER_RUN_ID"] == "run-1"  # the Dagster run, not the per-group Floe run id
+    assert env["DAGSTER_JOB_NAME"] == "daily"
+    assert body["metadata"]["labels"]["dagster/run-id"] == "run-1"
+    assert body["spec"]["template"]["metadata"]["labels"]["dagster/run-id"] == "run-1"  # the default wins
+
+
+def test_run_floe_entity_job_carries_the_dagster_run_for_lineage() -> None:
+    execution = load_manifest(Path(__file__).parent / "fixtures" / "manifest.json").execution
+    jobs_api, core_api = MagicMock(), MagicMock()
+    jobs_api.read_namespaced_job.return_value = _job(
+        succeeded=1, conditions=[{"type": "Complete", "status": "True"}]
+    )
+    core_api.list_namespaced_pod.return_value.items = []
+
+    with (
+        patch("floe_dagster.kubernetes_runner._make_batch_client", return_value=jobs_api),
+        patch("floe_dagster.kubernetes_runner._make_core_client", return_value=core_api),
+    ):
+        LocalRunner().run_floe_entity(
+            config_uri="cfg.yml",
+            run_id="run-1",
+            entity="orders",
+            execution=execution,
+            runner_definition=_runner(),
+            dagster_job_name="daily",
+        )
+
+    body = jobs_api.create_namespaced_job.call_args.kwargs["body"]
+    env = {e["name"]: e["value"] for e in body["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert (env["DAGSTER_RUN_ID"], env["DAGSTER_JOB_NAME"]) == ("run-1", "daily")
+    assert body["metadata"]["labels"]["dagster/run-id"] == "run-1"
+
+
+def test_build_k8s_job_spec_without_a_dagster_run_adds_no_variables_or_label() -> None:
+    spec = build_k8s_job_spec("floe-orders-abc", ["floe", "run"], _runner())
+    env_names = {e["name"] for e in spec["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert not {"DAGSTER_RUN_ID", "DAGSTER_JOB_NAME"} & env_names
+    assert "dagster/run-id" not in spec["metadata"]["labels"]
+    assert "dagster/run-id" not in spec["spec"]["template"]["metadata"]["labels"]
+
+
+def test_build_k8s_job_spec_omits_a_run_id_label_that_is_not_a_valid_label_value() -> None:
+    spec = build_k8s_job_spec("floe-orders-abc", ["floe", "run"], _runner(), dagster_run_id="x" * 64)
+    env_names = {e["name"] for e in spec["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert "DAGSTER_RUN_ID" in env_names
+    assert "dagster/run-id" not in spec["metadata"]["labels"]
+
+
 def _pod_options_runner() -> ManifestRunnerDefinition:
     return replace(
         _runner(),

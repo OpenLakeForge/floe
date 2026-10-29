@@ -76,7 +76,7 @@ def source_names(columns: Sequence[ColumnConfig], strategy: str | None) -> list[
         name = normalize_name(source, strategy)
         if name in seen:
             raise FloeConfigError(
-                f"column source collision: {seen[name]} and {column.name} -> {name}"
+                f"column source collision: {seen[name]} and {source} -> {name}"
             )
         seen[name] = source
     return list(seen)

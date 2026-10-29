@@ -21,11 +21,22 @@ All notable changes to Floe are documented in this file.
 
 ### floe-python
 
+- **Columns that normalise to the same name now fail `floe validate`, not the run (#1005).** With
+  `normalize_columns`, a column `order_id` and a JSON or XML selector `order.id` (or `order/id`) both become
+  `order_id`; `floe validate` passed and `floe run` then failed. Validate now rejects it, and the message names both
+  columns or selectors and the shared name.
+
 - **Accepted rows now reach the sink chunk by chunk (#1056)**: an entity no longer holds all its accepted rows
   in memory before the write. The Parquet sink writes parts as the input is read, and the Iceberg sink writes
   data files into the same single commit. A file's chunks after the first wait on local disk until the file
   is read to the end, so a late read error or an `abort` still drops all of that file's rows. `append`
   stages its Parquet parts like `overwrite` does, so a killed run leaves no visible part for a retry to duplicate.
+
+### dagster-floe
+
+- **Silver lineage events from a `kubernetes_job` run now carry the Dagster parent run (#1076).** The Job
+  container gets `DAGSTER_RUN_ID` and `DAGSTER_JOB_NAME`, and the Job and its pod a `dagster/run-id` label;
+  both `job_scope`s were missing them.
 
 ### airflow-floe
 

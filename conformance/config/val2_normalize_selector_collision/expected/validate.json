@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders column source collision: order_id and order.id -> order_id"
+}
