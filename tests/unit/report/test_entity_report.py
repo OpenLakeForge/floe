@@ -28,7 +28,7 @@ from floe.checks.normalize import (
 from floe.checks.rows import RowCheck, not_null_check, split_rows
 from floe.checks.unique import UniqueTracker, resolve_unique_keys
 from floe.config.parse import parse_config
-from floe.config.types import ArchiveTarget, EntityConfig
+from floe.config.types import ArchiveTarget, EntityConfig, SchemaEvolutionConfig
 from floe.read.avro import read_avro
 from floe.read.csv import read_csv
 from floe.read.orc import read_orc
@@ -203,6 +203,17 @@ def test_accepted_path_only_when_parts_were_written() -> None:
     assert f["output"]["accepted_path"] is None
     f, _ = _build(_entity(), ["part-00000.parquet"])
     assert f["output"]["accepted_path"] == "acc"
+
+
+def test_schema_evolution_reports_the_mode_and_the_added_columns() -> None:
+    """#994"""
+    entity = _entity()
+    assert _build(entity, [])[1]["schema_evolution"] == {"enabled": False, "mode": "strict", "applied": False, "incompatible_changes_detected": False}  # fmt: skip
+    schema = entity.schema_.model_copy(update={"schema_evolution": SchemaEvolutionConfig(mode="add_columns")})  # fmt: skip
+    evolving = entity.model_copy(update={"schema_": schema})
+    assert _build(evolving, [])[1]["schema_evolution"] == {"enabled": True, "mode": "add_columns", "applied": False, "incompatible_changes_detected": False}  # fmt: skip
+    added = _build(evolving, [], added_columns=["email", "country_code"])[1]
+    assert added["schema_evolution"] == {"enabled": True, "mode": "add_columns", "applied": True, "added_columns": ["email", "country_code"], "incompatible_changes_detected": False}  # fmt: skip
 
 
 def test_archive_echo_uses_the_resolved_incremental_mode() -> None:

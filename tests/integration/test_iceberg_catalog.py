@@ -84,9 +84,10 @@ def test_add_columns_evolves_the_table(catalog: Catalog) -> None:
     wider = Schema(*SCHEMA.fields, NestedField(4, "extra", StringType(), required=True))
     try:
         ensure_table(catalog, "spike", name, SCHEMA, "e")
-        evolved = ensure_table(
+        evolved, added = ensure_table(
             catalog, "spike", name, wider, "e", schema_evolution="add_columns"
         )
+        assert added == ["extra"]
         extra = evolved.schema().find_field("extra")
         assert not extra.required
         reopened = catalog.load_table(("spike", name))
@@ -112,7 +113,7 @@ def test_create_reopen_and_reject_changes(catalog: Catalog) -> None:
     name = f"it_{uuid.uuid4().hex[:8]}"
     fields = [("ts", "day")]
     try:
-        created = ensure_table(
+        created, _ = ensure_table(
             catalog, "spike", name, SCHEMA, "e", partition_fields=fields
         )
         assert [f.name for f in created.schema().fields] == ["id", "name", "ts"]
@@ -120,7 +121,7 @@ def test_create_reopen_and_reject_changes(catalog: Catalog) -> None:
             ("ts_day", "day")
         ]
 
-        reopened = ensure_table(
+        reopened, _ = ensure_table(
             open_catalog(catalog_definition(), STORAGE),
             "spike",
             name,

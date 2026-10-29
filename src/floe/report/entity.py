@@ -157,6 +157,7 @@ def build_report(
     table_root_uri: str | None = None,
     table: Mapping[str, Any] | None = None,
     merge: Mapping[str, Any] | None = None,
+    added_columns: Sequence[str] = (),
 ) -> dict[str, Any]:
     """The entity's `run.json`; `files` are the `file_report`s, in input order.
 
@@ -234,9 +235,10 @@ def build_report(
             **(merge or {}),
         },
         "schema_evolution": {
-            "enabled": False,
+            "enabled": evolution.mode == "add_columns",
             "mode": evolution.mode,
-            "applied": False,
+            "applied": bool(added_columns),
+            **({"added_columns": list(added_columns)} if added_columns else {}),
             "incompatible_changes_detected": False,
         },
     }  # fmt: skip

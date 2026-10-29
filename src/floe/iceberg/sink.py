@@ -149,8 +149,8 @@ def write_iceberg(
     mode: WriteMode,
     run_id: str,
     digest: str,
-) -> tuple[IcebergWriteResult, dict[str, Any], dict[str, Any] | None]:
-    """`frames` hold the output columns `names`; returns the result, its `accepted_output` table and merge fields."""
+) -> tuple[IcebergWriteResult, dict[str, Any], dict[str, Any] | None, list[str]]:
+    """`frames` hold the output columns `names`; returns the result, its `accepted_output` table and merge fields, and the columns `add_columns` added."""
     reader = _reader(entity, frames, names)
     options = entity.sink.accepted.merge
     scd2 = options.scd2 if options else None
@@ -175,7 +175,7 @@ def write_iceberg(
             existing = set(catalog.load_table(identifier).schema().column_names)
         if added := [k for k in key if k not in existing]:  # Rust `merge/shared.rs`
             raise FloeRunError(f"entity.name={entity.name} iceberg schema evolution failed: merge key columns cannot be added: {', '.join(added)}")  # fmt: skip
-    table = ensure_table(
+    table, added = ensure_table(
         catalog, target.namespace, target.table, schema, entity.name, target.location.removeprefix("local://"),
         partition_fields(entity), evolution.mode if evolution else "strict", target.catalog.create_database_if_missing,
     )  # fmt: skip
@@ -213,4 +213,4 @@ def write_iceberg(
         "iceberg_namespace": target.namespace,
         "iceberg_table": target.table,
     }
-    return result, fields, merge
+    return result, fields, merge, added

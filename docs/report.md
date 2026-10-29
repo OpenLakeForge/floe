@@ -106,11 +106,13 @@ Merge-specific metrics (Iceberg `merge_scd1`):
 
 ### `schema_evolution` (entity report)
 
-- `enabled`, `applied`, `incompatible_changes_detected`: always `false` in 0.8
+- `enabled`: `true` when `mode` is `add_columns`
 - `mode`: resolved config mode (`strict` or `add_columns`)
+- `applied`: `true` when Floe added columns to the Iceberg table during the write (D13)
+- `added_columns`: ordered list of the columns added in that write; present only when `applied` is `true`
+- `incompatible_changes_detected`: always `false` in 0.8 (a non-additive change fails the entity before the report)
 
-`mode: add_columns` does add new columns to an Iceberg table (D13), but 0.8 does not record
-them here and emits no `schema_evolution_applied` event yet.
+Floe also emits a `schema_evolution_applied` event when it adds columns (see [Logging](logging.md)).
 
 Notes:
 - Metrics are populated when the writer can collect them cheaply and reliably.

@@ -89,7 +89,7 @@ def table(
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "spike-s3-secret")
     catalog: Catalog = open_catalog(CATALOG, STORAGE)
     name = f"w{uuid.uuid4().hex[:8]}"
-    created = ensure_table(
+    created, _ = ensure_table(
         catalog, "write_tests", name, SCHEMA, "e", partition_fields=request.param
     )
     yield created

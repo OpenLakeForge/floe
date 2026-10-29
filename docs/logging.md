@@ -28,12 +28,10 @@ The final line on stdout is always the `run_finished` event.
 - `entity_started`: entity name (`name`, `ts_ms`)
 - `file_started`: entity/input pair (`entity`, `input`, `ts_ms`)
 - `file_finished`: file outcome and counts (`status`, `rows`, `accepted`, `rejected`, `elapsed_ms`, `ts_ms`)
-- `schema_evolution_applied`: additive schema-evolution audit event (`entity`, `mode`, `added_columns`, `ts_ms`); reserved, not emitted in 0.8
+- `schema_evolution_applied`: additive schema-evolution audit event (`entity`, `mode`, `added_columns`, `ts_ms`); emitted once per entity run in which `add_columns` adds columns to an Iceberg table
 - `entity_finished`: entity totals (`status`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `ts_ms`)
 - `run_finished`: final run totals and exit code (`status`, `exit_code`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `summary_uri`, `ts_ms`)
 - `log`: structured warning/error line (`log_level`, `code`, `message`, optional `entity`, optional `input`, `ts_ms`)
-
-`schema_evolution_applied` is part of the event contract, but 0.8 does not emit it yet, even when `add_columns` adds columns to an Iceberg table.
 
 ### `--log-format off` (default)
 
