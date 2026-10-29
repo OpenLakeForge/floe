@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 import uuid
 from dataclasses import replace
@@ -25,6 +26,8 @@ _log = logging.getLogger(__name__)
 _PROFILE_ENV = "FLOE_PROFILE_CONTENT"
 _DEFAULT_POLL_INTERVAL_S = 10
 _DEFAULT_TIMEOUT_S = 3600
+_RUN_ID_LABEL = "dagster/run-id"
+_LABEL_VALUE = re.compile(r"[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?")
 
 
 def run_kubernetes_job(
@@ -34,13 +37,17 @@ def run_kubernetes_job(
     runner: ManifestRunnerDefinition,
     jobs_api: Any = None,
     core_api: Any = None,
+    dagster_run_id: str | None = None,
+    dagster_job_name: str | None = None,
 ) -> RunResult:
     namespace = runner.namespace
     if not namespace:
         raise ValueError("kubernetes_job runner requires a non-empty 'namespace' field")
 
     job_name = _make_job_name(entity)
-    job_spec = build_k8s_job_spec(job_name, cmd_args, runner)
+    job_spec = build_k8s_job_spec(
+        job_name, cmd_args, runner, dagster_run_id=dagster_run_id, dagster_job_name=dagster_job_name
+    )
 
     poll_interval = runner.poll_interval_seconds or _DEFAULT_POLL_INTERVAL_S
     timeout = runner.timeout_seconds or _DEFAULT_TIMEOUT_S
@@ -112,7 +119,14 @@ def _delete_job(jobs_api: Any, job_name: str, namespace: str) -> None:
         _log.warning("could not delete Kubernetes Job %s/%s", namespace, job_name, exc_info=True)
 
 
-def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunnerDefinition) -> dict[str, Any]:
+def build_k8s_job_spec(
+    job_name: str,
+    cmd_args: list[str],
+    runner: ManifestRunnerDefinition,
+    *,
+    dagster_run_id: str | None = None,
+    dagster_job_name: str | None = None,
+) -> dict[str, Any]:
     if not runner.image:
         raise ValueError("kubernetes_job runner requires a non-empty 'image' field")
     if not runner.namespace:
@@ -143,6 +157,12 @@ def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunne
                     },
                 }
             )
+
+    # the lineage parent run (`floe.lineage.events.parent`): the Job has no Dagster process env
+    if dagster_run_id:
+        env_vars.append({"name": "DAGSTER_RUN_ID", "value": dagster_run_id})
+    if dagster_job_name:
+        env_vars.append({"name": "DAGSTER_JOB_NAME", "value": dagster_job_name})
 
     if profile_text is not None:
         env_vars.append({"name": _PROFILE_ENV, "value": profile_text})
@@ -176,8 +196,10 @@ def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunne
         pod_spec["tolerations"] = runner.tolerations
 
     # the defaults win: `floe-job` is how the runner finds the pod again
+    run_label = {_RUN_ID_LABEL: dagster_run_id} if dagster_run_id and _LABEL_VALUE.fullmatch(dagster_run_id) else {}
+    job_labels = {"app": "floe-runner", **run_label}
     pod_metadata: dict[str, Any] = {
-        "labels": {**(runner.labels or {}), "app": "floe-runner", "floe-job": job_name}
+        "labels": {**(runner.labels or {}), **job_labels, "floe-job": job_name}
     }
     if runner.annotations:
         pod_metadata["annotations"] = runner.annotations
@@ -197,7 +219,7 @@ def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunne
     return {
         "apiVersion": "batch/v1",
         "kind": "Job",
-        "metadata": {"name": job_name, "namespace": runner.namespace, "labels": {"app": "floe-runner"}},
+        "metadata": {"name": job_name, "namespace": runner.namespace, "labels": job_labels},
         "spec": job_spec,
     }
 

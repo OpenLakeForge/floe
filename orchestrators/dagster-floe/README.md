@@ -165,7 +165,7 @@ From 0.3.0, remove that patch and set the variables above.
 
 ## Lineage integration
 
-The connector automatically injects two environment variables into every floe subprocess:
+The connector automatically injects two environment variables into every floe run it starts locally or as a `kubernetes_job` (not `databricks_job`):
 
 - `DAGSTER_RUN_ID` — the current Dagster run ID
 - `DAGSTER_JOB_NAME` — the Dagster job name
