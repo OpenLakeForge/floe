@@ -4,6 +4,10 @@ All notable changes to Floe are documented in this file.
 
 ## v0.8.3 (unreleased)
 
+- **`-p env:NAME` (#1068).** `-p` / `--profile` and `profile_path=` accept `env:NAME`, which reads the profile YAML
+  from environment variable `NAME`, so a `kubernetes_job` run needs no profile file in the Job (part of #1047).
+  An unset or empty variable is a `FloeConfigError` naming it. Relative paths a profile supplies resolve against
+  the config's directory, as for a file profile. `execution.runner` stays validate-only.
 - **A Parquet or CSV `overwrite` keeps the previous parts until the new ones are written (#1054)**: the
   new parts are staged as `_staging-*` files, and the old parts are removed only after every new part
   was written, so a failed write no longer empties the sink. A crash during the final swap can still

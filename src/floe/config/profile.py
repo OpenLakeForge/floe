@@ -1,5 +1,6 @@
 """Environment profiles, ported from `profile/parse.rs` and `profile/validate.rs`."""
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -404,7 +405,20 @@ def apply_profile(config: RootConfig, profile: ProfileConfig) -> RootConfig:
     return config.model_copy(update={k: v for k, v in blocks.items() if v is not None})
 
 
+ENV_PREFIX = "env:"
+
+
+def read_env_profile(location: str) -> str:
+    """`env:NAME`: the profile YAML held in environment variable `NAME`."""
+    name = location.removeprefix(ENV_PREFIX)
+    if not (text := os.environ.get(name, "")).strip():
+        raise FloeConfigError(f"profile environment variable {name} is unset or empty")
+    return text
+
+
 def _docs(location: str | Path) -> list[object]:
+    if isinstance(location, str) and location.startswith(ENV_PREFIX):
+        return parse_yaml(read_env_profile(location))
     if isinstance(location, Path) or not location.startswith("s3://"):
         return load_yaml(Path(location))
     try:

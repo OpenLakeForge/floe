@@ -17,7 +17,7 @@ from typing import Any, NamedTuple, cast
 from pydantic import BaseModel
 
 from floe import __version__
-from floe.config.profile import ProfileConfig
+from floe.config.profile import ENV_PREFIX, ProfileConfig, read_env_profile
 from floe.config.project import ReportConfig, RootConfig
 from floe.config.storage import StoragesConfig
 from floe.config.types import ArchiveTarget, EntityConfig, SinkTarget, SourceConfig
@@ -464,7 +464,10 @@ def build_manifest(
     profile_uri = profile_checksum = None
     if options.profile_arg is not None:  # recorded like `config_uri` and its checksum
         # an s3 profile is read from there by the run, so it is recorded as typed
-        if options.profile_arg.startswith("s3://"):
+        if options.profile_arg.startswith(ENV_PREFIX):  # the Job reads the variable too
+            profile_uri = options.profile_arg
+            profile_checksum = _sha256(read_env_profile(profile_uri).encode())
+        elif options.profile_arg.startswith("s3://"):
             profile_uri = options.profile_arg
             profile_checksum = _sha256(read_s3(profile_uri, "profile"))
         else:
