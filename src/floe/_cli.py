@@ -40,7 +40,7 @@ def _realpath(path: str) -> Path:
 def _profile(location: str | None) -> ProfileConfig | None:
     if not location:
         return None
-    return parse_profile(location if location.startswith("s3://") else _realpath(location))  # fmt: skip
+    return parse_profile(location if location.startswith(("s3://", "env:")) else _realpath(location))  # fmt: skip
 
 
 def _load(path: Path, profile: ProfileConfig | None) -> RootConfig:
@@ -83,7 +83,7 @@ def _validate(args: argparse.Namespace) -> int:
         print(f"  Severity: {e.policy.severity}")
     profile_arg = ""
     if args.profile:
-        profile_arg = f" -p {args.profile if args.profile.startswith('s3://') else os.path.realpath(args.profile)}"  # fmt: skip
+        profile_arg = f" -p {args.profile if args.profile.startswith(('s3://', 'env:')) else os.path.realpath(args.profile)}"  # fmt: skip
     print(f"Next: floe run -c {path}{profile_arg}")
     return 0
 

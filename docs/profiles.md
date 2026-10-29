@@ -51,7 +51,7 @@ All other fields are optional.
 
 ## Profile location
 
-A profile is a local path or an `s3://` URI, for `-p` / `--profile` on every command and for `profile_path=`
+A profile is a local path, an `s3://` URI or `env:NAME`, for `-p` / `--profile` on every command and for `profile_path=`
 in the Python API:
 
 ```bash
@@ -62,6 +62,18 @@ An `s3://` profile is read with the AWS default credential chain (`AWS_ENDPOINT_
 `AWS_S3_FORCE_PATH_STYLE` for S3-compatible stores), as an `s3://` manifest is. A missing object fails with
 `profile not found: <uri>`. `floe manifest generate -p s3://...` records the URI as `profile_uri`, and the
 SHA-256 of the object as `profile_checksum`. The config (`-c`) is still a local path.
+
+`-p env:NAME` reads the profile YAML from environment variable `NAME`, so a container or Job needs no profile file:
+
+```bash
+FLOE_PROFILE_CONTENT="$(cat profile.yml)" floe run -c config.yml -p env:FLOE_PROFILE_CONTENT
+```
+
+An unset or empty variable fails with a `FloeConfigError` naming it. The profile behaves exactly as a file one
+(`${VAR}` references are expanded the same way), except that relative paths inside it resolve against the current
+working directory. `execution.runner` is validated only: `floe run` always runs in-process and never launches
+a runner, so a Job started with its own profile does not start another Job. `floe manifest generate -p env:NAME`
+records `env:NAME` as `profile_uri` and the SHA-256 of the variable's content as `profile_checksum`.
 
 ---
 
