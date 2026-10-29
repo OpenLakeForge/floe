@@ -20,6 +20,7 @@ def check(
     sink: str = "{accepted: {format: parquet, path: out}}",
     catalogs: str = "",
     partitioning: str = "",
+    options: str = "{}",
 ) -> None:
     path = tmp_path / "config.yml"
     path.write_text(
@@ -28,7 +29,7 @@ def check(
         version: "{version}"
         entities:
         - name: orders
-          source: {{format: {fmt}, path: in.csv{partitioning}}}
+          source: {{format: {fmt}, path: in.csv, options: {options}{partitioning}}}
           sink: {sink}
           policy: {{severity: warn}}
           schema: {schema}
@@ -161,6 +162,36 @@ def test_json_column_limit(tmp_path: Path) -> None:
     columns = ", ".join(f"{{name: c{i}, type: string}}" for i in range(1025))
     with pytest.raises(FloeConfigError, match="has 1025 entries"):
         check(tmp_path, f"{{columns: [{columns}]}}", fmt="json")
+
+
+@pytest.mark.parametrize(
+    ("fmt", "columns", "message"),
+    [
+        (
+            "csv",
+            "[{name: A B, type: string}, {name: a_b, type: string}]",
+            "A B and a_b -> a_b",
+        ),
+        (
+            "json",
+            "[{name: order_id, type: string}, {name: order_id2, source: order.id, type: string}]",
+            "order_id and order.id -> order_id",
+        ),
+        (
+            "xml",
+            "[{name: order_id, type: string}, {name: order_id2, source: order/id, type: string}]",
+            "order_id and order/id -> order_id",
+        ),
+    ],
+)
+def test_columns_that_normalise_to_one_name_fail_validation(
+    tmp_path: Path, fmt: str, columns: str, message: str
+) -> None:
+    schema = f"{{columns: {columns}, normalize_columns: {{enabled: true}}}}"
+    options = "{row_tag: row}" if fmt == "xml" else "{}"
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, schema, fmt=fmt, options=options)
+    assert str(err.value) == f"entity.name=orders column source collision: {message}"
 
 
 def test_valid_spellings(tmp_path: Path) -> None:

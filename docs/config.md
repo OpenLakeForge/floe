@@ -522,7 +522,8 @@ See `docs/pii.md` for full strategy reference and masking pattern syntax.
   - `enabled`: boolean toggle.
   - `strategy`: `snake_case`, `lower`, `camel_case`, `none`.
   - When enabled, both schema column names and input column names are normalized
-    before checks. If normalization causes a name collision, the run fails.
+    before checks. Two schema columns (or selectors) that normalise to the same name fail `floe validate`; an input column
+    that collides with another after normalization fails the run.
 - `schema_evolution` (optional, v0.2)
   - Omitted by default, Floe behaves as `mode: strict` and `on_incompatible: fail`.
   - `mode`: `strict` or `add_columns`.
