@@ -10,6 +10,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import polars as pl
+import polars.selectors as cs
 import pyarrow as pa
 
 from floe.checks.rows import RowCheck
@@ -269,7 +270,8 @@ def seed_from_history(
         # positional names (k0, b0, ...): no stored column name can collide with a temporary
         ids = [f"k{i}" for i in range(len(key))]
         distinct = (
-            batch.select(pl.col(c).alias(k) for c, k in zip(key, ids, strict=True))
+            # by_name: a column named like a pattern (`*`, `^...$`) is selected literally
+            batch.select(cs.by_name(c).alias(k) for c, k in zip(key, ids, strict=True))
             .drop_nulls()
             .unique()
         )
@@ -279,7 +281,7 @@ def seed_from_history(
         floats = [k for c, k in zip(key, ids, strict=True) if batch.schema[c].is_float()]  # fmt: skip
         bits = {f"b{k}": pl.col(k).map_batches(_float_bits, return_dtype=pl.UInt64, is_elementwise=True) for k in floats}  # fmt: skip
         subset = [k for k in ids if k not in floats] + list(bits)
-        scan = history.select(pl.col(n).alias(k) for n, k in zip(names, ids, strict=True))  # fmt: skip
+        scan = history.select(cs.by_name(n).alias(k) for n, k in zip(names, ids, strict=True))  # fmt: skip
         # the history's dtypes can differ (unsigned widened, datetimes in us); a key its type
         # cannot hold casts to NULL, which never matches
         lookup = distinct.cast(scan.collect_schema(), strict=False).lazy()

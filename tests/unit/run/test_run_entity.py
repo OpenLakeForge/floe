@@ -208,6 +208,20 @@ def test_append_seeds_only_the_history_keys_a_chunk_holds(
     assert unique["target_duplicates_count"] == 1
 
 
+def test_append_checks_history_for_a_unique_column_named_like_a_pattern(tmp_path: Path) -> None:  # fmt: skip
+    """#1057 review: `pl.col("*")` expanded every cached column; the name is selected literally."""
+    config = CONFIG.format(severity="reject", mismatch="").replace("    sink:\n", "    sink:\n      write_mode: append\n")  # fmt: skip
+    config = config.replace("{name: id, type: int64, nullable: false}", '{name: "*", source: id, type: int64, unique: true}')  # fmt: skip
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n2,b\n")
+    run_entity(entity, tmp_path, "0.3")
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n2,c\n3,d\n")
+    (unique,) = run_entity(entity, tmp_path, "0.3").report["unique_constraints"]
+    assert unique["target_duplicates_count"] == 1
+
+
 def test_append_fails_when_a_sink_part_lacks_a_unique_key_column(tmp_path: Path) -> None:  # fmt: skip
     config = CONFIG.format(severity="reject", mismatch="").replace("    sink:\n", "    sink:\n      write_mode: append\n")  # fmt: skip
     (tmp_path / "in").mkdir()

@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import polars as pl
+import polars.selectors as cs
 from pyiceberg.table import Table
 
 from floe.iceberg.catalog import run_error
@@ -22,5 +23,5 @@ def cache_table_keys(
     if not names:
         return False
     with run_error("iceberg unique seed scan failed"):
-        pl.scan_iceberg(table).select(sorted(names)).sink_parquet(path)
+        pl.scan_iceberg(table).select(cs.by_name(sorted(names))).sink_parquet(path)
     return True
