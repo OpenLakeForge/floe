@@ -9,6 +9,11 @@ All notable changes to Floe are documented in this file.
   An unset or empty variable is a `FloeConfigError` naming it. Relative paths in the profile resolve against the
   current working directory. `execution.runner` stays validate-only.
 
+- **Iceberg merges and compaction run DuckDB with `memory_limit=4GB` and a bounded spill directory (#1055).**
+  DuckDB defaulted to 80% of the host's RAM, so a large merge in a Kubernetes pod was OOM-killed
+  instead of spilling. It now caps memory at 4GB and spills to a temporary directory (at most
+  50GB, removed afterwards). Size pods at 6 GiB or more (see `docs/write_modes.md`).
+
 ## Unreleased
 
 ### airflow-floe

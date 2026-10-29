@@ -2,6 +2,9 @@
 
 import os
 import re
+import shutil
+import tempfile
+import weakref
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from urllib.parse import urlsplit
@@ -26,6 +29,11 @@ _TRANSFORMS = frozenset({"identity", "year", "month", "day", "hour"})
 # first id of a partition field, as in the Iceberg spec
 _PARTITION_FIELD_ID_START = 1000
 DUCKDB_CATALOG = "floe_catalog"
+# the ADR's limits (python-core-for-olf.md, "Supported limits"); DuckDB's own default is 80% of the
+# host's RAM, not the cgroup limit, so a Kubernetes pod is OOM-killed instead of spilling.
+# Size pods at the memory limit + 2 GiB. The spill bound fails a runaway merge before it fills the disk.
+DUCKDB_MEMORY_LIMIT = "4GB"
+DUCKDB_MAX_TEMP_DIRECTORY_SIZE = "50GB"
 
 
 def transform_name(field: PartitionField) -> str:
@@ -174,8 +182,10 @@ def open_duckdb(
         raise FloeConfigError(f"iceberg catalog {definition.name}: merges and compaction require a rest catalog (got {definition.type})")  # fmt: skip
     statements = _duckdb_setup(definition, storage)
     with run_error("duckdb catalog attach failed"):
-        # ponytail: DuckDB's default memory_limit and spill dir; set the ADR's limits when the run wires merges
-        con = duckdb.connect()
+        spill = tempfile.mkdtemp(prefix="floe-duckdb-")
+        con = duckdb.connect(config={"memory_limit": DUCKDB_MEMORY_LIMIT, "temp_directory": spill, "max_temp_directory_size": DUCKDB_MAX_TEMP_DIRECTORY_SIZE})  # fmt: skip
+        # the spill directory lives as long as the connection (also on `with` exit and at interpreter exit)
+        weakref.finalize(con, shutil.rmtree, spill, True)
         for statement in statements:
             con.execute(statement)
     return con

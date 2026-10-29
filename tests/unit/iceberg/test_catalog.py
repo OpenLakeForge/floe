@@ -1,5 +1,7 @@
 """Messages come from `iceberg/schema.rs`; no catalog involved."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import SecretStr
 from pyiceberg.schema import Schema
@@ -215,3 +217,24 @@ def test_duckdb_rejects_a_secret_only_credential() -> None:
 def test_duckdb_without_s3_storage_creates_no_s3_secret() -> None:
     statements = _duckdb_setup(rest_catalog("id:secret"), None)
     assert not any("TYPE s3" in s for s in statements)
+
+
+def test_open_duckdb_sets_the_adr_limits_and_cleans_the_spill_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_statements(*_: object) -> list[str]:  # no catalog to attach
+        return []
+
+    monkeypatch.setattr("floe.iceberg.catalog._duckdb_setup", no_statements)
+    con = open_duckdb(rest_catalog("id:secret"))
+    memory, spill, size = con.execute(
+        "SELECT current_setting('memory_limit'), current_setting('temp_directory'), current_setting('max_temp_directory_size')"
+    ).fetchone() or ("", "", "")
+    assert (memory, size) == (
+        "3.7 GiB",
+        "46.5 GiB",
+    )  # 4GB and 50GB, not 80% of RAM and 90% of the disk
+    assert Path(spill).is_dir()
+    con.close()
+    del con
+    assert not Path(spill).exists()
