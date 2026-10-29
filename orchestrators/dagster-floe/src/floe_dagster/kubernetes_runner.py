@@ -4,6 +4,7 @@ import logging
 import time
 import uuid
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 from .k8s_status import (
@@ -21,6 +22,7 @@ from .runner import RunResult
 
 _log = logging.getLogger(__name__)
 
+_PROFILE_ENV = "FLOE_PROFILE_CONTENT"
 _DEFAULT_POLL_INTERVAL_S = 10
 _DEFAULT_TIMEOUT_S = 3600
 
@@ -120,6 +122,7 @@ def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunne
     container_args: list[str] = list(cmd_args[1:]) if len(cmd_args) > 1 else []
     if runner.command is not None:
         container_cmd = runner.command
+    container_args, profile_text = _inline_profile(container_args)
     if runner.args is not None:  # a prefix: replacing the list would drop the entity selection
         container_args = runner.args + container_args
 
@@ -140,6 +143,9 @@ def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunne
                     },
                 }
             )
+
+    if profile_text is not None:
+        env_vars.append({"name": _PROFILE_ENV, "value": profile_text})
 
     container: dict[str, Any] = {"name": "floe-runner", "image": runner.image}
     if container_cmd:
@@ -194,6 +200,17 @@ def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunne
         "metadata": {"name": job_name, "namespace": runner.namespace, "labels": {"app": "floe-runner"}},
         "spec": job_spec,
     }
+
+
+def _inline_profile(args: list[str]) -> tuple[list[str], str | None]:
+    """A profile path only exists on the run pod's disk: the Job gets its text (`${VAR}` unexpanded) instead."""
+    for i, arg in enumerate(args[:-1]):
+        if arg in ("-p", "--profile"):
+            path = args[i + 1]
+            if "://" in path or path.startswith("env:"):  # already reachable from the Job
+                return args, None
+            return [*args[:i], "-p", f"env:{_PROFILE_ENV}", *args[i + 2 :]], Path(path).read_text(encoding="utf-8")
+    return args, None
 
 
 def _resource_requests(resources: dict[str, Any] | None) -> dict[str, str]:

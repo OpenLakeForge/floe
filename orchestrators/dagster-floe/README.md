@@ -47,6 +47,11 @@ pip install "dagster-floe[floe]"   # also installs floe-python>=0.8.1,<0.9 for t
 | 0.3.0 | 0.8 | `0.8` |
 | 0.2.x | 0.7 and earlier | see 0.2.x docs |
 
+With the `kubernetes_job` runner, a run that has a profile (config mode, `profile_path=`) reads the profile in the
+run pod and hands its text to the Job as the `FLOE_PROFILE_CONTENT` env var, with `-p env:FLOE_PROFILE_CONTENT`
+in place of the pod-local path. `${VAR}` references stay unexpanded: the Job expands them. The Job image needs
+Floe 0.8.3 or newer for these runs. A profile that is already a URI such as `s3://...` is passed as is.
+
 ## Development install (from this repo)
 
 ```bash
