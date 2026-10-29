@@ -302,6 +302,35 @@ def test_append_failing_on_part_two_deletes_the_part_it_wrote(tmp_path: Path) ->
     assert list(tmp_path.iterdir()) == []
 
 
+def test_append_parts_stay_invisible_until_the_stream_completes(tmp_path: Path) -> None:
+    """A kill mid-stream must leave no `part-*` for a retry to duplicate: look at the moment of failure."""
+    options = SinkOptions(compression="snappy", row_group_size=10, max_size_per_file=8 * 40)  # fmt: skip
+    visible: list[list[str]] = []
+    staged: list[int] = []
+
+    def frames() -> Iterator[pl.DataFrame]:
+        yield pl.DataFrame(
+            {"a": list(range(40))}
+        )  # one whole part, written before the next pull
+        visible.append(sorted(p.name for p in tmp_path.glob("part-*")))
+        staged.append(len(list(tmp_path.glob("_staging-*"))))
+        raise FloeError("input read failed")
+
+    with pytest.raises(FloeError, match="input read failed"):
+        write_accepted(frames(), LOCAL, f"local://{tmp_path}", "append", options)
+    assert visible == [[]]
+    assert staged == [1]  # the first part was on disk, staged
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_append_ignores_staged_leftovers_of_a_killed_run(tmp_path: Path) -> None:
+    (tmp_path / "_staging-dead-part-1.parquet").write_bytes(b"torn")
+    result = write_accepted([pl.DataFrame({"a": [1]})], LOCAL, f"local://{tmp_path}", "append")  # fmt: skip
+    assert [p.name for p in tmp_path.glob("part-*")] == result.part_files
+    assert pl.read_parquet(tmp_path / result.part_files[0]).height == 1
+    assert [p.name for p in tmp_path.glob("_staging-*")] == ["_staging-dead-part-1.parquet"]  # fmt: skip
+
+
 def test_avro_and_orc_read(tmp_path: Path) -> None:
     columns = [("id", "string"), ("qty", "int64"), ("price", "number"),
                ("active", "boolean"), ("note", "string")]  # fmt: skip

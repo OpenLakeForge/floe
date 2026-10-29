@@ -59,15 +59,16 @@ def part_uris(client: StorageClient, base: str, ext: str) -> list[str]:
 
 @contextmanager
 def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str) -> Generator[Callable[[bytes], str]]:  # fmt: skip
-    """Yield `put(body) -> name`. Non-overwrite modes write `part-<uuid>` directly.
+    """Yield `put(body) -> name`. Every part is staged as `_staging-<id>-<name>` (invisible to `part_uris`).
 
-    Overwrite stages every part as `_staging-<id>-part-NNNNN` (invisible to `part_uris`) and
-    only when all were written copies them over `part-NNNNN`, deletes the old parts that no new
-    part replaced, then the staged copies (#1054). A failed write leaves the old parts untouched.
-    Either way a failed write deletes the parts it wrote (#1056: parts are written while the input is still read).
+    Only when all were written are they copied over `<name>` and the staged copies deleted (#1054).
+    Overwrite names the parts `part-NNNNN` and deletes the old parts that no new part replaced, so a
+    failed write leaves them untouched. Other modes name them `part-<uuid>` and keep the old parts;
+    staging keeps a killed run from leaving visible parts for a retry to duplicate (#1056: parts are
+    written while the input is still read). A failed write deletes the staged parts it wrote.
     """
     overwrite = mode == "overwrite"
-    stage = f"_staging-{uuid.uuid4()}-" if overwrite else ""
+    stage = f"_staging-{uuid.uuid4()}-"
     names: list[str] = []
 
     def put(body: bytes) -> str:
@@ -83,9 +84,7 @@ def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str) -> Gener
             with suppress(FloeError, OSError):  # best effort: the original error wins
                 client.delete(f"{base}/{stage}{name}")
         raise
-    if not overwrite:
-        return
-    old = part_uris(client, base, ext)
+    old = part_uris(client, base, ext) if overwrite else []
     for name in names:
         client.copy(f"{base}/{stage}{name}", f"{base}/{name}")
     for uri in set(old) - {f"{base}/{n}" for n in names}:
