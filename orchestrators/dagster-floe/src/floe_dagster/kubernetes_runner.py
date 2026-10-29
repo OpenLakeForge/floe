@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from dataclasses import replace
@@ -17,6 +18,8 @@ from .k8s_status import (
 )
 from .manifest import ManifestRunnerDefinition
 from .runner import RunResult
+
+_log = logging.getLogger(__name__)
 
 _DEFAULT_POLL_INTERVAL_S = 10
 _DEFAULT_TIMEOUT_S = 3600
@@ -50,16 +53,23 @@ def run_kubernetes_job(
     deadline = time.monotonic() + timeout
     status = STATUS_SUBMITTED
     last_job: Any = None
+    reached_final_state = False
 
-    while True:
-        last_job = jobs_api.read_namespaced_job(name=job_name, namespace=namespace)
-        status = map_k8s_job_status(last_job)
-        if status in (STATUS_SUCCEEDED, STATUS_FAILED, STATUS_TIMEOUT, STATUS_CANCELED):
-            break
-        if time.monotonic() >= deadline:
-            status = STATUS_TIMEOUT
-            break
-        time.sleep(poll_interval)
+    try:
+        while True:
+            last_job = jobs_api.read_namespaced_job(name=job_name, namespace=namespace)
+            status = map_k8s_job_status(last_job)
+            if status in (STATUS_SUCCEEDED, STATUS_FAILED, STATUS_TIMEOUT, STATUS_CANCELED):
+                reached_final_state = True
+                break
+            if time.monotonic() >= deadline:
+                status = STATUS_TIMEOUT
+                break
+            time.sleep(poll_interval)
+    finally:
+        # an interrupt, an error or the poll timeout leaves a Job nobody watches: it would keep writing
+        if not reached_final_state:
+            _delete_job(jobs_api, job_name, namespace)
 
     stdout = _collect_job_logs(core_api, job_name, namespace)
     pod_ctx = _collect_pod_context(core_api, job_name, namespace)
@@ -90,6 +100,14 @@ def run_kubernetes_job(
         failure_reason=failure_reason,
         backend_metadata=backend_metadata,
     )
+
+
+def _delete_job(jobs_api: Any, job_name: str, namespace: str) -> None:
+    """Best effort, with its pods: a failure is logged and must not mask the error being raised."""
+    try:
+        jobs_api.delete_namespaced_job(job_name, namespace, propagation_policy="Background")
+    except Exception:
+        _log.warning("could not delete Kubernetes Job %s/%s", namespace, job_name, exc_info=True)
 
 
 def build_k8s_job_spec(job_name: str, cmd_args: list[str], runner: ManifestRunnerDefinition) -> dict[str, Any]:
