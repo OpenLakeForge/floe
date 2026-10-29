@@ -1,6 +1,6 @@
 [project]
 name = "dagster-floe"
-version = "0.3.1"
+version = "0.4.0"
 description = "Dagster connector for Floe CLI (config-driven ingestion)"
 requires-python = ">=3.10"
 readme = "README.md"
