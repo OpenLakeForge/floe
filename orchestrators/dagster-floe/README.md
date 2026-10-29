@@ -42,6 +42,7 @@ pip install "dagster-floe[floe]"   # also installs floe-python>=0.8.1,<0.9 for t
 
 | dagster-floe | Floe | Manifest `spec_version` |
 | --- | --- | --- |
+| 0.4.0 | 0.8.1 or newer (a Glue `{domain}` database needs 0.8.2) | `0.8` |
 | 0.3.1 | 0.8.1 or newer (`job_scope: domain` Jobs run `floe run --domain`) | `0.8` |
 | 0.3.0 | 0.8 | `0.8` |
 | 0.2.x | 0.7 and earlier | see 0.2.x docs |
