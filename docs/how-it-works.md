@@ -68,6 +68,10 @@ For files that passed prechecks:
 
 After row-level validation, uniqueness is evaluated across the **entire entity**
 in file order. The first occurrence is accepted; later duplicates are flagged.
+With `merge_scd1` and `merge_scd2`, a key repeated across files keeps the
+occurrence from the latest file (#1090), so a run that catches up on several
+batches merges each key's newest version; within one file the first occurrence
+still wins.
 With `append`, keys already in the accepted sink count as seen,
 so a row that duplicates the existing history is flagged too.
 

@@ -412,6 +412,46 @@ def test_merge_scd1_upserts_and_reports_the_counts(tmp_path: Path, catalog: Loca
     assert out["merge_elapsed_ms"] >= 0 and out["snapshot_id"] is not None
 
 
+def test_merge_keeps_the_key_of_the_latest_pending_file(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
+    """#1090: a key repeated across pending files resolves to the latest file; within a file the first row wins."""
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "a.csv").write_text("id,name\n1,old\n2,b\n")
+    (tmp_path / "in" / "b.csv").write_text("id,name\n1,new\n1,newer\n")
+    root = config(tmp_path, mode="merge_scd1")
+    report = run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, catalogs=root.catalogs).report  # fmt: skip
+    assert rows(catalog) == [(1, "new"), (2, "b")]
+    files = [(Path(f["input_file"]).name, f["accepted_count"], f["rejected_count"]) for f in report["files"]]  # fmt: skip
+    assert files == [("a.csv", 1, 1), ("b.csv", 1, 1)]  # reported in file order
+
+
+def test_merge_archives_the_inputs_oldest_first(tmp_path: Path, catalog: LocalCatalog, merges: Merges, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#1090: a partial archive must leave the newest batch pending, never only an older one a retry would merge over it."""
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "a.csv").write_text("id,name\n1,old\n")
+    (tmp_path / "in" / "b.csv").write_text("id,name\n1,new\n")
+    config(tmp_path, mode="merge_scd1")
+    path = tmp_path / "config.yml"
+    path.write_text(path.read_text().replace("      rejected:", "      archive: {path: ./arch}\n      rejected:"))  # fmt: skip
+    root = parse_config(path)
+    archived: list[str] = []
+    archive = entity_module._archive  # pyright: ignore[reportPrivateUsage] -- wrapped to record the order
+    monkeypatch.setattr(entity_module, "_archive", lambda plan, f: archived.append(f.source_name) or archive(plan, f))  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType] -- recorder  # fmt: skip
+    run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, catalogs=root.catalogs)  # fmt: skip
+    assert rows(catalog) == [(1, "new")]
+    assert archived == ["a.csv", "b.csv"]
+
+
+def test_merge_under_abort_keeps_the_file_order(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
+    """#1090: abort commits the files before the aborted one, so the older file goes first and a retry never merges it over a newer one."""
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "a.csv").write_text("id,name\n1,old\n")
+    (tmp_path / "in" / "b.csv").write_text("id,name\n1,new\n")
+    root = config(tmp_path, mode="merge_scd1", severity="abort")
+    report = run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, catalogs=root.catalogs).report  # fmt: skip
+    assert [(Path(f["input_file"]).name, f["status"]) for f in report["files"]] == [("a.csv", "success"), ("b.csv", "aborted")]  # fmt: skip
+    assert rows(catalog) == [(1, "old")]
+
+
 def test_merge_scd2_closes_the_changed_row_and_reports_the_counts(
     tmp_path: Path,
     server: tuple[RestCatalog, CatalogDefinition],  # noqa: F811 -- the imported fixture
