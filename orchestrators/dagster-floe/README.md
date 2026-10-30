@@ -189,6 +189,13 @@ floe manifest generate -c orders.yml -p prod.yml --output manifests/orders.json
 
 See [docs/lineage.md](../../docs/lineage.md) for the full lineage config reference.
 
+## Full refresh for one run
+
+Tag a Dagster run `floe/full_refresh=true` (in the Launchpad, with `dagster job launch --tags '{"floe/full_refresh": "true"}'`,
+or in a schedule's `tags`) and every entity it materializes runs `floe run ... --full-refresh`, whatever the runner
+(in-process, `local_process`, `kubernetes_job`, `databricks_job`, either `job_scope`). Runs without the tag
+are unchanged. See [docs/cli.md](../../docs/cli.md) for what `--full-refresh` does in each write mode.
+
 ## Output metadata
 
 Every accepted and rejected asset carries `floe/entity` (the manifest entity name) and `floe/output` (`"accepted"` or `"rejected"`) in its asset metadata, so tooling can tell the two apart without parsing dagster-floe's output names: `spec.metadata["floe/output"]` on each `AssetSpec` of `multi_asset.specs`.
