@@ -41,6 +41,8 @@ from .runner import RunResult, Runner
 # Advisory Dagster tag (#924): entities writing one Iceberg table share its value, so a
 # `tag_concurrency_limits` entry on this key keeps their runs apart.
 TABLE_TAG = "floe/table"
+# Run tag (#1091): `floe/full_refresh=true` runs this Dagster run's entities with `floe run --full-refresh`.
+FULL_REFRESH_TAG = "floe/full_refresh"
 
 SourceKeyFn = Callable[[ManifestEntity], AssetKey | None]
 
@@ -320,7 +322,7 @@ def _make_entity_multi_asset(
             run_id=run_id,
             entity=entity_name,
             log_format=execution.log_format,
-            execution=execution,
+            execution=_for_run(execution, run),
             runner_definition=runner_definition,
             dagster_job_name=dagster_job_name,
         )
@@ -345,6 +347,14 @@ def _make_entity_multi_asset(
             raise failure
 
     return _multi_asset
+
+
+def _for_run(execution: ManifestExecution, run: Any) -> ManifestExecution:
+    """`execution`, with `--full-refresh` appended when the Dagster run carries the full refresh tag."""
+    tags = getattr(run, "tags", None) or {}
+    if tags.get(FULL_REFRESH_TAG) != "true" or "--full-refresh" in [*execution.base_args, *execution.per_entity_args]:
+        return execution
+    return replace(execution, per_entity_args=[*execution.per_entity_args, "--full-refresh"])
 
 
 def _parse_finished(context: Any, result: RunResult, execution: ManifestExecution, run_id: str | None):
@@ -574,7 +584,9 @@ def _make_domain_multi_asset(
             run_id=floe_run_id,
             domain=domain,
             entities=names,
-            execution=replace(execution, per_entity_args=["--domain", domain]) if whole_domain else execution,
+            execution=_for_run(
+                replace(execution, per_entity_args=["--domain", domain]) if whole_domain else execution, run
+            ),
             runner_definition=runner_definition,
             dagster_run_id=run_id,
             dagster_job_name=dagster_job_name,
