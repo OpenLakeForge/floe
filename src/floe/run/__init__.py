@@ -24,7 +24,7 @@ from floe.run.entity import EntityRun, list_source, resolve_source, run_entity
 from floe.run.events import Emitter, Observer
 from floe.storage.inputs import ResolvedInputs
 from floe.storage.paths import normalize_local_path
-from floe.storage.resolve import resolve_path, storage_client
+from floe.storage.resolve import clear_storage_clients, resolve_path, storage_client
 
 
 @dataclass(frozen=True)
@@ -104,6 +104,7 @@ def run(
     config_uri: str | None = None,
 ) -> RunOutcome:
     """Run the selected entities in config order, writing each entity's report as it finishes. A failing entity raises: no summary, as Rust."""
+    clear_storage_clients()
     started, timer = _rfc3339(), time.monotonic()
     selected = select_entities(root, entities)
     if full_refresh:

@@ -1,6 +1,7 @@
 """Storage reference resolution: name, else `storages.default`, else local (Rust `StorageResolver::resolve_path`)."""
 
 from pathlib import Path
+from threading import Lock
 
 from floe.config.storage import StorageDefinition, StoragesConfig
 from floe.errors import FloeConfigError, FloeRunError
@@ -48,8 +49,23 @@ def resolve_path(
     return f"s3://{definition.bucket}/{key}" if key else f"s3://{definition.bucket}", definition  # fmt: skip
 
 
+_clients: dict[StorageDefinition, S3Client] = {}
+_clients_lock = Lock()
+
+
+def clear_storage_clients() -> None:
+    """Start of a run: the clients below read credentials and `AWS_*` env when built."""
+    with _clients_lock:
+        _clients.clear()
+
+
 def storage_client(definition: StorageDefinition | None) -> LocalClient | S3Client:
-    """S3 credentials come from the environment, as in Rust."""
+    """S3 credentials come from the environment, as in Rust. One shared client per definition between `clear_storage_clients` calls."""
     if definition is None or definition.type == "local":
         return LocalClient()
-    return S3Client(definition.bucket or "", definition.region, definition.endpoint, definition.path_style_access)  # fmt: skip
+    with (
+        _clients_lock
+    ):  # boto3 clients are thread-safe; the lock only stops a duplicate build
+        if definition not in _clients:
+            _clients[definition] = S3Client(definition.bucket or "", definition.region, definition.endpoint, definition.path_style_access)  # fmt: skip
+        return _clients[definition]
