@@ -15,6 +15,13 @@ All notable changes to Floe are documented in this file.
   credentials are read again at the start of each run, and by `inspect_entity_state()` and
   `reset_entity_state()`.
 
+- **Remote inputs are downloaded ahead of the file being read (#1102).** Each pending S3 file used to be
+  downloaded only when its turn came, so the read loop waited on every GET. An entity now downloads up to 8
+  files, and about 512 MiB, ahead of the one it is validating (a single larger file still downloads, alone).
+  Files are still processed in the same order, a failed download still raises its own error when that file's turn
+  comes, and local sources are unchanged. With a simulated 0.1 s download per file, 16 files went from 1.72 s to
+  0.24 s.
+
 - **Small CSV files cost fewer Polars plans (#1104).** A clean 200-row file ran 16 query plans between the
   reader and the writer and now runs 6, with identical output. On 1,200 such files (8 entities of 150 files,
   Parquet sink on local disk) the run was about 26-28% faster, 7.45 s to 5.38 s in the last measurement.
