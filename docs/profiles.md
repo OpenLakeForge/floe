@@ -230,6 +230,7 @@ execution:
     type: kubernetes_job
     image: registry/floe:0.8
     namespace: floe-prod
+    poll_interval_seconds: 2                # default 10; lower for short Jobs
     command: [python, -m, floe]              # container command, a string or a list
     labels: {olf.io/flow: ingest}            # added to the defaults (`app`, `floe-job`), which win on a clash
     annotations: {team: data}                # pod template annotations
@@ -243,6 +244,12 @@ execution:
 
 `labels`, `annotations` and `node_selector` are string maps, `backoff_limit` is a non-negative integer,
 and `security_context`, `tolerations` and `env_from` are copied as written: Kubernetes validates them.
+
+`poll_interval_seconds` is the number of seconds between Dagster's Kubernetes Job status checks.
+It defaults to `10`; a shorter interval (such as `2`) reduces the delay before a short Job's
+completion is noticed, while making more Kubernetes API requests. With `job_scope: entity`, Dagster
+can schedule each entity's Job independently, subject to the executor's concurrency limit.
+`job_scope: domain` uses one Job per domain and runs that domain's entities sequentially.
 
 ---
 

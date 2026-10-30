@@ -190,7 +190,8 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
   },
 
   // Runner definitions (local, kubernetes, databricks, etc.). A `kubernetes_job` definition also
-  // carries the profile's pod options (`labels`, `security_context`, ...) when set; see profiles.md.
+  // carries the profile's pod options (`poll_interval_seconds`, `labels`, `security_context`, ...)
+  // when set; see profiles.md.
   "runners": {
     "default": "local",
     "definitions": {
@@ -233,6 +234,12 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
 ```
 
 The full JSON Schema for the manifest format is at [`orchestrators/schemas/floe.manifest.schema.json`](../orchestrators/schemas/floe.manifest.schema.json).
+
+For a `kubernetes_job` runner, the profile's `poll_interval_seconds` controls how often dagster-floe
+checks Job status. It defaults to `10` seconds; a shorter interval (such as `2`) can reduce
+completion-detection delay for short Jobs, with more Kubernetes API requests. Configure it in the
+environment profile before generating the manifest; see
+[Kubernetes pod options](profiles.md#kubernetesyml-pod-options).
 
 When an entity uses a named config source, its manifest `source` includes the source name in
 `ref` and the effective `resource` value (the entity name when `resource` is omitted). Inline
