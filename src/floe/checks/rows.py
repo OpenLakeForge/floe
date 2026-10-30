@@ -109,6 +109,10 @@ def split_rows(
     sources: Mapping[str, str] | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """`(accepted, rejected)`; rejected adds `__floe_row_index` (UInt64, row position in `df`) and `__floe_errors`."""
+    # a null mask passes the row, as in `error_column`
+    if not any(c.mask.any() for c in checks):
+        none = [pl.Series(ROW_INDEX, [], pl.UInt64), pl.Series(ERRORS, [], pl.String)]
+        return df, df.clear().with_columns(none)  # replaces a clashing column, as below
     errors = error_column(df.height, checks, formatter, sources)
     rejected = df.with_columns(
         pl.int_range(pl.len(), dtype=pl.UInt64).alias(ROW_INDEX), errors

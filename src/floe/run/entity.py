@@ -335,27 +335,31 @@ def _typed(
 ) -> tuple[pl.DataFrame, list[RowCheck]]:
     entity, src = plan.entity, plan.entity.source
     # D28 (#913): the derived columns join after the file's own columns are normalised and matched
-    df = apply_mismatch(normalize_columns(raw, plan.strategy), mismatch).with_columns(
-        derived
-    )
-    df = df.select(
-        pl.col(n) if n in df.columns else pl.lit(None, pl.String).alias(n)
-        for n in plan.names
-    )
+    df = apply_mismatch(normalize_columns(raw, plan.strategy), mismatch)
+    if derived:
+        df = df.with_columns(derived)
+    if df.columns != plan.names:
+        df = df.select(
+            pl.col(n) if n in df.columns else pl.lit(None, pl.String).alias(n)
+            for n in plan.names
+        )
     columns = entity.schema_.columns
+    tag = "_e_cast_"  # the mask columns' prefix: no declared column may start with it
+    while any(n.startswith(tag) for n in plan.names):
+        tag = f"_{tag}"
     try:
         casts = [
             cast_column(n, c.column_type, src.cast_mode, df.schema[n])
             for n, c in zip(plan.names, columns, strict=True)
         ]
-        typed = df.with_columns(t for t, _ in casts)
-        masks = df.with_columns(
-            m for _, m in casts
-        )  # unlike select, broadcasts constant masks
+        # one plan for both; unlike select, with_columns broadcasts the constant masks
+        masks = [m.alias(f"{tag}{n}") for n, (_, m) in zip(plan.names, casts, strict=True)]  # fmt: skip
+        both = df.with_columns([t for t, _ in casts] + masks)
+        typed = both[plan.names]
     except pl.exceptions.InvalidOperationError as err:
         raise FloeRunError(f"entity.name={entity.name} cast failed: {err}") from err
     cast_checks = [
-        RowCheck("cast_error", n, CAST_ERROR_MESSAGE, masks[f"_e_cast_{n}"])
+        RowCheck("cast_error", n, CAST_ERROR_MESSAGE, both[f"{tag}{n}"])
         for n, c in zip(plan.names, columns, strict=True)
         if c.column_type != "string"
     ]  # fmt: skip
