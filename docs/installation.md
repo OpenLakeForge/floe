@@ -1,6 +1,7 @@
 # Installation
 
-Floe is a pure-Python package (`floe-python` on PyPI) that installs the `floe` command and the
+Floe is a pure-Python package (`floe-python` on PyPI; the `floe` name there belongs to an
+unrelated project) that installs the `floe` command and the
 `floe` Python library. It is also published as a Docker image.
 
 ## pip (all platforms)

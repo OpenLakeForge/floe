@@ -38,7 +38,7 @@ def paths(tmp_path: Path) -> tuple[str, str, str]:
     return str(config), str(profile), str(manifest)
 
 
-def _k8s_args(**source: str) -> tuple[list[str], list[list[str]]]:
+def _k8s_args(tags: dict[str, str] | None = None, **source: str) -> tuple[list[str], list[list[str]]]:
     """Asset keys, and the command each materialized entity's Kubernetes Job runs."""
     calls: list[list[str]] = []
 
@@ -49,7 +49,7 @@ def _k8s_args(**source: str) -> tuple[list[str], list[list[str]]]:
     defs = load_floe_assets(**source, runner=LocalRunner(), domains=["sales"])
     assets = list(defs.assets or [])
     with patch("floe_dagster.kubernetes_runner.run_kubernetes_job", job):
-        materialize(assets, raise_on_error=False)
+        materialize(assets, raise_on_error=False, tags=tags)
     keys = sorted(k.to_user_string() for a in assets for k in ([a.key] if isinstance(a, SourceAsset) else a.keys))
     return keys, sorted(calls)
 
@@ -97,6 +97,33 @@ def test_in_process_runner_runs_from_the_config_and_profile(paths) -> None:
     run_id = calls[0][1]["run_id"]
     expected = [(config, {"entities": [e], "run_id": run_id, "full_refresh": False, "profile_path": None}) for e in ("invoices", "orders")]  # fmt: skip
     assert sorted(calls, key=str) == expected
+
+
+def test_full_refresh_run_tag_adds_the_flag_to_kubernetes_job_runs(paths) -> None:
+    _, _, manifest = paths
+    tail = ["--log-format", "json", "--quiet", "--entities"]
+    _, tagged = _k8s_args(tags={"floe/full_refresh": "true"}, manifest_path=manifest)
+    _, untagged = _k8s_args(manifest_path=manifest)
+    assert tagged == [["floe", "run", "--manifest", manifest, *tail, e, "--full-refresh"] for e in ("invoices", "orders")]
+    assert untagged == [["floe", "run", "--manifest", manifest, *tail, e] for e in ("invoices", "orders")]
+
+
+def test_full_refresh_run_tag_runs_in_process_with_full_refresh(paths) -> None:
+    config, _, _ = paths
+    calls: list[object] = []
+
+    class Outcome:
+        summary = {"run": {"exit_code": 0}}
+
+    def run(config_path: str, **kwargs: object) -> Outcome:
+        calls.append(kwargs["full_refresh"])
+        return Outcome()
+
+    defs = load_floe_assets(config_path=config, runner=InProcessRunner(), domains=["sales"])
+    with patch.object(floe, "run", run):
+        materialize(list(defs.assets or []), raise_on_error=False, tags={"floe/full_refresh": "true"})
+        materialize(list(defs.assets or []), raise_on_error=False)
+    assert calls == [True, True, False, False]
 
 
 def _domain_op_names(config: str, profile: str, **kwargs: str) -> set[str]:
