@@ -559,12 +559,12 @@ def test_declared_column_named_like_an_internal_one_is_accepted(
     assert accepted(tmp_path)[clash].to_list() == ["hello"]
 
 
-@pytest.mark.parametrize(("cap", "passes"), [(100, 1), (3, 1), (2, 2)])
+@pytest.mark.parametrize(("cap", "passes"), [(1000, 1), (30, 1), (29, 2)])
 def test_json_file_is_parsed_once_up_to_the_single_pass_cap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cap: int, passes: int
 ) -> None:
-    """#1115: the key probe and the read share one parse; a file over the cap parses twice."""
-    monkeypatch.setattr(entity_module, "JSON_SINGLE_PASS_RECORDS", cap)
+    """#1115: the key probe and the read share one parse; a file over the byte cap parses twice."""
+    monkeypatch.setattr(entity_module, "JSON_SINGLE_PASS_BYTES", cap)
     parsed: list[str] = []
     real = json_module.json_loads
 

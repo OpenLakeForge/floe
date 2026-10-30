@@ -16,9 +16,10 @@ from floe.errors import FloeIoError
 
 Selector = list[str | int]  # a field name or an array index
 JSON_CHUNK_ROWS = 1_000_000
-# ponytail: a file of at most this many records is parsed once, its dicts held until read; larger
-# files parse twice (key pass, then chunks). Upgrade path: build the first chunk's rows while probing.
-JSON_SINGLE_PASS_RECORDS = 100_000
+# ponytail: a file of at most this many bytes is parsed once, its dicts held until read (about 16x its size
+# in memory, so 8 MiB costs about 130 MiB); larger files parse twice (key pass, then chunks).
+# Upgrade path: build the first chunk's rows while probing.
+JSON_SINGLE_PASS_BYTES = 8 * 1024 * 1024
 
 
 @dataclass(frozen=True)

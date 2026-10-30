@@ -59,7 +59,7 @@ from floe.iceberg.write import find_committed
 from floe.pii import apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.csv import RAGGED_MESSAGE, read_csv
-from floe.read.json import JSON_CHUNK_ROWS, JSON_SINGLE_PASS_RECORDS, read_json
+from floe.read.json import JSON_CHUNK_ROWS, JSON_SINGLE_PASS_BYTES, read_json
 from floe.read.orc import read_orc
 from floe.read.parquet import read_parquet
 from floe.read.xlsx import read_xlsx
@@ -411,8 +411,8 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
             first, probe = [], xml_columns(path, entity.source.options)
         elif entity.source.format == "json":
             # D40: every record's top-level keys; D41: only a file without records has nothing to compare
-            # a small file (one chunk) is parsed once: the read reuses the probe's records
-            json_keys, head = json_probe(path, entity.source.options.json_mode or "array", min(JSON_SINGLE_PASS_RECORDS, JSON_CHUNK_ROWS))  # fmt: skip
+            # a small file is parsed once: the read reuses the probe's records (limit 0 keeps none)
+            json_keys, head = json_probe(path, entity.source.options.json_mode or "array", JSON_CHUNK_ROWS if path.stat().st_size <= JSON_SINGLE_PASS_BYTES else 0)  # fmt: skip
             chunks = _chunks(entity, path, file_names, head)
             first, probe = [], declared if json_keys is None else json_keys
         else:  # the first chunk's columns are the input columns the plan compares
