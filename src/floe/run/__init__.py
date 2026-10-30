@@ -11,6 +11,7 @@ from floe.checks.rows import Formatter
 from floe.config.project import RootConfig
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeError
+from floe.iceberg.catalog import clear_catalogs
 from floe.report.summary import (
     build_summary,
     id_path,
@@ -105,6 +106,7 @@ def run(
 ) -> RunOutcome:
     """Run the selected entities in config order, writing each entity's report as it finishes. A failing entity raises: no summary, as Rust."""
     started, timer = _rfc3339(), time.monotonic()
+    clear_catalogs()
     selected = select_entities(root, entities)
     if full_refresh:
         selected = [_refresh(e) for e in selected]
