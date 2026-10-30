@@ -238,11 +238,21 @@ execution:
     node_selector: {pool: batch}
     tolerations: [{key: batch, operator: Exists, effect: NoSchedule}]   # verbatim
     backoff_limit: 2                         # Job backoffLimit, default 0
+    poll_interval_seconds: 2                 # seconds between Job status reads, default 10
     env_from: [{secretRef: {name: floe-env}}]   # container envFrom, verbatim
 ```
 
 `labels`, `annotations` and `node_selector` are string maps, `backoff_limit` is a non-negative integer,
 and `security_context`, `tolerations` and `env_from` are copied as written: Kubernetes validates them.
+
+`poll_interval_seconds` is an integer of at least 1 (default 10): dagster-floe reads the Job's status that
+often, so a Job that finishes early is only noticed at the next poll. A lower value such as `2` shortens
+short Jobs at the cost of more Kubernetes API reads.
+
+`job_scope` (`entity` by default, or `domain`) sets how many Jobs a run launches. `entity` starts one Job
+per entity: each pays pod start and one poll interval, but they are isolated and run in parallel through
+Dagster's executor. `domain` starts one Job per domain: pod start and polling are paid once, but its
+entities run one after another.
 
 ---
 

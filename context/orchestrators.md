@@ -211,6 +211,7 @@ When `type = kubernetes_job`, the manifest runner definition supports:
 | `node_selector` | object | Pod `nodeSelector` |
 | `tolerations` | array | Pod `tolerations`, verbatim |
 | `backoff_limit` | integer >= 0 | Job `backoffLimit` (default `0`) |
+| `poll_interval_seconds` | integer >= 1 | Seconds between status reads of the Job (default `10`) |
 | `env_from` | array | Container `envFrom`, verbatim, e.g. `[{secretRef: {name: floe-env}}]` |
 
 These fields are populated automatically when `floe manifest generate` is given a profile with a `kubernetes_job` runner block. The `dagster-floe[kubernetes]` optional extra expresses the Kubernetes client requirement.
@@ -219,6 +220,8 @@ These fields are populated automatically when `floe manifest generate` is given 
 
 - **`entity`** (default, also when unset): one Job per entity, named `floe-<entity>-<id>`. Pod start is paid once per entity; each entity has its own timeout, TTL and failure. Use it for a few large entities, or when entities need isolation.
 - **`domain`**: entities of one domain whose runner has `job_scope: domain` form one subsettable multi-asset per (domain, runner), so an entity with another runner gets its own Job. Materializing it launches **one** Job named `floe-<domain>-<id>` running `floe run --manifest <uri> --entities a,b,c` (`--domain <d>` when they are every entity of the domain in the manifest) for the selected entities in manifest order, one after another, so Polaris never sees overlapping commits from the Job. The Job is sized from `domain_resources[<domain>]`, else `resources`; `timeout_seconds`, TTL and polling apply to the one Job. Use it when pod start dominates (many small entities). Select the accepted assets: a rejected asset is materialized only when it is selected too, and the asset job selects both. The `floe/table` op tag (#924) is not set on a domain asset.
+
+**Choosing a scope and a poll interval.** The runner reads the Job's status every `poll_interval_seconds`, so a Job that finishes early is only noticed at the next poll: with the default 10 s, a 3 s Job is seen about 7 s late, a flat per-Job cost. `entity` pays pod start and that polling delay once per entity, but entities are isolated and run in parallel through Dagster's executor. `domain` pays both once per domain, but runs its entities one after another. For short Jobs, lower `poll_interval_seconds` (for example `2`), at the cost of more Kubernetes API reads.
 
 Dagster still reports per entity (materialization, rows, rejected counts, report URI, asset checks) from the run's `run_finished` event and summary.
 
