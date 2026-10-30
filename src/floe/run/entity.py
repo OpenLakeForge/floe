@@ -928,6 +928,9 @@ def _run_entity(
     skipped = len(files)
     downloader = None if isinstance(client, LocalClient) else client
     failure: list[Exception] = []
+    # #1090: a merge keeps a key's latest version, so the newest file is checked first; the first row of a file still wins.
+    # Not under abort: a duplicate aborts there anyway, and newer files committed ahead of a pending older one would let it merge stale rows later
+    latest_first = sink.write_mode in ("merge_scd1", "merge_scd2") and entity.policy.severity != "abort"  # fmt: skip
 
     def accepted_frames() -> Generator[pl.DataFrame]:
         """Files are read as the sink pulls (#1056); `files` and `complete` are final once it is exhausted."""
@@ -936,7 +939,7 @@ def _run_entity(
             with tempfile.TemporaryDirectory(prefix="floe-") as temp_dir:
                 if pending and sink.write_mode == "append" and plan.tracker.keys and (target is None or plan.table is not None):  # fmt: skip
                     plan.history = _key_cache(plan, accepted_client, base, Path(temp_dir))  # fmt: skip
-                for f in pending:
+                for f in pending[::-1] if latest_first else pending:
                     emit("file_started", entity=entity.name, input=f.source_uri)
                     timer = time.monotonic()
                     local = localize_input(f, downloader, Path(temp_dir))
@@ -989,6 +992,8 @@ def _run_entity(
         raise failure[0] from failure[0].__cause__
     finally:
         stream.close()
+    if latest_first:  # the report lists the files in file order
+        files[skipped:] = files[skipped:][::-1]
     files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
     inc.committed = files  # #915: from here on a failure promotes the written files
     # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source (Rust archives before)

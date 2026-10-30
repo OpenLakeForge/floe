@@ -30,6 +30,9 @@ Each entity's accepted rows land in one Iceberg catalog commit.
 - `schema.primary_key` is required and is used as merge key.
 - Source rows are validated for merge-key uniqueness during row checks.
   In `policy.severity=warn`, duplicate merge-key rows are rejected before merge so only unambiguous rows are merged.
+  A key repeated across the run's input files keeps the row from the latest file (in file order);
+  the older rows are rejected as duplicates. Within one file the first row wins. The same holds
+  for `merge_scd2`. Under `policy.severity: abort` a repeated key aborts the later file instead.
 - On key match: update non-key columns from source, only when a value changed, so rerunning a
   batch writes nothing.
 - `sink.accepted.merge.ignore_columns` can exclude additional business columns from SCD1 update sets.
