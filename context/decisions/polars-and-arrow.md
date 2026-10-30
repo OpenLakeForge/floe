@@ -15,8 +15,8 @@ own data model.
 
 Use **Polars** as the single DataFrame engine for reading and validation. Data crosses to the
 writers as **Apache Arrow** through the Arrow C Data Interface: Polars → pyarrow → PyIceberg for
-overwrite and append, and Arrow / staged Parquet → DuckDB for merges and unique checks against
-table history.
+overwrite and append, and Arrow / staged Parquet → DuckDB for merges. Unique checks against
+table history stay in Polars (a semi-join against a local cache of the table's key columns).
 
 ## Rationale
 
