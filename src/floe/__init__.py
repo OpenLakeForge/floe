@@ -46,6 +46,7 @@ from floe.run.events import (
 )
 from floe.state import dump_state, read_state, reset
 from floe.storage.paths import normalize_local_path
+from floe.storage.resolve import clear_storage_clients
 from floe.storage.types import StorageClient
 
 _observer: Callable[[RunEvent], None] | None = None
@@ -281,6 +282,7 @@ def extract_config_env_vars(config_path: str) -> dict[str, str]:
 
 
 def _state(config_path: str, entity_name: str) -> tuple[str, str, str, StorageClient]:
+    clear_storage_clients()
     path, root = _load(config_path)
     [entity] = _run.select_entities(root, [entity_name])
     uri, client = state_uri(entity, normalize_local_path(path.parent), root.storages)
