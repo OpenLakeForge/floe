@@ -1,6 +1,7 @@
 """`floe run` output: run events as log lines and the run summary (Rust: `crates/floe-cli/src/logging.rs`, `output.rs`)."""
 
 import json
+import threading
 import time
 from typing import Any
 
@@ -73,18 +74,20 @@ class Console:
     def __init__(self, log_format: str, run_id: str) -> None:
         self.log_format, self.run_id = log_format, run_id
         self.started = False
-        self.timings: list[dict[str, int]] = []  # per entity: input -> elapsed_ms
+        self.timings: dict[
+            str, dict[str, int]
+        ] = {}  # entity name -> input -> elapsed_ms
+        self._lock = threading.Lock()  # entities may run in parallel threads
 
     def __call__(self, event: dict[str, Any]) -> None:
         kind = event["event"]
-        self.started |= kind == "run_started"
-        if kind == "entity_started":
-            self.timings.append({})
-        elif kind == "file_finished" and self.timings:
-            self.timings[-1][event["input"]] = event["elapsed_ms"]
-        if self.log_format != "off":
-            fmt = event_json if self.log_format == "json" else event_text
-            print(fmt(event), flush=True)
+        with self._lock:
+            self.started |= kind == "run_started"
+            if kind == "file_finished":
+                self.timings.setdefault(event["entity"], {})[event["input"]] = event["elapsed_ms"]  # fmt: skip
+            if self.log_format != "off":
+                fmt = event_json if self.log_format == "json" else event_text
+                print(fmt(event), flush=True)
 
     def failed(self, err: FloeError, config: str | None) -> None:
         """Rust's `emit_failed_run_events`, after a `run_started` for `config` when the run never started.
@@ -154,7 +157,7 @@ def run_output(
     outcome: RunOutcome,
     entities: list[EntityConfig],
     mode: str,
-    timings: list[dict[str, int]],
+    timings: dict[str, dict[str, int]],
 ) -> str:
     """Rust's `format_run_output`; `mode` is `default`, `quiet` or `verbose`."""
     run_dir = outcome.run_dir  # a URI on remote storage: join with `/`, never `Path`
@@ -166,7 +169,17 @@ def run_output(
         results = dict.fromkeys(("files_total", "rows_total", "accepted_total", "rejected_total", "files_skipped"), 0)  # fmt: skip
         status, exit_code = "success", 0
     else:
-        blocks = [_entity(r, t, mode == "verbose") for r, t in zip(outcome.entity_reports, timings, strict=True)]  # fmt: skip
+        names = {
+            e.id: e.name for e in entities
+        }  # reports carry the id, `file_finished` events the name
+
+        def shown(report: dict[str, Any]) -> list[str]:
+            ident: str = report["entity"]["name"]
+            return _entity(
+                report, timings.get(names.get(ident, ident), {}), mode == "verbose"
+            )
+
+        blocks = [shown(r) for r in outcome.entity_reports]
         results, run = outcome.summary["results"], outcome.summary["run"]
         status, exit_code = run["status"], run["exit_code"]
     lines = ["DRY RUN MODE - No actual execution performed"] if outcome.dry_run is not None else []  # fmt: skip

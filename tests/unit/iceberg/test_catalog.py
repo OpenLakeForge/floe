@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import SecretStr
+from pyiceberg.exceptions import NamespaceAlreadyExistsError
 from pyiceberg.schema import Schema
 from pyiceberg.types import LongType, NestedField, StringType, TimestampType
 
@@ -16,6 +17,7 @@ from floe.iceberg.catalog import (
     build_partition_spec,
     check_partition_spec_matches,
     check_schema_matches,
+    ensure_table,
     open_duckdb,
     transform_name,
 )
@@ -238,3 +240,28 @@ def test_open_duckdb_sets_the_adr_limits_and_cleans_the_spill_dir(
     con.close()
     del con
     assert not Path(spill).exists()
+
+
+class RacedNamespace:
+    """A catalog whose namespace appears between `namespace_exists` and `create_namespace`, as when another entity creates it first."""
+
+    created = False
+
+    def namespace_exists(self, _: object) -> bool:
+        return False
+
+    def create_namespace(self, _: object) -> None:
+        raise NamespaceAlreadyExistsError("exists")
+
+    def table_exists(self, _: object) -> bool:
+        return False
+
+    def create_table(self, identifier: object, *_: object, **__: object) -> str:
+        self.created = True
+        return "table"
+
+
+def test_a_namespace_created_by_another_entity_is_not_an_error() -> None:
+    catalog = RacedNamespace()
+    table, added = ensure_table(catalog, "ns", "t", schema(ID), "e")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType] -- a double with the four calls ensure_table makes
+    assert catalog.created and added == [] and table == "table"  # pyright: ignore[reportUnnecessaryComparison] -- the double returns a str

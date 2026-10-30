@@ -93,8 +93,11 @@ them (see `context/decisions/polars-and-arrow.md`).
    archive inputs (D32) → promote state claims → write run.json
 ```
 
-`floe run` runs entities in config order. A policy abort fails only its entity; any raised
-`FloeError` aborts the run (D36). Reports are written under `<report.path>/run_<id>/`, or
+`floe run` runs entities in config order, or on `execution.orchestration.max_concurrent_entities`
+threads when `strategy` is `parallel` (`run/parallel.py`: never two on one Iceberg table, accepted
+path or state file, merges one at a time; reports in config order). A policy abort fails only its
+entity; any raised `FloeError` aborts the run (D36): no new entity starts, running ones finish, the
+first error in config order is raised. Reports are written under `<report.path>/run_<id>/`, or
 `<report.path>/<domain>/run_<id>/` for a single-domain run (D37).
 
 ## Key contracts

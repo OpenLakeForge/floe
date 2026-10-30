@@ -31,6 +31,9 @@ metadata:                    # required
 execution:                   # optional
   runner:
     type: local              # required when execution is present
+  orchestration:             # optional; see "Running entities in parallel"
+    strategy: parallel       # optional; "sequential" (default) or "parallel"
+    max_concurrent_entities: 4  # optional; integer >= 1
 variables:                   # optional; flat string → string map
   KEY: value
 validation:                  # optional
@@ -354,6 +357,40 @@ Notes:
   duplicate catalog names, and `catalogs.default` references.
 - Full config validation (`floe validate -c config.yml --profile profiles/prod.yml`)
   additionally checks catalog/storage compatibility and entity sink bindings.
+
+## Running entities in parallel
+
+`execution.orchestration` also sets how many entities one `floe run` process runs at once
+(`floe run -c … -p …`, `floe run --manifest …` generated with the profile, and `floe.run(…, profile_path=…)`).
+Dagster reads the same fields to cap its own executor.
+
+```yaml
+execution:
+  runner: {type: local}
+  orchestration: {strategy: parallel, max_concurrent_entities: 4}
+```
+
+- **Opt-in.** Only `strategy: parallel` runs entities in parallel threads. `sequential`, no `orchestration`
+  block, or `max_concurrent_entities: 1` run them one after another in config order, as before.
+  `max_concurrent_entities` defaults to `min(4, CPU count)` when `strategy: parallel` leaves it unset.
+- **Never at the same time:** entities with the same Iceberg table (catalog, namespace, table), the same
+  accepted path or the same incremental state file; and `merge_scd1` / `merge_scd2` entities, which run
+  one at a time. They wait for each other while other entities proceed.
+- **Order.** `entity_started`, `file_*` and `entity_finished` events of different entities interleave, and
+  observers (including your `set_observer` callback) are called from worker threads. The
+  reports, the `run.summary.json` entity list and the console summary stay in config order.
+  Every entity's inputs are still listed before the first `entity_started`.
+- **Failure.** A policy `abort` fails only its entity. Any other error stops new entities from starting,
+  lets the running ones finish (they release or promote their incremental claims), then raises the first
+  error in config order. An interrupt (Ctrl-C) is handled the same way: the running entities finish first.
+- **Ephemeral disk.** Each running entity may hold up to its download prefetch window (8 files, about
+  512 MiB) in a temporary directory. Size ephemeral storage for `workers × 512 MiB` plus the largest file.
+- **Memory.** Each running entity holds its own chunk (up to 1M rows) in memory, and a merge entity's DuckDB
+  (`memory_limit` 4 GB) can run alongside non-merge entities. Peak memory grows with `max_concurrent_entities`:
+  size the pod for `workers` × one entity's working set (plus DuckDB when merges are configured), not for a sequential run.
+
+Existing profiles that already say `strategy: parallel` for Dagster now also run the entities of a
+`domain` Job in parallel inside its `floe run`.
 
 ## Hardening assessment and plan
 

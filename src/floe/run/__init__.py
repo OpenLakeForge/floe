@@ -1,4 +1,4 @@
-"""A run: entity selection, run context, sequential or parallel entities, dry run, full refresh, events (Rust: `run/mod.rs`, `run/context.rs`)."""
+"""A run: entity selection, run context, entities in config order or in parallel threads (`workers` > 1), dry run, full refresh, events (Rust: `run/mod.rs`, `run/context.rs`)."""
 
 import time
 from collections.abc import Sequence
@@ -23,6 +23,7 @@ from floe.report.summary import (
 )
 from floe.run.entity import EntityRun, list_source, resolve_source, run_entity
 from floe.run.events import Emitter, Observer
+from floe.run.parallel import exclusive_keys, run_parallel
 from floe.storage.inputs import ResolvedInputs
 from floe.storage.paths import normalize_local_path
 from floe.storage.resolve import clear_storage_clients, resolve_path, storage_client
@@ -105,7 +106,10 @@ def run(
     config_uri: str | None = None,
     workers: int = 1,
 ) -> RunOutcome:
-    """Run the selected entities in config order, writing each entity's report as it finishes. A failing entity raises: no summary, as Rust."""
+    """Run the selected entities, writing each entity's report as it finishes. A failing entity raises: no summary, as Rust.
+
+    One worker runs them in config order. More run them in parallel threads (observers are called from those threads), never two on the same target; reports and summary stay in config order.
+    """
     clear_storage_clients()
     started, timer = _rfc3339(), time.monotonic()
     clear_catalogs()
@@ -160,14 +164,21 @@ def run(
         archive = full_refresh and e.sink.archive and e.incremental_mode in ("none", "archive")  # fmt: skip
         if not archive:
             listed[e.id] = inputs(e)
-    reports: list[tuple[str, dict[str, Any]]] = []
     client = storage_client(report_storage)
-    # D36: a policy abort fails only its entity; a FloeError still stops the run
-    for e in selected:
+
+    def finish(e: EntityConfig) -> dict[str, Any]:
         report = one(e).report
-        reports.append((id_path(e), report))
         write_entity_report(run_path, id_path(e), report, client)
         _finished(emit, e.id, report)
+        return report
+
+    # D36: a policy abort fails only its entity; a FloeError still stops the run
+    if workers > 1 and len(selected) > 1:
+        keys = [exclusive_keys(e, config_dir, root.storages, root.catalogs) for e in selected]  # fmt: skip
+        done = run_parallel(selected, keys, workers, finish)
+    else:
+        done = [finish(e) for e in selected]
+    reports = [(id_path(e), r) for e, r in zip(selected, done, strict=True)]
     summary = build_summary(
         root.version, reports,
         run_id=run_id, started_at=started, finished_at=_rfc3339(),

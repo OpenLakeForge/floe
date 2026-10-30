@@ -326,3 +326,23 @@ def test_d37_a_legacy_domain_that_is_no_directory_name_keeps_the_flat_layout(
     assert floe(monkeypatch, "run", "-c", str(config), "--run-id", "r") == 0
     assert (tmp_path / "report" / "run_r" / "run.summary.json").exists()
     assert not (tmp_path / "run_r").exists()
+
+
+@pytest.mark.parametrize("parallel", [False, True])
+def test_verbose_output_shows_the_file_timings_of_domain_entities(
+    parallel: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = write(tmp_path, {"a": "id\n1\n", "b": "id\n2\n"})
+    args = ["run", "-c", str(config), "--verbose"]
+    if parallel:
+        (tmp_path / "p.yml").write_text(
+            "apiVersion: floe/v1\nkind: EnvironmentProfile\nmetadata: {name: dev}\n"
+            "execution:\n  runner: {type: local}\n  orchestration: {strategy: parallel, max_concurrent_entities: 2}\n"
+        )
+        args += ["-p", str(tmp_path / "p.yml")]
+    assert floe(monkeypatch, *args) == 0
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if "SUCCESS" in ln]
+    assert len(lines) == 2 and all("elapsed_ms=" in ln for ln in lines)
