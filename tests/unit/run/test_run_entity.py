@@ -11,6 +11,7 @@ import pytest
 from floe.checks.unique import UniqueTracker
 from floe.config.parse import parse_config
 from floe.errors import FloeRunError
+from floe.read import json as json_module
 from floe.read.csv import read_csv
 from floe.read.xml import read_xml
 from floe.run import entity as entity_module  # `floe.run` is the public function
@@ -556,3 +557,82 @@ def test_declared_column_named_like_an_internal_one_is_accepted(
     report = run_entity(entity, tmp_path, "0.3").report
     assert report["files"][0]["status"] == "success"
     assert accepted(tmp_path)[clash].to_list() == ["hello"]
+
+
+@pytest.mark.parametrize(("cap", "passes"), [(1000, 1), (30, 1), (29, 2)])
+def test_json_file_is_parsed_once_up_to_the_single_pass_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cap: int, passes: int
+) -> None:
+    """#1115: the key probe and the read share one parse; a file over the byte cap parses twice."""
+    monkeypatch.setattr(entity_module, "JSON_SINGLE_PASS_BYTES", cap)
+    parsed: list[str] = []
+    real = json_module.json_loads
+
+    def counting(text: str) -> Any:
+        parsed.append(text)
+        return real(text)
+
+    monkeypatch.setattr(json_module, "json_loads", counting)
+    body = '{"id": 1}\n{"id": 2}\n{"id": 3}\n'
+    statuses, rows = _json_run(tmp_path, body, "{json_mode: ndjson}")
+    assert statuses == ["success"]
+    assert rows is not None and rows["id"].to_list() == [1, 2, 3]
+    assert len(parsed) == 3 * passes
+
+
+def test_json_file_removed_after_listing_is_a_failed_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1115: the size comes from the listing, so a vanished file still fails as a read error."""
+    real = entity_module.resolve_inputs
+
+    def listed_then_removed(*args: Any, **kwargs: Any) -> Any:
+        inputs = real(*args, **kwargs)
+        (tmp_path / "in" / "a.json").unlink()
+        return inputs
+
+    monkeypatch.setattr(entity_module, "resolve_inputs", listed_then_removed)
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "a.json").write_text('{"id": 1}')
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace("      rejected: {format: csv, path: ./out/rejected}\n", "")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert [f["status"] for f in report["files"]] == ["rejected"]
+    assert "failed to read json at" in json.dumps(report["files"][0])
+
+
+@pytest.mark.parametrize("chunk_rows", [2, 4, 1000])
+@pytest.mark.parametrize("mode", ["ndjson", "array"])
+def test_json_late_key_and_late_errors_are_the_same_in_every_chunking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, chunk_rows: int, mode: str
+) -> None:
+    """D40 and the error order hold whether the file is one chunk (4 rows = exactly full) or several."""
+    monkeypatch.setattr(entity_module, "JSON_CHUNK_ROWS", chunk_rows)
+    records = ['{"id": 1}', '{"id": 2}', '{"id": 3}', '{"id": 4, "late": 1}']
+    options = f"{{json_mode: {mode}}}"
+
+    def body(*lines: str) -> str:
+        return "[" + ",".join(lines) + "]" if mode == "array" else "\n".join(lines)
+
+    def run_in(name: str, text: str, **kwargs: str) -> list[str]:
+        (tmp_path / name).mkdir()
+        return _json_run(tmp_path / name, text, options, **kwargs)[0]
+
+    reject = "mismatch: {extra_columns: reject_file}"
+    statuses = run_in("a", body(*records), mismatch=reject)
+    assert statuses == ["rejected"]
+    # a non-scalar selector value in an early record: the mismatch verdict still comes first
+    bad = ['{"id": {"x": 1}}', *records[1:]]
+    statuses = run_in("b", body(*bad), mismatch=reject)
+    assert statuses == ["rejected"]
+    statuses = run_in("c", body(*bad))
+    assert statuses == ["rejected"], statuses
+    # a parse error in a later record fails the file whatever the chunking
+    if mode == "ndjson":
+        statuses = run_in("d", body(*records[:3], "nope"))
+        assert statuses == ["rejected"], statuses
