@@ -344,18 +344,22 @@ def _typed(
             for n in plan.names
         )
     columns = entity.schema_.columns
+    tag = "_e_cast_"  # the mask columns' prefix: no declared column may start with it
+    while any(n.startswith(tag) for n in plan.names):
+        tag = f"_{tag}"
     try:
         casts = [
             cast_column(n, c.column_type, src.cast_mode, df.schema[n])
             for n, c in zip(plan.names, columns, strict=True)
         ]
         # one plan for both; unlike select, with_columns broadcasts the constant masks
-        both = df.with_columns(e for c in casts for e in c)
+        masks = [m.alias(f"{tag}{n}") for n, (_, m) in zip(plan.names, casts, strict=True)]  # fmt: skip
+        both = df.with_columns([t for t, _ in casts] + masks)
         typed = both[plan.names]
     except pl.exceptions.InvalidOperationError as err:
         raise FloeRunError(f"entity.name={entity.name} cast failed: {err}") from err
     cast_checks = [
-        RowCheck("cast_error", n, CAST_ERROR_MESSAGE, both[f"_e_cast_{n}"])
+        RowCheck("cast_error", n, CAST_ERROR_MESSAGE, both[f"{tag}{n}"])
         for n, c in zip(plan.names, columns, strict=True)
         if c.column_type != "string"
     ]  # fmt: skip

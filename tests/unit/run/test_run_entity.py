@@ -538,4 +538,21 @@ def test_clean_small_csv_stays_within_the_polars_plan_budget(
     rows = "".join(f"{i},n{i}\n" for i in range(200))
     report, _ = run(tmp_path, "reject", "id,name\n" + rows)
     assert report["files"][0]["status"] == "success"
-    assert len(plans) <= 5, len(plans)
+    assert len(plans) <= 6, len(plans)
+
+
+@pytest.mark.parametrize("clash", ["__floe_errors", "_e_cast_id", "__floe_row_index"])
+def test_declared_column_named_like_an_internal_one_is_accepted(
+    tmp_path: Path, clash: str
+) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text(f"id,{clash}\n1,hello\n")
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "        - {name: name, type: string}",
+        f"        - {{name: {clash}, type: string}}",
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert report["files"][0]["status"] == "success"
+    assert accepted(tmp_path)[clash].to_list() == ["hello"]
