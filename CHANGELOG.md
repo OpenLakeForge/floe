@@ -2,6 +2,19 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.6
+
+- **Merge modes keep a key's latest version when it repeats across pending files (#1090).** With `merge_scd1`
+  or `merge_scd2`, a run that picks up several batches used to keep the oldest file's row and reject the newer
+  ones. A key repeated across files now resolves to the latest file in file order, and the older rows are
+  rejected as duplicates. Within one file the first row still wins. Under `policy.severity: abort` the order is
+  unchanged.
+
+- **`--full-refresh` rebuilds a `merge_scd1` table from the inputs (#1091).** It used to be rejected. It now reads
+  every input and replaces the table with their rows in one commit, so a row deleted at the source leaves the
+  table. Merge-key checks still apply, and a key in several inputs keeps the latest file's row. `merge_scd2` still
+  rejects the flag, and the message now says its version history cannot be rebuilt from the inputs.
+
 ## v0.8.5
 
 - **An output column name collision now fails `floe validate`, not the run (#1080).** A column with an explicit
