@@ -21,7 +21,7 @@ from floe.checks.mismatch import (
     MismatchOutcome,
     apply_mismatch,
     declared_names,
-    json_input_columns,
+    json_probe,
     plan_mismatch,
 )
 from floe.checks.normalize import (
@@ -59,7 +59,7 @@ from floe.iceberg.write import find_committed
 from floe.pii import apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.csv import RAGGED_MESSAGE, read_csv
-from floe.read.json import read_json
+from floe.read.json import JSON_CHUNK_ROWS, JSON_SINGLE_PASS_RECORDS, read_json
 from floe.read.orc import read_orc
 from floe.read.parquet import read_parquet
 from floe.read.xlsx import read_xlsx
@@ -118,7 +118,7 @@ class EntityRun:
     aborted: bool
 
 
-def _chunks(entity: EntityConfig, path: Path, names: list[str]) -> Chunks:
+def _chunks(entity: EntityConfig, path: Path, names: list[str], head: list[tuple[str, Any]] | None = None) -> Chunks:  # fmt: skip
     src = entity.source
     match src.format:
         case "csv" | "tsv":
@@ -139,7 +139,7 @@ def _chunks(entity: EntityConfig, path: Path, names: list[str]) -> Chunks:
             for x in read_xml(path, src.options, entity.schema_.columns[: len(names)]):
                 yield x.offset, x.df, None
         case "json":  # #998
-            for j in read_json(path, src.options, entity.schema_.columns[: len(names)], src.cast_mode):  # fmt: skip
+            for j in read_json(path, src.options, entity.schema_.columns[: len(names)], src.cast_mode, JSON_CHUNK_ROWS, head):  # fmt: skip
                 yield j.offset, j.df, None
         case other:
             raise FloeRunError(
@@ -411,7 +411,9 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
             first, probe = [], xml_columns(path, entity.source.options)
         elif entity.source.format == "json":
             # D40: every record's top-level keys; D41: only a file without records has nothing to compare
-            json_keys = json_input_columns(path, entity.source.options.json_mode or "array")  # fmt: skip
+            # a small file (one chunk) is parsed once: the read reuses the probe's records
+            json_keys, head = json_probe(path, entity.source.options.json_mode or "array", min(JSON_SINGLE_PASS_RECORDS, JSON_CHUNK_ROWS))  # fmt: skip
+            chunks = _chunks(entity, path, file_names, head)
             first, probe = [], declared if json_keys is None else json_keys
         else:  # the first chunk's columns are the input columns the plan compares
             first = [next(chunks)]

@@ -15,6 +15,10 @@ from floe.config.types import ColumnConfig, SourceOptions
 from floe.errors import FloeIoError
 
 Selector = list[str | int]  # a field name or an array index
+JSON_CHUNK_ROWS = 1_000_000
+# ponytail: a file of at most this many records is parsed once, its dicts held until read; larger
+# files parse twice (key pass, then chunks). Upgrade path: build the first chunk's rows while probing.
+JSON_SINGLE_PASS_RECORDS = 100_000
 
 
 @dataclass(frozen=True)
@@ -188,13 +192,15 @@ def read_json(
     options: SourceOptions,
     columns: Sequence[ColumnConfig],
     cast_mode: str = "strict",
-    chunk_rows: int = 1_000_000,
+    chunk_rows: int = JSON_CHUNK_ROWS,
+    records: Sequence[tuple[str, Any]] | None = None,
 ) -> Iterator[JsonChunk]:
     """Yield the rows in chunks of at most `chunk_rows`, columns named by selector; always at least one.
 
     `options.json_mode` is `array` (default) or `ndjson`. A selector that finds nothing is null.
     Objects and arrays are an error unless `cast_mode` is `coerce`, which keeps their compact JSON.
     Scalars are stringified with Python's `str`; Polars would render `1.0` as `1`, so it is not used.
+    `records` are the file's already parsed `json_records`, read instead of parsing the file again.
     """
     mode = options.json_mode or "array"
     if mode not in ("array", "ndjson"):
@@ -221,7 +227,7 @@ def read_json(
     exact = [decimal_type(c.column_type) is not None for c in columns]
     rows: list[list[str | None]] = []
     done = 0
-    for where, value in json_records(path, mode):
+    for where, value in json_records(path, mode) if records is None else records:
         rows.append(
             [
                 _cell(value, p, n, cast_mode, where, e)
