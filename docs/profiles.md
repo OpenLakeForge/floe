@@ -385,6 +385,9 @@ execution:
   error in config order. An interrupt (Ctrl-C) is handled the same way: the running entities finish first.
 - **Ephemeral disk.** Each running entity may hold up to its download prefetch window (8 files, about
   512 MiB) in a temporary directory. Size ephemeral storage for `workers × 512 MiB` plus the largest file.
+- **Memory.** Each running entity holds its own chunk (up to 1M rows) in memory, and a merge entity's DuckDB
+  (`memory_limit` 4 GB) can run alongside non-merge entities. Peak memory grows with `max_concurrent_entities`:
+  size the pod for `workers` × one entity's working set (plus DuckDB when merges are configured), not for a sequential run.
 
 Existing profiles that already say `strategy: parallel` for Dagster now also run the entities of a
 `domain` Job in parallel inside its `floe run`.
