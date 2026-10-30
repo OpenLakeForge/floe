@@ -103,6 +103,7 @@ def run(
     full_refresh: bool = False,
     observer: Observer | None = None,
     config_uri: str | None = None,
+    workers: int = 1,
 ) -> RunOutcome:
     """Run the selected entities in config order, writing each entity's report as it finishes. A failing entity raises: no summary, as Rust."""
     clear_storage_clients()

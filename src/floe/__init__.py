@@ -136,8 +136,7 @@ def _profile(
         profile = parse_profile(path)
     except FloeError as e:
         raise FloeConfigError(f"failed to load profile {_debug(path)}: {e}") from e
-    return ProfileConfig(profile.name, profile.runner, profile.variables | (variables or {}),
-                         profile.catalogs, profile.storages, profile.lineage)  # fmt: skip
+    return replace(profile, variables=profile.variables | (variables or {}))
 
 
 def _load(config_path: str, profile: ProfileConfig | None = None) -> tuple[Path, _Root]:

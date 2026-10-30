@@ -12,6 +12,7 @@ from typing import Any, TypeVar, cast, get_args
 
 from pydantic import BaseModel, ValidationError
 
+from floe.config.profile import entity_workers
 from floe.config.project import (
     LineageConfig,
     ProjectMetadata,
@@ -265,6 +266,9 @@ def load_manifest(location: str | Path) -> tuple[RootConfig, list[EntityConfig],
         spec = m["spec_version"]
         entities = [_entity(e, _named_local(m)) for e in m["entities"]]
         report_base = m["report_base_uri"]
+        workers = entity_workers(
+            cast(Json, m.get("execution") or {}).get("orchestration")
+        )
         meta = m.get("metadata")  # D20: dumped without its None fields
         metadata = None if meta is None else ProjectMetadata.model_validate(_omitted_as_none(ProjectMetadata, meta))  # fmt: skip
     except (ValueError, KeyError, TypeError, AttributeError) as e:
@@ -289,6 +293,7 @@ def load_manifest(location: str | Path) -> tuple[RootConfig, list[EntityConfig],
         lineage=_section(LineageConfig, m, "lineage"),
         entities=entities,
         config_files=[],
+        entity_workers=workers,
     )
     observed = [_lineage_entity(e, me) for e, me in zip(entities, m["entities"])]
     return root, observed, _replay_base(location, m)

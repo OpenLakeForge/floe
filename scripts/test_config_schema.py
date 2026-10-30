@@ -106,7 +106,7 @@ class ConfigSchemaTest(unittest.TestCase):
             types.SchemaEvolutionConfig: "schema_evolution", types.SchemaMismatchConfig: "schema_mismatch",
             types.ColumnConfig: "column",
         }  # `delta` and `duckdb` stay raw in the model (D1) and have no binding.
-        internal = {project.RootConfig: {"config_files"}, project.DomainConfig: {"resolved_incoming_dir"}, types.EntityConfig: {"id"}, types.SinkTarget: {"write_mode"}}
+        internal = {project.RootConfig: {"config_files", "entity_workers"}, project.DomainConfig: {"resolved_incoming_dir"}, types.EntityConfig: {"id"}, types.SinkTarget: {"write_mode"}}
         aliases = {types.SourceConfig: {"source_ref": "ref"}, types.ColumnConfig: {"column_type": "type"}}
         wire_extras = {
             project.RootConfig: {"sources", "include", "filesystems"},

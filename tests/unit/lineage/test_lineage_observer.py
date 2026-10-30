@@ -544,3 +544,32 @@ def test_a_cancelled_attempt_counts_as_failed_even_if_its_worker_reports_success
     monkeypatch.setattr(observer._Attempt, "cancel", cancel_then_report)  # pyright: ignore[reportPrivateUsage]
     obs = OpenLineageObserver(config("http://127.0.0.1:9", timeout_secs=1), [], "config.yml")  # fmt: skip
     assert obs._attempt(b"{}") is True  # pyright: ignore[reportPrivateUsage] -- retryable failure, never a delivery
+
+
+class Yielding(OpenLineageObserver):
+    """Reading the breaker yields to the other threads, as a switch between the check and the set would."""
+
+    _open = False
+
+    @property
+    def circuit_open(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride] -- a property stands in for the plain attribute
+        time.sleep(0.001)
+        return self._open
+
+    @circuit_open.setter
+    def circuit_open(self, value: bool) -> None:
+        self._open = value
+
+
+def test_the_circuit_opens_once_when_entities_post_from_threads(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    obs = Yielding(config("http://127.0.0.1:1", 5), [], "config.yml")
+    obs._attempt = lambda data: False  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- no network: every attempt fails
+    workers = [threading.Thread(target=lambda: [obs(ENTITY_STARTED) for _ in range(10)]) for _ in range(8)]  # fmt: skip
+    for w in workers:
+        w.start()
+    for w in workers:
+        w.join()
+    assert obs.circuit_open
+    assert capsys.readouterr().err.count("disabled for this run") == 1
