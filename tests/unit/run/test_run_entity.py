@@ -580,6 +580,32 @@ def test_json_file_is_parsed_once_up_to_the_single_pass_cap(
     assert len(parsed) == 3 * passes
 
 
+def test_json_file_removed_after_listing_is_a_failed_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1115: the size comes from the listing, so a vanished file still fails as a read error."""
+    real = entity_module.resolve_inputs
+
+    def listed_then_removed(*args: Any, **kwargs: Any) -> Any:
+        inputs = real(*args, **kwargs)
+        (tmp_path / "in" / "a.json").unlink()
+        return inputs
+
+    monkeypatch.setattr(entity_module, "resolve_inputs", listed_then_removed)
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "a.json").write_text('{"id": 1}')
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace("      rejected: {format: csv, path: ./out/rejected}\n", "")
+    config = config.replace(
+        "format: csv\n      path: ./in", "format: json\n      path: ./in"
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert [f["status"] for f in report["files"]] == ["rejected"]
+    assert "failed to read json at" in json.dumps(report["files"][0])
+
+
 @pytest.mark.parametrize("chunk_rows", [2, 4, 1000])
 @pytest.mark.parametrize("mode", ["ndjson", "array"])
 def test_json_late_key_and_late_errors_are_the_same_in_every_chunking(

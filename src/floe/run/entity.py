@@ -411,8 +411,8 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
             first, probe = [], xml_columns(path, entity.source.options)
         elif entity.source.format == "json":
             # D40: every record's top-level keys; D41: only a file without records has nothing to compare
-            # a small file is parsed once: the read reuses the probe's records (limit 0 keeps none)
-            json_keys, head = json_probe(path, entity.source.options.json_mode or "array", JSON_CHUNK_ROWS if path.stat().st_size <= JSON_SINGLE_PASS_BYTES else 0)  # fmt: skip
+            # a file listed as small is parsed once: the read reuses the probe's records (limit 0 keeps none)
+            json_keys, head = json_probe(path, entity.source.options.json_mode or "array", JSON_CHUNK_ROWS if file.source_size is not None and file.source_size <= JSON_SINGLE_PASS_BYTES else 0)  # fmt: skip
             chunks = _chunks(entity, path, file_names, head)
             first, probe = [], declared if json_keys is None else json_keys
         else:  # the first chunk's columns are the input columns the plan compares
