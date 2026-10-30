@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from floe._cli import main
-from floe._cli_output import event_json, run_output
+from floe._cli_output import Console, event_json, run_output
 from floe.run import RunOutcome
 
 REPO = Path(__file__).resolve().parents[2]
@@ -58,7 +58,7 @@ def outcome() -> RunOutcome:
 
 
 def test_format_run_output_default_mode() -> None:
-    timings = [{"/tmp/input/customers.csv": 12}]
+    timings = {"customer": {"/tmp/input/customers.csv": 12}}
     expected = [
         "run id: run-123",
         "report base: /tmp/reports",
@@ -81,17 +81,17 @@ def test_format_run_output_quiet_mode_keeps_only_the_summary() -> None:
         "Overall: rejected (exit_code=0)",
         "Run summary: /tmp/reports/run_run-123/run.summary.json",
     ]
-    assert run_output(outcome(), [], "quiet", [{}]).split("\n") == expected
+    assert run_output(outcome(), [], "quiet", {}).split("\n") == expected
 
 
 def test_run_summary_line_keeps_the_s3_uri_intact() -> None:
     s3 = RunOutcome("r1", SUMMARY, None, "s3://bucket/reports", "s3://bucket/reports/run_r1", [REPORT])  # fmt: skip
-    last = run_output(s3, [], "quiet", [{}]).splitlines()[-1]
+    last = run_output(s3, [], "quiet", {}).splitlines()[-1]
     assert last == "Run summary: s3://bucket/reports/run_r1/run.summary.json"
 
 
 def test_format_run_output_verbose_mode_echoes_source_and_sinks() -> None:
-    lines = run_output(outcome(), [], "verbose", [{}]).splitlines()
+    lines = run_output(outcome(), [], "verbose", {}).splitlines()
     assert lines[4:10] == [
         "  source: csv (/tmp/input)",
         "  sink accepted: parquet (/tmp/out/accepted)",
@@ -224,3 +224,12 @@ def test_event_json_matches_the_rust_envelope() -> None:
     assert event_json(event) == (
         '{"schema":"floe.log.v1","level":"info","event":"entity_started","run_id":"r","name":"é","ts_ms":1}'
     )
+
+
+def test_console_keeps_the_timings_of_interleaved_entities_apart() -> None:
+    console = Console("off", "r")
+    for entity, name in (("a", "x.csv"), ("b", "y.csv"), ("a", "z.csv")):
+        console(
+            {"event": "file_finished", "entity": entity, "input": name, "elapsed_ms": 5}
+        )
+    assert console.timings == {"a": {"x.csv": 5, "z.csv": 5}, "b": {"y.csv": 5}}
