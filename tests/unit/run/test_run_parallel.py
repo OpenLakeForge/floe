@@ -326,3 +326,33 @@ def test_entities_sharing_a_state_file_share_a_key(tmp_path: Path) -> None:
 def test_an_entity_whose_target_cannot_be_resolved_has_no_keys(tmp_path: Path) -> None:
     text = ICEBERG + iceberg_entity("a", "t", catalog="nope")
     assert keys_of(tmp_path, text)[0] == frozenset()
+
+
+def parquet_entity(name: str, path: str, storage: str = "") -> str:
+    return f"""\
+  - name: {name}
+    domain: d
+    source: {{format: csv, path: ./in/{name}, options: {{header: true, separator: ","}}}}
+    sink:
+      accepted: {{format: parquet, path: "{path}"{storage}}}
+      rejected: {{format: csv, path: ./rejected/{name}}}
+    policy: {{severity: reject}}
+    schema:
+      columns:
+        - {{name: id, type: int64}}
+"""
+
+
+def test_a_symlinked_alias_of_an_accepted_path_shares_its_key(tmp_path: Path) -> None:
+    (tmp_path / "out").mkdir()
+    (tmp_path / "alias").symlink_to(tmp_path / "out")
+    head = 'version: "0.3"\ndomains: [{name: d}]\nentities:\n'
+    a, b, c = keys_of(tmp_path, head + parquet_entity("a", "./out") + parquet_entity("b", "./alias") + parquet_entity("c", "./other"))  # fmt: skip
+    assert a & b and not a & c
+
+
+def test_a_trailing_slash_on_a_remote_accepted_path_shares_its_key(tmp_path: Path) -> None:  # fmt: skip
+    head = 'version: "0.3"\nstorages:\n  default: local\n  definitions:\n    - {name: local, type: local}\n    - {name: lake, type: s3, bucket: b, region: us-east-1}\ndomains: [{name: d}]\nentities:\n'  # fmt: skip
+    lake = ", storage: lake"
+    a, b = keys_of(tmp_path, head + parquet_entity("a", "out", lake) + parquet_entity("b", "out/", lake))  # fmt: skip
+    assert a & b

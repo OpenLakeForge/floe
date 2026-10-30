@@ -15,16 +15,23 @@ from floe.storage.resolve import resolve_path
 MERGE = "merge"  # every merge entity shares this key: DuckDB memory, and Polaris conflicts on one table
 
 
+def _canonical(uri: str) -> str:
+    """One spelling per destination: a local path resolved through symlinks, a remote URI without a trailing `/`."""
+    if uri.startswith("local://"):
+        return f"local://{Path(uri.removeprefix('local://')).resolve()}"
+    return uri.rstrip("/")
+
+
 def exclusive_keys(e: EntityConfig, config_dir: Path, storages: StoragesConfig | None, catalogs: CatalogsConfig | None) -> frozenset[str]:  # fmt: skip
     """What `e` writes that no other running entity may touch: its accepted path, Iceberg table, state file, and the merge slot."""
     sink = e.sink
     try:
-        keys = {resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"entity.name={e.name} sink.accepted.storage")[0]}  # fmt: skip
+        keys = {_canonical(resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"entity.name={e.name} sink.accepted.storage")[0])}  # fmt: skip
         if sink.accepted.format == "iceberg":
             t = resolve_target(storages, catalogs, config_dir, e)
             keys.add(f"iceberg://{t.catalog.name}/{t.namespace}/{t.table}")
         if e.incremental_mode == "file":
-            keys.add(state_uri(e, config_dir, storages)[0])
+            keys.add(_canonical(state_uri(e, config_dir, storages)[0]))
     except FloeError:
         return frozenset()  # `run_entity` raises the same error when it runs
     if sink.write_mode.startswith("merge"):
