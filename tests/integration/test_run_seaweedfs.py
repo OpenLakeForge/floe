@@ -6,6 +6,7 @@ Skipped unless `FLOE_S3_ENDPOINT` is set, e.g. `FLOE_S3_ENDPOINT=http://localhos
 import io
 import json
 import os
+import threading
 import uuid
 from datetime import date
 from pathlib import Path
@@ -15,6 +16,7 @@ import pytest
 
 from floe.config.parse import parse_config
 from floe.run import run
+from floe.storage.prefetch import PREFETCH_WINDOW
 from floe.storage.s3 import S3Client
 
 pytestmark = [
@@ -140,3 +142,29 @@ def test_d30_file_mode_lists_the_s3_source_from_the_window(
     state = s3.read(s3.resolve_uri(f"{prefix}/in/.floe/state/d/orders/state.json"))
     assert state is not None
     assert json.loads(state.body)["watermark"] == "2026-10-24"
+
+
+def test_1102_more_inputs_than_the_prefetch_window_are_each_ingested_once(
+    s3: S3Client, tmp_path: Path
+) -> None:
+    prefix = f"it-{uuid.uuid4().hex}"
+    count = PREFETCH_WINDOW * 2 + 4
+    for i in range(count):
+        s3.write(s3.resolve_uri(f"{prefix}/in/f{i:02}.csv"), f"id\n{i}\n".encode())
+    config = tmp_path / "config.yml"
+    config.write_text(
+        CONFIG.format(
+            bucket=BUCKET, endpoint=os.environ["FLOE_S3_ENDPOINT"], prefix=prefix
+        )
+    )
+    out = run(config, parse_config(config), run_id="r1")
+    assert out.summary["run"]["status"] == "success"
+    part = s3.read(s3.resolve_uri(f"{prefix}/out/accepted/part-00000.parquet"))
+    assert part is not None
+    assert sorted(pl.read_parquet(io.BytesIO(part.body))["id"]) == list(range(count))
+    stored = s3.read(s3.resolve_uri(f"{prefix}/runs/d/run_r1/d/orders/run.json"))
+    assert stored is not None
+    assert [f["input_file"] for f in json.loads(stored.body)["files"]] == [
+        f"s3://{BUCKET}/{prefix}/in/f{i:02}.csv" for i in range(count)
+    ]
+    assert not [t for t in threading.enumerate() if t.name.startswith("floe-prefetch")]
