@@ -7,6 +7,7 @@ import pytest
 
 import floe
 from floe.state import EntityState, FileState, dump_state
+from floe.storage.s3 import S3Client
 
 FIXTURES = Path(__file__).parent / "fixtures" / "public_api"
 VALID_CONFIG = "config.yml"
@@ -217,6 +218,38 @@ def test_inspect_and_reset_entity_state(tmp_path: Path) -> None:
     assert floe.reset_entity_state(config, "sales") is True
     assert not state_file.exists()
     assert floe.reset_entity_state(config, "sales") is False
+
+
+def test_1100_state_calls_do_not_reuse_a_client_built_for_an_earlier_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    config = tmp_path / "floe.yml"
+    config.write_text(
+        """version: "0.1"
+storages:
+  default: lake
+  definitions:
+    - {name: lake, type: s3, bucket: b, region: us-east-1}
+entities:
+  - name: "sales"
+    incremental_mode: "file"
+    source: {format: "csv", path: "in"}
+    sink: {accepted: {format: "parquet", path: "out"}}
+    policy: {severity: "warn"}
+    schema: {columns: [{name: "id", type: "string"}]}
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
+    used: list[str] = []
+
+    def read(client: S3Client, *_: object) -> None:
+        used.append(client.endpoint)
+
+    monkeypatch.setattr(floe, "read_state", read)
+    for endpoint in ("http://one:9000", "http://two:9000"):
+        monkeypatch.setenv("AWS_ENDPOINT_URL", endpoint)
+        floe.inspect_entity_state(str(config), "sales")
+    assert used == ["http://one:9000", "http://two:9000"]
 
 
 def test_version() -> None:
