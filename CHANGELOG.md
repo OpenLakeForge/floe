@@ -2,6 +2,27 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.8
+
+- **Entities can run in parallel in one `floe run` (#1105).** With `execution.orchestration.strategy: parallel` in
+  the profile, `floe run -c … -p …`, `floe run --manifest …` and `floe.run(…, profile_path=…)` run up to
+  `max_concurrent_entities` entities at once (default `min(4, CPU count)`). Entities that share an Iceberg table, an
+  accepted path or a state file never run together, and merge entities run one at a time. Reports and the summary
+  stay in config order; events of different entities interleave and observers are called from worker threads. On
+  the Polaris/SeaweedFS harness, 12 entities writing 12 Iceberg tables took 2.04 s with one worker and 1.03 s with
+  four. Without `strategy: parallel` nothing changes. Profiles that already set `strategy: parallel` for Dagster now
+  also run the entities of a `job_scope: domain` Job in parallel; peak memory then grows with the number of workers
+  (see `docs/profiles.md`).
+
+- **Creating a new Iceberg namespace no longer fails when two writers race (#1117).** Two entities, or two
+  processes such as concurrent Dagster Jobs, that both found a namespace missing and created it made the second
+  creation fail the run. A namespace that already exists by then now counts as created.
+
+- **A small JSON file is parsed once (#1115).** The key check before the read parsed every JSON file a second
+  time. A file of at most 8 MiB is now parsed once and its records reused; larger files keep the two passes, so
+  memory stays bounded. On 300 files of 200 records, JSON reading took 37-38% less CPU, and a 100,000-record file
+  about 28% less end to end.
+
 ## v0.8.7
 
 - **The Iceberg catalog is opened once per run (#1101).** Every catalog call used to start a new REST session
