@@ -93,6 +93,7 @@ class RootConfig(BaseModel):
     lineage: LineageConfig | None
     entities: list[EntityConfig]
     config_files: list[Path]
+    entity_workers: int = 1  # profile/manifest orchestration; not a config key
 
 
 @dataclass

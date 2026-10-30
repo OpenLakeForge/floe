@@ -1,7 +1,7 @@
 """Environment profiles, ported from `profile/parse.rs` and `profile/validate.rs`."""
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -395,12 +395,21 @@ def validate_profile(profile: ProfileConfig) -> None:
         check_lineage(profile.lineage, "profile.lineage")
 
 
+def entity_workers(orchestration: Mapping[str, object] | None) -> int:
+    """How many entities a run may run at once: 1 unless `strategy` is `parallel`, then `max_concurrent_entities` or `min(4, cpus)`."""
+    if not orchestration or orchestration.get("strategy") != "parallel":
+        return 1
+    limit = orchestration.get("max_concurrent_entities")
+    return limit if isinstance(limit, int) else min(4, os.cpu_count() or 1)
+
+
 def apply_profile(config: RootConfig, profile: ProfileConfig) -> RootConfig:
     """The profile's blocks replace the config's, as `apply_profile_catalogs`, `_storages` and `_lineage` do."""
     blocks = {
         "catalogs": profile.catalogs,
         "storages": profile.storages,
         "lineage": profile.lineage,
+        "entity_workers": entity_workers(profile.orchestration),
     }
     return config.model_copy(update={k: v for k, v in blocks.items() if v is not None})
 

@@ -110,7 +110,6 @@ def _warn(message: str) -> None:
 class OpenLineageObserver:
     """A run observer (`floe.run.events.Observer`) posting OpenLineage `RunEvent`s."""
 
-    # ponytail: unsynchronised breaker counters; add a lock when entities run in parallel.
     def __init__(
         self, config: LineageConfig, entities: Sequence[EntityConfig], config_path: str
     ) -> None:
@@ -127,12 +126,14 @@ class OpenLineageObserver:
         self.run_uuid: str | None = None
         self.consecutive_failures = 0
         self.circuit_open = False
+        self._lock = threading.Lock()  # entities may run in parallel threads
 
     def __call__(self, event: dict[str, Any]) -> None:
         kind, ts = event["event"], event["ts_ms"]
         job = self.events.run_job_name
         if kind == "run_started":
-            self.consecutive_failures, self.circuit_open = 0, False
+            with self._lock:
+                self.consecutive_failures, self.circuit_open = 0, False
             self.run_uuid = str(uuid.uuid4())
             self._post("START", ts, self.run_uuid, job)
         elif kind == "entity_started":
@@ -171,19 +172,19 @@ class OpenLineageObserver:
             time.sleep(delay)
             retryable = self._attempt(data)
             if retryable is None:
-                self.consecutive_failures = 0
+                with self._lock:
+                    self.consecutive_failures = 0
                 return
             if not retryable:
                 break
         _warn(f"POST {self.url} failed — event dropped")
-        self.consecutive_failures += 1
-        failures = self.consecutive_failures
-        if (
-            failures
-            >= (3 if self.config.max_failures is None else self.config.max_failures)
-            and not self.circuit_open
-        ):
-            self.circuit_open = True
+        with self._lock:
+            self.consecutive_failures += 1
+            failures = self.consecutive_failures
+            limit = 3 if self.config.max_failures is None else self.config.max_failures
+            opening = failures >= limit and not self.circuit_open
+            self.circuit_open |= opening
+        if opening:
             _warn(f"disabled for this run after {failures} consecutive failures — check endpoint {self.url}")  # fmt: skip
 
     def _attempt(self, data: bytes) -> bool | None:
@@ -251,6 +252,7 @@ def run_with_lineage(
         return run(
             path, root, run_id=run_id, entities=entities, dry_run=dry_run,
             full_refresh=full_refresh, observer=observe, config_uri=config_uri,
+            workers=root.entity_workers,
         )  # fmt: skip
     except FloeError:
         if lineage:
