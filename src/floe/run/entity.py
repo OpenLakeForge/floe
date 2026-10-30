@@ -5,7 +5,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Generator, Iterable, Iterator
-from contextlib import suppress
+from contextlib import closing, suppress
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from functools import partial
@@ -85,7 +85,6 @@ from floe.storage.inputs import (
     InputFile,
     NoInputsError,
     ResolvedInputs,
-    localize_input,
     resolve_inputs,
     suffixes_for_format,
 )
@@ -99,6 +98,7 @@ from floe.storage.partitioning import (
     window,
 )
 from floe.storage.paths import normalize_local_path
+from floe.storage.prefetch import localized_inputs
 from floe.storage.resolve import resolve_path, storage_client
 from floe.storage.s3 import S3Client
 from floe.storage.types import StorageClient
@@ -940,14 +940,18 @@ def _run_entity(
     def accepted_frames() -> Generator[pl.DataFrame]:
         """Files are read as the sink pulls (#1056); `files` and `complete` are final once it is exhausted."""
         try:
-            # Rust `localize_input`: a remote input is read from a local copy
-            with tempfile.TemporaryDirectory(prefix="floe-") as temp_dir:
+            queue = pending[::-1] if latest_first else pending
+            # Rust `localize_input`: a remote input is read from a local copy; #1102: downloaded ahead, and closed before the temp dir goes
+            with (
+                tempfile.TemporaryDirectory(prefix="floe-") as temp_dir,
+                closing(localized_inputs(queue, downloader, Path(temp_dir))) as inputs,
+            ):
                 if pending and sink.write_mode == "append" and plan.tracker.keys and (target is None or plan.table is not None):  # fmt: skip
                     plan.history = _key_cache(plan, accepted_client, base, Path(temp_dir))  # fmt: skip
-                for f in pending[::-1] if latest_first else pending:
+                for f in queue:
                     emit("file_started", entity=entity.name, input=f.source_uri)
                     timer = time.monotonic()
-                    local = localize_input(f, downloader, Path(temp_dir))
+                    local = next(inputs)
                     report, kept = _run_file(plan, f, local.local_path, Path(temp_dir))
                     if local.is_ephemeral:
                         local.local_path.unlink()

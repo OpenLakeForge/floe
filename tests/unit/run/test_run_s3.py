@@ -4,6 +4,8 @@ import hashlib
 import io
 import json
 import sys
+import threading
+import time
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -16,7 +18,7 @@ import floe.storage.resolve as resolve_module
 import floe.storage.s3 as s3_module
 from floe._cli import main
 from floe.config.parse import parse_config
-from floe.errors import FloeConfigError, FloeRunError
+from floe.errors import FloeConfigError, FloeRunError, FloeStorageError
 from floe.run import run
 from floe.storage.paths import parse_s3_uri
 from floe.storage.s3 import temp_path_for_key
@@ -408,3 +410,68 @@ def test_1003_run_manifest_api_reads_s3_and_reports_under_an_s3_base_without_a_s
     assert pl.read_parquet(tmp_path / "out/accepted").height == 1
     assert "s3://b/runs/d/run_r1/run.summary.json" in s3.objects
     assert "s3://b/runs/d/run_r1/d/orders/run.json" in s3.objects
+
+
+class SlowS3(MemS3):
+    """Every `download` takes `delay` seconds; records the peak of concurrent downloads."""
+
+    def __init__(self, delay: float = 0.1, fail: str | None = None) -> None:
+        super().__init__()
+        self.delay, self.fail, self.peak, self._active = delay, fail, 0, 0
+        self._lock = threading.Lock()
+
+    def download(self, uri: str, temp_dir: Path) -> Path:
+        with self._lock:
+            self._active += 1
+            self.peak = max(self.peak, self._active)
+        try:
+            time.sleep(self.delay)
+            if uri == self.fail:
+                raise FloeStorageError(f"s3 get object failed: {uri}")
+            return super().download(uri, temp_dir)
+        finally:
+            with self._lock:
+                self._active -= 1
+
+
+def slow_store(monkeypatch: pytest.MonkeyPatch, store: SlowS3, names: str) -> list[str]:
+    def client(*_: object) -> SlowS3:
+        return store
+
+    monkeypatch.setattr(resolve_module, "S3Client", client, raising=False)
+    monkeypatch.setattr(s3_module, "S3Client", client)
+    uris = [f"s3://b/in/{n}.csv" for n in names]
+    for i, uri in enumerate(uris):
+        store.write(uri, f"id\n{i}\n".encode())
+    return uris
+
+
+def test_1102_inputs_are_downloaded_ahead_and_consumed_in_listed_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    store = SlowS3()
+    uris = slow_store(monkeypatch, store, "abcdefghijklmnop")
+    events: list[tuple[str, str]] = []
+    (tmp_path / "config.yml").write_text(CONFIG)
+    start = time.monotonic()
+    run(tmp_path / "config.yml", parse_config(tmp_path / "config.yml"), run_id="r1", observer=lambda e: events.append((e["event"], e.get("input", ""))) if e["event"].startswith("file_") else None)  # fmt: skip
+    elapsed = time.monotonic() - start
+    print(
+        f"1102 wall time for 16 files at 0.1s: {elapsed:.2f}s, peak concurrency {store.peak}"
+    )
+    assert 1 < store.peak <= 8
+    assert events == [(kind, uri) for uri in uris for kind in ("file_started", "file_finished")]  # fmt: skip
+    report = json.loads(store.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
+    assert [f["input_file"] for f in report["files"]] == uris
+    assert sorted(pl.read_parquet(tmp_path / "out/accepted")["id"].to_list()) == list(range(16))  # fmt: skip
+
+
+def test_1102_a_failed_download_raises_when_its_file_comes_up(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    store = SlowS3(delay=0.02, fail="s3://b/in/c.csv")
+    slow_store(monkeypatch, store, "abcd")
+    events: list[tuple[str, str]] = []
+    (tmp_path / "config.yml").write_text(CONFIG)
+    with pytest.raises(FloeStorageError) as err:
+        run(tmp_path / "config.yml", parse_config(tmp_path / "config.yml"), run_id="r1", observer=lambda e: events.append((e["event"], e.get("input", ""))) if e["event"].startswith("file_") else None)  # fmt: skip
+    assert str(err.value) == "s3 get object failed: s3://b/in/c.csv"
+    assert events == [("file_started", "s3://b/in/a.csv"), ("file_finished", "s3://b/in/a.csv"),
+                      ("file_started", "s3://b/in/b.csv"), ("file_finished", "s3://b/in/b.csv"),
+                      ("file_started", "s3://b/in/c.csv")]  # fmt: skip
