@@ -3,14 +3,14 @@
 from collections import deque
 from collections.abc import Generator, Iterable
 from concurrent.futures import Future, ThreadPoolExecutor
-from itertools import islice
 from pathlib import Path
 
 from floe.storage.inputs import InputFile, LocalInputFile, localize_input
 from floe.storage.types import Downloader
 
-# ponytail: a fixed window and one pool per entity; a config knob or a run-wide pool once a bucket needs more than 8 GETs in flight
+# ponytail: a fixed window of 8 files and 512 MiB (unknown size counts as 0; the next file is always allowed) and one pool per entity; a config knob or a run-wide pool once a bucket needs more
 PREFETCH_WINDOW = 8
+PREFETCH_BYTES = 512 * 1024 * 1024
 
 
 def localized_inputs(
@@ -21,16 +21,26 @@ def localized_inputs(
         for f in files:
             yield localize_input(f, None, temp_dir)
         return
-    todo = iter(files)
-    ahead: deque[Future[LocalInputFile]] = deque()
+    todo = deque(files)
+    ahead: deque[tuple[Future[LocalInputFile], int]] = deque()
     pool = ThreadPoolExecutor(PREFETCH_WINDOW, thread_name_prefix="floe-prefetch")
+
+    def refill() -> None:
+        held = sum(size for _, size in ahead)
+        while todo and len(ahead) < PREFETCH_WINDOW:
+            size = todo[0].source_size or 0
+            if ahead and held + size > PREFETCH_BYTES:
+                break
+            held += size
+            ahead.append(
+                (pool.submit(localize_input, todo.popleft(), client, temp_dir), size)
+            )
+
     try:
-        for f in islice(todo, PREFETCH_WINDOW):
-            ahead.append(pool.submit(localize_input, f, client, temp_dir))
+        refill()
         while ahead:
-            local = ahead.popleft().result()
-            for f in islice(todo, 1):
-                ahead.append(pool.submit(localize_input, f, client, temp_dir))
+            local = ahead.popleft()[0].result()
+            refill()
             yield local
     finally:
         pool.shutdown(cancel_futures=True)

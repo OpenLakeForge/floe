@@ -7,7 +7,7 @@ import pytest
 from floe.errors import FloeStorageError
 from floe.storage import prefetch
 from floe.storage.inputs import InputFile
-from floe.storage.prefetch import PREFETCH_WINDOW, localized_inputs
+from floe.storage.prefetch import PREFETCH_BYTES, PREFETCH_WINDOW, localized_inputs
 
 
 class SleepingDownloader:
@@ -55,6 +55,17 @@ def test_downloads_stay_within_the_window_of_the_file_being_read(tmp_path: Path)
     time.sleep(0.2)
     assert len(client.started) == PREFETCH_WINDOW + 1
     stream.close()
+
+
+def test_large_files_are_prefetched_one_at_a_time_and_small_ones_fill_the_window(tmp_path: Path) -> None:  # fmt: skip
+    big = SleepingDownloader(delay=0.02)
+    files = [InputFile(f.source_uri, f.source_name, f.source_stem, PREFETCH_BYTES, None) for f in inputs(6)]  # fmt: skip
+    assert len(list(localized_inputs(files, big, tmp_path))) == 6
+    assert big.peak == 1
+    small = SleepingDownloader(delay=0.02)
+    files = [InputFile(f.source_uri, f.source_name, f.source_stem, 1, None) for f in inputs(30)]  # fmt: skip
+    assert len(list(localized_inputs(files, small, tmp_path))) == 30
+    assert 1 < small.peak <= PREFETCH_WINDOW
 
 
 def test_a_failed_download_raises_at_its_turn_with_its_own_error(tmp_path: Path) -> None:  # fmt: skip
