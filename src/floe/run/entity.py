@@ -849,6 +849,7 @@ def _run_entity(
         entity
     )  # D28: the derived columns are schema columns
     merging = entity.sink.write_mode in ("merge_scd1", "merge_scd2")
+    configured = entity  # the sink still checks a merge's key against the table
     # #1091: a full refresh rebuilds a merge_scd1 table from every input in one commit
     if inc.full_refresh and entity.sink.write_mode == "merge_scd1":
         entity = entity.model_copy(update={"sink": entity.sink.model_copy(update={"write_mode": "overwrite"})})  # fmt: skip
@@ -980,7 +981,7 @@ def _run_entity(
                 write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
             else:
                 outputs = [plan.out_map.get(n, n) for n in names]
-                result, table, merge, added = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, lambda: input_hash(entity, complete))  # fmt: skip
+                result, table, merge, added = write_iceberg(configured, target, frames, outputs, sink.write_mode, emit.run_id, lambda: input_hash(entity, complete))  # fmt: skip
                 write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
                                       result.avg_file_size_mb, result.small_files_count)  # fmt: skip
                 if added:

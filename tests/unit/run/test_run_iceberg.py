@@ -534,6 +534,10 @@ def test_a_merge_key_column_cannot_be_added_by_evolution(tmp_path: Path, catalog
     with pytest.raises(FloeRunError, match="iceberg schema evolution failed: merge key columns cannot be added: qty$"):  # fmt: skip
         run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, emit=NO_EVENTS, catalogs=root.catalogs)  # fmt: skip
     assert rows(catalog) == [(1, "a")]
+    # #1091: a refresh keeps the guard
+    with pytest.raises(FloeRunError, match="merge key columns cannot be added: qty$"):
+        run_project(tmp_path / "config.yml", root, full_refresh=True)
+    assert rows(catalog) == [(1, "a")]
 
 
 def test_d28_partition_spec_on_the_derived_date(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
