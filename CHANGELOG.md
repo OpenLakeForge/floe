@@ -63,17 +63,18 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-### dagster-floe
-
-- **Per-run full refresh from the `floe/full_refresh` run tag (#1091).** A Dagster run tagged
-  `floe/full_refresh=true` runs its entities with `floe run --full-refresh`, in process or through a
-  `local_process`, `kubernetes_job` or `databricks_job` runner. Runs without the tag are unchanged. A
-  `merge_scd1` / `merge_scd2` entity needs a Floe version that accepts `--full-refresh` with merge modes.
-
 ### airflow-floe
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
   dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
+
+## dagster-floe v0.4.3
+
+- **Per-run full refresh from the `floe/full_refresh` run tag (#1091).** A Dagster run tagged
+  `floe/full_refresh=true` runs its entities with `floe run --full-refresh`, in process or through a
+  `local_process`, `kubernetes_job` or `databricks_job` runner. Runs without the tag are unchanged. A
+  `merge_scd1` entity needs Floe 0.8.6 or newer, which rebuilds the table from the inputs; `merge_scd2`
+  still rejects `--full-refresh`.
 
 ## dagster-floe v0.4.2
 
