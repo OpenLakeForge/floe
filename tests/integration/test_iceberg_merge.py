@@ -39,6 +39,7 @@ from pyiceberg.types import (
 from floe.config.storage import CatalogDefinition, StorageDefinition
 from floe.iceberg.catalog import ensure_table, open_catalog, open_duckdb
 from floe.iceberg.merge import merge_scd1, merge_scd2
+from floe.iceberg.write import write_table
 
 URI = os.environ.get("FLOE_POLARIS_URI")
 
@@ -210,6 +211,21 @@ def test_ignored_columns_keep_target_values(catalog: Catalog, table: Table) -> N
     merge_scd1(con, table, batch.to_reader(), ["id"], ignore_columns={"amount"})
 
     assert read(table)[0] == (1, "a2", 10.0, D(2026, 1, 1), "eu")
+
+
+def test_a_full_refresh_replaces_a_merged_table(catalog: Catalog, table: Table) -> None:
+    """#1091: a `merge_scd1` full refresh writes as `overwrite` over a merge-on-read table, in one commit."""
+    con = open_duckdb(CATALOG, STORAGE)
+    merge_scd1(con, table, arrow(ARROW, [(1, "a2", 11.0, D(2026, 1, 1), "eu")]).to_reader(), ["id"])  # fmt: skip
+    commits = len(table.metadata.metadata_log)
+    inputs = [(1, "a3", 12.0, D(2026, 1, 1), "eu"), (9, "z", None, D(2026, 1, 9), "us")]
+
+    write_table(table, arrow(ARROW, inputs).to_reader(), "overwrite", "refresh", "hash")
+
+    # rows gone from the inputs leave the table, with their deletes
+    assert read(table) == inputs
+    assert len(table.metadata.metadata_log) == commits + 1
+    assert_files_hold_their_partition(table)
 
 
 # SCD2: #598's golden fixture; the target also holds a closed historical version of key 1

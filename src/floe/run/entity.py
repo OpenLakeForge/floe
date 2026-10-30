@@ -848,6 +848,11 @@ def _run_entity(
     entity = with_partition_columns(
         entity
     )  # D28: the derived columns are schema columns
+    merging = entity.sink.write_mode in ("merge_scd1", "merge_scd2")
+    configured = entity  # the sink still checks a merge's key against the table
+    # #1091: a full refresh rebuilds a merge_scd1 table from every input in one commit
+    if inc.full_refresh and entity.sink.write_mode == "merge_scd1":
+        entity = entity.model_copy(update={"sink": entity.sink.model_copy(update={"write_mode": "overwrite"})})  # fmt: skip
     sink = entity.sink
     if sink.accepted.format not in ("parquet", "iceberg"):
         raise FloeRunError(f"entity.name={entity.name} unsupported sink format: {sink.accepted.format}")  # fmt: skip
@@ -885,7 +890,7 @@ def _run_entity(
     if location and entity.incremental_mode in ("none", "archive"):
         plan.archive = location[0], storage_client(location[1])
         plan.root = source_root(source_uri) if entity.source.partitioning else None
-    if sink.write_mode in ("merge_scd1", "merge_scd2") and entity.schema_.primary_key:
+    if merging and entity.schema_.primary_key:
         pk = [runtime.get(k.strip(), k.strip()) for k in entity.schema_.primary_key]
         plan.merge_key = (
             pk[0] if len(pk) == 1 else f"[{','.join(pk)}]"
@@ -930,7 +935,7 @@ def _run_entity(
     failure: list[Exception] = []
     # #1090: a merge keeps a key's latest version, so the newest file is checked first; the first row of a file still wins.
     # Not under abort: a duplicate aborts there anyway, and newer files committed ahead of a pending older one would let it merge stale rows later
-    latest_first = sink.write_mode in ("merge_scd1", "merge_scd2") and entity.policy.severity != "abort"  # fmt: skip
+    latest_first = merging and entity.policy.severity != "abort"
 
     def accepted_frames() -> Generator[pl.DataFrame]:
         """Files are read as the sink pulls (#1056); `files` and `complete` are final once it is exhausted."""
@@ -976,7 +981,7 @@ def _run_entity(
                 write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
             else:
                 outputs = [plan.out_map.get(n, n) for n in names]
-                result, table, merge, added = write_iceberg(entity, target, frames, outputs, sink.write_mode, emit.run_id, lambda: input_hash(entity, complete))  # fmt: skip
+                result, table, merge, added = write_iceberg(configured, target, frames, outputs, sink.write_mode, emit.run_id, lambda: input_hash(entity, complete))  # fmt: skip
                 write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,
                                       result.avg_file_size_mb, result.small_files_count)  # fmt: skip
                 if added:

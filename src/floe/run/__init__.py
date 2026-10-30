@@ -72,10 +72,10 @@ def _rfc3339() -> str:
 
 
 def _refresh(entity: EntityConfig) -> EntityConfig:
-    """Full refresh: an append sink overwrites; merge sinks cannot refresh."""
+    """Full refresh: an append sink overwrites; `merge_scd1` overwrites in `run_entity`, which keeps its merge checks."""
     mode = entity.sink.write_mode
-    if mode in ("merge_scd1", "merge_scd2"):
-        raise FloeConfigError(f"entity '{entity.name}': --full-refresh is not supported with write_mode '{mode}'")  # fmt: skip
+    if mode == "merge_scd2":
+        raise FloeConfigError(f"entity '{entity.name}': --full-refresh is not supported with write_mode '{mode}': its version history cannot be rebuilt from the inputs")  # fmt: skip
     if mode != "append":
         return entity
     return entity.model_copy(update={"sink": entity.sink.model_copy(update={"write_mode": "overwrite"})})  # fmt: skip

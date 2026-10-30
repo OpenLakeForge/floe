@@ -25,7 +25,9 @@
     An unknown domain is an error, and `--domain` cannot be combined with `--entities`.
   - `-F` / `--full-refresh` rebuilds the accepted output from every input: files the incremental state
     already lists are read again, `append` writes as `overwrite`, and with `sink.archive` the archived files are read
-    too (D24). It is rejected with merge modes.
+    too (D24). `merge_scd1` replaces the table with the inputs' rows in one commit, so a row deleted at the source
+    leaves the table; a key in several inputs keeps the latest file's row. It is rejected with `merge_scd2`, whose
+    version history cannot be rebuilt from the inputs.
   - `--log-format json` emits NDJSON events to stdout (useful for orchestrators); `off` is the default.
   - `--dry-run` resolves entity inputs and output targets without running ingestion.
   - `--quiet` reduces console output to run totals.

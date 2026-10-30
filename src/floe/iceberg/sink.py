@@ -177,7 +177,8 @@ def write_iceberg(
     key = [output.get(k.strip(), k.strip()) for k in primary_key]
     identifier = (target.namespace, target.table)
     with run_error("rest catalog table_exists check failed"):
-        exists = mode in ("merge_scd1", "merge_scd2") and catalog.table_exists(identifier)  # fmt: skip
+        # the configured mode: a refreshed merge writes as overwrite and keeps the key guard (#1091)
+        exists = entity.sink.write_mode in ("merge_scd1", "merge_scd2") and catalog.table_exists(identifier)  # fmt: skip
     if exists:
         with run_error("rest catalog load_table failed"):
             existing = set(catalog.load_table(identifier).schema().column_names)
