@@ -119,6 +119,29 @@ def apply_mismatch(df: pl.DataFrame, plan: MismatchOutcome) -> pl.DataFrame:
     return df
 
 
+def json_probe(
+    path: Path, mode: str, limit: int
+) -> tuple[list[str] | None, list[tuple[str, Any]] | None]:
+    """`json_input_columns` plus the file's parsed records when it has at most `limit` (else `None`).
+
+    A file that fits one chunk is then parsed once: the caller reads the records it got here.
+    """
+    if mode not in ("array", "ndjson"):
+        raise FloeIoError(
+            f"unsupported source.options.json_mode={mode} (allowed: array, ndjson)"
+        )
+    keys: set[str] | None = None
+    head: list[tuple[str, Any]] | None = []
+    for located in json_records(path, mode):
+        keys = keys or set[str]()
+        keys.update(str(k) for k in located[1])
+        if head is not None and len(head) < limit:
+            head.append(located)
+        else:  # a longer file is read again, chunk by chunk, so it keeps nothing
+            head = None
+    return (None if keys is None else sorted(keys)), head
+
+
 def json_input_columns(path: Path, mode: str = "array") -> list[str] | None:
     """Sorted top-level keys of every record, read exactly as `read_json` reads them.
 
@@ -126,12 +149,4 @@ def json_input_columns(path: Path, mode: str = "array") -> list[str] | None:
     column (Rust 0.7 probed the first object only). `None` for a file without records (D41), which
     differs from records that carry no keys (`[]`): those are still checked for missing columns.
     """
-    if mode not in ("array", "ndjson"):
-        raise FloeIoError(
-            f"unsupported source.options.json_mode={mode} (allowed: array, ndjson)"
-        )
-    # ponytail: the file is parsed twice (probe, then read); fold the probe into the read if it costs
-    keys: set[str] | None = None
-    for _, record in json_records(path, mode):
-        keys = (keys or set[str]()) | {str(k) for k in record}
-    return None if keys is None else sorted(keys)
+    return json_probe(path, mode, 0)[0]
