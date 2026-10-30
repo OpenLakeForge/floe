@@ -2,6 +2,27 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.7
+
+- **The Iceberg catalog is opened once per run (#1101).** Every catalog call used to start a new REST session
+  (a config request, plus an OAuth token request when a credential is set), and an `append` entity did it twice.
+  A run now reuses one catalog per catalog definition and storage, so N entities no longer pay up to 2N
+  initialisations. The catalog is opened again at the start of each run.
+
+- **S3 clients are reused within a run (#1100).** Each `S3Client` builds its own boto3 session, about 55-120 ms,
+  and one S3 entity built 6-8 of them (source, state, accepted, rejected, archive, report). A run now builds one
+  client per storage definition: a two-entity run on one storage went from 5 clients to 1. `AWS_*` variables and
+  credentials are read again at the start of each run, and by `inspect_entity_state()` and
+  `reset_entity_state()`.
+
+- **Small CSV files cost fewer Polars plans (#1104).** A clean 200-row file ran 16 query plans between the
+  reader and the writer and now runs 6, with identical output. On 1,200 such files (8 entities of 150 files,
+  Parquet sink on local disk) the run was about 26-28% faster, 7.45 s to 5.38 s in the last measurement.
+
+- **`poll_interval_seconds` and `job_scope` are documented (#1103).** `docs/profiles.md` and
+  `context/orchestrators.md` describe the Kubernetes runner's status poll (default 10 s, a Job that finishes
+  early is noticed at the next poll) and when to choose `job_scope: domain` over `entity`.
+
 ## v0.8.6
 
 - **Merge modes keep a key's latest version when it repeats across pending files (#1090).** With `merge_scd1`
