@@ -17,6 +17,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 from jsonschema import Draft202012Validator
+from pyiceberg.catalog import Catalog, load_catalog
 from pyiceberg.io import load_file_io
 from pyiceberg.partitioning import PartitionSpec
 from pyiceberg.schema import Schema
@@ -40,6 +41,7 @@ from test_run_stream import (  # pyright: ignore[reportMissingImports] -- a sibl
 )
 
 import floe
+import floe.iceberg.catalog as catalog_module
 import floe.iceberg.sink as sink_module
 from floe._cli import main
 from floe.config.parse import parse_config
@@ -678,3 +680,30 @@ def test_a_commit_conflict_that_finds_the_batch_committed_reports_the_files_skip
     monkeypatch.setattr(entity_module, "write_iceberg", conflicted)
     (file,) = run(tmp_path, "id,name\n1,a\n", mode="append")["files"]
     assert (file["status"], file["skip_reason"]) == ("skipped", "already_committed")
+
+
+def test_a_run_opens_the_catalog_once_and_the_next_run_opens_it_again(
+    tmp_path: Path,
+    server: tuple[RestCatalog, CatalogDefinition],  # noqa: F811 -- the imported fixture
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#1101: two entities on one catalog share its init (`/v1/config`, the OAuth token); a new run starts clean."""
+    _, definition = server
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
+    values = {"mode": "append", "severity": "reject", "partition": "", "evolution": "", "extra": ""}  # fmt: skip
+    (tmp_path / "config.yml").write_text(CONFIG.format(**values).replace("http://polaris", definition.uri))  # fmt: skip
+    root = parse_config(tmp_path / "config.yml")
+    (first,) = root.entities
+    root = root.model_copy(update={"entities": [first, first.model_copy(update={"name": "Orders2"})]})  # fmt: skip
+    opened: list[str] = []
+
+    def counting(name: str, **props: str) -> Catalog:
+        opened.append(name)
+        return load_catalog(name, **props)
+
+    monkeypatch.setattr(catalog_module, "load_catalog", counting)
+    run_project(tmp_path / "config.yml", root)
+    assert opened == ["polaris"]
+    run_project(tmp_path / "config.yml", root)
+    assert opened == ["polaris", "polaris"]

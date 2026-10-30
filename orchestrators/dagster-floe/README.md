@@ -42,6 +42,7 @@ pip install "dagster-floe[floe]"   # also installs floe-python>=0.8.3,<0.9 for t
 
 | dagster-floe | Floe | Manifest `spec_version` |
 | --- | --- | --- |
+| 0.4.3 | 0.8.3 or newer (the `floe/full_refresh` run tag on a `merge_scd1` entity needs 0.8.6) | `0.8` |
 | 0.4.2 | 0.8.3 or newer | `0.8` |
 | 0.4.1 | 0.8.3 or newer (`kubernetes_job` runs pass the profile as `-p env:FLOE_PROFILE_CONTENT`) | `0.8` |
 | 0.4.0 | 0.8.1 or newer (a Glue `{domain}` database needs 0.8.2) | `0.8` |

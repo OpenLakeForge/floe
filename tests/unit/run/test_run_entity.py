@@ -520,3 +520,39 @@ def test_d41_records_without_keys_still_face_the_missing_columns_policy(
     )
     assert statuses == ["rejected"]
     assert rows is None or rows.height == 0
+
+
+def test_clean_small_csv_stays_within_the_polars_plan_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1104: every eager DataFrame op is a one-node query plan, so each costs about a millisecond."""
+    plans: list[str] = []
+    for name in ("collect", "_collect_eager"):
+        original = vars(pl.LazyFrame)[name]
+
+        def counted(*args: Any, _original: Any = original, **kwargs: Any) -> Any:
+            plans.append("plan")
+            return _original(*args, **kwargs)
+
+        monkeypatch.setattr(pl.LazyFrame, name, counted)
+    rows = "".join(f"{i},n{i}\n" for i in range(200))
+    report, _ = run(tmp_path, "reject", "id,name\n" + rows)
+    assert report["files"][0]["status"] == "success"
+    assert len(plans) <= 6, len(plans)
+
+
+@pytest.mark.parametrize("clash", ["__floe_errors", "_e_cast_id", "__floe_row_index"])
+def test_declared_column_named_like_an_internal_one_is_accepted(
+    tmp_path: Path, clash: str
+) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text(f"id,{clash}\n1,hello\n")
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "        - {name: name, type: string}",
+        f"        - {{name: {clash}, type: string}}",
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert report["files"][0]["status"] == "success"
+    assert accepted(tmp_path)[clash].to_list() == ["hello"]

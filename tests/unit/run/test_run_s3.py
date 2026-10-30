@@ -475,3 +475,38 @@ def test_1102_a_failed_download_raises_when_its_file_comes_up(tmp_path: Path, mo
     assert events == [("file_started", "s3://b/in/a.csv"), ("file_finished", "s3://b/in/a.csv"),
                       ("file_started", "s3://b/in/b.csv"), ("file_finished", "s3://b/in/b.csv"),
                       ("file_started", "s3://b/in/c.csv")]  # fmt: skip
+
+
+TWO_ENTITIES = CONFIG.replace(
+    "report: {path: runs",
+    """\
+  - name: refunds
+    domain: d
+    source: {format: csv, path: in2/, storage: lake, options: {header: true, separator: ","}}
+    sink:
+      accepted: {format: parquet, path: ./out2/accepted}
+      rejected: {format: csv, path: ./out2/rejected}
+    policy: {severity: reject}
+    schema:
+      columns:
+        - {name: id, type: int64}
+report: {path: runs""",
+)
+
+
+def test_1100_two_entities_on_one_s3_storage_build_one_client_per_run(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    built: list[object] = []
+
+    def client(*args: object) -> MemS3:
+        built.append(args)
+        return s3
+
+    monkeypatch.setattr(resolve_module, "S3Client", client, raising=False)
+    s3.write("s3://b/in/a.csv", b"id\n1\n")
+    s3.write("s3://b/in2/a.csv", b"id\n1\n")
+    go(tmp_path, TWO_ENTITIES)
+    assert len(built) == 1
+    go(
+        tmp_path, TWO_ENTITIES
+    )  # a second run rebuilds: env and credentials are read again
+    assert len(built) == 2
