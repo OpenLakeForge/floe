@@ -35,18 +35,18 @@ storages:
   default: local
   definitions:
     - {{name: local, type: local}}
-    - {{name: lake, type: s3, bucket: warehouse, region: us-east-1, endpoint: "{s3}", path_style_access: true, prefix: spike/spike/{tag}}}
+    - {{name: lake, type: s3, bucket: warehouse, region: us-east-1, endpoint: "{s3}", path_style_access: true, prefix: spike/{tag}}}
 catalogs:
   default: polaris
   definitions:
     - {{name: polaris, type: rest, uri: "{uri}", warehouse: spike, credential: "spike-client:spike-secret", scope: "PRINCIPAL_ROLE:ALL"}}
 domains:
-  - name: spike
+  - name: {tag}
 entities:
 """
 ENTITY = """\
   - name: {name}
-    domain: spike
+    domain: {tag}
     source: {{format: csv, path: ./in/{name}, options: {{header: true, separator: ","}}}}
     sink:
       write_mode: append
@@ -59,7 +59,10 @@ ENTITY = """\
 
 
 def project(tmp_path: Path, tag: str, plan: dict[str, str]) -> tuple[Path, RootConfig]:
-    """`plan` maps an entity name to its table; every entity loads `ROWS` rows with ids of its own."""
+    """`plan` maps an entity name to its table; every entity loads `ROWS` rows with ids of its own.
+
+    The domain, hence the Iceberg namespace, is `tag`: new to the catalog, so the entities race to create it.
+    """
     text = HEAD.format(s3=S3, uri=URI, tag=tag)
     for k, (name, table) in enumerate(plan.items()):
         (tmp_path / "in" / name).mkdir(parents=True)
@@ -67,7 +70,7 @@ def project(tmp_path: Path, tag: str, plan: dict[str, str]) -> tuple[Path, RootC
         (tmp_path / "in" / name / "a.csv").write_text(
             "id\n" + "".join(f"{i}\n" for i in ids)
         )
-        text += ENTITY.format(name=name, table=table)
+        text += ENTITY.format(name=name, table=table, tag=tag)
     path = tmp_path / "config.yml"
     path.write_text(text + "report: {path: ./report}\n")
     return path, parse_config(path, {})
@@ -83,16 +86,18 @@ def test_entities_on_different_tables_and_on_one_table_all_commit_exact_rows(
     path, root = project(tmp_path, tag, plan)
     try:
         out = run(path, root, workers=4)
-        assert [r["entity"]["name"] for r in out.entity_reports] == [f"spike.{n}" for n in plan]  # fmt: skip
+        assert [r["entity"]["name"] for r in out.entity_reports] == [f"{tag}.{n}" for n in plan]  # fmt: skip
         assert {r["files"][0]["status"] for r in out.entity_reports} == {"success"}
         assert out.summary["run"]["status"] == "success"
         catalog = open_catalog(root.catalogs.definitions[0], None)  # pyright: ignore[reportOptionalMemberAccess] -- the config declares a catalog
         for table in set(plan.values()):
             want = ROWS * list(plan.values()).count(table)
-            assert catalog.load_table(("spike", table)).scan().to_arrow().num_rows == want  # fmt: skip
-            assert len(catalog.load_table(("spike", table)).scan().to_arrow().column("id").unique()) == want  # fmt: skip
+            assert catalog.load_table((tag, table)).scan().to_arrow().num_rows == want  # fmt: skip
+            assert len(catalog.load_table((tag, table)).scan().to_arrow().column("id").unique()) == want  # fmt: skip
     finally:
         catalog = open_catalog(root.catalogs.definitions[0], None)  # pyright: ignore[reportOptionalMemberAccess] -- as above
         for table in set(plan.values()):
-            if catalog.table_exists(("spike", table)):
-                catalog.drop_table(("spike", table))
+            if catalog.table_exists((tag, table)):
+                catalog.drop_table((tag, table))
+        if catalog.namespace_exists((tag,)):
+            catalog.drop_namespace((tag,))

@@ -7,11 +7,12 @@ import tempfile
 import threading
 import weakref
 from collections.abc import Generator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from urllib.parse import urlsplit
 
 import duckdb
 from pyiceberg.catalog import Catalog, load_catalog
+from pyiceberg.exceptions import NamespaceAlreadyExistsError
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.table import Table
@@ -350,7 +351,10 @@ def ensure_table(
     if not namespace_exists:
         if not create_namespace:
             raise FloeRunError(f"entity.name={entity} iceberg namespace {namespace} does not exist and create_database_if_missing is false")  # fmt: skip
-        with run_error("rest catalog namespace create failed"):
+        with (
+            run_error("rest catalog namespace create failed"),
+            suppress(NamespaceAlreadyExistsError),
+        ):  # another entity or process created it first
             catalog.create_namespace(ident)
     identifier = (namespace, name)
     with run_error("rest catalog table_exists check failed"):
