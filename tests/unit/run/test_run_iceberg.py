@@ -462,13 +462,24 @@ def test_merge_scd2_closes_the_changed_row_and_reports_the_counts(
     assert out["merge_elapsed_ms"] >= 0 and out["snapshot_id"] is not None
 
 
-def test_full_refresh_with_a_merge_is_a_config_error(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+def test_full_refresh_with_merge_scd2_is_a_config_error(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
     (tmp_path / "in").mkdir()
     (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
-    root = config(tmp_path, mode="merge_scd1")
-    with pytest.raises(FloeConfigError, match="^entity 'Orders': --full-refresh is not supported with write_mode 'merge_scd1'$"):  # fmt: skip
+    root = config(tmp_path, mode="merge_scd2")
+    with pytest.raises(FloeConfigError, match="^entity 'Orders': --full-refresh is not supported with write_mode 'merge_scd2': its version history cannot be rebuilt from the inputs$"):  # fmt: skip
         run_project(tmp_path / "config.yml", root, full_refresh=True)
     assert not catalog.tables
+
+
+def test_full_refresh_with_merge_scd1_rebuilds_the_table_from_the_inputs(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
+    """#1091: a row gone from the inputs leaves the table; a key in two files keeps the latest (#1090)."""
+    run(tmp_path, "id,name\n1,a\n2,b\n9,gone\n", mode="merge_scd1")
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,old\n2,b\n")
+    (tmp_path / "in" / "zz.csv").write_text("id,name\n1,new\n")
+    outcome = run_project(tmp_path / "config.yml", config(tmp_path, mode="merge_scd1"), full_refresh=True)  # fmt: skip
+    assert rows(catalog) == [(1, "new"), (2, "b")]
+    assert len(merges) == 1  # the refresh replaced the table instead of merging
+    assert outcome.summary["results"]["rejected_total"] == 1
 
 
 def test_input_hash_covers_the_entity_and_the_claimed_files(tmp_path: Path) -> None:  # fmt: skip

@@ -44,7 +44,8 @@ Each entity's accepted rows land in one Iceberg catalog commit.
 - Strict schema handling remains the default behavior.
 - `schema.schema_evolution.mode: add_columns` applies as for standard writes; merge-key columns
   cannot be introduced by schema evolution.
-- `--full-refresh` is rejected with merge modes.
+- `--full-refresh` replaces the table with the inputs' rows in one commit (written as `overwrite`, with the
+  merge-key checks above), so rows deleted at the source leave the table. `merge_scd2` rejects it.
 - Merge-on-read leaves position delete files; `floe maintain` expires old snapshots and removes
   orphan files (see [CLI](cli.md)).
 
