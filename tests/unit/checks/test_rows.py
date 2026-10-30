@@ -170,6 +170,16 @@ def test_split_rows_without_checks_or_rows() -> None:
     assert accepted.height == rejected.height == 0
 
 
+def test_split_rows_when_no_check_fires_matches_a_rejected_row_schema() -> None:
+    df = pl.DataFrame({"id": ["a", "b"]})
+    nulls = pl.Series([None, None], dtype=pl.Boolean)  # a null mask passes the row
+    passing = [RowCheck("unique", "id", "m", nulls), not_null_check(df, "id")]
+    accepted, rejected = split_rows(df, passing)
+    assert accepted.equals(df) and rejected.height == 0
+    failing = RowCheck("not_null", "id", "m", pl.Series([True, False]))
+    assert rejected.schema == split_rows(df, [failing])[1].schema
+
+
 def test_error_entry_escapes_like_rust() -> None:
     assert error_entry('we"ird\\', "c\n", "m\t\r") == (
         '{"rule":"we\\"ird\\\\","column":"c\\n","message":"m\\t\\r"}'

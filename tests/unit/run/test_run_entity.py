@@ -520,3 +520,22 @@ def test_d41_records_without_keys_still_face_the_missing_columns_policy(
     )
     assert statuses == ["rejected"]
     assert rows is None or rows.height == 0
+
+
+def test_clean_small_csv_stays_within_the_polars_plan_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1104: every eager DataFrame op is a one-node query plan, so each costs about a millisecond."""
+    plans: list[str] = []
+    for name in ("collect", "_collect_eager"):
+        original = vars(pl.LazyFrame)[name]
+
+        def counted(*args: Any, _original: Any = original, **kwargs: Any) -> Any:
+            plans.append("plan")
+            return _original(*args, **kwargs)
+
+        monkeypatch.setattr(pl.LazyFrame, name, counted)
+    rows = "".join(f"{i},n{i}\n" for i in range(200))
+    report, _ = run(tmp_path, "reject", "id,name\n" + rows)
+    assert report["files"][0]["status"] == "success"
+    assert len(plans) <= 5, len(plans)

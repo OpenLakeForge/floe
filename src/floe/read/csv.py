@@ -79,15 +79,16 @@ def _scan_args(options: SourceOptions) -> _Args:
 
 def _columns(path: Path, args: _Args, declared: Sequence[str]) -> list[str]:
     try:
-        probe = args.scan(path, n_rows=0 if args.has_header else 1).collect()
+        probe = args.scan(path, n_rows=0 if args.has_header else 1)
+        if args.has_header:  # the schema is the header: no plan to run
+            return probe.collect_schema().names()
+        width = probe.collect().width
     except (pl.exceptions.PolarsError, OSError) as err:
         # Rust's polars prints the error kind: `no data: empty CSV`
         kind = "no data: " if isinstance(err, pl.exceptions.NoDataError) else ""
         raise FloeIoError(f"csv header read failed: {kind}{err}") from err
-    if args.has_header:
-        return probe.columns
-    names = list(declared[: probe.width])
-    return names + [f"extra_column_{i + 1}" for i in range(len(declared), probe.width)]
+    names = list(declared[:width])
+    return names + [f"extra_column_{i + 1}" for i in range(len(declared), width)]
 
 
 def _field_counts(path: Path, args: _Args, skip: int) -> Iterator[int]:

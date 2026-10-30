@@ -115,4 +115,6 @@ def normalize_columns(df: pl.DataFrame, strategy: str | None) -> pl.DataFrame:
                 f"normalized input column collision: {seen[new]} and {old} -> {new}"
             )
         seen[new] = old
-    return df.rename(names)
+    renamed = df.clone()
+    renamed.columns = list(names.values())  # a rename is a query plan, this is not
+    return renamed
