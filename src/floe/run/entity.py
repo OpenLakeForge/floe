@@ -998,7 +998,9 @@ def _run_entity(
     inc.committed = files  # #915: from here on a failure promotes the written files
     # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source (Rust archives before)
     by_uri = {r["input_file"]: r for r in files}
-    for f in plan.to_archive:
+    order = {f.source_uri: i for i, f in enumerate(inputs.files)}
+    # #1090: oldest first, so a partial archive leaves the newest batch pending, never only an older one
+    for f in sorted(plan.to_archive, key=lambda f: order[f.source_uri]) if latest_first else plan.to_archive:  # fmt: skip
         by_uri[f.source_uri]["output"]["archived_path"] = _archive(plan, f)
     unique = [_report_names(r, key, runtime) for r, key in zip(plan.tracker.results(), keys, strict=True)]  # fmt: skip
     report = build_report(
