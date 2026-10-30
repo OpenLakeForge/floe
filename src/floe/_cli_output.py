@@ -169,7 +169,17 @@ def run_output(
         results = dict.fromkeys(("files_total", "rows_total", "accepted_total", "rejected_total", "files_skipped"), 0)  # fmt: skip
         status, exit_code = "success", 0
     else:
-        blocks = [_entity(r, timings.get(r["entity"]["name"], {}), mode == "verbose") for r in outcome.entity_reports]  # fmt: skip
+        names = {
+            e.id: e.name for e in entities
+        }  # reports carry the id, `file_finished` events the name
+
+        def shown(report: dict[str, Any]) -> list[str]:
+            ident: str = report["entity"]["name"]
+            return _entity(
+                report, timings.get(names.get(ident, ident), {}), mode == "verbose"
+            )
+
+        blocks = [shown(r) for r in outcome.entity_reports]
         results, run = outcome.summary["results"], outcome.summary["run"]
         status, exit_code = run["status"], run["exit_code"]
     lines = ["DRY RUN MODE - No actual execution performed"] if outcome.dry_run is not None else []  # fmt: skip
