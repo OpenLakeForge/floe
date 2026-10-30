@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import weakref
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
@@ -83,8 +84,34 @@ def _credential_props(catalog: str, credential: str) -> dict[str, str]:
     return {"credential": credential.removeprefix("client_credentials:")}
 
 
+_CATALOGS: dict[tuple[CatalogDefinition, StorageDefinition | None], Catalog] = {}
+_CATALOGS_LOCK = threading.Lock()
+
+
+def clear_catalogs() -> None:
+    """Called when a run starts: a catalog is reused within a run only, never across runs (#1101)."""
+    with _CATALOGS_LOCK:
+        _CATALOGS.clear()
+
+
 def open_catalog(
     definition: CatalogDefinition, storage: StorageDefinition | None = None
+) -> Catalog:
+    """One catalog per definition and storage until `clear_catalogs`, so the REST init (config, OAuth token) happens once.
+
+    Safe to call from several threads (one init per key). PyIceberg 0.12 refetches an expired OAuth token
+    itself: its REST calls retry once on a 401 after a new client-credentials request; a static `token:` has
+    nothing to refetch, as with a freshly opened catalog. A failed init is not kept.
+    """
+    key = (definition, storage)
+    with _CATALOGS_LOCK:
+        if key not in _CATALOGS:
+            _CATALOGS[key] = _open_catalog(definition, storage)
+        return _CATALOGS[key]
+
+
+def _open_catalog(
+    definition: CatalogDefinition, storage: StorageDefinition | None
 ) -> Catalog:
     """Credentials for S3 and Glue come from the environment; the catalog never vends them (as in Rust)."""
     props = {
