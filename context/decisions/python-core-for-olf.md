@@ -44,8 +44,9 @@ gates below pass.
 - **Polars (Python)** reads and validates. It is the same Rust engine, so the column operations
   run at the same speed.
 - **PyIceberg** owns the Polaris catalog, schema evolution and plain commits.
-- **DuckDB**, attached to Polaris, does anything that touches the target table at scale: MERGE,
-  and unique checks against history. It spills to disk.
+- **DuckDB**, attached to Polaris, does anything that touches the target table at scale: MERGE.
+  It spills to disk. (Unique checks against history moved to Polars in #1057; see the note under
+  Data paths.)
 - Python's Arrow libraries exchange data through the Arrow C Data Interface, which doesn't depend
   on library versions. The lockstep upgrade problem goes away.
 

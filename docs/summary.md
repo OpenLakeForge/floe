@@ -13,7 +13,8 @@ need a lightweight entry gate for file contracts and quality checks.
 - Raw exports, partner feeds, API extracts, or object-storage drops need schema
   and quality validation before becoming trusted data.
 - Existing platforms such as an Iceberg lakehouse on Polaris or Snowflake Open
-  Catalog, run by Dagster or Airflow, need an embeddable ingestion gate rather
+  Catalog (with static storage credentials: Floe does not use catalog-vended
+  credentials), run by Dagster or Airflow, need an embeddable ingestion gate rather
   than another platform.
 - Extract/load tools such as dlt, ingestr, or Airbyte already move data, and
   Floe should validate and route the landed files or datasets.

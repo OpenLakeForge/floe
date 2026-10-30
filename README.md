@@ -8,7 +8,8 @@ layer, routing accepted rows to lakehouse sinks and rejected rows to quarantine
 with audit reports.
 
 Use Floe when you already have a platform such as an Iceberg lakehouse on
-Polaris or Snowflake Open Catalog, run by Dagster or Airflow, but you need a lightweight entry gate for file contracts, quality checks, rejected rows,
+Polaris or Snowflake Open Catalog (with static storage credentials: Floe does not use
+catalog-vended credentials), run by Dagster or Airflow, but you need a lightweight entry gate for file contracts, quality checks, rejected rows,
 and run evidence.
 
 Floe complements extract/load tools such as dlt, ingestr, and Airbyte: they get
@@ -39,8 +40,9 @@ Each `floe run` executes a deterministic gate per entity:
 | **5. Write outputs** | Route valid rows to accepted sinks, invalid rows to rejected sinks, and write reports |
 
 Floe is a Python package. It reads and validates with Polars, writes Iceberg
-tables through PyIceberg, and runs Iceberg merges and unique checks against
-table history through DuckDB, all on a single node.
+tables through PyIceberg, and runs Iceberg merges through DuckDB, all on a
+single node. Unique checks against table history semi-join each chunk with Polars
+against a local cache of the table's key columns.
 
 - **Inputs:** CSV · TSV · JSON · Parquet · ORC · Avro · XLSX · XML
 - **Accepted outputs:** Parquet · Apache Iceberg
