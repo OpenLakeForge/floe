@@ -2,6 +2,7 @@
 
 import time
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -158,12 +159,15 @@ def run(
 
     emit("run_started", config=config, report_base=report_path)
     # Rust resolves every entity's inputs before the first entity_started (#864); run_entity reuses them
-    listed: dict[str, ResolvedInputs] = {}
-    for e in selected:
-        # D24: a full refresh may rebuild from the archive alone, so run_entity decides
-        archive = full_refresh and e.sink.archive and e.incremental_mode in ("none", "archive")  # fmt: skip
-        if not archive:
-            listed[e.id] = inputs(e)
+    # D24: a full refresh may rebuild from the archive alone, so run_entity decides
+    to_list = [e for e in selected if not (full_refresh and e.sink.archive and e.incremental_mode in ("none", "archive"))]  # fmt: skip
+    # `map` yields in config order, so the first failure in config order is raised
+    if workers > 1 and len(to_list) > 1:
+        with ThreadPoolExecutor(workers, thread_name_prefix="floe-list") as pool:
+            found = list(pool.map(inputs, to_list))
+    else:
+        found = [inputs(e) for e in to_list]
+    listed = {e.id: f for e, f in zip(to_list, found, strict=True)}
     client = storage_client(report_storage)
 
     def finish(e: EntityConfig) -> dict[str, Any]:
