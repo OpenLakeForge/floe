@@ -2,6 +2,11 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.9 (unreleased)
+
+- **A file removed after listing no longer aborts a run with `sink.rejected` set (#1121).** The file is reported as
+  failed with its read error, without a raw copy, and the run continues.
+
 ## v0.8.8
 
 - **Entities can run in parallel in one `floe run` (#1105).** With `execution.orchestration.strategy: parallel` in
