@@ -4,6 +4,14 @@ All notable changes to Floe are documented in this file.
 
 ## v0.8.9 (unreleased)
 
+- **A file removed after listing no longer aborts a run with `sink.rejected` set (#1121).** The file is reported as
+  failed with its read error, without a raw copy, and the run continues.
+
+- **Tied unique-key samples are ordered by the key, not its Rust Debug text (#984).** When duplicate keys share a
+  count, the report samples now order them by value: numbers numerically (2 before 10, no longer 10 before 2),
+  strings by code point, and composite keys column by column. Reports whose tied samples held keys of different
+  digit counts, or strings with control characters, list them in a different order.
+
 - **Iceberg sinks apply `options.compression` and `options.row_group_size` (#1009).** Both were parsed and
   validated but ignored for `sink.accepted.format: iceberg`. `overwrite` and `append` now write data files with the
   configured codec and rows per row group, for that write only; the table's properties are not changed. Merge modes

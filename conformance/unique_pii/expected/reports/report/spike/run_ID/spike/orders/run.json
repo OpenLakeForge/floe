@@ -87,13 +87,13 @@
         },
         {
           "values": {
-            "customer_id": "10"
+            "customer_id": "2"
           },
           "count": 1
         },
         {
           "values": {
-            "customer_id": "2"
+            "customer_id": "10"
           },
           "count": 1
         }
