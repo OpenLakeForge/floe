@@ -28,7 +28,7 @@ from pyiceberg.types import LongType, NestedField
 
 import floe.iceberg.write as write_module
 from floe.errors import FloeRunError
-from floe.iceberg.write import INPUT_HASH, write_table
+from floe.iceberg.write import INPUT_HASH, parquet_properties, write_table
 
 SCHEMA = Schema(NestedField(1, "id", LongType()))
 IDENTIFIER = ("sales", "orders")
@@ -208,6 +208,19 @@ def test_float_keys_compare_by_bits_as_the_tracker_does(catalog: SharedCatalog, 
     assert len(keys) == 3 and len(set(keys)) == 3  # NULL dropped; -0.0 and 0.0 differ
     again = set(write_module._keys(catalog.load_table(IDENTIFIER), file, ["x"]))  # pyright: ignore[reportPrivateUsage]
     assert keys[0] in again  # NaN matches NaN
+
+
+def test_sink_compression_and_row_group_size_shape_the_data_file_only(catalog: SharedCatalog) -> None:  # fmt: skip
+    """#1009: `options.compression` / `row_group_size` reach the Parquet file, not the table's properties."""
+    table = catalog.load_table(IDENTIFIER)
+    parquet = parquet_properties("gzip", 4)
+    write_table(table, reader(list(range(10))), "append", "run", "h", parquet=parquet)
+    [task] = catalog.load_table(IDENTIFIER).scan().plan_files()
+    with table.io.new_input(task.file.file_path).open() as f:
+        meta = pq.ParquetFile(f).metadata
+    assert meta.row_group(0).column(0).compression == "GZIP"
+    assert [meta.row_group(i).num_rows for i in range(meta.num_row_groups)] == [4, 4, 2]  # fmt: skip
+    assert not any(k.startswith("write.parquet") for k in catalog.metadata.properties)
 
 
 def test_overwrites_keep_the_manifest_list_bounded(catalog: SharedCatalog) -> None:

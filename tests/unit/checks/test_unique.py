@@ -77,7 +77,7 @@ def test_unique_pii_case_matches_rust_report_samples() -> None:
     assert got == want
 
 
-def test_null_keys_are_skipped_and_ties_sort_on_the_debug_string() -> None:
+def test_null_keys_are_skipped_and_ties_sort_on_the_typed_key() -> None:
     tracker = UniqueTracker([["k"]])
     df = pl.DataFrame({"k": [None, None, 10, 10, 2, 2, 1, 1, 1]})
     mask = tracker.check(df)[0].mask.to_list()
@@ -85,8 +85,8 @@ def test_null_keys_are_skipped_and_ties_sort_on_the_debug_string() -> None:
     [result] = tracker.results()
     assert [(s.values["k"], s.count) for s in result.samples] == [
         ("1", 2),
-        ("10", 1),
         ("2", 1),
+        ("10", 1),
     ]
 
 
@@ -131,11 +131,17 @@ def test_float_keys_compare_by_bits() -> None:
     assert tracker.results()[0].duplicates_count == 2
 
 
-def test_string_ties_sort_on_rust_escapes() -> None:
+def test_string_ties_sort_by_code_point() -> None:
     tracker = UniqueTracker([["s"]])
     keys = ["\x00", "A", "B", "C", "D", "E"]
     tracker.check(pl.DataFrame({"s": keys + keys}))
-    assert [s.values["s"] for s in tracker.results()[0].samples] == list("ABCDE")
+    assert [s.values["s"] for s in tracker.results()[0].samples] == [
+        "\x00",
+        "A",
+        "B",
+        "C",
+        "D",
+    ]
 
 
 def test_datetime_samples_print_the_fraction_only_when_not_zero() -> None:

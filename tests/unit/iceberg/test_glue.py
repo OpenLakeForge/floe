@@ -7,6 +7,7 @@ from typing import cast
 import pytest
 from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.glue import GlueCatalog
+from pyiceberg.exceptions import NoSuchNamespaceError
 from pyiceberg.schema import Schema
 
 import floe
@@ -143,6 +144,9 @@ def test_glue_catalog_opens_through_pyiceberg(tmp_path: Path) -> None:
 
 
 class _NoNamespace:
+    def load_table(self, identifier: tuple[str, str]) -> None:
+        raise NoSuchNamespaceError("no database")
+
     def namespace_exists(self, namespace: tuple[str, ...]) -> bool:
         return False
 
