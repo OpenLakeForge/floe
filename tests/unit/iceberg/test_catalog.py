@@ -291,6 +291,11 @@ class Recording:
         self.calls.append("namespace_exists")
         return False
 
+    def table_exists(self, identifier: tuple[str, str]) -> bool:
+        # the pre-#1130 path calls it, so the old code fails on the count
+        self.calls.append("table_exists")
+        return identifier in self.tables
+
     def create_namespace(self, _: object) -> None:
         self.calls.append("create_namespace")
 
