@@ -4,8 +4,16 @@ from pathlib import Path
 
 import pytest
 from pydantic import SecretStr
-from pyiceberg.exceptions import NamespaceAlreadyExistsError
+from pyiceberg.exceptions import (
+    NamespaceAlreadyExistsError,
+    NoSuchNamespaceError,
+    NoSuchTableError,
+)
+from pyiceberg.partitioning import PartitionSpec
 from pyiceberg.schema import Schema
+from pyiceberg.table import Table
+from pyiceberg.table.metadata import TableMetadataV2, new_table_metadata
+from pyiceberg.table.sorting import UNSORTED_SORT_ORDER
 from pyiceberg.types import LongType, NestedField, StringType, TimestampType
 
 from floe.config.storage import CatalogDefinition
@@ -253,8 +261,8 @@ class RacedNamespace:
     def create_namespace(self, _: object) -> None:
         raise NamespaceAlreadyExistsError("exists")
 
-    def table_exists(self, _: object) -> bool:
-        return False
+    def load_table(self, _: object) -> str:
+        raise NoSuchTableError("missing")
 
     def create_table(self, identifier: object, *_: object, **__: object) -> str:
         self.created = True
@@ -263,5 +271,53 @@ class RacedNamespace:
 
 def test_a_namespace_created_by_another_entity_is_not_an_error() -> None:
     catalog = RacedNamespace()
-    table, added = ensure_table(catalog, "ns", "t", schema(ID), "e")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType] -- a double with the four calls ensure_table makes
+    table, added = ensure_table(catalog, "ns", "t", schema(ID), "e")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType] -- a double with the calls ensure_table makes
     assert catalog.created and added == [] and table == "table"  # pyright: ignore[reportUnnecessaryComparison] -- the double returns a str
+
+
+class Recording:
+    """Logs every catalog call; the table exists once `create_table` ran. `missing` is what a missing table raises."""
+
+    def __init__(self, missing: type[Exception] = NoSuchTableError) -> None:
+        self.calls, self.tables, self.missing = list[str](), set[tuple[str, str]](), missing  # fmt: skip
+
+    def load_table(self, identifier: tuple[str, str]) -> Table:
+        self.calls.append("load_table")
+        if identifier not in self.tables:
+            raise self.missing("missing")
+        return Table(identifier, metadata(), "loc", None, None)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType] -- never touches IO or catalog
+
+    def namespace_exists(self, _: object) -> bool:
+        self.calls.append("namespace_exists")
+        return False
+
+    def create_namespace(self, _: object) -> None:
+        self.calls.append("create_namespace")
+
+    def create_table(
+        self, identifier: tuple[str, str], *_: object, **__: object
+    ) -> str:
+        self.calls.append("create_table")
+        self.tables.add(identifier)
+        return "table"
+
+
+def metadata() -> TableMetadataV2:
+    # v2 by default
+    return new_table_metadata(schema(ID), PartitionSpec(), UNSORTED_SORT_ORDER, "file:///x", {})  # type: ignore[return-value]  # pyright: ignore[reportReturnType] -- v2 by default  # fmt: skip
+
+
+def test_opening_an_existing_table_is_one_catalog_call() -> None:
+    catalog = Recording()
+    catalog.tables.add(("ns", "t"))
+    table, added = ensure_table(catalog, "ns", "t", schema(ID), "e")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType] -- a double
+    assert catalog.calls == ["load_table"] and added == []
+    assert table.schema() == schema(ID)
+
+
+@pytest.mark.parametrize("missing", [NoSuchTableError, NoSuchNamespaceError])
+def test_a_missing_table_or_namespace_is_created(missing: type[Exception]) -> None:
+    catalog = Recording(missing)
+    table, _ = ensure_table(catalog, "ns", "t", schema(ID), "e")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType] -- a double
+    assert catalog.calls == ["load_table", "namespace_exists", "create_namespace", "create_table"]  # fmt: skip
+    assert table == "table"  # pyright: ignore[reportUnnecessaryComparison] -- the double returns a str

@@ -18,6 +18,7 @@ import pyarrow as pa
 import pytest
 from jsonschema import Draft202012Validator
 from pyiceberg.catalog import Catalog, load_catalog
+from pyiceberg.exceptions import NoSuchTableError
 from pyiceberg.io import load_file_io
 from pyiceberg.partitioning import PartitionSpec
 from pyiceberg.schema import Schema
@@ -114,7 +115,10 @@ class LocalCatalog:
         return ".".join(identifier) in self.tables
 
     def load_table(self, identifier: tuple[str, str]) -> Table:
-        return self.tables[".".join(identifier)]
+        try:
+            return self.tables[".".join(identifier)]
+        except KeyError:
+            raise NoSuchTableError(".".join(identifier)) from None
 
     def create_table(
         self,
