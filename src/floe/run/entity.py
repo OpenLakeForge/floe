@@ -402,7 +402,8 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
     def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], Iterable[pl.DataFrame]]:  # fmt: skip
         # Rust skips the raw copy under PII: the file cannot be masked
         plan.tracker.restore(keys)  # the unreadable file leaves no keys behind
-        keep = entity.pii is None and entity.sink.rejected is not None
+        # a file removed after listing has nothing to copy: the read error alone is reported
+        keep = entity.pii is None and entity.sink.rejected is not None and path.exists()
         raw = _copy_raw(plan, path, severity, file.source_name) if keep else None
         return _failed_file(entity, uri, len(declared) + len(derived), mismatch, err, raw), []  # fmt: skip
 
