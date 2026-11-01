@@ -15,6 +15,7 @@ from typing import Any
 import polars as pl
 import pyarrow as pa
 from pyiceberg.catalog import Catalog
+from pyiceberg.exceptions import NoSuchNamespaceError, NoSuchTableError
 from pyiceberg.schema import Schema, assign_fresh_schema_ids
 from pyiceberg.table import Table
 
@@ -177,13 +178,15 @@ def write_iceberg(
     primary_key = entity.schema_.primary_key or []  # validated non-empty for merges
     key = [output.get(k.strip(), k.strip()) for k in primary_key]
     identifier = (target.namespace, target.table)
-    with run_error("rest catalog table_exists check failed"):
-        # the configured mode: a refreshed merge writes as overwrite and keeps the key guard (#1091)
-        exists = entity.sink.write_mode in ("merge_scd1", "merge_scd2") and catalog.table_exists(identifier)  # fmt: skip
-    if exists:
+    # the configured mode: a refreshed merge writes as overwrite and keeps the key guard (#1091)
+    if entity.sink.write_mode in ("merge_scd1", "merge_scd2"):
         with run_error("rest catalog load_table failed"):
-            existing = set(catalog.load_table(identifier).schema().column_names)
-        if added := [k for k in key if k not in existing]:  # Rust `merge/shared.rs`
+            try:
+                existing = set(catalog.load_table(identifier).schema().column_names)
+            except (NoSuchTableError, NoSuchNamespaceError):
+                existing = None
+        # Rust `merge/shared.rs`
+        if existing is not None and (added := [k for k in key if k not in existing]):
             raise FloeRunError(f"entity.name={entity.name} iceberg schema evolution failed: merge key columns cannot be added: {', '.join(added)}")  # fmt: skip
     table, added = ensure_table(
         catalog, target.namespace, target.table, schema, entity.name, target.location.removeprefix("local://"),

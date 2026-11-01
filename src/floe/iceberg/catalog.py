@@ -12,7 +12,11 @@ from urllib.parse import urlsplit
 
 import duckdb
 from pyiceberg.catalog import Catalog, load_catalog
-from pyiceberg.exceptions import NamespaceAlreadyExistsError
+from pyiceberg.exceptions import (
+    NamespaceAlreadyExistsError,
+    NoSuchNamespaceError,
+    NoSuchTableError,
+)
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.table import Table
@@ -345,55 +349,59 @@ def ensure_table(
 
     With `add_columns`, columns new in `schema` are added as optional (D13) and returned by name; partition changes stay rejected.
     """
-    ident = (namespace,)
-    with run_error("rest catalog namespace_exists check failed"):
-        namespace_exists = catalog.namespace_exists(ident)
-    if not namespace_exists:
-        if not create_namespace:
-            raise FloeRunError(f"entity.name={entity} iceberg namespace {namespace} does not exist and create_database_if_missing is false")  # fmt: skip
-        with (
-            run_error("rest catalog namespace create failed"),
-            suppress(NamespaceAlreadyExistsError),
-        ):  # another entity or process created it first
-            catalog.create_namespace(ident)
     identifier = (namespace, name)
-    with run_error("rest catalog table_exists check failed"):
-        exists = catalog.table_exists(identifier)
-    if exists:
-        with run_error("rest catalog load_table failed"):
+    with run_error("rest catalog load_table failed"):
+        try:
             table = catalog.load_table(identifier)
-        added: list[NestedField] = []
-        if schema_evolution == "add_columns":
-            added = additive_columns(table.schema(), schema, entity)
-            # field ids of `schema` may differ from the table's once columns are added
-            check_schema = table.schema()
-        else:
-            check_schema_matches(table.schema(), schema, entity)
-            check_schema = schema
-        check_partition_spec_matches(
-            table.spec(),
+        except (
+            NoSuchTableError,
+            NoSuchNamespaceError,
+        ):  # fmt: skip -- a missing namespace raises either, per catalog
+            table = None
+    if table is None:
+        ident = (namespace,)
+        with run_error("rest catalog namespace_exists check failed"):
+            namespace_exists = catalog.namespace_exists(ident)
+        if not namespace_exists:
+            if not create_namespace:
+                raise FloeRunError(f"entity.name={entity} iceberg namespace {namespace} does not exist and create_database_if_missing is false")  # fmt: skip
+            with (
+                run_error("rest catalog namespace create failed"),
+                suppress(NamespaceAlreadyExistsError),
+            ):  # another entity or process created it first
+                catalog.create_namespace(ident)
+        spec = (
             None
             if partition_fields is None
-            else build_partition_spec(check_schema, partition_fields, entity),
-            entity,
+            else build_partition_spec(schema, partition_fields, entity)
         )
-        if added:
-            with run_error("rest catalog update_schema failed"):
-                with table.update_schema() as update:
-                    for field in added:
-                        update.add_column(field.name, field.field_type, required=False)
-                table.refresh()
-        return table, [f.name for f in added]
-    spec = (
+        with run_error("rest catalog create_table failed"):
+            created = catalog.create_table(  # pyright: ignore[reportUnknownMemberType] -- PyIceberg's `schema` is `Schema | Unknown`
+                identifier,
+                schema,
+                location=location,
+                partition_spec=spec if spec is not None else PartitionSpec(),
+            )
+        return created, []
+    added: list[NestedField] = []
+    if schema_evolution == "add_columns":
+        added = additive_columns(table.schema(), schema, entity)
+        # field ids of `schema` may differ from the table's once columns are added
+        check_schema = table.schema()
+    else:
+        check_schema_matches(table.schema(), schema, entity)
+        check_schema = schema
+    check_partition_spec_matches(
+        table.spec(),
         None
         if partition_fields is None
-        else build_partition_spec(schema, partition_fields, entity)
+        else build_partition_spec(check_schema, partition_fields, entity),
+        entity,
     )
-    with run_error("rest catalog create_table failed"):
-        created = catalog.create_table(  # pyright: ignore[reportUnknownMemberType] -- PyIceberg's `schema` is `Schema | Unknown`
-            identifier,
-            schema,
-            location=location,
-            partition_spec=spec if spec is not None else PartitionSpec(),
-        )
-    return created, []
+    if added:
+        with run_error("rest catalog update_schema failed"):
+            with table.update_schema() as update:
+                for field in added:
+                    update.add_column(field.name, field.field_type, required=False)
+            table.refresh()
+    return table, [f.name for f in added]

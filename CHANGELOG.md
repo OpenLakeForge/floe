@@ -21,6 +21,11 @@ All notable changes to Floe are documented in this file.
   listed on up to `workers` threads instead of one after another; they are still all resolved before the first
   `entity_started`, and a listing failure raises the first error in config order.
 
+- **Opening an existing Iceberg table takes one catalog call instead of three (#1130).** `ensure_table` now tries
+  `load_table` first and checks or creates the namespace only when the table is missing; merge entities no longer
+  call `table_exists` and `load_table` before it. With a remote catalog this saves about 0.2 s per entity at
+  100 ms of latency. Errors and messages are unchanged.
+
 ## v0.8.8
 
 - **Entities can run in parallel in one `floe run` (#1105).** With `execution.orchestration.strategy: parallel` in
