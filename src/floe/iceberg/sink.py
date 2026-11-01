@@ -39,6 +39,7 @@ from floe.iceberg.merge import merge_scd1, merge_scd2
 from floe.iceberg.write import (
     SMALL_FILE_THRESHOLD_BYTES,
     IcebergWriteResult,
+    parquet_properties,
     write_table,
 )
 from floe.storage.inputs import InputFile
@@ -215,7 +216,7 @@ def write_iceberg(
         threshold = SMALL_FILE_THRESHOLD_BYTES if size is None else max(1, size // 2)
         append = "overwrite" if mode == "overwrite" else "append"
         unique = [[output.get(c, c) for c in k] for k in resolve_unique_keys(entity.schema_.unique_keys, [c.name for c in entity.schema_.columns if c.unique], entity.schema_.primary_key)]  # fmt: skip
-        result = write_table(table, reader, append, run_id, digest, threshold, unique_keys=unique)  # fmt: skip
+        result = write_table(table, reader, append, run_id, digest, threshold, unique_keys=unique, parquet=parquet_properties(options and options.compression, options and options.row_group_size))  # fmt: skip
     ids = {"table_version": result.metadata_version, "snapshot_id": result.snapshot_id}
     fields = {k: v for k, v in ids.items() if v is not None} | {
         "iceberg_catalog_name": target.catalog.name,
