@@ -221,3 +221,15 @@ def test_sink_compression_and_row_group_size_shape_the_data_file_only(catalog: S
     assert meta.row_group(0).column(0).compression == "GZIP"
     assert [meta.row_group(i).num_rows for i in range(meta.num_row_groups)] == [4, 4, 2]  # fmt: skip
     assert not any(k.startswith("write.parquet") for k in catalog.metadata.properties)
+
+
+def test_overwrites_keep_the_manifest_list_bounded(catalog: SharedCatalog) -> None:
+    """#1132: PyIceberg kept every earlier overwrite's all-DELETED manifest, so each commit read one more."""
+    for n in range(10):
+        write_table(catalog.load_table(IDENTIFIER), reader([n]), "overwrite", f"run-{n}", "h")  # fmt: skip
+    table = catalog.load_table(IDENTIFIER)
+    snapshot = table.current_snapshot()
+    assert snapshot is not None
+    # the live files' manifest and the one holding the files this overwrite deleted
+    assert len(snapshot.manifests(table.io)) <= 2
+    assert ids(catalog) == [9]

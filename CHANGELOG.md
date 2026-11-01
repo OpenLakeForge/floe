@@ -26,6 +26,12 @@ All notable changes to Floe are documented in this file.
   call `table_exists` and `load_table` before it. With a remote catalog this saves about 0.2 s per entity at
   100 ms of latency. Errors and messages are unchanged.
 
+- **Overwriting the same Iceberg table no longer gets slower with every earlier overwrite (#1132).** PyIceberg 0.12
+  left the all-deleted manifest of each earlier overwrite in the table's manifest list, so every scan and commit read
+  one more manifest. On a local SQL catalog the 100th overwrite took about 430-750 ms against about 45 ms for the
+  2nd; it now takes about 230 ms, and the manifest list stays at 2 entries. A table that already accumulated them
+  sheds them on its next overwrite.
+
 ## v0.8.8
 
 - **Entities can run in parallel in one `floe run` (#1105).** With `execution.orchestration.strategy: parallel` in
