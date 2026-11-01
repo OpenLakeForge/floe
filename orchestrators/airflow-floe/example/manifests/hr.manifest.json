@@ -1,12 +1,13 @@
 {
-  "schema": "floe.manifest.v1",
-  "generated_at_ts_ms": 1771245437766,
-  "floe_version": "0.2.4",
-  "spec_version": "0.2",
-  "manifest_id": "mfv1-1382cbe0a11e3ae3",
-  "config_uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/config.hr.yml",
-  "config_checksum": null,
-  "report_base_uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./report",
+  "generated_at_ts_ms": 1793523661633,
+  "floe_version": "0.8.8",
+  "spec_version": "0.8",
+  "manifest_id": "mfv1-64876c0cce7b927c",
+  "manifest_revision": "sha256:056899ce3fb909b7e3cab9af4e00460151ea4d3a76d4faf8302ce13f048976a1",
+  "runtime_env": "cli",
+  "config_uri": "local:///home/user/floe/orchestrators/airflow-floe/example/config.hr.yml",
+  "config_checksum": "sha256:01a9497a45f2a9099a44db4e979a364916565d9ea84629327685f272e7a19082",
+  "report_base_uri": "local:///home/user/floe/orchestrators/airflow-floe/example/report",
   "domains": [
     {
       "name": "hr",
@@ -17,8 +18,8 @@
     "entrypoint": "floe",
     "base_args": [
       "run",
-      "-c",
-      "{config_uri}",
+      "--manifest",
+      "{manifest_uri}",
       "--log-format",
       "json",
       "--quiet"
@@ -32,8 +33,8 @@
       "run_finished_event": true,
       "summary_uri_field": "summary_uri",
       "exit_codes": {
-        "1": "technical_failure",
         "0": "success_or_rejected",
+        "1": "technical_failure",
         "2": "aborted"
       }
     },
@@ -47,11 +48,24 @@
     "definitions": {
       "local": {
         "type": "local_process",
+        "command": null,
+        "args": null,
+        "timeout_seconds": null,
+        "ttl_seconds_after_finished": null,
+        "poll_interval_seconds": null,
+        "secrets": null,
         "image": null,
         "namespace": null,
         "service_account": null,
         "resources": null,
-        "env": null
+        "env": null,
+        "workspace_url": null,
+        "existing_cluster_id": null,
+        "config_uri": null,
+        "python_file_uri": null,
+        "job_name": null,
+        "auth": null,
+        "env_parameters": null
       }
     }
   },
@@ -65,13 +79,13 @@
         "employees"
       ],
       "source_format": "csv",
-      "accepted_sink_uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./out/accepted/employees",
-      "rejected_sink_uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./out/rejected/employees",
+      "accepted_sink_uri": "local:///home/user/floe/orchestrators/airflow-floe/example/out/accepted/employees",
+      "rejected_sink_uri": "local:///home/user/floe/orchestrators/airflow-floe/example/out/rejected/employees",
       "tags": null,
       "source": {
         "format": "csv",
         "storage": "local",
-        "uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./in/hr/employees.csv",
+        "uri": "local:///home/user/floe/orchestrators/airflow-floe/example/in/hr/employees.csv",
         "path": "./in/hr/employees.csv",
         "resolved": true,
         "cast_mode": "strict",
@@ -97,14 +111,14 @@
         "accepted": {
           "format": "parquet",
           "storage": "local",
-          "uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./out/accepted/employees",
+          "uri": "local:///home/user/floe/orchestrators/airflow-floe/example/out/accepted/employees",
           "path": "./out/accepted/employees",
           "resolved": true
         },
         "rejected": {
           "format": "csv",
           "storage": "local",
-          "uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./out/rejected/employees",
+          "uri": "local:///home/user/floe/orchestrators/airflow-floe/example/out/rejected/employees",
           "path": "./out/rejected/employees",
           "resolved": true
         },
@@ -137,5 +151,8 @@
         "unique_keys": []
       }
     }
-  ]
+  ],
+  "metadata": {
+    "project": "floe-airflow-example-hr"
+  }
 }

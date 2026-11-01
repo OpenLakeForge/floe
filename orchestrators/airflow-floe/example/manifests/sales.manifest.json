@@ -1,12 +1,13 @@
 {
-  "schema": "floe.manifest.v1",
-  "generated_at_ts_ms": 1771245445872,
-  "floe_version": "0.2.4",
-  "spec_version": "0.2",
-  "manifest_id": "mfv1-46527aa10ab5e343",
-  "config_uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/config.sales.yml",
-  "config_checksum": null,
-  "report_base_uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./report",
+  "generated_at_ts_ms": 1793523662847,
+  "floe_version": "0.8.8",
+  "spec_version": "0.8",
+  "manifest_id": "mfv1-e23643c47c3031ea",
+  "manifest_revision": "sha256:97e9b5667b0dbc9f544cdc30c3a798b1e2452ecc6cb2a27683561d8db0d98219",
+  "runtime_env": "cli",
+  "config_uri": "local:///home/user/floe/orchestrators/airflow-floe/example/config.sales.yml",
+  "config_checksum": "sha256:b012f65858c305a352f66207f82ce00a50f0f2e7cbc51b8d42f7033946e0c128",
+  "report_base_uri": "local:///home/user/floe/orchestrators/airflow-floe/example/report",
   "domains": [
     {
       "name": "sales",
@@ -17,8 +18,8 @@
     "entrypoint": "floe",
     "base_args": [
       "run",
-      "-c",
-      "{config_uri}",
+      "--manifest",
+      "{manifest_uri}",
       "--log-format",
       "json",
       "--quiet"
@@ -33,8 +34,8 @@
       "summary_uri_field": "summary_uri",
       "exit_codes": {
         "0": "success_or_rejected",
-        "2": "aborted",
-        "1": "technical_failure"
+        "1": "technical_failure",
+        "2": "aborted"
       }
     },
     "defaults": {
@@ -47,11 +48,24 @@
     "definitions": {
       "local": {
         "type": "local_process",
+        "command": null,
+        "args": null,
+        "timeout_seconds": null,
+        "ttl_seconds_after_finished": null,
+        "poll_interval_seconds": null,
+        "secrets": null,
         "image": null,
         "namespace": null,
         "service_account": null,
         "resources": null,
-        "env": null
+        "env": null,
+        "workspace_url": null,
+        "existing_cluster_id": null,
+        "config_uri": null,
+        "python_file_uri": null,
+        "job_name": null,
+        "auth": null,
+        "env_parameters": null
       }
     }
   },
@@ -65,13 +79,13 @@
         "orders"
       ],
       "source_format": "csv",
-      "accepted_sink_uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./out/accepted/orders_delta",
-      "rejected_sink_uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./out/rejected/orders",
+      "accepted_sink_uri": "local:///home/user/floe/orchestrators/airflow-floe/example/out/accepted/orders",
+      "rejected_sink_uri": "local:///home/user/floe/orchestrators/airflow-floe/example/out/rejected/orders",
       "tags": null,
       "source": {
         "format": "csv",
         "storage": "local",
-        "uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./in/sales/orders.csv",
+        "uri": "local:///home/user/floe/orchestrators/airflow-floe/example/in/sales/orders.csv",
         "path": "./in/sales/orders.csv",
         "resolved": true,
         "cast_mode": "strict",
@@ -95,16 +109,16 @@
       },
       "sinks": {
         "accepted": {
-          "format": "delta",
+          "format": "parquet",
           "storage": "local",
-          "uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./out/accepted/orders_delta",
-          "path": "./out/accepted/orders_delta",
+          "uri": "local:///home/user/floe/orchestrators/airflow-floe/example/out/accepted/orders",
+          "path": "./out/accepted/orders",
           "resolved": true
         },
         "rejected": {
           "format": "csv",
           "storage": "local",
-          "uri": "local:///Users/a.metwalli/floe/orchestrators/airflow-floe/example/./out/rejected/orders",
+          "uri": "local:///home/user/floe/orchestrators/airflow-floe/example/out/rejected/orders",
           "path": "./out/rejected/orders",
           "resolved": true
         },
@@ -137,5 +151,8 @@
         "unique_keys": []
       }
     }
-  ]
+  ],
+  "metadata": {
+    "project": "floe-airflow-example-sales"
+  }
 }

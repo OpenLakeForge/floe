@@ -52,8 +52,8 @@ entities:
         separator: ","
     sink:
       accepted:
-        format: "delta"
-        path: "./out/accepted/orders_delta"
+        format: "parquet"
+        path: "./out/accepted/orders"
       rejected:
         format: "csv"
         path: "./out/rejected/orders"

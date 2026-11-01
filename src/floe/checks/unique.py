@@ -17,7 +17,6 @@ from floe.checks.rows import RowCheck
 
 SAMPLE_LIMIT = 5
 _SEEN = "__floe_seen"
-_DEBUG = "__floe_debug"
 _COUNT = "__floe_count"
 _BITS = "_bits"  # suffix of the bit-pattern column that keys a float column
 
@@ -56,43 +55,9 @@ def resolve_unique_keys(
     return resolved
 
 
-# `str` Debug; ponytail: non-ASCII non-printable characters (Rust `\\u{..}`) are left raw
-_STR_ESCAPES = {
-    "\\": "\\\\",
-    '"': '\\"',
-    "\n": "\\n",
-    "\r": "\\r",
-    "\t": "\\t",
-    "\0": "\\0",
-    **{chr(i): f"\\u{{{i:x}}}" for i in [*range(1, 32), 127] if chr(i) not in "\n\r\t"},
-}
-
-
 def _float_bits(s: pl.Series) -> pl.Series:
     """Rust's `to_bits()`: Polars cannot reinterpret a float, so view the Arrow buffer."""
     return pl.Series(s.cast(pl.Float64).to_arrow().view(pa.uint64()))
-
-
-def _debug(name: str, dtype: pl.DataType) -> pl.Expr:
-    """Rust's `{:?}` of the `UniqueKey` variant: the sample tie-break sorts on these strings."""
-    c = pl.col(name)
-    if dtype == pl.String:
-        escaped = c
-        for raw, esc in _STR_ESCAPES.items():
-            escaped = escaped.str.replace_all(raw, esc, literal=True)
-        return pl.format('String("{}")', escaped)
-    if dtype == pl.Boolean:
-        return pl.format("Bool({})", c.cast(pl.String))
-    if dtype.is_signed_integer():
-        return pl.format("I64({})", c.cast(pl.String))
-    if dtype.is_unsigned_integer():
-        return pl.format("U64({})", c.cast(pl.String))
-    if dtype.is_float():
-        return pl.format("F64({})", pl.col(name + _BITS).cast(pl.String))
-    if isinstance(dtype, pl.Datetime):  # chrono prints the fraction only when not zero
-        return pl.format('Other("{}")', c.dt.to_string("%Y-%m-%d %H:%M:%S%.f"))
-    # ponytail: date keys use `Other(display)`, unverified against Rust; ties may order differently
-    return pl.format('Other("{}")', c.cast(pl.String))
 
 
 def _text(value: object) -> str:
@@ -221,7 +186,7 @@ class UniqueTracker:
         return RowCheck("unique", name, message, dup)
 
     def results(self) -> list[UniqueResult]:
-        """Per constraint, the top `SAMPLE_LIMIT` keys by count, ties by Rust's Debug string."""
+        """Per constraint, the top `SAMPLE_LIMIT` keys by count, ties by the key values (numbers numerically, strings by code point)."""
         return [self._result(c) for c in self._constraints]
 
     def _result(self, c: _Constraint) -> UniqueResult:
@@ -229,14 +194,9 @@ class UniqueTracker:
             return UniqueResult(c.columns, 0, [])
         parts = pl.concat(c.dup_counts)
         counts = parts.group_by(parts.columns[:-1]).agg(pl.col(_COUNT).sum())
-        debug = pl.format(
-            "CompositeKey([{}])",
-            pl.concat_str([_debug(k, counts.schema[k]) for k in c.ids], separator=", "),
-        )
-        top = (
-            counts.with_columns(debug.alias(_DEBUG))
-            .sort([_COUNT, _DEBUG], descending=[True, False])
-            .head(SAMPLE_LIMIT)
+        by = [_COUNT, *counts.columns[:-1]]
+        top = counts.sort(by, descending=[True] + [False] * (len(by) - 1)).head(
+            SAMPLE_LIMIT
         )
         samples = [  # at most SAMPLE_LIMIT rows
             UniqueSample(

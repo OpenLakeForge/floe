@@ -356,3 +356,44 @@ def test_a_trailing_slash_on_a_remote_accepted_path_shares_its_key(tmp_path: Pat
     lake = ", storage: lake"
     a, b = keys_of(tmp_path, head + parquet_entity("a", "out", lake) + parquet_entity("b", "out/", lake))  # fmt: skip
     assert a & b
+
+
+def slow_listing(
+    monkeypatch: pytest.MonkeyPatch, fail: tuple[str, ...] = ()
+) -> list[float]:
+    """Each listing sleeps 0.2 s and fails for the names in `fail`; returns the times the listings end."""
+    ends: list[float] = []
+    real = sys.modules["floe.run"].list_source
+
+    def listing(entity: Any, *args: Any) -> Any:
+        time.sleep(0.2)
+        if entity.name in fail:
+            raise FloeRunError(f"{entity.name} listing failed")
+        found = real(entity, *args)
+        ends.append(time.monotonic())
+        return found
+
+    monkeypatch.setattr(sys.modules["floe.run"], "list_source", listing)
+    return ends
+
+
+def test_inputs_are_listed_on_the_workers_before_the_first_entity_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    path, root = setup(tmp_path, list("abcdefgh"))
+    ends = slow_listing(monkeypatch)
+    starts: list[float] = []
+
+    def observer(event: dict[str, Any]) -> None:
+        if event["event"] == "entity_started":
+            starts.append(time.monotonic())
+
+    began = time.monotonic()
+    run(path, root, observer=observer, workers=4)
+    assert len(ends) == 8 and starts[0] >= max(ends)
+    assert starts[0] - began < 8 * 0.2 / 2
+
+
+def test_the_first_listing_error_in_config_order_is_raised(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    path, root = setup(tmp_path, list("abcdefgh"))
+    slow_listing(monkeypatch, fail=("c", "g"))
+    with pytest.raises(FloeRunError, match="c listing failed"):
+        run(path, root, workers=4)

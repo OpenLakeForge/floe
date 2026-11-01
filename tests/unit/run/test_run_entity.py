@@ -606,6 +606,35 @@ def test_json_file_removed_after_listing_is_a_failed_file(
     assert "failed to read json at" in json.dumps(report["files"][0])
 
 
+@pytest.mark.parametrize("fmt", ["json", "csv"])
+def test_file_removed_after_listing_with_a_rejected_sink_is_a_failed_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fmt: str
+) -> None:
+    """#1121: the raw copy of a vanished file is skipped, so the read error is reported and the run goes on."""
+    real = entity_module.resolve_inputs
+
+    def listed_then_removed(*args: Any, **kwargs: Any) -> Any:
+        inputs = real(*args, **kwargs)
+        (tmp_path / "in" / f"a.{fmt}").unlink()
+        return inputs
+
+    monkeypatch.setattr(entity_module, "resolve_inputs", listed_then_removed)
+    (tmp_path / "in").mkdir()
+    body = '{"id": 1}' if fmt == "json" else "id\n1\n"
+    (tmp_path / "in" / f"a.{fmt}").write_text(body)
+    config = CONFIG.format(severity="reject", mismatch="")
+    config = config.replace(
+        "format: csv\n      path: ./in", f"format: {fmt}\n      path: ./in"
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert [f["status"] for f in report["files"]] == ["rejected"]
+    assert "No such file" in json.dumps(report["files"][0])
+    assert report["files"][0]["output"]["rejected_path"] is None
+    assert not (tmp_path / "out" / "rejected").exists()
+
+
 @pytest.mark.parametrize("chunk_rows", [2, 4, 1000])
 @pytest.mark.parametrize("mode", ["ndjson", "array"])
 def test_json_late_key_and_late_errors_are_the_same_in_every_chunking(

@@ -409,6 +409,7 @@ state file shape, and CAS behavior.
     - `max_size_per_file`: positive integer bytes (default: 256MB)
       - Parquet: split accepted parquet into parts at write time.
       - Iceberg: only sets the report's small-file threshold (half this value).
+    - Iceberg applies `compression` and `row_group_size` to `overwrite`/`append` data files only (not merges); see [Iceberg sink](sinks/iceberg.md).
     - Accepted rows are written once per entity, after every input file is read: Parquet
       parts in one pass, Iceberg in one catalog commit. Inputs are archived (when
       `sink.archive` is enabled) only after that write succeeds, so an input is never

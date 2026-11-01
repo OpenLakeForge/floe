@@ -157,6 +157,11 @@ Current scope:
   run already committed and skips it (`skip_reason: already_committed`).
 - Unique checks on `append` read the table's existing keys, and a commit conflict re-checks the
   keys of concurrently added files.
+- `sink.accepted.options.compression` and `row_group_size` shape the Parquet data files of
+  `overwrite` and `append` writes (PyIceberg's `write.parquet.compression-codec` and
+  `write.parquet.row-group-limit`, applied to that write only; the table's properties are not
+  changed). Unset, the table's properties and PyIceberg's defaults apply. `merge_scd1` and
+  `merge_scd2` write through DuckDB and ignore both options.
 - `schema.schema_evolution.mode: add_columns` adds new columns as nullable (D13)
 - Unsigned integer columns are widened (`uint8`/`uint16` → `int`, `uint32` → `long`); Iceberg
   has no unsigned types
