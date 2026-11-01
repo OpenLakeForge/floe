@@ -5,7 +5,7 @@
 
 import itertools
 import uuid
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import PurePosixPath
@@ -72,6 +72,16 @@ def _chunks(reader: pa.RecordBatchReader, chunk_rows: int) -> Iterator[pa.Table]
         yield pa.Table.from_batches(pending, reader.schema)
 
 
+def parquet_properties(
+    compression: str | None, row_group_size: int | None
+) -> dict[str, str]:
+    """The sink's `compression` and `row_group_size` as PyIceberg's write properties; unset keeps the table's."""
+    props = {TableProperties.PARQUET_COMPRESSION: compression} if compression else {}
+    if row_group_size:
+        props[TableProperties.PARQUET_ROW_GROUP_LIMIT] = str(row_group_size)
+    return props
+
+
 def _metadata_version(location: str | None) -> int | None:
     prefix = PurePosixPath(location or "").name.split("-", 1)[0]
     return int(prefix) if prefix.isdigit() else None
@@ -86,22 +96,25 @@ def write_table(
     small_file_threshold_bytes: int = SMALL_FILE_THRESHOLD_BYTES,
     chunk_rows: int = CHUNK_ROWS,
     unique_keys: Sequence[Sequence[str]] = (),
+    parquet: Mapping[str, str] | None = None,
 ) -> IcebergWriteResult:
     """Data files are written chunk by chunk (partitioned tables split each chunk), then committed once.
 
     Overwrite replaces every existing file in the same snapshot. An append of no rows commits nothing.
     On a conflict an append checks `unique_keys` (table column names) against the files added since the base
     snapshot and fails closed, committing nothing, when a rival already holds a key (#549).
+    `parquet` holds `write.parquet.*` properties for these data files only; the table's own properties are not changed.
     """
     with run_error("iceberg data write failed"):
         _check_pyarrow_schema_compatible(table.schema(), reader.schema)
+        metadata = table.metadata.model_copy(update={"properties": {**table.properties, **(parquet or {})}})  # fmt: skip
         counter = itertools.count()
         write_uuid = uuid.uuid4()
         data_files: list[DataFile] = [
             data_file
             for chunk in _chunks(reader, chunk_rows)
             for data_file in _dataframe_to_data_files(
-                table.metadata, chunk, table.io, write_uuid, counter
+                metadata, chunk, table.io, write_uuid, counter
             )
         ]
     digest = (

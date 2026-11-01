@@ -12,6 +12,11 @@ All notable changes to Floe are documented in this file.
   strings by code point, and composite keys column by column. Reports whose tied samples held keys of different
   digit counts, or strings with control characters, list them in a different order.
 
+- **Iceberg sinks apply `options.compression` and `options.row_group_size` (#1009).** Both were parsed and
+  validated but ignored for `sink.accepted.format: iceberg`. `overwrite` and `append` now write data files with the
+  configured codec and rows per row group, for that write only; the table's properties are not changed. Merge modes
+  still ignore them.
+
 ## v0.8.8
 
 - **Entities can run in parallel in one `floe run` (#1105).** With `execution.orchestration.strategy: parallel` in
