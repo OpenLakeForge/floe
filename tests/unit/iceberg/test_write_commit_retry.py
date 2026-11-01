@@ -208,3 +208,15 @@ def test_float_keys_compare_by_bits_as_the_tracker_does(catalog: SharedCatalog, 
     assert len(keys) == 3 and len(set(keys)) == 3  # NULL dropped; -0.0 and 0.0 differ
     again = set(write_module._keys(catalog.load_table(IDENTIFIER), file, ["x"]))  # pyright: ignore[reportPrivateUsage]
     assert keys[0] in again  # NaN matches NaN
+
+
+def test_overwrites_keep_the_manifest_list_bounded(catalog: SharedCatalog) -> None:
+    """#1132: PyIceberg kept every earlier overwrite's all-DELETED manifest, so each commit read one more."""
+    for n in range(10):
+        write_table(catalog.load_table(IDENTIFIER), reader([n]), "overwrite", f"run-{n}", "h")  # fmt: skip
+    table = catalog.load_table(IDENTIFIER)
+    snapshot = table.current_snapshot()
+    assert snapshot is not None
+    # the live files' manifest and the one holding the files this overwrite deleted
+    assert len(snapshot.manifests(table.io)) <= 2
+    assert ids(catalog) == [9]

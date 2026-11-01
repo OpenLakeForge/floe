@@ -18,9 +18,17 @@ from pyiceberg.io.pyarrow import (
     _check_pyarrow_schema_compatible,  # pyright: ignore[reportPrivateUsage] -- same check `Transaction.append` makes
     _dataframe_to_data_files,  # pyright: ignore[reportPrivateUsage] -- feeds one snapshot producer from many chunks
 )
-from pyiceberg.manifest import DataFile, DataFileContent, ManifestEntryStatus
+from pyiceberg.manifest import (
+    DataFile,
+    DataFileContent,
+    ManifestEntryStatus,
+    ManifestFile,
+)
 from pyiceberg.table import Table, TableProperties
-from pyiceberg.table.snapshots import ancestors_of
+from pyiceberg.table.snapshots import Operation, ancestors_of
+from pyiceberg.table.update.snapshot import (
+    _OverwriteFiles,  # pyright: ignore[reportPrivateUsage] -- PyIceberg 0.12 has no public hook on the manifest list
+)
 
 from floe.errors import FloeRunError
 from floe.iceberg.catalog import run_error
@@ -53,6 +61,14 @@ class IcebergWriteResult:
     already_committed: bool = (
         False  # a conflict showed another run committed this batch (#545)
     )
+
+
+class _LiveOverwrite(_OverwriteFiles):
+    """PyIceberg 0.12 keeps the all-DELETED manifest of every earlier overwrite in the manifest list, one more per
+    overwrite, so the scan and the commit read more manifests each time (#1132); Java drops them, so do we."""
+
+    def _existing_manifests(self) -> list[ManifestFile]:
+        return [m for m in super()._existing_manifests() if m.has_added_files() or m.has_existing_files()]  # fmt: skip
 
 
 def _chunks(reader: pa.RecordBatchReader, chunk_rows: int) -> Iterator[pa.Table]:
@@ -131,13 +147,21 @@ def write_table(
                 # PyIceberg retries a 409 itself (refresh, rebuild) and would skip the guard; in memory only, never sent
                 table.metadata = table.metadata.model_copy(update={"properties": {**table.properties, TableProperties.COMMIT_NUM_RETRIES: "0"}})  # fmt: skip
                 tx = table.transaction()
-                update = tx.update_snapshot(
-                    snapshot_properties={RUN_ID: run_id, INPUT_HASH: digest}
-                )
+                props = {RUN_ID: run_id, INPUT_HASH: digest}
                 with (
-                    update.overwrite()
+                    _LiveOverwrite(
+                        operation=Operation.OVERWRITE
+                        if table.current_snapshot()
+                        else Operation.APPEND,
+                        transaction=tx,
+                        io=table.io,
+                        branch="main",
+                        snapshot_properties=props,
+                    )
                     if mode == "overwrite"
-                    else update.fast_append() as snap
+                    else tx.update_snapshot(
+                        snapshot_properties=props
+                    ).fast_append() as snap
                 ):
                     for old in replaced:
                         snap.delete_data_file(old)

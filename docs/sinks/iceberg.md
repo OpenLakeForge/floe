@@ -171,6 +171,7 @@ Current scope:
 ## Limitations / non-goals (current)
 
 - `strategy: drop` in `pii` is rejected: the table enforces the full declared schema
+- Every commit rewrites the table metadata, which lists every retained snapshot: an `overwrite` of a table with 100 snapshots took about 230 ms of commit and write time against about 50 ms with 2 on a local catalog. Run `floe maintain` to expire snapshots on tables written often
 - Snapshot expiry and orphan file removal with `floe maintain` (see [CLI usage](../cli.md)); compaction is experimental (`--compact --experimental`)
 
 ## Integration tests
