@@ -2,6 +2,12 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.9 (unreleased)
+
+- **Parallel runs list entity inputs on the worker pool (#1131).** With `workers` > 1, the inputs of all entities are
+  listed on up to `workers` threads instead of one after another; they are still all resolved before the first
+  `entity_started`, and a listing failure raises the first error in config order.
+
 ## v0.8.8
 
 - **Entities can run in parallel in one `floe run` (#1105).** With `execution.orchestration.strategy: parallel` in
