@@ -81,11 +81,9 @@ sinks and policy, but entity `schema.columns` are always specific.
 ```bash
 floe validate -c config.yml
 floe run -c config.yml --dry-run
-floe state inspect -c config.yml --entity orders
 ```
 
-For a new sample, `floe add-entity -c config.yml --input ./in/orders.csv
---name orders --dry-run` previews an inferred entity. Review its schema
+For a new sample, `floe add-entity -c config.yml --input ./in/orders.csv --name orders --dry-run` previews an inferred entity. Review its schema
 rather than trusting inference blindly. To build a deterministic
 orchestrator manifest:
 
@@ -96,8 +94,8 @@ floe manifest generate -c config.yml --deterministic --output run.manifest.json
 Only **after authorization** run `floe run -c config.yml` (or select
 `--entities orders`). Read its JSON reports under `report.path` for
 accepted/rejected counts and errors; never expose raw sensitive values.
-For file incremental mode, check `floe state inspect` before considering a
-reset. `floe state reset`, `floe maintain`, and full refresh can change
+For file incremental mode, check `floe state inspect -c config.yml --entity orders`
+before considering a reset. `floe state reset`, `floe maintain`, and full refresh can change
 state or delete data; do not perform them implicitly.
 
 For exact schema fields and write semantics, consult Floe's repository docs
