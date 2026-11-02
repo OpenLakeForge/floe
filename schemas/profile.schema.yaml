@@ -141,7 +141,7 @@ $defs:
 
   profile_runner:
     type: object
-    additionalProperties: false
+    unevaluatedProperties: false  # a kubernetes_job's `then` admits its pass-through keys (#1065)
     required:
       - type
     description: Runner configuration. Determines where Floe executes.
@@ -350,7 +350,9 @@ $defs:
               const: kubernetes_job
         then:
           description: >
-            Rust trims these values, so a blank string counts as missing.
+            Rust trims these values, so a blank string counts as missing. Keys not listed
+            here are pod options passed to the orchestrator as written, which validates them.
+          additionalProperties: true
           required: [image, namespace]
           properties:
             image:

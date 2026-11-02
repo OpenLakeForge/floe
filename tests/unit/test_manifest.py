@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from botocore.stub import ANY, Stubber
 
 from floe import __version__
@@ -629,56 +630,103 @@ def test_1023_pod_options_ride_the_k8s_runner_only_when_set(
 
 
 @pytest.mark.parametrize(
-    ("setting", "message"),
+    "setting",
     [
-        ("labels: x", "expected map at profile.execution.runner.labels"),
-        ("labels: {a: 1}", "expected string at profile.execution.runner.labels"),
-        ("annotations: [a]", "expected map at profile.execution.runner.annotations"),
+        "priority_class_name: batch-low",
+        "topology_spread_constraints: [{maxSkew: 1, labelSelector: {matchLabels: {app: floe}}}]",
+        "labels: {a: 1}",  # the orchestrator validates the pod options, not the core
+        "backoff_limit: two",
+    ],
+)
+def test_1065_a_k8s_pod_option_reaches_the_manifest_as_written(
+    setting: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    key, _, value = setting.partition(": ")
+    runner = k8s_runner(tmp_path, monkeypatch, capsys, setting)
+    assert runner[key] == yaml.safe_load(value)
+
+
+@pytest.mark.parametrize(
+    ("kind", "setting", "message"),
+    [
         (
-            "image_pull_policy: [Always]",
-            "expected string at profile.execution.runner.image_pull_policy",
+            "kubernetes_job",
+            "security_context: {capabilities: {1: a}}",
+            "expected string key at profile.execution.runner.security_context.capabilities",
         ),
         (
-            "security_context: x",
-            "expected map at profile.execution.runner.security_context",
+            "kubernetes_job",
+            "tolerations: [{1: a}]",
+            "expected string key at profile.execution.runner.tolerations[]",
         ),
         (
-            "security_context: {1: a}",
-            "expected string key at profile.execution.runner.security_context",
+            "kubernetes_job",
+            "security_context: {runAsUser: .inf}",
+            "profile.execution.runner.security_context.runAsUser must be a finite number",
         ),
         (
-            "node_selector: {a: 1}",
-            "expected string at profile.execution.runner.node_selector",
+            "kubernetes_job",
+            "tolerations: [{tolerationSeconds: .nan}]",
+            "profile.execution.runner.tolerations[].tolerationSeconds must be a finite number",
         ),
         (
-            "tolerations: {a: b}",
-            "expected array at profile.execution.runner.tolerations",
-        ),
-        ("tolerations: [x]", "expected map at profile.execution.runner.tolerations[]"),
-        ("env_from: [[a]]", "expected map at profile.execution.runner.env_from[]"),
-        (
-            "backoff_limit: -1",
-            "profile.execution.runner.backoff_limit must be a non-negative integer",
+            "databricks_job",
+            "priority_class_name: p",
+            "unknown field profile.execution.runner.priority_class_name",
         ),
         (
-            "backoff_limit: two",
-            "profile.execution.runner.backoff_limit must be a non-negative integer",
+            "local",
+            "priority_class_name: p",
+            "unknown field profile.execution.runner.priority_class_name",
         ),
     ],
 )
-def test_1023_a_malformed_pod_option_is_rejected(
+def test_1065_a_pod_option_json_cannot_carry_is_rejected(
+    kind: str,
     setting: str,
     message: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """Only a kubernetes_job passes its other keys through, and only with string mapping keys."""
+    profile = K8S.replace("type: kubernetes_job", f"type: {kind}")
     (tmp_path / "prod.yml").write_text(
-        K8S.replace("    command", f"    {setting}\n    command")
+        profile.replace("    command", f"    {setting}\n    command")
     )
     argv = ("-o", "-", "-p", str(tmp_path / "prod.yml"))
     assert generate(tmp_path, monkeypatch, *argv) != 0
     assert message in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        K8S.replace("type: kubernetes_job", "type: local"),
+        DBX,
+    ],
+    ids=["local", "databricks_job"],
+)
+def test_1065_a_non_k8s_runner_still_accepts_and_drops_the_legacy_pod_keys(
+    profile: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A profile copied from a kubernetes_job keeps loading; the manifest omits its pod options."""
+    settings = "\n    ".join(
+        f"{k}: {json.dumps(v)}" for k, v in K8S_POD_OPTIONS.items()
+    )
+    (tmp_path / "prod.yml").write_text(
+        profile.replace("    image:", f"    {settings}\n    image:", 1)
+    )
+    argv = ("-o", "-", "-p", str(tmp_path / "prod.yml"))
+    assert generate(tmp_path, monkeypatch, *argv) == 0
+    runners = json.loads(capsys.readouterr().out)["runners"]["definitions"]
+    assert not any(K8S_POD_OPTIONS.keys() & r.keys() for r in runners.values())
 
 
 def test_d28_the_entity_source_carries_its_partitioning(

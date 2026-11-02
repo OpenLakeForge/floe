@@ -1,5 +1,6 @@
 """Environment profiles, ported from `profile/parse.rs` and `profile/validate.rs`."""
 
+import math
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -45,7 +46,8 @@ CONTRACT = {
 @dataclass(frozen=True)
 class ProfileConfig:
     name: str
-    runner: dict[str, object]  # `type` and every field, None when unset
+    # `type` and every field, None when unset; then a kubernetes_job's pass-through keys
+    runner: dict[str, object]
     variables: dict[str, str]
     catalogs: CatalogsConfig | None
     storages: StoragesConfig | None
@@ -157,17 +159,6 @@ def _str_keyed(value: object, where: str) -> dict[str, object]:
     return cast(dict[str, object], hash)
 
 
-def _object(hash: Hash, key: str, ctx: str) -> dict[str, object] | None:
-    return _str_keyed(hash[key], f"{ctx}.{key}") if key in hash else None
-
-
-def _objects(hash: Hash, key: str, ctx: str) -> list[dict[str, object]] | None:
-    if key not in hash:
-        return None
-    where = f"{ctx}.{key}"
-    return [_str_keyed(item, f"{where}[]") for item in yaml_array(hash[key], where)]
-
-
 def _auth(hash: Hash, key: str, ctx: str) -> dict[str, str | None] | None:
     if key not in hash:
         return None
@@ -200,24 +191,41 @@ _RUNNER_FIELDS: tuple[tuple[str, Reader], ...] = (
     ("env_parameters", _map),
     ("job_scope", _job_scope),
     ("domain_resources", _domain_resources),
-    ("labels", _map),
-    ("annotations", _map),
-    ("image_pull_policy", _string),
-    ("security_context", _object),
-    ("node_selector", _map),
-    ("tolerations", _objects),
-    ("backoff_limit", _u64),
-    ("env_from", _objects),
 )
+# Legacy: the keys any runner type accepted before #1065. A non-k8s runner still accepts and ignores them,
+# so a profile copied from a kubernetes_job keeps loading; they are not validated here.
+_LEGACY_IGNORED = (
+    *("labels", "annotations", "image_pull_policy", "security_context"),
+    *("node_selector", "tolerations", "backoff_limit", "env_from"),
+)
+
+
+def _json(value: object, where: str) -> object:
+    """A pass-through value as written, once JSON can carry it: string mapping keys, finite numbers."""
+    if isinstance(value, dict):
+        hash = _str_keyed(cast(object, value), where)
+        return {k: _json(v, f"{where}.{k}") for k, v in hash.items()}
+    if isinstance(value, list):
+        return [_json(v, f"{where}[]") for v in cast(list[object], value)]
+    if isinstance(value, float) and not math.isfinite(value):
+        raise FloeConfigError(f"{where} must be a finite number")
+    return value
 
 
 def _runner(value: object) -> dict[str, object]:
     ctx = "profile.execution.runner"
     hash = yaml_hash(value, ctx)
-    validate_known_keys(hash, ctx, ("type", *(name for name, _ in _RUNNER_FIELDS)))
+    known = ("type", *(name for name, _ in _RUNNER_FIELDS))
+    # #1065: a kubernetes_job's other keys are pod options its orchestrator validates; they pass through
+    open_ = hash.get("type") == "kubernetes_job"
+    validate_known_keys(hash, ctx, hash.keys() if open_ else (*known, *_LEGACY_IGNORED))
     read: dict[str, object] = {"type": _string(hash, "type", ctx, True)}
     for name, reader in _RUNNER_FIELDS:
         read[name] = reader(hash, name, ctx)
+    if open_:
+        read |= {
+            str(k): _json(v, f"{ctx}.{k}") for k, v in hash.items() if k not in known
+        }
     return read
 
 
