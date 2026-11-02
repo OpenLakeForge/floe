@@ -229,3 +229,19 @@ def test_full_refresh_with_nothing_archived_and_no_source_still_fails(tmp_path: 
     shutil.rmtree(tmp_path / "arch")
     with pytest.raises(FloeRunError, match="no input files matched"):
         run(path, parse_config(path, {}), full_refresh=True)
+
+
+def test_file_mode_with_no_source_files_has_nothing_pending(tmp_path: Path) -> None:
+    path = tmp_path / "config.yml"
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in/a.csv").write_text("id\n1\n2\n")
+    text = ENTITY.format(name="o", mode="append").replace("./in/o.csv", "./in")
+    text = text.replace("    sink:\n", "    incremental_mode: file\n    sink:\n")
+    path.write_text(f'version: "0.3"\ndomains:\n  - name: d\nentities:\n{text}report: {{path: ./report}}\n')  # fmt: skip
+    run(path, parse_config(path, {}))
+    (tmp_path / "in/a.csv").unlink()
+    out = run(path, parse_config(path, {}))
+    assert out.summary["run"]["status"] == "success"
+    assert rows(tmp_path, "o") == 2
+    with pytest.raises(FloeRunError, match="no input files matched"):
+        run(path, parse_config(path, {}), full_refresh=True)
