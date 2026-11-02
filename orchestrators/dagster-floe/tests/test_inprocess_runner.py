@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
-from dagster import materialize
+from dagster import DagsterInstance, materialize
 
 floe = pytest.importorskip("floe")
 if not hasattr(floe, "run_manifest"):
@@ -162,3 +162,27 @@ def test_an_execution_without_the_entity_selector_runs_what_the_cli_runs(tmp_pat
     local = run(LocalRunner, "local")
     assert sorted(local) == ["sales.orders", "sales.other"]
     assert run(InProcessRunner, "in_process") == local
+
+
+def test_in_process_events_reach_the_dagster_log_live_and_once(tmp_path, monkeypatch) -> None:
+    """#904: each event is logged while the run is in progress, not replayed after it."""
+    monkeypatch.chdir(_example(tmp_path / "w"))
+    order: list[str] = []
+
+    class Live(InProcessRunner):
+        def run_floe_entity(self, *args, log=None, **kwargs) -> RunResult:
+            assert log is not None
+            result = super().run_floe_entity(*args, log=lambda line: (order.append(line), log(line)), **kwargs)
+            order.append("<returned>")
+            return result
+
+    assets, sources, _ = build_floe_asset_defs(manifest_path="m.json", runner=Live("false"))
+    instance = DagsterInstance.ephemeral()
+    res = materialize([*assets, *sources], instance=instance)
+    assert res.success
+    floe_lines = [line for line in order if line.startswith("floe ")]
+    assert order[-1] == "<returned>" and len(floe_lines) == len(order) - 1
+    assert any(line.startswith("floe entity started") for line in floe_lines)
+    messages = [e.user_message for e in instance.all_logs(res.run_id)]
+    for line in floe_lines:
+        assert messages.count(line) == 1, line
