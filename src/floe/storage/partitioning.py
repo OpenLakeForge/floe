@@ -76,7 +76,7 @@ def _day(when: date | datetime) -> date:
     return when.date() if isinstance(when, datetime) else when
 
 
-def _dated(p: SourcePartitioning, entity: str, root: str, uri: str) -> date | None:
+def partition_date(p: SourcePartitioning, entity: str, root: str, uri: str) -> date | None:  # fmt: skip
     """The partition date of a state entry; None for one outside the pattern (another source path)."""
     try:
         return _day(partition_of(p, entity, root, uri).when)
@@ -89,10 +89,12 @@ def window(p: SourcePartitioning, entity: str, root: str, state: EntityState | N
 
     An outstanding claim holds it back to the claim's date, so a crashed run's files stay listed until it is retried.
     """
-    if state is None or state.watermark is None:
+    if state is None or not (state.watermark or state.pruned_before):
         return None
-    start = date.fromisoformat(state.watermark) - timedelta(days=p.lookback_days)
-    return min([start, *(d for u in state.claims if (d := _dated(p, entity, root, u)))])  # fmt: skip
+    # #949: never before `pruned_before`, whatever `lookback_days` became
+    floor = date.fromisoformat(state.pruned_before or date.min.isoformat())
+    start = max(floor, date.fromisoformat(state.watermark) - timedelta(days=p.lookback_days)) if state.watermark else floor  # fmt: skip
+    return min([start, *(d for u in state.claims if (d := partition_date(p, entity, root, u)))])  # fmt: skip
 
 
 def listing_start(p: SourcePartitioning, start: date) -> str | None:
@@ -107,10 +109,18 @@ def listing_start(p: SourcePartitioning, start: date) -> str | None:
 
 
 def advance(p: SourcePartitioning, entity: str, root: str, state: EntityState, promoted: list[str]) -> None:  # fmt: skip
-    """D30, on promote: the watermark moves to the latest date promoted, never back (#949 will prune `files`).
+    """D30, on promote: the watermark moves to the latest date promoted, never back.
 
     Without one (a first run, or after a failed full refresh), every file in the state counts.
+    #949: `pruned_before` moves to the window start, never back nor past a claim's date, and `files` drops the entries
+    dated before it, in the same state write.
     """
     known = promoted if state.watermark else [*promoted, *state.files]
-    days = [d.isoformat() for u in known if (d := _dated(p, entity, root, u))]
+    days = [d.isoformat() for u in known if (d := partition_date(p, entity, root, u))]
     state.watermark = max([state.watermark or "", *days]) or None
+    if state.watermark is None:
+        return
+    start = date.fromisoformat(state.watermark) - timedelta(days=p.lookback_days)
+    held = [d for u in state.claims if (d := partition_date(p, entity, root, u))]
+    state.pruned_before = max(state.pruned_before or "", min([start, *held]).isoformat())  # fmt: skip
+    state.files = {u: f for u, f in state.files.items() if (d := partition_date(p, entity, root, u)) is None or d.isoformat() >= state.pruned_before}  # fmt: skip

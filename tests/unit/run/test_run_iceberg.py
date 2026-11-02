@@ -581,11 +581,11 @@ def test_a_manifest_run_keeps_the_partition_spec(tmp_path: Path, catalog: LocalC
     assert rows(catalog) == [(1, "a", date(2026, 10, 24))]
 
 
-def dead_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Callable[[str], dict[str, Any]], Path]:  # fmt: skip
+def dead_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **values: str) -> tuple[Callable[[str], dict[str, Any]], Path]:  # fmt: skip
     """#545: an append in `file` mode commits, dies before promote, and its claims expire; returns a runner and the state."""
     (tmp_path / "in").mkdir()
     (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n2,b\n")
-    config(tmp_path, mode="append")
+    config(tmp_path, **({"mode": "append"} | values))
     path = tmp_path / "config.yml"
     path.write_text(path.read_text().replace("    domain: Sales\n", "    domain: Sales\n    incremental_mode: file\n"))  # fmt: skip
     root = parse_config(path)
@@ -638,6 +638,22 @@ def test_a_retry_with_a_new_input_skips_only_the_dead_runs_batch(tmp_path: Path,
     got = [(Path(f["input_file"]).name, f["status"], f.get("skip_reason")) for f in report["files"]]  # fmt: skip
     assert got == [("orders.csv", "skipped", "already_committed"), ("b.csv", "success", None)]  # fmt: skip
     assert sorted(Path(u).name for u in json.loads(state.read_text())["files"]) == ["b.csv", "orders.csv"]  # fmt: skip
+
+
+def test_949_a_full_refresh_that_overwrote_then_aborted_does_not_restore_the_dead_claim(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """The refresh's overwrite wiped the dead run's rows: its claim must not come back, or the retry guard finds the
+    dead run's snapshot behind the overwrite and skips the file as committed."""
+    go, _ = dead_run(tmp_path, monkeypatch, severity="abort")
+    (tmp_path / "in" / "a.csv").write_text(
+        "id,name\nx,bad\n"
+    )  # aborts before orders.csv is read
+    outcome = run_project(tmp_path / "config.yml", parse_config(tmp_path / "config.yml"), full_refresh=True)  # fmt: skip
+    assert outcome.summary["run"]["status"] == "aborted"
+    assert rows(catalog) == []
+    (tmp_path / "in" / "a.csv").unlink()
+    report = go("retry")
+    assert [(Path(f["input_file"]).name, f["status"]) for f in report["files"]] == [("orders.csv", "success")]  # fmt: skip
+    assert rows(catalog) == [(1, "a"), (2, "b")]
 
 
 def test_an_aborted_batch_is_not_skipped_as_committed(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip

@@ -19,6 +19,7 @@ from floe.state import (
     claim_all,
     claim_inputs,
     dump_state,
+    parse_state,
     promote,
     read_state,
     release,
@@ -410,7 +411,7 @@ def test_full_refresh_claims_all_and_promote_keeps_only_this_run(
     assert first.claimed is not None
     promote(client, uri, "run-a", first.claimed)
     claim_inputs(client, uri, "sales", "run-x", [_input("c")])
-    claimed = claim_all(client, uri, "sales", "run-b", [_input("a")])
+    claimed, _ = claim_all(client, uri, "sales", "run-b", [_input("a")])
     stored = read_state(client, uri, "sales")
     assert stored is not None
     assert (sorted(stored.files), list(stored.claims)) == (["a", "b"], ["a"])
@@ -425,7 +426,7 @@ def test_full_refresh_with_no_inputs_deletes_the_state(tmp_path: Path) -> None:
     first = claim_inputs(client, uri, "sales", "run-a", [_input("a")])
     assert first.claimed is not None
     promote(client, uri, "run-a", first.claimed)
-    promote(client, uri, "run-b", claim_all(client, uri, "sales", "run-b", []), True)
+    promote(client, uri, "run-b", claim_all(client, uri, "sales", "run-b", [])[0], True)
     assert not Path(uri).exists()
 
 
@@ -480,3 +481,19 @@ def test_reset_deletes_s3_state_with_its_etag(monkeypatch: pytest.MonkeyPatch) -
         assert reset(client, "s3://b/s/state.json", "sales") is True
         assert reset(client, "s3://b/s/state.json", "sales") is False
         stub.assert_no_pending_responses()
+
+
+def test_949_pruned_before_round_trips_and_an_older_state_has_none() -> None:
+    state = EntityState("sales", None, {}, {}, "2026-10-24", "2026-10-23")
+    assert parse_state("sales", dump_state(state)) == state
+    older = dump_state(EntityState("sales", None, {}, {}, "2026-10-24"))
+    assert (
+        b"pruned_before" not in older
+        and parse_state("sales", older).pruned_before is None
+    )
+
+
+def test_949_an_invalid_pruned_before_is_a_state_error() -> None:
+    body = dump_state(EntityState("sales", None, {}, {}, None, "yesterday"))
+    with pytest.raises(FloeConfigError, match="invalid state file: pruned_before"):
+        parse_state("sales", body)
