@@ -6,7 +6,7 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import NamedTuple
 
 from floe.errors import FloeConfigError
@@ -44,6 +44,8 @@ class EntityState:
     files: dict[str, FileState]
     claims: dict[str, Claim]
     watermark: str | None = None  # D30: the latest partition date ingested (ISO)
+    # #949: `files` holds no entry dated before it (ISO); only a full refresh lists before it
+    pruned_before: str | None = None
 
 
 class Loaded(NamedTuple):
@@ -74,6 +76,8 @@ def dump_state(state: EntityState) -> bytes:
     }
     if state.watermark:  # D30: additive, absent without partitioning
         doc["watermark"] = state.watermark
+    if state.pruned_before:  # #949: additive too
+        doc["pruned_before"] = state.pruned_before
     return json.dumps(doc, indent=2, ensure_ascii=False).encode()
 
 
@@ -89,6 +93,7 @@ def parse_state(entity: str, body: bytes) -> EntityState:
             if schema != SCHEMA_V1
             else {},
             doc.get("watermark"),
+            doc.get("pruned_before"),
         )
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         raise FloeConfigError(f"entity.name={entity} invalid state file: {e}") from e
@@ -96,6 +101,13 @@ def parse_state(entity: str, body: bytes) -> EntityState:
         raise FloeConfigError(
             f"entity.name={entity} state schema mismatch: expected {SCHEMA_V1} or {SCHEMA_V2}, got {schema}"
         )
+    if state.pruned_before is not None:  # #949: compared as an ISO date string
+        try:
+            date.fromisoformat(state.pruned_before)
+        except (ValueError, TypeError) as e:
+            raise FloeConfigError(
+                f"entity.name={entity} invalid state file: pruned_before: {e}"
+            ) from e
     if state.entity != entity:
         raise FloeConfigError(
             f"entity.name={entity} state entity mismatch: expected {entity}, got {state.entity}"
@@ -138,8 +150,13 @@ def claim_inputs(
     run_id: str,
     inputs: list[InputFile],
     barrier: bool = False,
+    dated: Callable[[str], date | None] | None = None,
 ) -> ClaimOutcome:
-    """`barrier` (merge modes, #545 S7): while another run's claim is live, every input waits as `active_claim`."""
+    """`barrier` (merge modes, #545 S7): while another run's claim is live, every input waits as `active_claim`.
+
+    `dated` (#949): an input's partition date; an unclaimed one dated before `pruned_before` is dropped, as a later
+    window would not list it (a run that listed before another pruned would re-ingest it).
+    """
     if not inputs:
         return ClaimOutcome([], None, [], [], {})
     for attempt in range(CAS_RETRIES):
@@ -157,6 +174,10 @@ def claim_inputs(
         processed: list[tuple[InputFile, FileState]] = []
         acquired_at, expires_at = _now(), _now(CLAIM_TTL_SECONDS)
         for f in inputs:
+            day = dated(f.source_uri) if dated and state.pruned_before else None
+            # a claimed one is a retry: the window is held back to it
+            if day and day.isoformat() < (state.pruned_before or "") and f.source_uri not in expired and f.source_uri not in state.claims:  # fmt: skip
+                continue
             if f.source_uri in state.files:
                 processed.append((f, state.files[f.source_uri]))
             elif blocked or f.source_uri in state.claims:
@@ -186,8 +207,11 @@ def claim_inputs(
 
 def claim_all(
     client: StorageClient, uri: str, entity: str, run_id: str, inputs: list[InputFile]
-) -> Loaded:
-    """Full refresh: claim every input, dropping other claims (Rust `claim_all_entity_inputs`)."""
+) -> tuple[Loaded, dict[str, Claim]]:
+    """Full refresh: claim every input, dropping other claims (Rust `claim_all_entity_inputs`).
+
+    Also the claims it replaced, by URI, for `release` to restore if the refresh fails (#949).
+    """
     for attempt in range(CAS_RETRIES):
         if attempt:
             _backoff(attempt - 1)
@@ -197,11 +221,13 @@ def claim_all(
             f.source_uri: Claim(run_id, acquired_at, expires_at, f.source_size, f.source_mtime)
             for f in inputs
         }  # fmt: skip
-        # D30: no watermark until the refresh promotes, so a failed one leaves the next run listing everything
-        fresh = Loaded(EntityState(entity, acquired_at, loaded.state.files, claims), loaded.version)  # fmt: skip
+        # D30: no watermark until the refresh promotes; #949: `pruned_before` stays, so after a failed one the next run
+        # lists from it, never the pruned days
+        fresh = Loaded(EntityState(entity, acquired_at, loaded.state.files, claims, None, loaded.state.pruned_before), loaded.version)  # fmt: skip
         version = _persist(client, uri, fresh)
         if version is not None:
-            return Loaded(fresh.state, version)
+            replaced = {u: c for u, c in loaded.state.claims.items() if u in claims}
+            return Loaded(fresh.state, version), replaced
     raise FloeConfigError(
         f"entity.name={entity} full-refresh state write conflicted after {CAS_RETRIES} retries"
     )
@@ -225,7 +251,7 @@ def _mutate(
         )
         mutate(loaded.state, ours)
         state = loaded.state
-        if state.files or state.claims or state.watermark:
+        if state.files or state.claims or state.watermark or state.pruned_before:
             done = _persist(client, uri, loaded) is not None
         else:  # Rust deletes an emptied state
             done = client.delete_conditional(uri, loaded.version)

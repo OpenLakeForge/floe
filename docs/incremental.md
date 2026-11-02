@@ -145,6 +145,11 @@ File incremental state uses schema `floe.state.file-ingest.v2`:
 The `files` map is durable history: source URIs that finished successfully. The
 `claims` map is temporary ownership: source URIs currently reserved by a run.
 
+With `source.partitioning` (see [config.md](config.md)), the state also holds
+`watermark`, the latest partition date ingested, and `pruned_before`: `files` keeps
+no entry dated before it, and a normal run never lists a date before it. Both are
+absent without partitioning, and a state file without them is read as having none.
+
 Existing `floe.state.file-ingest.v1` files are still readable. Floe upgrades
 them to v2 the next time it writes state.
 

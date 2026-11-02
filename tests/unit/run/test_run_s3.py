@@ -32,13 +32,16 @@ class MemS3:
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
         self.endpoint: str | None = None
+        self.now = "2026-01-01T00:00:00Z"  # `LastModified` of what is written or copied next, to the second as S3
+        self.mtimes: dict[str, str] = {}
+        self.meta: dict[str, str | None] = {}  # the `floe-source-mtime` a copy keeps
 
     def resolve_uri(self, path: str) -> str:
         return f"s3://b/{path.lstrip('/')}"
 
     def list(self, prefix: str, start_after: str = "") -> list[ObjectRef]:
         keys = sorted(parse_s3_uri(u)[1] for u in self.objects)
-        return [ObjectRef(f"s3://b/{k}", k, "2026-01-01T00:00:00Z", len(self.objects[f"s3://b/{k}"])) for k in keys if k.startswith(prefix) and k > start_after]  # fmt: skip
+        return [ObjectRef(f"s3://b/{k}", k, self.mtimes.get(f"s3://b/{k}", "2026-01-01T00:00:00Z"), len(self.objects[f"s3://b/{k}"])) for k in keys if k.startswith(prefix) and k > start_after]  # fmt: skip
 
     def download(self, uri: str, temp_dir: Path) -> Path:
         dest = temp_path_for_key(temp_dir, parse_s3_uri(uri)[1])
@@ -46,10 +49,14 @@ class MemS3:
         return dest
 
     def write(self, uri: str, body: bytes) -> None:
-        self.objects[uri] = body
+        self.objects[uri], self.mtimes[uri] = body, self.now
 
-    def copy(self, src_uri: str, dst_uri: str) -> None:
-        self.objects[dst_uri] = self.objects[src_uri]
+    def copy(self, src_uri: str, dst_uri: str, source_mtime: str | None = None) -> None:
+        self.objects[dst_uri], self.mtimes[dst_uri] = self.objects[src_uri], self.now
+        self.meta[dst_uri] = source_mtime
+
+    def source_mtime(self, uri: str) -> str | None:
+        return self.meta.get(uri)
 
     def delete(self, uri: str) -> None:
         self.objects.pop(uri, None)
@@ -352,6 +359,26 @@ def test_d29_the_s3_archive_keeps_the_partition_path_for_a_full_refresh(tmp_path
     assert pl.read_parquet(s3.objects[part]).rows() == [(1, date(2026, 10, 24))]
 
 
+def test_939_a_full_refresh_replays_same_second_s3_archive_copies_in_load_order(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    """D28 loads batch `ff00` (older) before `a1b2`; their archive copies share one second, so only the kept source time orders them."""
+    config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
+    config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64, unique: true}\n        - {name: v, type: string}\n")  # fmt: skip
+    s3.now = "2026-10-24T10:00:00Z"
+    s3.write("s3://b/in/2026/10/24/ff00/x.csv", b"id,v\n1,old\n")
+    s3.now = "2026-10-24T11:00:00Z"
+    s3.write("s3://b/in/2026/10/24/a1b2/y.csv", b"id,v\n1,new\n")
+    s3.now = "2026-10-24T12:00:00Z"  # both archive copies, in the same second
+
+    def accepted() -> list[str]:
+        [part] = parts(s3, "s3://b/out/accepted/")
+        return pl.read_parquet(io.BytesIO(s3.objects[part]))["v"].to_list()
+
+    go(tmp_path, config)
+    assert accepted() == ["old"]  # the first row of a key wins
+    full_refresh(tmp_path, config)
+    assert accepted() == ["old"]
+
+
 def test_d30_an_s3_file_mode_run_starts_after_the_window(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     config = SINKS.replace("    domain: d\n", "    domain: d\n    incremental_mode: file\n", 1).replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
     for day in (20, 23, 24):
@@ -371,7 +398,7 @@ def test_d30_an_s3_file_mode_run_starts_after_the_window(tmp_path: Path, s3: Mem
     report = json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
     assert [f["input_file"] for f in report["files"] if f["status"] == "success"] == ["s3://b/in/2026/10/24/b/x.csv"]  # fmt: skip
     state = json.loads(s3.objects["s3://b/in/.floe/state/d/orders/state.json"])
-    assert (len(state["files"]), state["watermark"]) == (4, "2026-10-24")
+    assert (len(state["files"]), state["watermark"], state["pruned_before"]) == (3, "2026-10-24", "2026-10-23")  # fmt: skip
 
 
 def upload_manifest(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], config: str, **edit: object) -> None:  # fmt: skip
