@@ -2,7 +2,30 @@
 
 All notable changes to Floe are documented in this file.
 
-## v0.8.10
+## v0.9.0
+
+Floe 0.9 accepts configs with `version:` up to `"0.9"` and generates manifests with `spec_version: "0.9"`; use
+dagster-floe 0.5 or airflow-floe 0.3 with it.
+
+- **A `kubernetes_job` runner passes its pod options through to the manifest (#1065).** The profile's
+  `kubernetes_job` runner keeps every key the core does not use (`security_context`, `node_selector`,
+  `tolerations`, `priority_class_name`, ...) as written, and the manifest carries it; a new pod option needs only a
+  dagster-floe release. The core no longer type-checks these options: a mistyped key or a wrongly typed pod option
+  now passes `floe validate` (dagster-floe still rejects a wrongly typed known option when it loads the manifest).
+  `local_process` and `databricks_job` runners still reject unknown keys. Existing manifests are unchanged.
+
+- **File-mode state prunes ingested entries behind a stored `pruned_before` date (#949).** With
+  `incremental_mode: file` and `source.partitioning`, each successful run moves `pruned_before` to the watermark
+  minus `lookback_days` and drops older `files` entries in the same state write, so the state file no longer grows
+  with every ingested file. A normal run never lists days before `pruned_before`, even after `lookback_days` is
+  raised; only `--full-refresh` does. After a failed full refresh the next run lists from `pruned_before`, no longer
+  from the start. State files without the field load unchanged.
+
+- **A full refresh replays same-day S3 archive copies in their original order (#939).** An S3 archive copy keeps
+  the source's modification time in the object metadata `floe-source-mtime`, and a full refresh of a partitioned
+  entity reads it back (one HEAD per archived file) to order same-day batches. Before, batches archived in the same
+  second could replay in batch-name order and keep a different version of a key than the first run. Archiving now
+  takes one HEAD on the source before each copy; archives written before this change keep the old order.
 
 - **`incremental_mode: file` with no source files has nothing pending (#1139).** An entity whose source prefix is
   empty or missing used to fail the run with `no input files matched` / `no input objects matched`. It now finishes
