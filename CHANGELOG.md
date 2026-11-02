@@ -12,7 +12,9 @@ dagster-floe 0.5 or airflow-floe 0.3 with it.
   `tolerations`, `priority_class_name`, ...) as written, and the manifest carries it; a new pod option needs only a
   dagster-floe release. The core no longer type-checks these options: a mistyped key or a wrongly typed pod option
   now passes `floe validate` (dagster-floe still rejects a wrongly typed known option when it loads the manifest).
-  `local_process` and `databricks_job` runners still reject unknown keys. Existing manifests are unchanged.
+  `local` and `databricks_job` runners still accept and ignore the old pod keys (`labels`, `tolerations`, ...)
+  and reject other unknown keys; a non-finite number (`.inf`, `.nan`) in a pod option is rejected. Existing manifests
+  are unchanged.
 
 - **File-mode state prunes ingested entries behind a stored `pruned_before` date (#949).** With
   `incremental_mode: file` and `source.partitioning`, each successful run moves `pruned_before` to the watermark
