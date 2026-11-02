@@ -2,6 +2,17 @@
 
 All notable changes to Floe are documented in this file.
 
+## v0.8.10
+
+- **`incremental_mode: file` with no source files has nothing pending (#1139).** An entity whose source prefix is
+  empty or missing used to fail the run with `no input files matched` / `no input objects matched`. It now finishes
+  with 0 files and 0 rows and leaves its table and state untouched, as when every listed file was already processed.
+  `--full-refresh` with no source files, and `incremental_mode: none` or `archive`, still fail.
+
+- **Compaction no longer keeps all-deleted manifests in the manifest list (#1136).** `floe maintain --compact` left
+  one more dead manifest in the table's manifest list on every run, so later scans and commits read more manifests
+  each time; it now drops them, as overwrites do since v0.8.9.
+
 ## v0.8.9
 
 - **A file removed after listing no longer aborts a run with `sink.rejected` set (#1121).** The file is reported as
