@@ -101,6 +101,13 @@ def parse_state(entity: str, body: bytes) -> EntityState:
         raise FloeConfigError(
             f"entity.name={entity} state schema mismatch: expected {SCHEMA_V1} or {SCHEMA_V2}, got {schema}"
         )
+    if state.pruned_before is not None:  # #949: compared as an ISO date string
+        try:
+            date.fromisoformat(state.pruned_before)
+        except (ValueError, TypeError) as e:
+            raise FloeConfigError(
+                f"entity.name={entity} invalid state file: pruned_before: {e}"
+            ) from e
     if state.entity != entity:
         raise FloeConfigError(
             f"entity.name={entity} state entity mismatch: expected {entity}, got {state.entity}"
@@ -244,7 +251,7 @@ def _mutate(
         )
         mutate(loaded.state, ours)
         state = loaded.state
-        if state.files or state.claims or state.watermark:
+        if state.files or state.claims or state.watermark or state.pruned_before:
             done = _persist(client, uri, loaded) is not None
         else:  # Rust deletes an emptied state
             done = client.delete_conditional(uri, loaded.version)

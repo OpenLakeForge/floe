@@ -491,3 +491,9 @@ def test_949_pruned_before_round_trips_and_an_older_state_has_none() -> None:
         b"pruned_before" not in older
         and parse_state("sales", older).pruned_before is None
     )
+
+
+def test_949_an_invalid_pruned_before_is_a_state_error() -> None:
+    body = dump_state(EntityState("sales", None, {}, {}, None, "yesterday"))
+    with pytest.raises(FloeConfigError, match="invalid state file: pruned_before"):
+        parse_state("sales", body)

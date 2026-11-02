@@ -370,8 +370,8 @@ state file shape, and CAS behavior.
     listed), so every run that lists from a watermark logs one warning naming the window. A
     `--full-refresh` lists everything and picks it up.
   - The watermark moves only forward, when a run promotes its files, in the same state write. A
-    failed `--full-refresh` clears it and restores the claims of dead runs it replaced, so their
-    files are retried.
+    failed `--full-refresh` clears it. If it failed before writing to the sink, it also puts back
+    the claims it replaced (of dead or still running runs), so those files are retried.
   - Per-file entries older than the window are pruned in the same state write, and the state
     records the cut as `pruned_before`. It moves only forward, never past a claim's date, and no
     normal run lists a date before it, even after raising `lookback_days` or a failed `--full-refresh`;

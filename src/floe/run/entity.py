@@ -646,7 +646,7 @@ class Incremental:
             return inputs, []
         self.uri, self.client = state_uri(e, self.config_dir, self.storages)
         if self.full_refresh:
-            # #949: `expired` holds the claims it replaced, which a failed refresh restores
+            # #949: `expired` holds the claims it replaced, which `release` restores if the refresh wrote nothing
             claimed, self.expired = claim_all(self.client, self.uri, e.name, self.run_id, inputs)  # fmt: skip
             self._hold(claimed)
             return inputs, []
@@ -720,10 +720,17 @@ class Incremental:
         return claimed
 
     def release(self) -> None:
-        """The dead runs' claims this run took over go back: the next run checks them again (#545)."""
+        """The dead runs' claims this run took over go back: the next run checks them again (#545).
+
+        #949: a full refresh puts back the claims it replaced only if it wrote nothing, as its overwrite drops their rows
+        and the retry guard would find their run's snapshot behind it.
+        """
         if claimed := self._end():
+            restore = (
+                {} if self.full_refresh and self.committed is not None else self.expired
+            )
             # D30: an older day's released file stays listed for a retry
-            release(self.client, self.uri, self.run_id, claimed, self.expired, self.advance is not None and not self.full_refresh)  # fmt: skip
+            release(self.client, self.uri, self.run_id, claimed, restore, self.advance is not None and not self.full_refresh)  # fmt: skip
 
     def finish(self, files: list[dict[str, Any]]) -> None:
         """Promote unless the entity failed (Rust commits on success, warnings and rejected).
