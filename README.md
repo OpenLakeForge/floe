@@ -73,6 +73,7 @@ catalog, and ADLS and GCS storage. The Rust implementation that supported them
 | Airflow and Dagster manifests | [docs/manifest.md](docs/manifest.md), [orchestrators/airflow-floe/README.md](orchestrators/airflow-floe/README.md), [orchestrators/dagster-floe/README.md](orchestrators/dagster-floe/README.md) |
 | Python API and notebooks | [docs/python-bindings.md](docs/python-bindings.md) |
 | Installation and CLI usage | [docs/installation.md](docs/installation.md), [docs/cli.md](docs/cli.md) |
+| AI agent skill for Floe contracts | [skills/building-floe-contracts/SKILL.md](skills/building-floe-contracts/SKILL.md) |
 
 ## Install
 
