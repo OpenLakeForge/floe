@@ -405,6 +405,11 @@ supported. Floe 0.7 and earlier manifests are rejected.
   path-style addressing, matching Floe core (#448). Without these variables behaviour is
   unchanged. Requires the existing `remote` extra.
 
+## airflow-floe v0.3.0
+
+- **Accepts Floe 0.9 manifests.** `spec_version` `0.8` and `0.9` load. Pod options a Floe 0.9 profile passes
+  through on a `kubernetes_job` runner are ignored, as before.
+
 ## airflow-floe v0.2.0
 
 Built for Floe 0.8 (`floe-python` 0.8, where `floe` is the Python CLI and `ghcr.io/openlakeforge/floe`

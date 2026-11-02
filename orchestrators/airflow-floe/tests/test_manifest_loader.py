@@ -109,6 +109,16 @@ class ManifestLoaderTests(unittest.TestCase):
             context.config_path, "/srv/floe/manifest_run/config.yml"
         )
 
+    def test_load_manifest_accepts_floe_0_9(self) -> None:
+        payload = self._manifest_payload()
+        payload["spec_version"] = "0.9"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "manifest-0.9.json"
+            target.write_text(json.dumps(payload), encoding="utf-8")
+
+            self.assertEqual(load_manifest(target).spec_version, "0.9")
+
     def test_load_manifest_rejects_unsupported_spec_version(self) -> None:
         payload = self._manifest_payload()
         payload["spec_version"] = "0.7"
@@ -118,7 +128,7 @@ class ManifestLoaderTests(unittest.TestCase):
             target.write_text(json.dumps(payload), encoding="utf-8")
 
             with self.assertRaisesRegex(
-                ValueError, r"manifest spec_version 0\.7 is not supported \(supported: 0\.8\)"
+                ValueError, r"manifest spec_version 0\.7 is not supported \(supported: 0\.8, 0\.9\)"
             ):
                 load_manifest(target)
 
