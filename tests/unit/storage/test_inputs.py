@@ -31,7 +31,10 @@ class FakeClient:
     def write(self, uri: str, body: bytes) -> None:
         raise NotImplementedError
 
-    def copy(self, src_uri: str, dst_uri: str) -> None:
+    def copy(self, src_uri: str, dst_uri: str, source_mtime: str | None = None) -> None:
+        raise NotImplementedError
+
+    def source_mtime(self, uri: str) -> str | None:
         raise NotImplementedError
 
     def delete(self, uri: str) -> None:

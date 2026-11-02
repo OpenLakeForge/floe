@@ -313,7 +313,11 @@ def _with_archived(e: EntityConfig, archive: tuple[str, StorageClient], source: 
             source()
         )  # nothing archived: the source's "no input files matched" stands
     if p is not None:  # D29: the archive keeps the partition sub-paths
-        old = in_load_order(p, e.name, f"{base}/{e.name}", old, archived=True)
+        # #939: D28 orders a day's batches by the source's modification time, which the copy's own does not keep
+        kept = [replace(f, source_mtime=client.source_mtime(f.source_uri) or f.source_mtime) for f in old.files]  # fmt: skip
+        old = in_load_order(
+            p, e.name, f"{base}/{e.name}", replace(old, files=kept), archived=True
+        )
     try:
         new = source()
     except NoInputsError:  # no new source file: rebuild from the archive alone
