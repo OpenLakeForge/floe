@@ -147,6 +147,13 @@ All notable changes to Floe are documented in this file.
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
   dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
+## dagster-floe v0.4.4
+
+- **In-process runs log Floe events live (#904).** With `InProcessRunner` (the default of `build_runner_from_env()`
+  when the `floe` core is installed), each Floe event reaches the Dagster log as it happens, once, instead of all
+  together after the run. Subprocess, `kubernetes_job` and `databricks_job` runs, `job_scope: domain` runs and the
+  asset metadata are unchanged.
+
 ## dagster-floe v0.4.3
 
 - **Per-run full refresh from the `floe/full_refresh` run tag (#1091).** A Dagster run tagged
