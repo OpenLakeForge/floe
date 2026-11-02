@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 # D22: a manifest's spec_version is the Floe major.minor that generated it.
-SUPPORTED_SPEC_VERSIONS = ("0.8",)
+SUPPORTED_SPEC_VERSIONS = ("0.8", "0.9")
 
 
 @dataclass(frozen=True)
