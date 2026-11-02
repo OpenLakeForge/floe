@@ -147,7 +147,11 @@ All notable changes to Floe are documented in this file.
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
   dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
-## dagster-floe v0.4.4
+## dagster-floe v0.5.0
+
+- **Accepts Floe 0.9 manifests.** `spec_version` `0.8` and `0.9` load; the `floe` extra now installs
+  `floe-python>=0.9,<0.10`. Pod options a Floe 0.9 profile passes through on a `kubernetes_job` runner reach the
+  manifest unchanged and are validated here, against the manifest schema.
 
 - **In-process runs log Floe events live (#904).** With `InProcessRunner` (the default of `build_runner_from_env()`
   when the `floe` core is installed), each Floe event reaches the Dagster log as it happens, once, instead of all
