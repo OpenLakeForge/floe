@@ -71,7 +71,9 @@ class _RewriteFiles(_OverwriteFiles):
                 for e in entries:
                     writer.delete(e) if e.data_file in self._deleted_data_files else writer.existing(e)  # fmt: skip
             out.append(writer.to_manifest_file())
-        return out
+        return [
+            m for m in out if m.has_added_files() or m.has_existing_files()
+        ]  # #1136: as `_LiveOverwrite`
 
     def _summary(self, snapshot_properties: Mapping[str, str] = {}) -> Summary:
         # built as an OVERWRITE: PyIceberg 0.12's `update_snapshot_summaries` rejects REPLACE

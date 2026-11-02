@@ -133,6 +133,26 @@ def test_compaction_of_an_empty_table_commits_nothing(
     assert catalog.commits == []
 
 
+def test_compaction_drops_all_deleted_manifests(
+    server: tuple[RestCatalog, CatalogDefinition],  # noqa: F811 -- the imported fixture
+) -> None:
+    """#1136: each compaction used to leave one more dead manifest in the manifest list."""
+    _, definition = server
+    table = merged(definition)
+    with open_duckdb(definition) as con:
+        for i in range(3):
+            compact(table, con)
+            table.refresh()
+            merge_scd1(con, table, reader((i, "z")), ["id"])
+            table.refresh()
+        compact(table, con)
+    table.refresh()
+    snapshot = table.current_snapshot()
+    assert snapshot is not None
+    manifests = snapshot.manifests(table.io)
+    assert all(m.has_added_files() or m.has_existing_files() for m in manifests)
+
+
 def test_pyiceberg_is_the_version_compaction_was_written_against() -> None:
     """`floe.iceberg.compact` subclasses private PyIceberg internals: re-check them before bumping."""
     assert pyiceberg.__version__ == "0.12.0", "re-verify floe/iceberg/compact.py against the new PyIceberg internals"  # fmt: skip
