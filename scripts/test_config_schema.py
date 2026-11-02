@@ -1301,6 +1301,8 @@ class ConfigSchemaTest(unittest.TestCase):
             "i64 maximum": runner(type="local", timeout_seconds=9223372036854775807, resources={"memory_mb": 9223372036854775807}),
             "image on local runner": runner(type="local", image="x"),
             "#1065 pod option on kubernetes_job": runner(**k8s, priority_class_name="p"),
+            "#1065 legacy pod key on local": runner(type="local", labels={"team": "x"}),
+            "#1065 legacy pod key on databricks_job": runner(**databricks, labels={"team": "x"}),
         }
         for name, document in valid.items():
             with self.subTest(name):

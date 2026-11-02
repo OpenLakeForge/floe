@@ -663,9 +663,24 @@ def test_1065_a_k8s_pod_option_reaches_the_manifest_as_written(
             "expected string key at profile.execution.runner.tolerations[]",
         ),
         (
+            "kubernetes_job",
+            "security_context: {runAsUser: .inf}",
+            "profile.execution.runner.security_context.runAsUser must be a finite number",
+        ),
+        (
+            "kubernetes_job",
+            "tolerations: [{tolerationSeconds: .nan}]",
+            "profile.execution.runner.tolerations[].tolerationSeconds must be a finite number",
+        ),
+        (
             "databricks_job",
-            "labels: {a: b}",
-            "unknown field profile.execution.runner.labels",
+            "priority_class_name: p",
+            "unknown field profile.execution.runner.priority_class_name",
+        ),
+        (
+            "local",
+            "priority_class_name: p",
+            "unknown field profile.execution.runner.priority_class_name",
         ),
     ],
 )
@@ -685,6 +700,33 @@ def test_1065_a_pod_option_json_cannot_carry_is_rejected(
     argv = ("-o", "-", "-p", str(tmp_path / "prod.yml"))
     assert generate(tmp_path, monkeypatch, *argv) != 0
     assert message in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        K8S.replace("type: kubernetes_job", "type: local"),
+        DBX,
+    ],
+    ids=["local", "databricks_job"],
+)
+def test_1065_a_non_k8s_runner_still_accepts_and_drops_the_legacy_pod_keys(
+    profile: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A profile copied from a kubernetes_job keeps loading; the manifest omits its pod options."""
+    settings = "\n    ".join(
+        f"{k}: {json.dumps(v)}" for k, v in K8S_POD_OPTIONS.items()
+    )
+    (tmp_path / "prod.yml").write_text(
+        profile.replace("    image:", f"    {settings}\n    image:", 1)
+    )
+    argv = ("-o", "-", "-p", str(tmp_path / "prod.yml"))
+    assert generate(tmp_path, monkeypatch, *argv) == 0
+    runners = json.loads(capsys.readouterr().out)["runners"]["definitions"]
+    assert not any(K8S_POD_OPTIONS.keys() & r.keys() for r in runners.values())
 
 
 def test_d28_the_entity_source_carries_its_partitioning(

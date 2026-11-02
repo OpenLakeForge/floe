@@ -249,10 +249,14 @@ execution:
 and `security_context`, `tolerations` and `env_from` are copied as written: Kubernetes validates them.
 
 Floe itself does not check the pod options. Any key of a `kubernetes_job` runner that Floe does not use
-goes into the manifest as written. The orchestrator validates it when it loads the manifest, so a new
-pod option needs only an orchestrator release. A mistyped key is therefore no longer reported by
-`floe validate`. Only mapping keys that are not strings are rejected. Other runner types still reject
-unknown keys.
+goes into the manifest as written, so a new pod option needs only an orchestrator release. Floe rejects
+only values JSON cannot carry: a mapping key that is not a string, or `.inf` and `.nan`. When dagster-floe
+loads the manifest, it rejects a known option with the wrong type (`backoff_limit: two`). It ignores a key
+it does not know, so a mistyped key such as `node_selectr` is reported by neither `floe validate` nor
+dagster-floe and has no effect.
+
+A `local` or `databricks_job` runner still accepts the options above and leaves them out of the manifest,
+so a profile copied from a `kubernetes_job` keeps loading. It rejects any other unknown key.
 
 `poll_interval_seconds` is an integer of at least 1 (default 10): dagster-floe reads the Job's status that
 often, so a Job that finishes early is only noticed at the next poll. A lower value such as `2` shortens
