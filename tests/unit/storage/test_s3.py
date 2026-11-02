@@ -100,3 +100,22 @@ def test_conditional_delete_uses_if_match(monkeypatch: pytest.MonkeyPatch) -> No
 def test_endpoint_ignores_a_trailing_slash() -> None:
     """D34 (#931) compares endpoints to tell two stores apart: `http://minio:9000/` is the same store."""
     assert S3Client("b", "us-east-1", "http://minio:9000/").endpoint == S3Client("b", "us-east-1", "http://minio:9000").endpoint  # fmt: skip
+
+
+def test_939_an_archive_copy_keeps_the_source_mtime_and_headers(monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
+    client = S3Client("b", "us-east-1")
+    meta = {"owner": "x", "floe-source-mtime": "2026-10-24T10:00:00Z"}
+    copied = {"Bucket": "b", "Key": "arch/a.csv", "CopySource": {"Bucket": "b", "Key": "in/a.csv"}, "ContentType": "text/csv", "Metadata": meta, "MetadataDirective": "REPLACE"}  # fmt: skip
+    with Stubber(client._client) as stub:  # pyright: ignore[reportPrivateUsage]
+        stub.add_response("head_object", {"ContentType": "text/csv", "Metadata": {"owner": "x"}}, {"Bucket": "b", "Key": "in/a.csv"})  # pyright: ignore[reportUnknownMemberType]  # fmt: skip
+        stub.add_response("copy_object", {}, copied)  # pyright: ignore[reportUnknownMemberType]
+        stub.add_response("head_object", {"Metadata": meta}, {"Bucket": "b", "Key": "arch/a.csv"})  # pyright: ignore[reportUnknownMemberType]  # fmt: skip
+        stub.add_response("head_object", {"Metadata": {}}, {"Bucket": "b", "Key": "arch/old.csv"})  # pyright: ignore[reportUnknownMemberType]  # fmt: skip
+        client.copy("s3://b/in/a.csv", "s3://b/arch/a.csv", "2026-10-24T10:00:00Z")
+        assert client.source_mtime("s3://b/arch/a.csv") == "2026-10-24T10:00:00Z"
+        assert (
+            client.source_mtime("s3://b/arch/old.csv") is None
+        )  # archived before #939
+        stub.assert_no_pending_responses()

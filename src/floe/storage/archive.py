@@ -21,7 +21,7 @@ def archive_input_file(
         f"{entity_name}/{subdir}" if subdir else entity_name, input_file.source_name, run_id, input_file.source_uri
     )  # fmt: skip
     dest_uri = join_relative(relative)
-    client.copy(input_file.source_uri, dest_uri)
+    client.copy(input_file.source_uri, dest_uri, input_file.source_mtime)
     try:
         client.delete(input_file.source_uri)
     except FloeError as e:

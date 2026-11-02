@@ -96,7 +96,8 @@ class LocalClient:
             key=lambda r: r.uri,
         )
 
-    def copy(self, src_uri: str, dst_uri: str) -> None:
+    def copy(self, src_uri: str, dst_uri: str, source_mtime: str | None = None) -> None:
+        """`source_mtime` is not kept: a local copy's nanosecond mtime already follows the archive (load) order (#939)."""
         src, dst = _path(src_uri), _path(dst_uri)
         try:
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -108,6 +109,9 @@ class LocalClient:
                 shutil.copyfileobj(fin, fout)
         except OSError as e:
             raise FloeStorageError(f"local copy failed from {src} to {dst}: {e}") from e
+
+    def source_mtime(self, uri: str) -> str | None:
+        return None
 
     def write(self, uri: str, body: bytes) -> None:
         path = _path(uri)
