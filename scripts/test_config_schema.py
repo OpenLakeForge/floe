@@ -1287,6 +1287,8 @@ class ConfigSchemaTest(unittest.TestCase):
                 for field in ("timeout_seconds", "ttl_seconds_after_finished", "poll_interval_seconds")
             },
             "S32 memory_mb": runner(type="local", resources={"memory_mb": too_big}),
+            "#1065 unknown key on local": runner(type="local", priority_class_name="p"),
+            "#1065 unknown key on databricks_job": runner(**databricks, priority_class_name="p"),
         }
         for name, document in invalid.items():
             with self.subTest(name):
@@ -1298,6 +1300,7 @@ class ConfigSchemaTest(unittest.TestCase):
             "cross-reference": profile(variables={"B": "x", "A": "${B}/y", "C": "$${B} $ {"}),
             "i64 maximum": runner(type="local", timeout_seconds=9223372036854775807, resources={"memory_mb": 9223372036854775807}),
             "image on local runner": runner(type="local", image="x"),
+            "#1065 pod option on kubernetes_job": runner(**k8s, priority_class_name="p"),
         }
         for name, document in valid.items():
             with self.subTest(name):

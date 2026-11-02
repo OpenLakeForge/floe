@@ -344,7 +344,8 @@
           "minProperties": 1,
           "additionalProperties": {
             "type": "object",
-            "additionalProperties": false,
+            "description": "A kubernetes_job definition also carries the profile's other runner keys as written (#1065); the orchestrator validates them.",
+            "additionalProperties": true,
             "required": [
               "type"
             ],

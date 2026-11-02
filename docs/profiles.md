@@ -248,6 +248,12 @@ execution:
 `labels`, `annotations` and `node_selector` are string maps, `backoff_limit` is a non-negative integer,
 and `security_context`, `tolerations` and `env_from` are copied as written: Kubernetes validates them.
 
+Floe itself does not check the pod options. Any key of a `kubernetes_job` runner that Floe does not use
+goes into the manifest as written. The orchestrator validates it when it loads the manifest, so a new
+pod option needs only an orchestrator release. A mistyped key is therefore no longer reported by
+`floe validate`. Only mapping keys that are not strings are rejected. Other runner types still reject
+unknown keys.
+
 `poll_interval_seconds` is an integer of at least 1 (default 10): dagster-floe reads the Job's status that
 often, so a Job that finishes early is only noticed at the next poll. A lower value such as `2` shortens
 short Jobs at the cost of more Kubernetes API reads.

@@ -275,10 +275,6 @@ _RUNNER_FIELDS = (
     *("resources", "env", "workspace_url", "existing_cluster_id", "config_uri"),
     *("python_file_uri", "job_name", "auth", "env_parameters"),
 )
-_PYTHON_RUNNER_FIELDS = (  # carried only when set
-    *("job_scope", "domain_resources", "labels", "annotations", "image_pull_policy"),
-    *("security_context", "node_selector", "tolerations", "backoff_limit", "env_from"),
-)
 
 
 # Rust `runners_contract`: the fields each profile runner type carries into the manifest
@@ -303,9 +299,10 @@ def _runners(profile: ProfileConfig | None) -> Json:
             v = dict(sorted(cast(dict[str, str], v).items()))
         runner[k] = v
     if kind == "kubernetes_job":
-        for k in _PYTHON_RUNNER_FIELDS:
-            if (v := profile.runner.get(k)) is not None:
-                runner[k] = v
+        # `job_scope`, `domain_resources` and the pod options (#1065), only when set
+        runner |= {
+            k: v for k, v in profile.runner.items() if k not in runner and v is not None
+        }
     if kind == "databricks_job":
         runner["job_name"] = runner["job_name"] or "floe-{domain}-{env}"
     return {"default": "default", "definitions": {"default": runner}}
