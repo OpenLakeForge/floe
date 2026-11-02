@@ -148,10 +148,10 @@ class S3Client:
         """#939: the source modification time an archive copy keeps; None on a copy made before it was kept."""
         bucket, key = parse_s3_uri(uri)
         try:
-            return (
-                self._client.head_object(Bucket=bucket, Key=key)
-                .get("Metadata", {})
-                .get(_SOURCE_MTIME)
+            meta = self._client.head_object(Bucket=bucket, Key=key).get("Metadata", {})
+            # a Go server (MinIO, SeaweedFS) may send the header canonicalised: `X-Amz-Meta-Floe-Source-Mtime`
+            return next(
+                (v for k, v in meta.items() if k.lower() == _SOURCE_MTIME), None
             )
         except (ClientError, BotoCoreError) as e:
             raise FloeStorageError(f"s3 head object failed for {uri}: {e}") from e

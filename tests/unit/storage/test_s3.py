@@ -113,9 +113,13 @@ def test_939_an_archive_copy_keeps_the_source_mtime_and_headers(monkeypatch: pyt
         stub.add_response("copy_object", {}, copied)  # pyright: ignore[reportUnknownMemberType]
         stub.add_response("head_object", {"Metadata": meta}, {"Bucket": "b", "Key": "arch/a.csv"})  # pyright: ignore[reportUnknownMemberType]  # fmt: skip
         stub.add_response("head_object", {"Metadata": {}}, {"Bucket": "b", "Key": "arch/old.csv"})  # pyright: ignore[reportUnknownMemberType]  # fmt: skip
+        stub.add_response("head_object", {"Metadata": {"Floe-Source-Mtime": "2026-10-24T10:00:00Z"}}, {"Bucket": "b", "Key": "arch/go.csv"})  # pyright: ignore[reportUnknownMemberType]  # fmt: skip
         client.copy("s3://b/in/a.csv", "s3://b/arch/a.csv", "2026-10-24T10:00:00Z")
         assert client.source_mtime("s3://b/arch/a.csv") == "2026-10-24T10:00:00Z"
         assert (
             client.source_mtime("s3://b/arch/old.csv") is None
         )  # archived before #939
+        assert (
+            client.source_mtime("s3://b/arch/go.csv") == "2026-10-24T10:00:00Z"
+        )  # header case kept by botocore
         stub.assert_no_pending_responses()
