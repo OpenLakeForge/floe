@@ -371,7 +371,7 @@ def test_d30_an_s3_file_mode_run_starts_after_the_window(tmp_path: Path, s3: Mem
     report = json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
     assert [f["input_file"] for f in report["files"] if f["status"] == "success"] == ["s3://b/in/2026/10/24/b/x.csv"]  # fmt: skip
     state = json.loads(s3.objects["s3://b/in/.floe/state/d/orders/state.json"])
-    assert (len(state["files"]), state["watermark"]) == (4, "2026-10-24")
+    assert (len(state["files"]), state["watermark"], state["pruned_before"]) == (3, "2026-10-24", "2026-10-23")  # fmt: skip
 
 
 def upload_manifest(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], config: str, **edit: object) -> None:  # fmt: skip

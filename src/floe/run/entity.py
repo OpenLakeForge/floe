@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable, Generator, Iterable, Iterator
 from contextlib import closing, suppress
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import date, datetime
 from functools import partial
 from itertools import chain
 from pathlib import Path
@@ -93,6 +93,7 @@ from floe.storage.partitioning import (
     advance,
     in_load_order,
     listing_start,
+    partition_date,
     partition_of,
     source_root,
     window,
@@ -634,6 +635,7 @@ class Incremental:
         # the file reports, set once the sink step is done (#915)
         self.committed: list[dict[str, Any]] | None = None
         self.advance: Callable[[EntityState, list[str]], None] | None = None  # D30
+        self.dated: Callable[[str], date | None] | None = None  # #949: an input's partition date  # fmt: skip
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -644,9 +646,11 @@ class Incremental:
             return inputs, []
         self.uri, self.client = state_uri(e, self.config_dir, self.storages)
         if self.full_refresh:
-            self._hold(claim_all(self.client, self.uri, e.name, self.run_id, inputs))
+            # #949: `expired` holds the claims it replaced, which a failed refresh restores
+            claimed, self.expired = claim_all(self.client, self.uri, e.name, self.run_id, inputs)  # fmt: skip
+            self._hold(claimed)
             return inputs, []
-        got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs, e.sink.write_mode.startswith("merge"))  # fmt: skip
+        got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs, e.sink.write_mode.startswith("merge"), self.dated)  # fmt: skip
         reports = skipped_reports(e, got.already_processed, got.active_claims)
         _emit_skipped(emit, e.name, reports)
         self.expired = got.expired
@@ -922,6 +926,7 @@ def _run_entity(
     if entity.source.partitioning and entity.incremental_mode == "file":
         dated = entity.source.partitioning, entity.name, source_root(source_uri)
         inc.advance = partial(advance, *dated)
+        inc.dated = partial(partition_date, *dated)
     archive = plan.archive  # a full refresh lists it too
     plan.derived = _derived(entity, source_uri, archive and archive[0], inputs.files)
     # D34 (#931): same store only (a bucket name repeats across endpoints); before the claim, so a refusal leaves nothing to release

@@ -239,8 +239,8 @@ def test_d30_file_mode_lists_from_the_watermark_minus_lookback(tmp_path: Path) -
     assert listed == ["2026/10/23/b23/x.csv", "2026/10/24/b24/x.csv", "2026/10/24/c3d4/y.csv"]  # fmt: skip
     assert [f["status"] for f in r["files"]] == ["skipped", "skipped", "success"]
     state = state_of(tmp_path)
-    assert len(state["files"]) == 25  # no pruning yet (#949)
-    assert state["watermark"] == "2026-10-24"
+    assert len(state["files"]) == 3  # #949: entries before the window are pruned
+    assert (state["watermark"], state["pruned_before"]) == ("2026-10-24", "2026-10-23")
     [warn] = [e for e in events if e["event"] == "log"]
     assert (warn["log_level"], warn["entity"]) == ("warn", "o")
     assert "dates from 2026-10-23 (watermark 2026-10-24, lookback_days 1)" in warn["message"]  # fmt: skip
@@ -294,32 +294,71 @@ def test_d30_a_failed_run_keeps_an_older_day_listed_for_its_retry(tmp_path: Path
     assert [f["input_file"] for f in report(tmp_path)["files"] if f["status"] == "success"] == [old]  # fmt: skip
 
 
-def test_d30_a_failed_full_refresh_clears_the_watermark(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
-    """The next run lists everything once, so an older file a dead run had claimed is still retried."""
-    put(tmp_path, "2026/10/24/a/x.csv", "id\n1\n", 100)
+def test_d30_a_failed_full_refresh_keeps_a_dead_claim_for_its_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#949: the refresh's claims are dropped and the dead run's claim it replaced comes back, so its file is retried;
+    `pruned_before` stays, so the pruned days and a late file before it are not listed again."""
+    put(tmp_path, "2026/10/20/a/x.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n2\n", 100)
     go(tmp_path, "incremental_mode: file")
-    put(tmp_path, "2026/10/10/old/x.csv", "id\n2\n", 100)
+    [path] = (tmp_path / "in/.floe").rglob("state.json")
+    state = json.loads(path.read_text())
+    put(tmp_path, "2026/10/23/dead/x.csv", "id\n3\n", 100)
+    put(tmp_path, "2026/10/10/late/x.csv", "id\n4\n", 100)
+    dead = f"local://{tmp_path}/in/2026/10/23/dead/x.csv"
+    state["claims"][dead] = {"run_id": "dead", "acquired_at": "2026-01-01T00:00:00Z", "expires_at": "2026-01-01T01:00:00Z"}  # fmt: skip
+    path.write_text(json.dumps(state))
     with monkeypatch.context() as m:
         m.setattr(entity_module, "_run_file", boom)
         with pytest.raises(FloeRunError, match="boom"):
             go(tmp_path, "incremental_mode: file", full_refresh=True)
-    assert "watermark" not in state_of(tmp_path)
+    state = state_of(tmp_path)
+    assert ("watermark" not in state, state["pruned_before"], state["claims"][dead]["run_id"]) == (True, "2026-10-23", "dead")  # fmt: skip
     go(tmp_path, "incremental_mode: file")
     r = report(tmp_path)
-    assert [(f["input_file"].split("/in/")[1], f["status"]) for f in r["files"]] == [("2026/10/24/a/x.csv", "skipped"), ("2026/10/10/old/x.csv", "success")]  # fmt: skip
-    assert state_of(tmp_path)["watermark"] == "2026-10-24"
+    assert [(f["input_file"].split("/in/")[1], f["status"]) for f in r["files"]] == [("2026/10/24/a/x.csv", "skipped"), ("2026/10/23/dead/x.csv", "success")]  # fmt: skip
 
 
-def test_d30_raising_lookback_days_does_not_reingest(tmp_path: Path) -> None:
+def test_d30_raising_lookback_days_after_pruning_does_not_reingest(
+    tmp_path: Path,
+) -> None:
+    """#949: 10-20's entry is pruned; the window never starts before `pruned_before`, so it is not listed again."""
     put(tmp_path, "2026/10/20/a/x.csv", "id\n1\n", 100)
     put(tmp_path, "2026/10/24/a/x.csv", "id\n2\n", 100)
     go(tmp_path, "incremental_mode: file")
+    state = state_of(tmp_path)
+    assert ([u.split("/in/")[1] for u in state["files"]], state["pruned_before"]) == (["2026/10/24/a/x.csv"], "2026-10-23")  # fmt: skip
     path = tmp_path / "config.yml"
     path.write_text(path.read_text().replace("batch_column: batch_id}", "batch_column: batch_id, lookback_days: 7}"))  # fmt: skip
     run(path, parse_config(path, {}))
     r = report(tmp_path)
-    assert [u.split("/in/")[1] for u in r["source"]["resolved_inputs"]["files"]] == ["2026/10/20/a/x.csv", "2026/10/24/a/x.csv"]  # fmt: skip
-    assert [f["status"] for f in r["files"]] == ["skipped", "skipped"]
+    assert [u.split("/in/")[1] for u in r["source"]["resolved_inputs"]["files"]] == ["2026/10/24/a/x.csv"]  # fmt: skip
+    assert [f["status"] for f in r["files"]] == ["skipped"]
+
+
+def test_949_a_run_that_listed_before_another_pruned_does_not_reingest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """Another run moves `pruned_before` past an input between this run's listing and its claim: the claim drops it."""
+    put(tmp_path, "2026/10/20/a/x.csv", "id\n1\n", 100)
+    put(tmp_path, "2026/10/24/a/x.csv", "id\n2\n", 100)
+    go(
+        tmp_path, "incremental_mode: file"
+    )  # 10-20's entry is pruned, `pruned_before` is 10-23
+    [path] = (tmp_path / "in/.floe").rglob("state.json")
+    pruned = path.read_text()
+    state = json.loads(pruned)
+    # the state this run lists from: its window holds 10-20
+    state["watermark"], state["pruned_before"] = "2026-10-21", "2026-10-20"
+    path.write_text(json.dumps(state))
+    real = entity_module.claim_inputs
+
+    def raced(*args: Any) -> Any:
+        path.write_text(pruned)  # the other run's promote lands
+        return real(*args)
+
+    monkeypatch.setattr(entity_module, "claim_inputs", raced)
+    go(tmp_path, "incremental_mode: file")
+    r = report(tmp_path)
+    assert "2026/10/20/a/x.csv" in str(r["source"]["resolved_inputs"]["files"])
+    assert [f["status"] for f in r["files"]] == ["skipped"]
 
 
 def test_d30_a_nested_glob_override_keeps_its_meaning(tmp_path: Path) -> None:
