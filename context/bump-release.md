@@ -45,8 +45,11 @@ Branch `chore/bump-v<NEW_VERSION>` from `main`, then:
 4. Check that `docs/` covers every user-visible change (`docs/config.md`, `docs/cli.md`,
    `docs/sinks/<format>.md`, `docs/pii.md`, `docs/lineage.md`, `docs/profiles.md`,
    `docs/manifest.md`, `docs/support-matrix.md`).
-5. Run the checks in `AGENTS.md` §5. The golden suite ignores `tool.version`, so it needs no
-   re-record.
+5. Run the checks in `AGENTS.md` §5. The golden suite ignores `tool.version`, so a patch bump needs no
+   re-record. A minor bump changes what a few cases record: the D21 messages
+   (`config/val1_version_d21_newer_minor`, whose config names the next minor, and
+   `config/val1_version_future_major_ok`), the `spec_version` in `manifest_run`'s reports, and
+   the unit tests that pin the current minor (`test_d21_version_follows_floe`, `test_cli_add_entity.py`).
 
 Title: `chore: release floe-python v<NEW_VERSION>`.
 
