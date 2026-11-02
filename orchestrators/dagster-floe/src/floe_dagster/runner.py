@@ -5,10 +5,12 @@ import os
 import shlex
 import subprocess
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from unittest.mock import patch
 
+from .events import render_log_event
 from .manifest import ManifestExecution, ManifestRunnerDefinition, render_execution_args
 
 
@@ -20,6 +22,7 @@ class RunResult:
     status: str | None = None
     failure_reason: str | None = None
     backend_metadata: dict[str, str | int | None] = field(default_factory=dict)
+    logged: bool = False  # #904: each event already went to the `log` callback, as it happened
 
 
 class Runner:
@@ -48,7 +51,9 @@ class Runner:
         runner_definition: ManifestRunnerDefinition | None = None,
         manifest_uri: str | None = None,
         dagster_job_name: str | None = None,
+        log: Callable[[str], None] | None = None,
     ) -> RunResult:
+        """`log`, when given, may receive each event's log line while the run is in progress (then `logged` is set)."""
         raise NotImplementedError
 
 
@@ -102,6 +107,7 @@ class LocalRunner(Runner):
         runner_definition: ManifestRunnerDefinition | None = None,
         manifest_uri: str | None = None,
         dagster_job_name: str | None = None,
+        log: Callable[[str], None] | None = None,
     ) -> RunResult:
         if runner_definition is not None and runner_definition.runner_type == "kubernetes_job":
             if execution is None:
@@ -209,6 +215,7 @@ class InProcessRunner(LocalRunner):
         runner_definition: ManifestRunnerDefinition | None = None,
         manifest_uri: str | None = None,
         dagster_job_name: str | None = None,
+        log: Callable[[str], None] | None = None,
     ) -> RunResult:
         args = (
             render_execution_args(
@@ -250,7 +257,12 @@ class InProcessRunner(LocalRunner):
         job = {"DAGSTER_JOB_NAME": dagster_job_name} if dagster_job_name else {}
         # the env the subprocess gets, for the lineage parent run; restored on exit
         with _IN_PROCESS_LOCK, patch.dict(os.environ, job):
-            floe.set_observer(events.append)
+            def observe(event: dict[str, object]) -> None:
+                events.append(event)
+                if log is not None:  # #904: live, as `_log_floe_output` renders it after a subprocess
+                    log(render_log_event(event) or f"floe stdout | {json.dumps(event, ensure_ascii=False)}")
+
+            floe.set_observer(observe)
             try:
                 full_refresh = "--full-refresh" in args
                 outcome = (
@@ -267,7 +279,7 @@ class InProcessRunner(LocalRunner):
             finally:
                 floe.clear_observer()
         stdout = "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in events)
-        return RunResult(stdout=stdout, stderr=stderr, exit_code=exit_code)
+        return RunResult(stdout=stdout, stderr=stderr, exit_code=exit_code, logged=log is not None)
 
 
 # Conventional exit code for a process killed by a timeout (matches timeout(1)).

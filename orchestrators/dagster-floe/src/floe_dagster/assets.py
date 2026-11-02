@@ -325,6 +325,7 @@ def _make_entity_multi_asset(
             execution=_for_run(execution, run),
             runner_definition=runner_definition,
             dagster_job_name=dagster_job_name,
+            log=context.log.info,
         )
 
         finished = _parse_finished(context, result, execution, run_id)
@@ -360,7 +361,8 @@ def _for_run(execution: ManifestExecution, run: Any) -> ManifestExecution:
 def _parse_finished(context: Any, result: RunResult, execution: ManifestExecution, run_id: str | None):
     try:
         events = parse_json_event_lines(result.stdout)
-        _log_floe_output(context, result.stdout, events)
+        if not result.logged:
+            _log_floe_output(context, result.stdout, events)
         if result.stderr.strip():
             _log_floe_stderr(context, result.stderr)
         finished_event = last_run_finished(events)
@@ -369,7 +371,8 @@ def _parse_finished(context: Any, result: RunResult, execution: ManifestExecutio
             summary_uri_field=execution.result_contract.summary_uri_field,
         )
     except ValueError as exc:
-        _log_floe_output(context, result.stdout, [])
+        if not result.logged:
+            _log_floe_output(context, result.stdout, [])
         if result.stderr.strip():
             _log_floe_stderr(context, result.stderr)
         context.log.warning(f"failed to parse Floe run events: {exc}")

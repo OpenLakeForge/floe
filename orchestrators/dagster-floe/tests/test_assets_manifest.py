@@ -29,8 +29,9 @@ class _NoopRunner(Runner):
         runner_definition=None,
         manifest_uri: str | None = None,
         dagster_job_name: str | None = None,
+        log=None,
     ) -> RunResult:
-        del config_uri, run_id, entity, log_format, execution, runner_definition, manifest_uri, dagster_job_name
+        del config_uri, run_id, entity, log_format, execution, runner_definition, manifest_uri, dagster_job_name, log
         return RunResult(stdout="", stderr="", exit_code=0)
 
 
