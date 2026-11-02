@@ -787,12 +787,18 @@ def list_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig
     after = listing_start(p, start) if p and start else None
 
     def source() -> ResolvedInputs:
-        inputs = resolve_inputs(
-            config_dir, src.path if uri.startswith("local://") else uri, src.format, entity.name,
-            src.storage or "local", client, glob_override=src.options.glob, exclude=archive and archive[0],
-            recursive=bool(src.options.recursive) or p is not None,  # D28: partitioning lists recursively
-            after=f"{root}/{after}" if after else "",
-        )  # fmt: skip
+        try:
+            inputs = resolve_inputs(
+                config_dir, src.path if uri.startswith("local://") else uri, src.format, entity.name,
+                src.storage or "local", client, glob_override=src.options.glob, exclude=archive and archive[0],
+                recursive=bool(src.options.recursive) or p is not None,  # D28: partitioning lists recursively
+                after=f"{root}/{after}" if after else "",
+            )  # fmt: skip
+        except NoInputsError:
+            # #1139: an empty incremental source has nothing pending; a full refresh still fails (a broken extraction)
+            if entity.incremental_mode != "file" or full_refresh:
+                raise
+            return ResolvedInputs([], [], "directory")
         if not p:
             return inputs
         inputs = in_load_order(p, entity.name, root, inputs, start=start)
