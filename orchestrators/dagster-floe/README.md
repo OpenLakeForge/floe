@@ -30,18 +30,19 @@ Current model:
 ## Install
 
 Prereqs:
-- Floe 0.8.3 or newer (`pip install floe-python`, **or** Docker with the `ghcr.io/openlakeforge/floe` image).
+- Floe 0.8.3 or newer, 0.9 for a 0.9 manifest (`pip install floe-python`, **or** Docker with the `ghcr.io/openlakeforge/floe` image).
 - Python 3.10+.
 
 ```bash
 pip install dagster-floe
-pip install "dagster-floe[floe]"   # also installs floe-python>=0.8.3,<0.9 for the in-process runner
+pip install "dagster-floe[floe]"   # also installs floe-python>=0.9,<0.10 for the in-process runner
 ```
 
 ## Supported Floe versions
 
 | dagster-floe | Floe | Manifest `spec_version` |
 | --- | --- | --- |
+| 0.5.0 | 0.8.3 or newer (the `floe` extra installs 0.9) | `0.8`, `0.9` |
 | 0.4.3 | 0.8.3 or newer (the `floe/full_refresh` run tag on a `merge_scd1` entity needs 0.8.6) | `0.8` |
 | 0.4.2 | 0.8.3 or newer | `0.8` |
 | 0.4.1 | 0.8.3 or newer (`kubernetes_job` runs pass the profile as `-p env:FLOE_PROFILE_CONTENT`) | `0.8` |
@@ -203,7 +204,7 @@ Every accepted and rejected asset carries `floe/entity` (the manifest entity nam
 
 ## Notes
 
-- This connector does **not** parse YAML directly; it consumes Floe manifests (`spec_version` `0.8`), read from a file or built by `floe.build_manifest` in config mode.
+- This connector does **not** parse YAML directly; it consumes Floe manifests (`spec_version` `0.8` or `0.9`), read from a file or built by `floe.build_manifest` in config mode.
 - Connector logic lives under `src/floe_dagster/`; local wiring for demo lives in `example/definitions.py`.
 - For local development without an installed `floe` command, you can point `LocalRunner` to a custom command, e.g.:
   - `LocalRunner("python -m floe")`

@@ -14,7 +14,7 @@ from floe_dagster.manifest import (
 )
 
 
-@pytest.mark.parametrize("spec_version", ["0.2", "0.9", "1.0"])
+@pytest.mark.parametrize("spec_version", ["0.2", "0.10", "1.0"])
 def test_manifest_rejects_unsupported_spec_version(tmp_path: Path, spec_version: str):
     fixture = Path(__file__).parent / "fixtures" / "manifest.json"
     payload = json.loads(fixture.read_text(encoding="utf-8"))
@@ -24,6 +24,17 @@ def test_manifest_rejects_unsupported_spec_version(tmp_path: Path, spec_version:
 
     with pytest.raises(ValueError, match=f"spec_version {spec_version} is not supported"):
         load_manifest(manifest_path)
+
+
+@pytest.mark.parametrize("spec_version", ["0.8", "0.9"])
+def test_manifest_accepts_floe_0_8_and_0_9(tmp_path: Path, spec_version: str):
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    payload["spec_version"] = spec_version
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert load_manifest(manifest_path).spec_version == spec_version
 
 
 def test_manifest_rejects_rust_0_7_manifest(tmp_path: Path):
