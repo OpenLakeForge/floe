@@ -448,7 +448,6 @@ def validate_runners(config: RootConfig, profile: ProfileConfig | None) -> None:
 
 
 def apply_profile(config: RootConfig, profile: ProfileConfig) -> RootConfig:
-    validate_runners(config, profile)
     blocks = {
         "catalogs": profile.catalogs,
         "storages": profile.storages,

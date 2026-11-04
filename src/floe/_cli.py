@@ -44,7 +44,9 @@ def _profile(location: str | None) -> ProfileConfig | None:
     return parse_profile(location if location.startswith(("s3://", "env:")) else _realpath(location))  # fmt: skip
 
 
-def _load(path: Path, profile: ProfileConfig | None) -> RootConfig:
+def _load(
+    path: Path, profile: ProfileConfig | None, *, check_runners: bool = True
+) -> RootConfig:
     variables = (
         resolve_vars(profile.variables, {}, extract_config_env_vars(path))
         if profile
@@ -53,8 +55,8 @@ def _load(path: Path, profile: ProfileConfig | None) -> RootConfig:
     root = parse_config(path, variables)
     if profile:
         root = apply_profile(root, profile)
-    else:
-        validate_runners(root, None)
+    if check_runners:
+        validate_runners(root, profile)
     return root
 
 
@@ -198,7 +200,7 @@ def _state(args: argparse.Namespace) -> int:
         raise FloeConfigError("state reset is destructive, rerun with --yes to confirm")
     profile = _profile(args.profile)
     path = _realpath(args.config)
-    root = _load(path, profile)
+    root = _load(path, profile, check_runners=False)
     [entity] = select_entities(root, [args.entity])
     uri, client = state_uri(entity, normalize_local_path(path.parent), root.storages)
     if args.state_command == "reset":
