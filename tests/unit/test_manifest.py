@@ -780,6 +780,9 @@ def test_named_runners_inherit_and_entity_overrides_domain(
         "  runners:\n    large: {resources: {memory_limit_mb: 4096}}\n  orchestration:",
     )
     (tmp_path / "prod.yml").write_text(profile)
+    from floe.config.profile import parse_profile
+
+    assert parse_profile(tmp_path / "prod.yml").name == "prod"
     config = CONFIG.replace(
         "domains: [{name: d}]", "domains: [{name: d, runner: large}]"
     )
@@ -832,6 +835,39 @@ def test_named_runners_inherit_and_entity_overrides_domain(
         == 1
     )
     assert "available: default, large" in capsys.readouterr().err
+
+
+def test_named_runner_from_included_domain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    domain = tmp_path / "domains" / "d"
+    domain.mkdir(parents=True)
+    (domain / "_domain.yml").write_text("name: d\nrunner: large\n")
+    (domain / "a.yml").write_text(
+        "name: a\nsource: {format: csv, path: in/a.csv}\n"
+        "sink: {accepted: {format: parquet, path: out/a}}\n"
+        "policy: {severity: warn}\nschema: {columns: [{name: id, type: string}]}\n"
+    )
+    (tmp_path / "prod.yml").write_text(
+        K8S.replace(
+            "  orchestration:",
+            "  runners: {large: {resources: {memory_mb: 4096}}}\n  orchestration:",
+        )
+    )
+    config = "version: '0.3'\ninclude: {domains: ['domains/*/_domain.yml']}\nreport: {path: ./report}\n"
+    assert (
+        generate(
+            tmp_path,
+            monkeypatch,
+            "-o",
+            "-",
+            "-p",
+            str(tmp_path / "prod.yml"),
+            config=config,
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["entities"][0]["runner"] == "large"
 
 
 def test_named_runner_without_a_profile_is_rejected(

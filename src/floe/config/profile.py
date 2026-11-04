@@ -297,12 +297,12 @@ def _parse_doc(doc: object) -> ProfileConfig:
         if "runners" in execution:
             named = yaml_hash(execution["runners"], f"{ctx}.runners")
             for key, value in named.items():
-                name = yaml_string(key, f"{ctx}.runners name")
-                if not name.strip() or name in ("default", "local"):
+                runner_name = yaml_string(key, f"{ctx}.runners name")
+                if not runner_name.strip() or runner_name in ("default", "local"):
                     raise FloeConfigError(
-                        f"{ctx}.runners: invalid runner name {name!r}"
+                        f"{ctx}.runners: invalid runner name {runner_name!r}"
                     )
-                runners[name] = _runner(merge_yaml(execution["runner"], value))
+                runners[runner_name] = _runner(merge_yaml(execution["runner"], value))
         if "orchestration" in execution:
             orchestration = _orchestration(execution["orchestration"])
     variables = (
