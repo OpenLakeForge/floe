@@ -876,3 +876,11 @@ def test_named_runner_without_a_profile_is_rejected(
     config = CONFIG.replace("    domain: d\n", "    domain: d\n    runner: large\n")
     assert generate(tmp_path, monkeypatch, "-o", "-", config=config) == 1
     assert "available: local" in capsys.readouterr().err
+
+
+def test_profile_constructor_preserves_positional_orchestration() -> None:
+    from floe import ProfileConfig
+
+    profile = ProfileConfig("prod", {}, {}, None, None, None, {"strategy": "parallel"})
+    assert profile.orchestration == {"strategy": "parallel"}
+    assert profile.runners is None

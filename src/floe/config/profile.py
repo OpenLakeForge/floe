@@ -53,8 +53,8 @@ class ProfileConfig:
     catalogs: CatalogsConfig | None
     storages: StoragesConfig | None
     lineage: LineageConfig | None
-    runners: dict[str, dict[str, object]] | None = None
     orchestration: dict[str, object] | None = None  # its set fields only, as Rust
+    runners: dict[str, dict[str, object]] | None = None
 
 
 def _string(hash: Hash, key: str, ctx: str, required: bool = False) -> str | None:
@@ -320,7 +320,14 @@ def _parse_doc(doc: object) -> ProfileConfig:
     if "validation" in root:
         _validation(root["validation"])
     return ProfileConfig(
-        name, runner, variables, catalogs, storages, lineage, runners, orchestration
+        name,
+        runner,
+        variables,
+        catalogs,
+        storages,
+        lineage,
+        orchestration=orchestration,
+        runners=runners,
     )
 
 
