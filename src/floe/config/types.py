@@ -167,6 +167,7 @@ class EntityConfig(_Model):
     id: str
     metadata: EntityMetadata | None
     domain: str | None
+    runner: str | None = None
     incremental_mode: IncrementalMode
     state: EntityStateConfig | None
     source: SourceConfig

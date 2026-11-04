@@ -210,6 +210,8 @@ $defs:
         type:
         - string
         - 'null'
+      runner:
+        type: [string, 'null']
       incremental_mode:
         type:
         - string
@@ -1817,6 +1819,8 @@ $defs:
     properties:
       name:
         type: string
+      runner:
+        type: [string, 'null']
       incoming_dir:
         type:
         - string
@@ -1833,6 +1837,8 @@ $defs:
         type:
         - string
         - 'null'
+      runner:
+        type: [string, 'null']
       incremental_mode:
         type:
         - string

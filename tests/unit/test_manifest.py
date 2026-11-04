@@ -770,3 +770,73 @@ def test_build_manifest_returns_what_manifest_generate_writes(
     assert main() == 0
     generated = json.loads(capsys.readouterr().out)
     assert floe.build_manifest("config.yml", "prod.yml", entities=["a"]) == generated
+
+
+def test_named_runners_inherit_and_entity_overrides_domain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    profile = K8S.replace(
+        "  orchestration:",
+        "  runners:\n    large: {resources: {memory_limit_mb: 4096}}\n  orchestration:",
+    )
+    (tmp_path / "prod.yml").write_text(profile)
+    config = CONFIG.replace(
+        "domains: [{name: d}]", "domains: [{name: d, runner: large}]"
+    )
+    assert (
+        generate(
+            tmp_path,
+            monkeypatch,
+            "-o",
+            "-",
+            "-p",
+            str(tmp_path / "prod.yml"),
+            config=config,
+        )
+        == 0
+    )
+    manifest = json.loads(capsys.readouterr().out)
+    assert manifest["entities"][0]["runner"] == "large"
+    large = manifest["runners"]["definitions"]["large"]
+    assert large["image"] == "registry/floe:0.8"
+    assert large["resources"] == {
+        "cpu": None,
+        "memory_mb": 512,
+        "memory_limit_mb": 4096,
+    }
+    config = config.replace("    domain: d\n", "    domain: d\n    runner: default\n")
+    assert (
+        generate(
+            tmp_path,
+            monkeypatch,
+            "-o",
+            "-",
+            "-p",
+            str(tmp_path / "prod.yml"),
+            config=config,
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["entities"][0]["runner"] == "default"
+    config = config.replace("runner: default", "runner: missing")
+    assert (
+        generate(
+            tmp_path,
+            monkeypatch,
+            "-o",
+            "-",
+            "-p",
+            str(tmp_path / "prod.yml"),
+            config=config,
+        )
+        == 1
+    )
+    assert "available: default, large" in capsys.readouterr().err
+
+
+def test_named_runner_without_a_profile_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = CONFIG.replace("    domain: d\n", "    domain: d\n    runner: large\n")
+    assert generate(tmp_path, monkeypatch, "-o", "-", config=config) == 1
+    assert "available: local" in capsys.readouterr().err

@@ -15,7 +15,12 @@ __version__ = version(
 from floe import manifest as _manifest
 from floe import run as _run
 from floe.config.parse import parse_config
-from floe.config.profile import ProfileConfig, apply_profile, parse_profile
+from floe.config.profile import (
+    ProfileConfig,
+    apply_profile,
+    parse_profile,
+    validate_runners,
+)
 from floe.config.project import RootConfig as _Root
 from floe.config.validate import validate_config
 from floe.config.vars import extract_config_env_vars as _env_vars
@@ -142,7 +147,11 @@ def _profile(
 def _load(config_path: str, profile: ProfileConfig | None = None) -> tuple[Path, _Root]:
     path = Path(config_path).absolute()
     root = parse_config(path, profile.variables if profile else None)
-    return path, apply_profile(root, profile) if profile else root
+    if profile:
+        root = apply_profile(root, profile)
+    else:
+        validate_runners(root, None)
+    return path, root
 
 
 def validate(

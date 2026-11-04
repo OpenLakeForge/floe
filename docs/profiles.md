@@ -172,6 +172,24 @@ validation:
   strict: true
 ```
 
+### Named runners
+
+Add `execution.runners` beside `execution.runner` to define overrides. Each
+named runner inherits unset fields from the default runner, including nested
+resource fields. Select a name with `runner` on a domain or entity.
+
+```yaml
+execution:
+  runner:
+    type: kubernetes_job
+    image: registry.example/floe:0.9
+    namespace: floe
+    resources: {memory_mb: 512}
+  runners:
+    large:
+      resources: {memory_limit_mb: 4096}
+```
+
 ### databricks.yml (runner MVP)
 
 ```yaml

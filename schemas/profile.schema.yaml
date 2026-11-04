@@ -86,6 +86,11 @@ $defs:
     properties:
       runner:
         $ref: "#/$defs/profile_runner"
+      runners:
+        type: object
+        additionalProperties:
+          type: object
+          description: Runner overrides inherited from execution.runner.
       orchestration:
         $ref: "#/$defs/profile_orchestration"
 

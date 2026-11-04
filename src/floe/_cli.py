@@ -15,6 +15,7 @@ from floe.config.profile import (
     ProfileConfig,
     apply_profile,
     parse_profile,
+    validate_runners,
 )
 from floe.config.project import RootConfig
 from floe.config.validate import validate_config
@@ -52,6 +53,8 @@ def _load(path: Path, profile: ProfileConfig | None) -> RootConfig:
     root = parse_config(path, variables)
     if profile:
         root = apply_profile(root, profile)
+    else:
+        validate_runners(root, None)
     return root
 
 

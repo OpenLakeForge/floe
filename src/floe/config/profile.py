@@ -18,6 +18,7 @@ from floe.config.validate import check_lineage
 from floe.config.vars import string_map
 from floe.config.yaml import (
     load_yaml,
+    merge_yaml,
     parse_yaml,
     rust_debug,
     validate_known_keys,
@@ -52,6 +53,7 @@ class ProfileConfig:
     catalogs: CatalogsConfig | None
     storages: StoragesConfig | None
     lineage: LineageConfig | None
+    runners: dict[str, dict[str, object]] | None = None
     orchestration: dict[str, object] | None = None  # its set fields only, as Rust
 
 
@@ -284,13 +286,23 @@ def _parse_doc(doc: object) -> ProfileConfig:
     name = _metadata(root["metadata"])
     runner: dict[str, object] = {}
     orchestration = None
+    runners: dict[str, dict[str, object]] = {}
     if "execution" in root:
         ctx = "profile.execution"
         execution = yaml_hash(root["execution"], ctx)
-        validate_known_keys(execution, ctx, ("runner", "orchestration"))
+        validate_known_keys(execution, ctx, ("runner", "runners", "orchestration"))
         if "runner" not in execution:
             raise FloeConfigError(f"{ctx}.runner is required")
         runner = _runner(execution["runner"])
+        if "runners" in execution:
+            named = yaml_hash(execution["runners"], f"{ctx}.runners")
+            for key, value in named.items():
+                name = yaml_string(key, f"{ctx}.runners name")
+                if not name.strip() or name in ("default", "local"):
+                    raise FloeConfigError(
+                        f"{ctx}.runners: invalid runner name {name!r}"
+                    )
+                runners[name] = _runner(merge_yaml(execution["runner"], value))
         if "orchestration" in execution:
             orchestration = _orchestration(execution["orchestration"])
     variables = (
@@ -308,7 +320,7 @@ def _parse_doc(doc: object) -> ProfileConfig:
     if "validation" in root:
         _validation(root["validation"])
     return ProfileConfig(
-        name, runner, variables, catalogs, storages, lineage, orchestration
+        name, runner, variables, catalogs, storages, lineage, runners, orchestration
     )
 
 
@@ -390,6 +402,8 @@ def validate_profile(profile: ProfileConfig) -> None:
                 value = cast(dict[str, object], value).get(sub)
             if not isinstance(value, str) or not value.strip():
                 raise FloeConfigError(f"{ctx}.{field} is required for {kind}")
+    for name, runner in (profile.runners or {}).items():
+        validate_profile(ProfileConfig(name, runner, {}, None, None, None))
     for key, value in profile.variables.items():
         if (placeholder := _malformed(value)) is not None:
             raise FloeConfigError(
@@ -411,8 +425,23 @@ def entity_workers(orchestration: Mapping[str, object] | None) -> int:
     return limit if isinstance(limit, int) else min(4, os.cpu_count() or 1)
 
 
+def validate_runners(config: RootConfig, profile: ProfileConfig | None) -> None:
+    default = (
+        "default"
+        if profile and profile.runner.get("type") not in (None, "local")
+        else "local"
+    )
+    declared = {default, *((profile.runners or {}) if profile else {})}
+    for entity in config.entities:
+        if entity.runner is not None and entity.runner not in declared:
+            available = ", ".join(sorted(declared))
+            raise FloeConfigError(
+                f"entity {entity.id} runner {entity.runner!r} is not declared; available: {available}"
+            )
+
+
 def apply_profile(config: RootConfig, profile: ProfileConfig) -> RootConfig:
-    """The profile's blocks replace the config's, as `apply_profile_catalogs`, `_storages` and `_lineage` do."""
+    validate_runners(config, profile)
     blocks = {
         "catalogs": profile.catalogs,
         "storages": profile.storages,

@@ -8,6 +8,8 @@ properties:
   name:
     type: string
     pattern: ^[^./\\]+$
+  runner:
+    type: [string, 'null']
   incoming_dir:
     type:
     - string
@@ -26,6 +28,8 @@ $defs:
         type:
         - string
         - 'null'
+      runner:
+        type: [string, 'null']
       incremental_mode:
         type:
         - string
