@@ -282,7 +282,7 @@ class _Plan:
     derived: dict[str, list[pl.Expr]] = field(default_factory=dict[str, list[pl.Expr]])  # D28: by input URI  # fmt: skip
     root: str | None = None  # D29: the source root, when `source.partitioning` is set
     rejected_table: IcebergTarget | None = None  # an Iceberg `sink.rejected`
-    rejected_spills: list[tuple[Path, InputFile]] = field(default_factory=list[tuple[Path, InputFile]])  # fmt: skip  # its spilled chunks with their source file; one commit writes them all
+    rejected_spills: list[tuple[Path, str]] = field(default_factory=list[tuple[Path, str]])  # fmt: skip  # its spilled chunks with their source file; one commit writes them all
 
 
 def _real(uri: str) -> str:
@@ -526,7 +526,7 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
     rejected_path = errors_path = None
     if bad_total and severity == "reject" and plan.rejected_table is not None:
         plan.rejected_spills += [
-            (p, file) for p in spilled_rejected
+            (p, uri) for p in spilled_rejected
         ]  # one commit for the run
         rejected_path = _rejected(plan, "reject")[0].rstrip("/")
     elif bad_total and severity == "reject":
@@ -1078,16 +1078,12 @@ def _run_entity(
                     if report["status"] == "aborted":
                         break
                     complete.append(f)
-                if plan.rejected_spills:  # before the accepted commit: a retry finds the batch in the rejected table and skips it
+                # before the accepted commit; append-only, a retry appends again
+                if plan.rejected_spills:
                     assert plan.rejected_table is not None
-
-                    def part(
-                        p: Path, f: InputFile
-                    ) -> tuple[str, Callable[[], pl.DataFrame]]:
-                        return input_hash(entity, [f]), lambda: _output(plan, _unspill(p)).with_columns(_source_columns(plan, f.source_uri))  # fmt: skip
-
-                    parts = [part(p, f) for p, f in plan.rejected_spills]
-                    write_rejected_iceberg(entity, plan.rejected_table, parts, [plan.out_map.get(n, n) for n in names], emit.run_id, input_hash(entity, complete))  # fmt: skip
+                    frames = (_output(plan, _unspill(p)).with_columns(_source_columns(plan, uri)) for p, uri in plan.rejected_spills)  # fmt: skip
+                    with _timed(plan.spent, "rejected_write_ms"):
+                        write_rejected_iceberg(entity, plan.rejected_table, frames, [plan.out_map.get(n, n) for n in names], emit.run_id, input_hash(entity, complete))  # fmt: skip
         except Exception as err:
             # the sinks wrap what they read; this error reaches the caller as it is
             failure.append(err)

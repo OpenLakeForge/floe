@@ -4,7 +4,6 @@
 # ^ pyarrow ships no type stubs
 
 import itertools
-import json
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -41,7 +40,6 @@ WriteMode = Literal["overwrite", "append"]
 
 RUN_ID = "floe.run_id"
 INPUT_HASH = "floe.input_hash"
-REJECTED_FILES = "floe.rejected_files"  # a quarantine snapshot: the JSON list of the file fingerprints it holds rows of
 
 # `metrics::DEFAULT_SMALL_FILE_THRESHOLD_BYTES`
 SMALL_FILE_THRESHOLD_BYTES = 16 * 1024 * 1024
@@ -115,7 +113,6 @@ def write_table(
     chunk_rows: int = CHUNK_ROWS,
     unique_keys: Sequence[Sequence[str]] = (),
     parquet: Mapping[str, str] | None = None,
-    properties: Mapping[str, str] | None = None,
 ) -> IcebergWriteResult:
     """Data files are written chunk by chunk (partitioned tables split each chunk), then committed once.
 
@@ -123,7 +120,6 @@ def write_table(
     On a conflict an append checks `unique_keys` (table column names) against the files added since the base
     snapshot and fails closed, committing nothing, when a rival already holds a key (#549).
     `parquet` holds `write.parquet.*` properties for these data files only; the table's own properties are not changed.
-    `properties` are added to the snapshot summary.
     """
     with run_error("iceberg data write failed"):
         _check_pyarrow_schema_compatible(table.schema(), reader.schema)
@@ -164,7 +160,7 @@ def write_table(
                 # PyIceberg retries a 409 itself (refresh, rebuild) and would skip the guard; in memory only, never sent
                 table.metadata = table.metadata.model_copy(update={"properties": {**table.properties, TableProperties.COMMIT_NUM_RETRIES: "0"}})  # fmt: skip
                 tx = table.transaction()
-                props = {RUN_ID: run_id, INPUT_HASH: digest, **(properties or {})}
+                props = {RUN_ID: run_id, INPUT_HASH: digest}
                 with (
                     _LiveOverwrite(
                         operation=Operation.OVERWRITE
@@ -281,19 +277,6 @@ def write_result(
         avg_file_size_mb=sum(sizes) / len(sizes) / _BYTES_PER_MIB if sizes else None,
         small_files_count=sum(s < small_file_threshold_bytes for s in sizes),
     )
-
-
-def rejected_files(table: Table) -> set[str]:
-    """The file fingerprints the table's snapshots hold quarantine rows of; in memory, no manifest I/O.
-
-    ponytail: an expired snapshot forgets its files, so a retry after expiry appends their rows again (as `find_committed`).
-    """
-    return {
-        f
-        for snapshot in ancestors_of(table.current_snapshot(), table.metadata)
-        if snapshot.summary is not None
-        for f in json.loads(snapshot.summary.get(REJECTED_FILES) or "[]")
-    }
 
 
 def find_committed(

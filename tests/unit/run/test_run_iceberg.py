@@ -734,7 +734,7 @@ REJECTED = "rejected: {format: iceberg, path: tables/orders_rejected, storage: l
 
 
 def run_rejected(
-    tmp_path: Path, rows: str | None, pii: str = "report:"
+    tmp_path: Path, rows: str | None, pii: str = "report:", emit: Emitter = NO_EVENTS
 ) -> dict[str, Any]:
     (tmp_path / "in").mkdir(exist_ok=True)
     if rows is not None:
@@ -743,7 +743,7 @@ def run_rejected(
     path = tmp_path / "config.yml"
     path.write_text(path.read_text().replace("rejected: {format: csv, path: ./out/rejected}", REJECTED).replace("report:", pii))  # fmt: skip
     root = parse_config(path)
-    return run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, catalogs=root.catalogs).report  # fmt: skip
+    return run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, emit=emit, catalogs=root.catalogs).report  # fmt: skip
 
 
 def test_rejected_iceberg_keeps_the_raw_values_as_strings(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
@@ -762,26 +762,25 @@ def test_rejected_iceberg_keeps_the_raw_values_as_strings(tmp_path: Path, catalo
     assert report["files"][0]["output"]["rejected_path"] == "s3://warehouse/floe/tables/orders_rejected"  # fmt: skip
 
 
-def test_rejected_iceberg_rerun_of_the_same_input_appends_nothing(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
-    run_rejected(tmp_path, "id,name,amount\n2,b,abc\n")
-    run_rejected(
-        tmp_path, None
-    )  # the same file again, as after a crash before the state was promoted
-    table = catalog.tables["sales.orders_rejected"]
-    assert table.scan().to_arrow().num_rows == 1
-    assert len(table.snapshots()) == 1
+def test_rejected_iceberg_is_at_least_once_a_retry_appends_its_rows_again(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#1158: the quarantine commit lands before the accepted one; a retry appends, so no newly rejected row is lost."""
+    commit = catalog.commit_table
 
+    def accepted_fails(table: Table, *args: Any) -> Any:
+        if table.location().endswith("sales.orders"):
+            raise FloeRunError("commit failed")
+        return commit(table, *args)
 
-def test_rejected_iceberg_retry_with_a_new_file_appends_only_the_new_rejects(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
-    run_rejected(tmp_path, "id,name,amount\n2,b,abc\n")
+    monkeypatch.setattr(catalog, "commit_table", accepted_fails)
+    with pytest.raises(FloeRunError, match="commit failed"):
+        run_rejected(tmp_path, "id,name,amount\n1,a,1.00\n2,b,abc\n", emit=Emitter(run_id="first"))  # fmt: skip
+    monkeypatch.setattr(catalog, "commit_table", commit)
     (tmp_path / "in" / "b.csv").write_text(
         "id,name,amount\n3,c,1.00\n4,d,xyz\n"
     )  # arrives before the retry
-    run_rejected(tmp_path, None)
-    table = catalog.tables["sales.orders_rejected"]
-    assert sorted(r["id"] for r in table.scan().to_arrow().to_pylist()) == ["2", "4"]
-    run_rejected(tmp_path, None)
-    assert table.scan().to_arrow().num_rows == 2
+    run_rejected(tmp_path, None, emit=Emitter(run_id="retry"))
+    got = sorted((r["__floe_run_id"], r["id"]) for r in catalog.tables["sales.orders_rejected"].scan().to_arrow().to_pylist())  # fmt: skip
+    assert got == [("first", "2"), ("retry", "2"), ("retry", "4")]
 
 
 def test_rejected_iceberg_is_one_commit_for_all_the_files(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip

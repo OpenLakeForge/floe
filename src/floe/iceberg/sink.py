@@ -7,7 +7,7 @@ import hashlib
 import json
 import time
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
 from typing import Any, Literal
@@ -39,12 +39,9 @@ from floe.iceberg.catalog import (
 )
 from floe.iceberg.merge import merge_scd1, merge_scd2
 from floe.iceberg.write import (
-    REJECTED_FILES,
     SMALL_FILE_THRESHOLD_BYTES,
     IcebergWriteResult,
     parquet_properties,
-    rejected_files,
-    write_result,
     write_table,
 )
 from floe.storage.inputs import InputFile
@@ -240,15 +237,15 @@ def write_iceberg(
 def write_rejected_iceberg(
     entity: EntityConfig,
     target: IcebergTarget,
-    parts: list[tuple[str, Callable[[], pl.DataFrame]]],
+    frames: Iterator[pl.DataFrame],
     names: list[str],
     run_id: str,
     digest: str,
 ) -> IcebergWriteResult:
-    """Append the frames of `parts` (`input_hash` of the one file, loader; `names`, then the `__floe_*` columns) to the rejected table in one commit.
+    """Append `frames` (at least one: `names`, then the `__floe_*` columns) to the rejected table in one commit.
 
-    Every declared column is a string, so the table never drifts with the Silver types. The snapshot records the
-    files it holds; a retry skips those files' rows, so a rejected row is never duplicated, even when the batch grew.
+    Every declared column is a string, so the table never drifts with the Silver types. Append-only and
+    at-least-once: a retry after a failed accepted commit appends the rows again (consumers dedupe, see docs).
     """
     fields = [*names, ROW_INDEX, ERRORS, "__floe_run_id", "__floe_source_uri"]
     schema = pa.schema([pa.field(n, pa.int64() if n == ROW_INDEX else pa.large_string()) for n in fields])  # fmt: skip
@@ -259,15 +256,10 @@ def write_rejected_iceberg(
         catalog, target.namespace, target.table, iceberg, entity.name, target.location.removeprefix("local://"),
         None, evolution.mode if evolution else "strict", target.catalog.create_database_if_missing,
     )  # fmt: skip
-    done = rejected_files(table)
-    todo = [(h, load) for h, load in parts if h not in done]
-    if not todo:
-        return replace(write_result(table, []), already_committed=True)
 
     def batches() -> Iterator[pa.RecordBatch]:
-        for _, load in todo:
-            cast = load().select(pl.col(n).cast(pl.Int64 if n == ROW_INDEX else pl.String) for n in fields)  # fmt: skip
+        for df in frames:
+            cast = df.select(pl.col(n).cast(pl.Int64 if n == ROW_INDEX else pl.String) for n in fields)  # fmt: skip
             yield from cast.to_arrow().cast(schema).to_batches()
 
-    held = {REJECTED_FILES: json.dumps(sorted({h for h, _ in todo}))}
-    return write_table(table, pa.RecordBatchReader.from_batches(schema, batches()), "append", run_id, digest, properties=held)  # fmt: skip
+    return write_table(table, pa.RecordBatchReader.from_batches(schema, batches()), "append", run_id, digest)  # fmt: skip

@@ -506,10 +506,10 @@ state file shape, and CAS behavior.
       `__floe_row_index` (`long`), `__floe_errors`, `__floe_run_id` and `__floe_source_uri` (`string`). Typed inputs
       are cast to string.
     - Append only, whatever `sink.write_mode` is: one commit per entity run for all its files, never per file or row.
-      The snapshot carries the run's `floe.input_hash`; a retry or rerun of the same claimed files finds it and appends
-      nothing. With `schema.schema_evolution.mode: add_columns` new declared columns are added to the table.
+      With `schema.schema_evolution.mode: add_columns` new declared columns are added to the table.
     - The rejected commit happens just BEFORE the accepted commit. The two commits are NOT atomic together: if the
-      accepted commit fails, the rejected rows stay in their table; a retry does not duplicate them.
+      accepted commit fails, the rejected rows stay in their table. The table is at-least-once and append-only: a retry
+      appends its rows again, so consumers dedupe on `(__floe_source_uri, __floe_row_index)`, keeping the latest `__floe_run_id`.
     - PII masking applies before the write, so the quarantine table holds masked values. Its access and retention are
       the deployment's responsibility.
     - Whole-file rejects (schema mismatch, `abort`) still copy the raw file to `<path>/<file>`. The table itself
