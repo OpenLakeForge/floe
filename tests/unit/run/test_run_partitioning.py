@@ -12,6 +12,7 @@ import pytest
 from floe.config.parse import parse_config
 from floe.errors import FloeRunError
 from floe.run import entity as entity_module  # `floe.run` is the public function
+from floe.run import incremental as incremental_module
 from floe.run import run
 
 CONFIG = """\
@@ -348,13 +349,13 @@ def test_949_a_run_that_listed_before_another_pruned_does_not_reingest(tmp_path:
     # the state this run lists from: its window holds 10-20
     state["watermark"], state["pruned_before"] = "2026-10-21", "2026-10-20"
     path.write_text(json.dumps(state))
-    real = entity_module.claim_inputs
+    real = incremental_module.claim_inputs
 
     def raced(*args: Any) -> Any:
         path.write_text(pruned)  # the other run's promote lands
         return real(*args)
 
-    monkeypatch.setattr(entity_module, "claim_inputs", raced)
+    monkeypatch.setattr(incremental_module, "claim_inputs", raced)
     go(tmp_path, "incremental_mode: file")
     r = report(tmp_path)
     assert "2026/10/20/a/x.csv" in str(r["source"]["resolved_inputs"]["files"])

@@ -57,6 +57,7 @@ from floe.iceberg.sink import input_hash, partition_fields
 from floe.iceberg.write import INPUT_HASH, RUN_ID, find_committed, write_result
 from floe.read.csv import read_csv
 from floe.run import entity as entity_module  # `floe.run` is the public function
+from floe.run import incremental as incremental_module
 from floe.run import run as run_project
 from floe.run.entity import run_entity
 from floe.run.events import NO_EVENTS, Emitter
@@ -607,11 +608,11 @@ def dead_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **values: str) -> 
     def killed(*_: object, **__: object) -> None:
         raise FloeRunError("killed")
 
-    promote = entity_module.promote
-    monkeypatch.setattr(entity_module, "promote", killed)
+    promote = incremental_module.promote
+    monkeypatch.setattr(incremental_module, "promote", killed)
     with pytest.raises(FloeRunError, match="killed"):
         go("dead")
-    monkeypatch.setattr(entity_module, "promote", promote)
+    monkeypatch.setattr(incremental_module, "promote", promote)
     (state,) = (tmp_path / "in").rglob("state.json")
     doc = json.loads(state.read_text())
     for claim in doc["claims"].values():
@@ -627,10 +628,10 @@ def test_a_retry_skips_the_batch_a_dead_run_committed(tmp_path: Path, catalog: L
     def broken(*_: object) -> None:
         raise FloeRunError("catalog down")
 
-    monkeypatch.setattr(entity_module, "find_committed", broken)
+    monkeypatch.setattr(incremental_module, "find_committed", broken)
     with pytest.raises(FloeRunError, match="catalog down"):
         go("failed-retry")  # its release puts the dead run's claims back
-    monkeypatch.setattr(entity_module, "find_committed", find_committed)
+    monkeypatch.setattr(incremental_module, "find_committed", find_committed)
     report = go("retry")
     assert rows(catalog) == [(1, "a"), (2, "b")]
     assert not (tmp_path / "out" / "rejected").exists()
