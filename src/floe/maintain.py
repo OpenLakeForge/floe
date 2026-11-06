@@ -16,8 +16,8 @@ from floe.config.project import RootConfig
 from floe.config.storage import StorageDefinition
 from floe.config.validate import validate_config
 from floe.errors import FloeConfigError, FloeRunError
+from floe.extras import require
 from floe.iceberg.catalog import open_duckdb, run_error
-from floe.iceberg.compact import compact
 from floe.iceberg.sink import existing_table, resolve_target
 from floe.run import select_entities
 from floe.storage.paths import normalize_local_path, parse_s3_uri
@@ -112,6 +112,8 @@ def maintain(path: Path, root: RootConfig, entities: Sequence[str], older_than_d
         )
     if orphan_delay_days < ORPHAN_FLOOR_DAYS:
         raise FloeConfigError(f"orphan delay below the floor: --orphan-delay-days must be at least {ORPHAN_FLOOR_DAYS} (got {orphan_delay_days})")  # fmt: skip
+    if compact_tables:
+        require("merge", "duckdb", "--compact")
     validate_config(root)
     config_dir = normalize_local_path(path.resolve().parent)
     results: list[dict[str, Any]] = []
@@ -122,6 +124,10 @@ def maintain(path: Path, root: RootConfig, entities: Sequence[str], older_than_d
         table = existing_table(target)
         compacted = None
         if table and compact_tables:
+            from floe.iceberg.compact import (
+                compact,  # lazy: DuckDB is the optional merge extra
+            )
+
             with open_duckdb(target.catalog, target.storage) as con:
                 compacted = compact(table, con)
         expired, kept = expire_snapshots(table, older_than_days, retain_last, dry_run) if table else (0, 0)  # fmt: skip

@@ -30,6 +30,7 @@ from floe.config.storage import (
 from floe.config.types import NO_ICEBERG, EntityConfig, WriteMode, catalog_ident
 from floe.config.validate import SCD2_DEFAULTS
 from floe.errors import FloeConfigError, FloeRunError
+from floe.extras import require
 from floe.iceberg.catalog import (
     PartitionFields,
     ensure_table,
@@ -37,7 +38,6 @@ from floe.iceberg.catalog import (
     open_duckdb,
     run_error,
 )
-from floe.iceberg.merge import merge_scd1, merge_scd2
 from floe.iceberg.write import (
     SMALL_FILE_THRESHOLD_BYTES,
     IcebergWriteResult,
@@ -201,6 +201,13 @@ def write_iceberg(
     if mode in ("merge_scd1", "merge_scd2"):
         ignore = {output.get(c.strip(), c.strip()) for c in (options.ignore_columns or [])} if options else set()  # fmt: skip
         started = time.monotonic()
+        # a manifest run skips validation: name the missing extra before the import fails
+        require("merge", "duckdb", f"entity.name={entity.name} sink.write_mode={mode}")
+        from floe.iceberg.merge import (  # lazy: DuckDB is the optional merge extra
+            merge_scd1,
+            merge_scd2,
+        )
+
         with open_duckdb(target.catalog, target.storage) as con:
             if mode == "merge_scd1":
                 merged = merge_scd1(con, table, reader, key, ignore)

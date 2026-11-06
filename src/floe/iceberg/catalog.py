@@ -8,9 +8,9 @@ import threading
 import weakref
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager, suppress
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
-import duckdb
 import polars as pl
 import pyiceberg.exceptions
 from pyiceberg.catalog import Catalog, load_catalog
@@ -28,6 +28,10 @@ from pyiceberg.types import NestedField
 from floe.config.storage import CatalogDefinition, StorageDefinition
 from floe.config.types import SchemaEvolutionMode
 from floe.errors import FloeConfigError, FloeError, FloeRunError
+from floe.extras import missing
+
+if TYPE_CHECKING:
+    import duckdb
 
 # (column, transform) pairs, as in the entity's `sink.accepted.partition_spec`;
 # a bucket is `bucket[N]` (PyIceberg's notation) with N its `num_buckets` (D12)
@@ -62,10 +66,16 @@ try:
     _s3_errors: tuple[type[Exception], ...] = (BotoCoreError, ClientError)
 except ImportError:  # no s3 extra: nothing here raises them
     _s3_errors = ()
+try:
+    from duckdb import Error as DuckDBError
+
+    _merge_errors: tuple[type[Exception], ...] = (DuckDBError,)
+except ImportError:  # no merge extra: nothing here raises it
+    _merge_errors = ()
 # ValueError: PyIceberg and Arrow reject bad data and schemas with it. A TypeError, KeyError or
 # AttributeError is a bug in Floe and propagates.
 _RUN_ERRORS: tuple[type[Exception], ...] = (
-    OSError, ValueError, duckdb.Error, pl.exceptions.PolarsError, *_s3_errors, *_PYICEBERG_ERRORS,
+    OSError, ValueError, pl.exceptions.PolarsError, *_merge_errors, *_s3_errors, *_PYICEBERG_ERRORS,
 )  # fmt: skip
 
 
@@ -234,8 +244,12 @@ def _duckdb_setup(
 
 def open_duckdb(
     definition: CatalogDefinition, storage: StorageDefinition | None = None
-) -> duckdb.DuckDBPyConnection:
+) -> "duckdb.DuckDBPyConnection":
     """DuckDB with the catalog attached as `DUCKDB_CATALOG`."""
+    try:
+        import duckdb
+    except ImportError:
+        raise missing("merge", "iceberg merges and compaction") from None
     # validation rejects Glue merges; compaction lands here too
     if definition.type != "rest":
         raise FloeConfigError(f"iceberg catalog {definition.name}: merges and compaction require a rest catalog (got {definition.type})")  # fmt: skip

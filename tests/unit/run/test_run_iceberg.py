@@ -44,6 +44,7 @@ from test_run_stream import (  # pyright: ignore[reportMissingImports] -- a sibl
 
 import floe
 import floe.iceberg.catalog as catalog_module
+import floe.iceberg.merge as merge_module
 import floe.iceberg.sink as sink_module
 from floe._cli import main
 from floe.config.parse import parse_config
@@ -397,8 +398,17 @@ def merges(monkeypatch: pytest.MonkeyPatch) -> Merges:
         return MergeResult(write_result(table, []), done.rows_inserted, done.rows_updated)  # fmt: skip
 
     monkeypatch.setattr(sink_module, "open_duckdb", lambda *_: duckdb.connect())  # pyright: ignore[reportUnknownLambdaType] -- stub
-    monkeypatch.setattr(sink_module, "merge_scd1", merge_scd1)
+    monkeypatch.setattr(merge_module, "merge_scd1", merge_scd1)
     return calls
+
+
+def test_a_merge_without_the_merge_extra_names_it(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """Codex P1 on #1175: a manifest run skips validation, so the merge path itself names the missing extra."""
+    monkeypatch.setitem(sys.modules, "duckdb", None)
+    monkeypatch.delitem(sys.modules, "floe.iceberg.merge", raising=False)
+    with pytest.raises(FloeConfigError) as err:
+        run(tmp_path, "id,name\n1,a\n", mode="merge_scd1")
+    assert str(err.value) == "entity.name=Orders sink.write_mode=merge_scd1 needs the floe[merge] extra: pip install 'floe-python[merge]'"  # fmt: skip
 
 
 def test_merge_scd1_upserts_and_reports_the_counts(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
