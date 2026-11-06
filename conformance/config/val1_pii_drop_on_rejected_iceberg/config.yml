@@ -1,0 +1,38 @@
+version: '0.1'
+entities:
+- name: orders
+  source:
+    format: csv
+    path: in/orders.csv
+  sink:
+    accepted:
+      format: parquet
+      path: wh/orders
+    rejected:
+      format: iceberg
+      path: wh/rejected
+  policy:
+    severity: reject
+  schema:
+    columns:
+    - name: id
+      type: string
+    - name: amt
+      type: number
+  pii:
+    columns:
+    - name: amt
+      strategy: drop
+storages:
+  default: s3
+  definitions:
+  - name: s3
+    type: s3
+    bucket: b
+    region: r
+catalogs:
+  default: c
+  definitions:
+  - name: c
+    type: rest
+    uri: http://catalog

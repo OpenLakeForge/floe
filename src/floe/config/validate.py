@@ -17,7 +17,13 @@ from floe.config.project import (
     config_version,
     validate_domains,
 )
-from floe.config.types import EntityConfig, WriteMode, with_partition_columns
+from floe.config.types import (
+    NO_ICEBERG,
+    EntityConfig,
+    WriteMode,
+    catalog_ident,
+    with_partition_columns,
+)
 from floe.config.yaml import rust_debug
 from floe.errors import FloeConfigError
 from floe.pii import token_n
@@ -308,16 +314,19 @@ def _storage_type(config: RootConfig, name: str) -> str:
 
 
 def _check_iceberg(
-    entity: EntityConfig, config: RootConfig, accepted_storage: str
+    entity: EntityConfig, config: RootConfig, storage: str, kind: str = "accepted"
 ) -> None:
-    accepted = entity.sink.accepted
-    iceberg = accepted.iceberg
+    """The catalog binding of `sink.<kind>`; a rejected Iceberg sink needs one even without an `iceberg` block."""
+    target = getattr(entity.sink, kind)
+    iceberg = target.iceberg
+    if iceberg is None and kind == "rejected" and target.format == "iceberg":
+        iceberg = NO_ICEBERG
     if iceberg is None:
         return
-    if accepted.format != "iceberg":
+    if target.format != "iceberg":
         raise _fail(
             entity,
-            "sink.accepted.iceberg is only supported for sink.accepted.format=iceberg",
+            f"sink.{kind}.iceberg is only supported for sink.{kind}.format=iceberg",
         )
     catalogs = config.catalogs
     name = (
@@ -328,27 +337,38 @@ def _check_iceberg(
     if name is None:
         raise _fail(
             entity,
-            "sink.accepted.iceberg.catalog is required (or set catalogs.default)",
+            f"sink.{kind}.iceberg.catalog is required (or set catalogs.default)",
         )
     definitions = catalogs.definitions if catalogs else []
     definition = next((c for c in definitions if c.name == name), None)
     if definition is None:
         raise _fail(
-            entity, f"sink.accepted.iceberg.catalog references unknown catalog {name}"
+            entity, f"sink.{kind}.iceberg.catalog references unknown catalog {name}"
         )
     if definition.type == "glue" and "{domain}" in (definition.database or "") and not (iceberg.namespace or entity.domain):  # fmt: skip
-        raise _fail(entity, f"sink.accepted.iceberg.namespace or domain is required for catalog {name} database containing {{domain}}")  # fmt: skip
+        raise _fail(entity, f"sink.{kind}.iceberg.namespace or domain is required for catalog {name} database containing {{domain}}")  # fmt: skip
     # Unity is rejected at parse (D1); the registry checked `warehouse_storage`.
-    if definition.type == "glue" and entity.sink.write_mode.startswith("merge"):
+    if kind == "accepted" and definition.type == "glue" and entity.sink.write_mode.startswith("merge"):  # fmt: skip
         # ponytail: merges run through DuckDB, attached to REST catalogs only; attach Glue when a merge needs it
         raise _fail(entity, f"sink.write_mode={entity.sink.write_mode} requires a rest catalog (glue supports overwrite and append)")  # fmt: skip
     if definition.warehouse_storage is None:
-        kind = _storage_type(config, accepted_storage)
-        if kind not in ("s3", "gcs"):
+        type_ = _storage_type(config, storage)
+        if type_ not in ("s3", "gcs"):
             raise _fail(
                 entity,
-                f"sink.accepted.iceberg.catalog requires sink.accepted storage type s3 or gcs (got {kind})",
+                f"sink.{kind}.iceberg.catalog requires sink.{kind} storage type s3 or gcs (got {type_})",
             )
+    if kind == "rejected" and iceberg.location is not None and definition.warehouse_storage in (None, storage) and iceberg.location.rstrip("/") == target.path.rstrip("/"):  # fmt: skip  # one string names one place only in one storage
+        raise _fail(entity, "sink.rejected.iceberg.location must differ from sink.rejected.path (raw file copies are written to the path)")  # fmt: skip
+    if kind == "rejected" and entity.sink.accepted.format == "iceberg":
+        other = entity.sink.accepted.iceberg or NO_ICEBERG
+        mine = (name, catalog_ident(iceberg.namespace or entity.domain or ""), catalog_ident(iceberg.table or f"{entity.name}_rejected"))  # fmt: skip
+        if mine == (
+            other.catalog or (catalogs and catalogs.default),
+            catalog_ident(other.namespace or entity.domain or ""),
+            catalog_ident(other.table or entity.name),
+        ):  # fmt: skip
+            raise _fail(entity, "sink.rejected.iceberg must not write to the accepted table")  # fmt: skip
 
 
 def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
@@ -375,7 +395,7 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
     # D39 (#1007): abort writes the failing file to sink.rejected too; Rust 0.7 only failed at run time
     if entity.policy.severity in ("reject", "abort") and sink.rejected is None:
         raise _fail(entity, f"sink.rejected is required when policy.severity={entity.policy.severity}")  # fmt: skip
-    if sink.rejected is not None and sink.rejected.format not in ("csv", "parquet"):
+    if sink.rejected is not None and sink.rejected.format not in ("csv", "parquet", "iceberg"):  # fmt: skip
         raise _fail(
             entity, f"sink.rejected.format={sink.rejected.format} is unsupported"
         )
@@ -393,10 +413,10 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
         config, accepted.storage, "sink.accepted.storage", who
     )
     _check_iceberg(entity, config, accepted_storage)
+    if sink.rejected is not None:
+        _check_iceberg(entity, config, _storage_ref(config, sink.rejected.storage, "sink.rejected.storage", who), "rejected")  # fmt: skip
     _check_partitioning(entity)
     _check_write_mode(entity)
-    if sink.rejected is not None:
-        _storage_ref(config, sink.rejected.storage, "sink.rejected.storage", who)
     archive = sink.archive
     source = _storage_ref(config, entity.source.storage, "source.storage", who)
     if archive is not None and archive.storage not in (None, source):
@@ -674,11 +694,13 @@ def _check_pii(entity: EntityConfig) -> None:
             )
         # ponytail: Rust's warning for an unkeyed `hash` is not ported.
         fmt = entity.sink.accepted.format
-        if strategy == "drop" and fmt in ("iceberg", "delta"):
+        rejected = entity.sink.rejected
+        refused = f"format={fmt}" if fmt in ("iceberg", "delta") else "sink.rejected.format=iceberg" if rejected and rejected.format == "iceberg" else None  # fmt: skip
+        if strategy == "drop" and refused:
             raise _pii_error(
                 entity,
                 name,
-                f".strategy=drop is not supported with format={fmt} "
+                f".strategy=drop is not supported with {refused} "
                 "because the sink enforces the full declared schema",
             )
         if strategy == "mask":

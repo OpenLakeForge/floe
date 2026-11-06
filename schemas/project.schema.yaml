@@ -1030,6 +1030,9 @@ $defs:
         enum:
         - csv
         - parquet
+        - iceberg
+      iceberg:
+        $ref: '#/$defs/iceberg'
       path:
         type: string
       storage:

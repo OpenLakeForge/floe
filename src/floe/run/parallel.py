@@ -23,12 +23,16 @@ def _canonical(uri: str) -> str:
 
 
 def exclusive_keys(e: EntityConfig, config_dir: Path, storages: StoragesConfig | None, catalogs: CatalogsConfig | None) -> frozenset[str]:  # fmt: skip
-    """What `e` writes that no other running entity may touch: its accepted path, Iceberg table, state file, and the merge slot."""
+    """What `e` writes that no other running entity may touch: its accepted path, Iceberg tables (accepted and rejected), state file, and the merge slot."""
     sink = e.sink
     try:
         keys = {_canonical(resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"entity.name={e.name} sink.accepted.storage")[0])}  # fmt: skip
         if sink.accepted.format == "iceberg":
             t = resolve_target(storages, catalogs, config_dir, e)
+            keys.add(f"iceberg://{t.catalog.name}/{t.namespace}/{t.table}")
+        # the quarantine table too: two entities racing its create fail
+        if sink.rejected and sink.rejected.format == "iceberg":
+            t = resolve_target(storages, catalogs, config_dir, e, "rejected")
             keys.add(f"iceberg://{t.catalog.name}/{t.namespace}/{t.table}")
         if e.incremental_mode == "file":
             keys.add(_canonical(state_uri(e, config_dir, storages)[0]))

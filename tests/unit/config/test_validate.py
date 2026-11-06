@@ -486,3 +486,80 @@ def test_1166_reserved_prefix_applies_to_the_normalized_output_name(
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, f"{{{schema}}}", sink=sink)
     assert str(err.value) == "entity.name=orders schema.columns[0].name=__FLOE_RUN_ID normalizes to __floe_run_id, which is reserved (names starting with __floe_ are reserved when sink.rejected is set)"  # fmt: skip
+
+
+ICEBERG_ACCEPTED = "accepted: {format: iceberg, path: out, iceberg: {catalog: c}}"
+
+
+def rejected_sink(extra: str = "") -> str:
+    return f"{{{ICEBERG_ACCEPTED}, rejected: {{format: iceberg, path: rej{extra}}}}}"
+
+
+def test_1158_rejected_iceberg_validates(tmp_path: Path) -> None:
+    check(tmp_path, f"{{{COLS}}}", sink=rejected_sink(), catalogs=CATALOG + "\n")
+
+
+@pytest.mark.parametrize(
+    ("catalogs", "extra", "message"),
+    [
+        (
+            CATALOG.replace("default: c, ", ""),
+            "",
+            "sink.rejected.iceberg.catalog is required (or set catalogs.default)",
+        ),
+        (
+            CATALOG,
+            ", iceberg: {table: ORDERS}",
+            "sink.rejected.iceberg must not write to the accepted table",
+        ),
+        (
+            CATALOG,
+            ", iceberg: {table: dlq, location: rej/}",
+            "sink.rejected.iceberg.location must differ from sink.rejected.path (raw file copies are written to the path)",
+        ),
+    ],
+)
+def test_1158_rejected_iceberg_errors(
+    tmp_path: Path, catalogs: str, extra: str, message: str
+) -> None:
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", sink=rejected_sink(extra), catalogs=catalogs + "\n")  # fmt: skip
+    assert str(err.value) == f"entity.name=orders {message}"
+
+
+def test_pii_drop_is_refused_for_a_rejected_iceberg_sink(tmp_path: Path) -> None:
+    path = tmp_path / "config.yml"
+    path.write_text(
+        CATALOG
+        + textwrap.dedent(f"""
+        version: "0.2"
+        entities:
+        - name: orders
+          source: {{format: csv, path: in.csv}}
+          sink: {{accepted: {{format: parquet, path: out}}, rejected: {{format: iceberg, path: rej}}}}
+          policy: {{severity: reject}}
+          schema: {{{COLS}}}
+          pii: {{columns: [{{name: amt, strategy: drop}}]}}
+        """)
+    )
+    with pytest.raises(FloeConfigError) as err:
+        validate_entities(parse_config(path))
+    assert str(err.value) == (
+        "entity.name=orders pii.columns[name=amt].strategy=drop is not supported with "
+        "sink.rejected.format=iceberg because the sink enforces the full declared schema"
+    )
+
+
+WAREHOUSE = (
+    "storages: {default: s, definitions: [{name: s, type: s3, bucket: b, region: r}, {name: loc, type: local}]}\n"
+    "catalogs: {default: c, definitions: [{name: c, type: rest, uri: u, warehouse_storage: s}]}"
+)
+
+
+def test_rejected_location_and_path_are_compared_in_the_same_storage(tmp_path: Path) -> None:  # fmt: skip
+    """The same string names two places when the warehouse storage (S3) is not the rejected one (local)."""
+    same = ", iceberg: {table: dlq, location: rej}"
+    check(tmp_path, f"{{{COLS}}}", sink=rejected_sink(", storage: loc" + same), catalogs=WAREHOUSE + "\n")  # fmt: skip
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", sink=rejected_sink(", storage: s" + same), catalogs=WAREHOUSE + "\n")  # fmt: skip
+    assert str(err.value) == "entity.name=orders sink.rejected.iceberg.location must differ from sink.rejected.path (raw file copies are written to the path)"  # fmt: skip

@@ -284,7 +284,11 @@ def keys_of(tmp_path: Path, text: str) -> list[frozenset[str]]:
 
 
 def iceberg_entity(
-    name: str, table: str, mode: str = "overwrite", catalog: str = "polaris"
+    name: str,
+    table: str,
+    mode: str = "overwrite",
+    catalog: str = "polaris",
+    rejected: str = "",
 ) -> str:
     return f"""\
   - name: {name}
@@ -293,7 +297,7 @@ def iceberg_entity(
     sink:
       write_mode: {mode}
       accepted: {{format: iceberg, path: tables/{name}, iceberg: {{catalog: {catalog}, table: {table}}}}}
-      rejected: {{format: csv, path: ./out/rejected/{name}}}
+      rejected: {rejected or f"{{format: csv, path: ./out/rejected/{name}}}"}
     policy: {{severity: reject}}
     schema:
       primary_key: [id]
@@ -317,6 +321,12 @@ def test_the_keys_of_two_entities_on_one_iceberg_table_overlap(tmp_path: Path) -
     a, b, c = keys_of(tmp_path, ICEBERG + iceberg_entity("a", "t") + iceberg_entity("b", "t") + iceberg_entity("c", "other"))  # fmt: skip
     assert a & b and not a & c and not b & c
     assert "merge" not in a
+
+
+def test_the_keys_of_two_entities_on_one_rejected_iceberg_table_overlap(tmp_path: Path) -> None:  # fmt: skip
+    dlq = "{format: iceberg, path: tables/dlq, iceberg: {table: dlq}}"
+    a, b, c = keys_of(tmp_path, ICEBERG + iceberg_entity("a", "t1", rejected=dlq) + iceberg_entity("b", "t2", rejected=dlq) + iceberg_entity("c", "t3"))  # fmt: skip
+    assert a & b == {"iceberg://polaris/d/dlq"} and not a & c
 
 
 def test_merge_entities_share_a_key(tmp_path: Path) -> None:
