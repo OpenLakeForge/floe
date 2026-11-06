@@ -199,8 +199,16 @@ def test_an_interrupt_in_a_worker_stops_new_entities_and_reaches_the_caller(tmp_
             raise KeyboardInterrupt
 
     with pytest.raises(KeyboardInterrupt):
-        run(path, root, observer=interrupt, workers=2)
+        run(path, root, run_id="r1", observer=interrupt, workers=2)
     assert spy.started() == ["d.a", "d.b"] and spy.finished() == ["d.b"]
+    # #1155: the interrupted run still leaves its failure report; the interrupted entity's outcome is unknown
+    doc = json.loads(failure_file(tmp_path).read_text())
+    assert doc["error"]["type"] == "KeyboardInterrupt"
+    assert [(e["name"], e["state"]) for e in doc["entities"]] == [
+        ("d.a", "unknown"),
+        ("d.b", "completed"),
+        ("d.c", "not_started"),
+    ]
 
 
 def test_an_observer_error_in_a_worker_does_not_stop_the_run(tmp_path: Path) -> None:
@@ -414,9 +422,9 @@ def test_a_failing_entity_leaves_a_failure_report(workers: int, tmp_path: Path, 
     assert doc["run"]["status"] == "failed" and doc["run"]["domain"] == "d"
     assert doc["error"] == {"type": "FloeRunError", "code": None, "message": "b failed"}
     assert doc["entities"] == [
-        {"name": "a", "state": "completed", "report_file": f"{run_dir}/d/a/run.json"},
-        {"name": "b", "state": "failed"},
-        {"name": "c", "state": "not_started"},
+        {"name": "d.a", "state": "completed", "report_file": f"{run_dir}/d/a/run.json"},
+        {"name": "d.b", "state": "failed"},
+        {"name": "d.c", "state": "not_started"},
     ]
     assert (tmp_path / "report/d/run_r1/d/a/run.json").exists()
     assert not (tmp_path / "report/d/run_r1/run.summary.json").exists()
@@ -440,7 +448,7 @@ def test_a_listing_failure_leaves_a_failure_report(tmp_path: Path, monkeypatch: 
         run(path, root, run_id="r1")
     doc = json.loads(failure_file(tmp_path).read_text())
     assert doc["error"]["message"] == "b listing failed"
-    assert [(e["name"], e["state"]) for e in doc["entities"]] == [("a", "not_started"), ("b", "not_started")]  # fmt: skip
+    assert [(e["name"], e["state"]) for e in doc["entities"]] == [("d.a", "not_started"), ("d.b", "not_started")]  # fmt: skip
 
 
 def test_a_successful_run_writes_no_failure_report(tmp_path: Path) -> None:
@@ -448,3 +456,20 @@ def test_a_successful_run_writes_no_failure_report(tmp_path: Path) -> None:
     run(path, root, run_id="r1")
     assert (tmp_path / "report/d/run_r1/run.summary.json").exists()
     assert not failure_file(tmp_path).exists()
+
+
+def test_an_interrupted_sequential_run_leaves_a_failure_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """Codex P1 on #1162: a KeyboardInterrupt is no Exception; the report is still written and the interrupt re-raised."""
+    path, root = setup(tmp_path, ["a", "b", "c"])
+    spy = Spy(monkeypatch)
+
+    def interrupt(event: dict[str, Any]) -> None:
+        spy(event)
+        if event == {**event, "event": "entity_started", "name": "d.b"}:
+            raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        run(path, root, run_id="r1", observer=interrupt)
+    doc = json.loads(failure_file(tmp_path).read_text())
+    assert doc["error"]["type"] == "KeyboardInterrupt"
+    assert [(e["name"], e["state"]) for e in doc["entities"]] == [("d.a", "completed"), ("d.b", "unknown"), ("d.c", "not_started")]  # fmt: skip

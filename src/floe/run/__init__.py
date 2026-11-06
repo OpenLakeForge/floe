@@ -193,7 +193,8 @@ def run(
             done = run_parallel(selected, keys, workers, finish)
         else:
             done = [finish(e) for e in selected]
-    except Exception as err:
+    # an interrupt too (BaseException): its running entities are left "unknown"
+    except BaseException as err:
         # best effort: the original error wins, so a failing write is dropped
         with suppress(Exception):
             failure = build_failure(

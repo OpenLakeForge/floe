@@ -19,7 +19,7 @@
   },
   "entities": [
     {
-      "name": "orders",
+      "name": "raw.orders",
       "state": "not_started"
     }
   ]

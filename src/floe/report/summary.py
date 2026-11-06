@@ -96,7 +96,7 @@ def build_summary(
 
 def build_failure(
     version: str,
-    err: Exception,
+    err: BaseException,
     states: Sequence[tuple[EntityConfig, str]],
     *,
     run_id: str,
@@ -125,7 +125,7 @@ def build_failure(
             "message": str(err),
         },
         "entities": [
-            {"name": e.name, "state": state}
+            {"name": e.id, "state": state}
             | (
                 {"report_file": f"{run_path}/{id_path(e)}/run.json"}
                 if state == "completed"

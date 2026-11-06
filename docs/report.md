@@ -161,7 +161,7 @@ be, then re-raises the original error. It is additive: a successful run never wr
 - `run`: `run_id`, `domain` (when the run has one), `started_at`, `failed_at`, `duration_ms`, `status: "failed"`.
 - `error`: `type` (exception class name), `code` (`null` until typed error codes exist) and `message`, the same
   text the terminal shows. No row values.
-- `entities`: every selected entity in config order, with `name` and `state`: `completed` (its `run.json` is
+- `entities`: every selected entity in config order, with `name` (its qualified id, `<domain>.<entity>` when it has a domain, as in events) and `state`: `completed` (its `run.json` is
   written; `report_file` points to it), `failed`, `not_started`, or `unknown` (it started, but its outcome is not
   proven, for example a bug or an interrupt).
 
