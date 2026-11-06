@@ -335,6 +335,18 @@ def _output(plan: _Plan, df: pl.DataFrame) -> pl.DataFrame:
     return apply_pii_masking(df, pii.columns, plan.pii_map) if pii else df
 
 
+_CSV_TYPES = {
+    pl.String,
+    pl.Boolean,
+    pl.Null,
+    pl.Date,
+    pl.Datetime,
+    pl.Time,
+    pl.Categorical,
+    pl.Enum,
+}
+
+
 def _typed(
     plan: _Plan, raw: pl.DataFrame, mismatch: MismatchOutcome, derived: list[pl.Expr]
 ) -> tuple[pl.DataFrame, pl.DataFrame, list[RowCheck]]:
@@ -369,8 +381,8 @@ def _typed(
         for n, c in zip(plan.names, columns, strict=True)
         if c.column_type != "string"
     ]  # fmt: skip
-    # ponytail: CSV cannot hold binary or nested values; those columns keep their typed value in the rejected rows until a Parquet rejected sink (#1154) can store them as they are
-    if unwritable := [n for n in plan.names if df.schema[n] == pl.Binary or df.schema[n].is_nested() or df.schema[n] == pl.Object]:  # fmt: skip
+    # ponytail: the rejected CSV holds only these types; any other source column (binary, duration, nested ...) keeps its typed value in the rejected rows until a Parquet rejected sink (#1154) can store it as it is
+    if unwritable := [n for n in plan.names if not (df.schema[n].is_numeric() or df.schema[n].base_type() in _CSV_TYPES)]:  # fmt: skip
         df = df.with_columns(typed[n] for n in unwritable)
     if entity.policy.severity == "abort" and any(c.mask.any() for c in cast_checks):
         return typed, df, cast_checks  # fmt: skip  # Rust: abort-mode cast errors skip not_null and unique

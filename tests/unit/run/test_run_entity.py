@@ -1,6 +1,7 @@
 """`run_entity`: statuses, outputs and file-level rejections for a local CSV entity."""
 
 import json
+from datetime import timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -695,16 +696,23 @@ def test_rejected_rows_hold_the_raw_value_of_a_failed_cast(tmp_path: Path) -> No
     assert rejected["__floe_row_index"].to_list() == ["1"]
 
 
-def test_a_binary_source_column_keeps_its_typed_value_in_the_rejected_csv(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("value", "kind"), [(b"alice", "string"), (timedelta(microseconds=7), "int64")]
+)
+def test_a_source_column_csv_cannot_hold_keeps_its_typed_value_in_the_rejected_csv(
+    tmp_path: Path, value: object, kind: str
 ) -> None:
-    """#1152 (Codex P1): a Parquet binary column cannot be written to CSV, so the rejected row keeps its typed value."""
-    config = CONFIG.format(severity="reject", mismatch="").replace(
-        'format: csv\n      path: ./in\n      options: {header: true, separator: ","}',
-        "format: parquet\n      path: ./in",
+    """#1152 (Codex P1s): a Parquet binary or duration column cannot be written to CSV, so the rejected row keeps its typed value."""
+    config = (
+        CONFIG.format(severity="reject", mismatch="")
+        .replace(
+            'format: csv\n      path: ./in\n      options: {header: true, separator: ","}',
+            "format: parquet\n      path: ./in",
+        )
+        .replace("{name: name, type: string}", f"{{name: name, type: {kind}}}")
     )
     (tmp_path / "in").mkdir()
-    pl.DataFrame({"id": ["bad", "1"], "name": [b"alice", b"bob"]}).write_parquet(
+    pl.DataFrame({"id": ["bad", "1"], "name": [value, value]}).write_parquet(
         tmp_path / "in" / "orders.parquet"
     )
     (tmp_path / "config.yml").write_text(config)
@@ -713,7 +721,10 @@ def test_a_binary_source_column_keeps_its_typed_value_in_the_rejected_csv(
     assert report["results"]["rejected_total"] == 1
     rejected = _rejected_csv(tmp_path)
     assert rejected["id"].to_list() == ["bad"]
-    assert rejected["name"].to_list() == ["alice"]
+    assert (
+        rejected["name"].to_list()
+        == accepted(tmp_path)["name"].cast(pl.String).to_list()
+    )
 
 
 def test_rejected_row_indices_follow_the_file_across_chunks(
