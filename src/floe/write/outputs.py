@@ -58,7 +58,7 @@ def part_uris(client: StorageClient, base: str, ext: str) -> list[str]:
 
 
 @contextmanager
-def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str) -> Generator[Callable[[bytes], str]]:  # fmt: skip
+def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str | None = None) -> Generator[Callable[[bytes], str]]:  # fmt: skip
     """Yield `put(body) -> name`. Every part is staged as `_staging-<id>-<name>` (invisible to `part_uris`).
 
     Only when all were written are they copied over `<name>` and the staged copies deleted (#1054).
@@ -66,13 +66,15 @@ def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str) -> Gener
     failed write leaves them untouched. Other modes name them `part-<uuid>` and keep the old parts;
     staging keeps a killed run from leaving visible parts for a retry to duplicate (#1056: parts are
     written while the input is still read). A failed write deletes the staged parts it wrote.
+    With a `key`, a non-overwrite part is named `part-<uuid5(key:index)>` so a retry replaces the same parts (#919).
     """
     overwrite = mode == "overwrite"
     stage = f"_staging-{uuid.uuid4()}-"
     names: list[str] = []
 
     def put(body: bytes) -> str:
-        name = f"part-{len(names):05}.{ext}" if overwrite else f"part-{uuid.uuid4()}.{ext}"  # fmt: skip
+        stem = uuid.uuid5(uuid.NAMESPACE_URL, f"{key}:{len(names)}") if key else uuid.uuid4()  # fmt: skip
+        name = f"part-{len(names):05}.{ext}" if overwrite else f"part-{stem}.{ext}"
         names.append(name)  # before the write: a partial file needs cleanup too
         client.write(f"{base}/{stage}{name}", body)
         return name
@@ -163,3 +165,18 @@ def write_rejected(df: pl.DataFrame, client: StorageClient, base: str, mode: Wri
             with _parts(client, base, mode, "csv") as put:
                 name = put(df.write_csv().encode())
     return f"{base}/{name}"
+
+
+def write_rejected_parquet(frames: Iterable[pl.DataFrame], client: StorageClient, base: str, mode: WriteMode, key: str) -> list[str]:  # fmt: skip
+    """Write the rejected `frames` (at least one) as bounded `part-*.parquet` files; returns the first `MAX_REPORTED_PARTS` URIs.
+
+    Staged and published like the accepted parts; the `key` names a non-overwrite part so a retry rewrites it (S6, #919).
+    """
+    base = base.rstrip("/")
+    names: list[str] = []
+    with _os_errors(), _parts(client, base, mode, "parquet", key) as put:
+        for chunk in _part_frames(frames, DEFAULT_MAX_SIZE_PER_FILE):
+            body = io.BytesIO()
+            chunk.write_parquet(body)
+            names.append(put(body.getvalue()))
+    return [f"{base}/{n}" for n in names[:MAX_REPORTED_PARTS]]

@@ -11,7 +11,7 @@ import pytest
 
 from floe.checks.unique import UniqueTracker
 from floe.config.parse import parse_config
-from floe.errors import FloeConfigError, FloeRunError
+from floe.errors import FloeRunError
 from floe.read import json as json_module
 from floe.read.csv import read_csv
 from floe.read.xml import read_xml
@@ -769,17 +769,95 @@ def test_rejected_raw_values_of_a_pii_column_are_never_plaintext(
     assert ("name" in text.splitlines()[0]) == (strategy != "drop")
 
 
-def test_1153_rejected_parquet_is_not_implemented_yet(tmp_path: Path) -> None:
+PQ_CONFIG = CONFIG.replace("rejected: {{format: csv", "rejected: {{format: parquet")
+
+
+def _rejected_parquet(tmp_path: Path) -> pl.DataFrame:
+    parts = sorted((tmp_path / "out" / "rejected").glob("part-*.parquet"))
+    return pl.concat([pl.read_parquet(p) for p in parts])
+
+
+def _run_pq(tmp_path: Path, text: str, config: str = PQ_CONFIG, **fmt: str) -> Any:
+    (tmp_path / "in").mkdir(exist_ok=True)
+    (tmp_path / "in" / "orders.csv").write_text(text)
+    (tmp_path / "config.yml").write_text(config.format(**{"severity": "reject", "mismatch": "", **fmt}))  # fmt: skip
+    return run_entity(parse_config(tmp_path / "config.yml").entities[0], tmp_path, "0.3").report  # fmt: skip
+
+
+def test_1154_rejected_parquet_holds_raw_values_and_metadata(tmp_path: Path) -> None:
+    config = (
+        PQ_CONFIG.replace("{{name: name, type: string}}", "{{name: amount, type: 'decimal(10,2)'}}")
+        .replace("{{name: id, type: int64, nullable: false}}", "{{name: id, type: int64, nullable: false, unique: true}}")
+        .replace("        - {{name: amount", "        - {{name: day, type: date}}\n        - {{name: amount")
+    )  # fmt: skip
+    report = _run_pq(tmp_path, "id,day,amount\n1,2024-01-01,1.50\n2,2024-13-45,abc\n1,2024-01-02,2.00\n,2024-01-03,3.00\n", config)  # fmt: skip
+    rejected = _rejected_parquet(tmp_path)
+    assert rejected.columns == ["id", "day", "amount", "__floe_row_index", "__floe_errors", "__floe_run_id", "__floe_source_uri"]  # fmt: skip
+    assert rejected.schema["__floe_row_index"] == pl.UInt64
+    assert rejected["id"].to_list() == ["2", "1", None]
+    assert rejected["day"].to_list() == ["2024-13-45", "2024-01-02", "2024-01-03"]
+    assert rejected["amount"].to_list() == ["abc", "2.00", "3.00"]
+    assert rejected["__floe_row_index"].to_list() == [1, 2, 3]
+    assert "cast_error" in rejected["__floe_errors"][0]
+    assert "unique" in rejected["__floe_errors"][1] and "not_null" in rejected["__floe_errors"][2]  # fmt: skip
+    assert rejected["__floe_source_uri"].unique().to_list() == [f"local://{tmp_path / 'in' / 'orders.csv'}"]  # fmt: skip
+    assert len(set(rejected["__floe_run_id"])) == 1
+    assert report["files"][0]["output"]["rejected_path"] == str(tmp_path / "out" / "rejected")  # fmt: skip
+
+
+def test_1154_rejected_parquet_spills_chunks_and_keeps_whole_file_indices(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spilled: list[str] = []
+    real = pl.DataFrame.write_ipc
+
+    def spy(self: pl.DataFrame, file: Any, *a: Any, **k: Any) -> Any:
+        spilled.append(Path(file).name)
+        return real(self, file, *a, **k)  # pyright: ignore[reportUnknownVariableType]  # spy passes through the untyped args
+
+    monkeypatch.setattr(pl.DataFrame, "write_ipc", spy)
+    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=2))
     (tmp_path / "in").mkdir()
-    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
-    config = CONFIG.format(severity="reject", mismatch="").replace(
-        "rejected: {format: csv", "rejected: {format: parquet"
+    (tmp_path / "in" / "a.csv").write_text("id,name\nx,a\n1,b\ny,c\n2,d\nz,e\n")
+    (tmp_path / "in" / "b.csv").write_text("id,name\n1,a\nq,b\n")
+    (tmp_path / "config.yml").write_text(PQ_CONFIG.format(severity="reject", mismatch=""))  # fmt: skip
+    run_entity(parse_config(tmp_path / "config.yml").entities[0], tmp_path, "0.3")
+    rejected = _rejected_parquet(tmp_path)
+    got = {(Path(u).name, i) for u, i in zip(rejected["__floe_source_uri"], rejected["__floe_row_index"])}  # fmt: skip
+    assert got == {("a.csv", 0), ("a.csv", 2), ("a.csv", 4), ("b.csv", 1)}
+    assert {"rejected-0.ipc", "rejected-1.ipc", "rejected-2.ipc"} <= set(spilled)
+
+
+def test_1154_rejected_parquet_keeps_native_binary(tmp_path: Path) -> None:
+    config = PQ_CONFIG.replace("format: csv\n      path: ./in\n      options: {{header: true, separator: \",\"}}", "format: parquet\n      path: ./in")  # fmt: skip
+    (tmp_path / "in").mkdir()
+    pl.DataFrame({"id": ["bad", "1"], "name": [b"alice", b"bob"]}).write_parquet(tmp_path / "in" / "orders.parquet")  # fmt: skip
+    (tmp_path / "config.yml").write_text(config.format(severity="reject", mismatch=""))
+    run_entity(parse_config(tmp_path / "config.yml").entities[0], tmp_path, "0.3")
+    rejected = _rejected_parquet(tmp_path)
+    assert rejected["id"].to_list() == ["bad"]
+    assert rejected.schema["name"] == pl.Binary
+    assert rejected["name"].to_list() == [b"alice"]
+
+
+def test_1154_append_retry_rewrites_the_same_parts(tmp_path: Path) -> None:
+    config = PQ_CONFIG.replace("sink:\n", "sink:\n      write_mode: append\n", 1)
+    _run_pq(tmp_path, "id,name\nx,a\n1,b\n", config)
+    first = sorted(p.name for p in (tmp_path / "out" / "rejected").iterdir())
+    run_entity(parse_config(tmp_path / "config.yml").entities[0], tmp_path, "0.3")
+    assert sorted(p.name for p in (tmp_path / "out" / "rejected").iterdir()) == first
+    assert len(first) == 1 and first[0].startswith("part-")
+    assert _rejected_parquet(tmp_path).height == 1
+
+
+@pytest.mark.parametrize("strategy", ["redact", "hash", "drop"])
+def test_1154_rejected_parquet_pii_is_never_plaintext(
+    tmp_path: Path, strategy: str
+) -> None:
+    config = PII_CONFIG.replace(
+        "rejected: {{format: csv", "rejected: {{format: parquet"
     )
-    (tmp_path / "config.yml").write_text(config)
-    entity = parse_config(tmp_path / "config.yml").entities[0]
-    with pytest.raises(FloeConfigError) as err:
-        run_entity(entity, tmp_path, "0.3")
-    assert (
-        str(err.value)
-        == "entity.name=orders sink.rejected.format=parquet is not implemented yet"
-    )
+    _run_pq(tmp_path, "id,name\n1,alice\nx,bob\n", config, strategy=strategy)
+    (part,) = (tmp_path / "out" / "rejected").glob("*.parquet")
+    assert b"bob" not in part.read_bytes()
+    assert ("name" in pl.read_parquet(part).columns) == (strategy != "drop")

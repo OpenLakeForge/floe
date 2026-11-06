@@ -108,6 +108,7 @@ from floe.write.outputs import (
     part_uris,
     write_accepted,
     write_rejected,
+    write_rejected_parquet,
 )
 
 Chunks = Iterator[tuple[int, pl.DataFrame, pl.Series | None]]  # fmt: skip  # offset, frame, ragged rows
@@ -329,6 +330,10 @@ _CSV_TYPES = {
 }
 
 
+def _parquet_rejected(plan: _Plan) -> bool:
+    return plan.entity.sink.rejected is not None and plan.entity.sink.rejected.format == "parquet"  # fmt: skip
+
+
 def _typed(
     plan: _Plan, raw: pl.DataFrame, mismatch: MismatchOutcome, derived: list[pl.Expr]
 ) -> tuple[pl.DataFrame, pl.DataFrame, list[RowCheck]]:
@@ -363,8 +368,8 @@ def _typed(
         for n, c in zip(plan.names, columns, strict=True)
         if c.column_type != "string"
     ]  # fmt: skip
-    # ponytail: the rejected CSV holds only these types; any other source column (binary, duration, nested ...) keeps its typed value in the rejected rows until a Parquet rejected sink (#1154) can store it as it is
-    if unwritable := [n for n in plan.names if not (df.schema[n].is_numeric() or df.schema[n].base_type() in _CSV_TYPES)]:  # fmt: skip
+    # the rejected CSV holds only these types; any other source column (binary, duration, nested ...) keeps its typed value there. A rejected Parquet keeps the native value as it is
+    if unwritable := [] if _parquet_rejected(plan) else [n for n in plan.names if not (df.schema[n].is_numeric() or df.schema[n].base_type() in _CSV_TYPES)]:  # fmt: skip
         df = df.with_columns(typed[n] for n in unwritable)
     if entity.policy.severity == "abort" and any(c.mask.any() for c in cast_checks):
         return typed, df, cast_checks  # fmt: skip  # Rust: abort-mode cast errors skip not_null and unique
@@ -438,6 +443,7 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
     masks: dict[tuple[str, str, str], list[pl.Series]] = {}
     accepted: list[pl.DataFrame | Path] = []
     rejected: list[pl.DataFrame] = []
+    spilled_rejected: list[Path] = []  # a Parquet rejected sink spills every chunk
     errors: list[tuple[int, str]] = []
     try:
         for offset, raw_df, ragged in chain(first, chunks):
@@ -465,7 +471,11 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
             else:
                 accepted.append(frame)
             if severity == "reject" and bad.height:
-                rejected.append(bad)
+                if _parquet_rejected(plan):
+                    bad.write_ipc(spilled := spill / f"rejected-{len(spilled_rejected)}.ipc")  # fmt: skip
+                    spilled_rejected.append(spilled)
+                else:
+                    rejected.append(bad)
     except FloeIoError as err:
         return failed(err, mismatch)
 
@@ -477,7 +487,14 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
             mode = "append"
         plan.rejected_writes += 1
         target, client = _rejected(plan, "reject")
-        written = write_rejected(_output(plan, pl.concat(rejected)), client, target, mode, f"{plan.input_hash}:{file.source_uri}")  # fmt: skip
+        key = f"{plan.input_hash}:{file.source_uri}"
+        if _parquet_rejected(plan):
+            meta = [pl.lit(plan.run_id).alias("__floe_run_id"), pl.lit(uri).alias("__floe_source_uri")]  # fmt: skip
+            frames = (_output(plan, _unspill(p)).with_columns(meta) for p in spilled_rejected)  # fmt: skip
+            write_rejected_parquet(frames, client, target, mode, key)
+            written = target.rstrip("/")  # one directory: a file can have many parts
+        else:
+            written = write_rejected(_output(plan, pl.concat(rejected)), client, target, mode, key)  # fmt: skip
         rejected_path = written.removeprefix("local://")
     elif bad_total and severity == "abort":
         rejected_path = _copy_raw(plan, path, "abort", file.source_name)
@@ -892,10 +909,6 @@ def _run_entity(
     target = resolve_target(storages, catalogs, config_dir, entity) if iceberg else None
     # PyIceberg writes an Iceberg table's files, not Floe's storage clients
     base, accepted = resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"{who} sink.accepted.storage")  # fmt: skip
-    if (
-        sink.rejected is not None and sink.rejected.format == "parquet"
-    ):  # ponytail: #1154 writes it and removes this guard
-        raise FloeConfigError(f"{who} sink.rejected.format=parquet is not implemented yet")  # fmt: skip
     rejected = sink.rejected and resolve_path(storages, config_dir, sink.rejected.storage, sink.rejected.path, f"{who} sink.rejected.storage")  # fmt: skip
     strategy = resolve_strategy(entity.schema_)
     columns = entity.schema_.columns

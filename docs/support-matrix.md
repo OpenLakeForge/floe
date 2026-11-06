@@ -50,7 +50,7 @@ Notes:
 | Accepted: Parquet | ✅ | ✅ (upload) | Writes `part-*.parquet`; `overwrite` and `append` |
 | Accepted: Iceberg | ❌ | ✅ (REST or Glue catalog) | `overwrite`, `append`, `merge_scd1` and `merge_scd2` in one catalog commit per entity; merges need a REST catalog |
 | Rejected: CSV | ✅ | ✅ (upload) | Dataset parts `part-*.csv`; the default |
-| Rejected: Parquet | ❌ | ❌ | `floe validate` accepts `sink.rejected.format: parquet`; `floe run` fails until the writer lands (#1154). Raw-value columns plus `__floe_*` metadata, see [Config](config.md) |
+| Rejected: Parquet | ✅ | ✅ (upload) | Dataset parts `part-*.parquet`, bounded by size; raw-value columns plus `__floe_*` metadata, see [Config](config.md). `output.rejected_path` is the directory |
 | Reports: JSON | ✅ | ✅ (upload) | |
 
 Notes:
