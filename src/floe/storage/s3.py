@@ -4,15 +4,21 @@ import os
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-
-import boto3
-from botocore.config import Config
-from botocore.exceptions import BotoCoreError, ClientError
+from typing import TYPE_CHECKING, Any
 
 from floe.errors import FloeIoError, FloeStorageError
+from floe.extras import missing
 from floe.storage.paths import fnv1a_hex, parse_s3_uri
 from floe.storage.types import ObjectRef, StoredObject
+
+if TYPE_CHECKING:
+    from botocore.exceptions import BotoCoreError, ClientError
+else:
+    try:
+        from botocore.exceptions import BotoCoreError, ClientError
+    except ImportError:
+        # no s3 extra: `S3Client()` raises, so nothing below is ever caught
+        BotoCoreError = ClientError = Exception
 
 _CONFLICT = ("PreconditionFailed", "ConditionalRequestConflict", "412", "409")
 _NOT_FOUND = ("NoSuchKey", "NotFound", "404")
@@ -65,6 +71,11 @@ class S3Client:
         endpoint: str | None = None,
         path_style_access: bool | None = None,
     ) -> None:
+        try:
+            import boto3
+            from botocore.config import Config
+        except ImportError as e:
+            raise missing("s3", "an s3 storage") from e
         self.bucket = bucket
         self._client = boto3.session.Session().client(  # pyright: ignore[reportUnknownMemberType]  # stubs cover s3 only
             "s3",

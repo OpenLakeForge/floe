@@ -10,7 +10,6 @@ from collections.abc import Generator, Sequence
 from contextlib import contextmanager, suppress
 from urllib.parse import urlsplit
 
-import botocore.exceptions
 import duckdb
 import polars as pl
 import pyiceberg.exceptions
@@ -57,11 +56,16 @@ _PYICEBERG_ERRORS = tuple(
     and issubclass(c, Exception)
     and c.__module__ == pyiceberg.exceptions.__name__
 )
+try:
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    _s3_errors: tuple[type[Exception], ...] = (BotoCoreError, ClientError)
+except ImportError:  # no s3 extra: nothing here raises them
+    _s3_errors = ()
 # ValueError: PyIceberg and Arrow reject bad data and schemas with it. A TypeError, KeyError or
 # AttributeError is a bug in Floe and propagates.
-_RUN_ERRORS = (
-    OSError, ValueError, duckdb.Error, pl.exceptions.PolarsError,
-    botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError, *_PYICEBERG_ERRORS,
+_RUN_ERRORS: tuple[type[Exception], ...] = (
+    OSError, ValueError, duckdb.Error, pl.exceptions.PolarsError, *_s3_errors, *_PYICEBERG_ERRORS,
 )  # fmt: skip
 
 

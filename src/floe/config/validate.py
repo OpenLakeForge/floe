@@ -729,6 +729,8 @@ def _check_storages(config: RootConfig) -> None:
                     f"storages.definitions name={d.name} type={d.type} is unsupported "
                     f"(allowed: {', '.join(STORAGE_TYPES)})"
                 )
+            if d.type == "s3":
+                require("s3", "boto3", f"storages.definitions name={d.name} type=s3")
             if d.type == "s3" and (d.bucket is None or d.region is None):
                 missing = "bucket" if d.bucket is None else "region"
                 raise FloeConfigError(
