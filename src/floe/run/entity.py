@@ -910,6 +910,8 @@ def _run_entity(
     # PyIceberg writes an Iceberg table's files, not Floe's storage clients
     base, accepted = resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"{who} sink.accepted.storage")  # fmt: skip
     rejected = sink.rejected and resolve_path(storages, config_dir, sink.rejected.storage, sink.rejected.path, f"{who} sink.rejected.storage")  # fmt: skip
+    if rejected and sink.rejected and sink.rejected.format == "parquet" and not iceberg and rejected[0].rstrip("/") == base.rstrip("/"):  # fmt: skip
+        raise FloeConfigError(f"{who} sink.rejected.path must differ from sink.accepted.path: both would write part-*.parquet files into {base}")  # fmt: skip
     strategy = resolve_strategy(entity.schema_)
     columns = entity.schema_.columns
     names = source_names(columns, strategy)

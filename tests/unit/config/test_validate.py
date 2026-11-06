@@ -476,3 +476,13 @@ def test_1153_rejected_errors(
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, f"{{{schema}}}", sink=sink)
     assert str(err.value) == f"entity.name=orders {message}"
+
+
+def test_1166_reserved_prefix_applies_to_the_normalized_output_name(
+    tmp_path: Path,
+) -> None:
+    sink = "{accepted: {format: parquet, path: out}, rejected: {format: parquet, path: rej}}"
+    schema = "normalize_columns: {enabled: true, strategy: lower}, columns: [{name: __FLOE_RUN_ID, type: string}]"  # fmt: skip
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{schema}}}", sink=sink)
+    assert str(err.value) == "entity.name=orders schema.columns[0].name=__FLOE_RUN_ID normalizes to __floe_run_id, which is reserved (names starting with __floe_ are reserved when sink.rejected is set)"  # fmt: skip

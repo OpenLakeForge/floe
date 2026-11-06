@@ -11,7 +11,7 @@ import pytest
 
 from floe.checks.unique import UniqueTracker
 from floe.config.parse import parse_config
-from floe.errors import FloeRunError
+from floe.errors import FloeConfigError, FloeRunError
 from floe.read import json as json_module
 from floe.read.csv import read_csv
 from floe.read.xml import read_xml
@@ -861,3 +861,22 @@ def test_1154_rejected_parquet_pii_is_never_plaintext(
     (part,) = (tmp_path / "out" / "rejected").glob("*.parquet")
     assert b"bob" not in part.read_bytes()
     assert ("name" in pl.read_parquet(part).columns) == (strategy != "drop")
+
+
+@pytest.mark.parametrize(("fmt", "refused"), [("parquet", True), ("csv", False)])
+def test_1166_a_parquet_rejected_sink_cannot_share_the_accepted_directory(tmp_path: Path, fmt: str, refused: bool) -> None:  # fmt: skip
+    config = PQ_CONFIG.replace("format: parquet, path: ./out/rejected", f"format: {fmt}, path: ./out").replace("path: ./out/accepted", "path: ./out")  # fmt: skip
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id\n1\nbad\n")
+    (tmp_path / "config.yml").write_text(config.format(severity="reject", mismatch="").replace("        - {name: name, type: string}\n", ""))  # fmt: skip
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    if refused:
+        with pytest.raises(
+            FloeConfigError,
+            match="sink.rejected.path must differ from sink.accepted.path",
+        ):
+            run_entity(entity, tmp_path, "0.3")
+    else:
+        assert (
+            run_entity(entity, tmp_path, "0.3").report["results"]["rejected_total"] == 1
+        )
