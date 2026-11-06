@@ -25,6 +25,8 @@ $defs:
         type:
         - string
         - 'null'
+      runner:
+        type: [string, 'null']
       incremental_mode:
         type:
         - string

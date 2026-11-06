@@ -15,7 +15,12 @@ __version__ = version(
 from floe import manifest as _manifest
 from floe import run as _run
 from floe.config.parse import parse_config
-from floe.config.profile import ProfileConfig, apply_profile, parse_profile
+from floe.config.profile import (
+    ProfileConfig,
+    apply_profile,
+    parse_profile,
+    validate_runners,
+)
 from floe.config.project import RootConfig as _Root
 from floe.config.validate import validate_config
 from floe.config.vars import extract_config_env_vars as _env_vars
@@ -151,7 +156,9 @@ def validate(
     profile_vars: dict[str, str] | None = None,
     profile_path: str | None = None,
 ) -> None:
-    _, root = _load(config_path, _profile(profile_path, profile_vars))
+    profile = _profile(profile_path, profile_vars)
+    _, root = _load(config_path, profile)
+    validate_runners(root, profile)
     validate_config(root)
     _run.select_entities(root, entities or [])
 
@@ -169,6 +176,7 @@ def run(
     if profile:  # Rust `run_with_runtime`: profile vars resolved against the config's env vars first
         profile = replace(profile, variables=resolve_vars(profile.variables, {}, _env_vars(Path(config_path).absolute())))  # fmt: skip
     path, root = _load(config_path, profile)
+    validate_runners(root, profile)
     # as `floe run -c`: OpenLineage events, and validation after the observer so lineage sees a failure
     out = run_with_lineage(
         path, root, root.entities, str(path), _emit, validate=True, run_id=run_id,
@@ -190,7 +198,9 @@ def maintain(
     experimental: bool = False,
 ) -> list[dict[str, Any]]:
     """`floe maintain`: expire Iceberg snapshots behind the retention floor (7 days, 10 snapshots), then remove orphan files."""
-    path, root = _load(config_path, _profile(profile_path, profile_vars))
+    profile = _profile(profile_path, profile_vars)
+    path, root = _load(config_path, profile)
+    validate_runners(root, profile)
     return _maintain(path, root, entities or [], older_than_days, retain_last, orphan_delay_days, dry_run, compact, experimental)  # fmt: skip
 
 

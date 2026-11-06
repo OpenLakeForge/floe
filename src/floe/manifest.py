@@ -215,7 +215,7 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
                 "rejected": sink.rejected and _sink(ctx, sink.rejected),
                 "archive": sink.archive and _Target(ctx, sink.archive).json(),
             },
-            "runner": None,
+            "runner": entity.runner,
             "policy_severity": entity.policy.severity,
             "write_mode": sink.write_mode,
             "incremental_mode": entity.incremental_mode,
@@ -284,28 +284,40 @@ _PROFILE_RUNNER_FIELDS = {
 }
 
 
-def _runners(profile: ProfileConfig | None) -> Json:
-    """The profile's `kubernetes_job` or `databricks_job` runner as `default`, else `local`."""
-    kind = profile and profile.runner.get("type")
+def _runner_definition(definition: dict[str, object]) -> Json:
+    kind = definition.get("type")
     if not isinstance(kind, str) or kind not in _PROFILE_RUNNER_FIELDS:
         local = {"type": "local_process"} | dict.fromkeys(_RUNNER_FIELDS)
-        return {"default": "local", "definitions": {"local": local}}
-    assert profile is not None
+        return local
     keep = _PROFILE_RUNNER_FIELDS[kind]
     runner: Json = {"type": kind}
     for k in _RUNNER_FIELDS:
-        v = profile.runner.get(k) if k in keep else None
+        v = definition.get(k) if k in keep else None
         if k in ("env", "env_parameters") and isinstance(v, dict):  # a BTreeMap in Rust
             v = dict(sorted(cast(dict[str, str], v).items()))
         runner[k] = v
     if kind == "kubernetes_job":
         # `job_scope`, `domain_resources` and the pod options (#1065), only when set
         runner |= {
-            k: v for k, v in profile.runner.items() if k not in runner and v is not None
+            k: v for k, v in definition.items() if k not in runner and v is not None
         }
     if kind == "databricks_job":
         runner["job_name"] = runner["job_name"] or "floe-{domain}-{env}"
-    return {"default": "default", "definitions": {"default": runner}}
+    return runner
+
+
+def _runners(profile: ProfileConfig | None) -> Json:
+    definition = _runner_definition(profile.runner if profile else {})
+    default = "local" if definition["type"] == "local_process" else "default"
+    definitions = {default: definition}
+    if profile:
+        definitions.update(
+            {
+                name: _runner_definition(runner)
+                for name, runner in (profile.runners or {}).items()
+            }
+        )
+    return {"default": default, "definitions": definitions}
 
 
 _OPTIONAL = (

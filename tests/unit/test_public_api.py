@@ -220,6 +220,34 @@ def test_inspect_and_reset_entity_state(tmp_path: Path) -> None:
     assert floe.reset_entity_state(config, "sales") is False
 
 
+def test_inspection_and_state_api_do_not_require_a_runner_profile(
+    tmp_path: Path,
+) -> None:
+    config, state_file = _incremental_config(tmp_path)
+    path = Path(config)
+    path.write_text(
+        path.read_text().replace(
+            '    incremental_mode: "file"',
+            '    runner: large\n    incremental_mode: "file"',
+        )
+    )
+    state = EntityState("sales", "2026-04-22T09:00:00Z", {}, {})
+    state_file.parent.mkdir(parents=True)
+    state_file.write_bytes(dump_state(state))
+
+    assert floe.load_config(config).entity_names == ["sales"]
+    assert floe.inspect_entity_state(config, "sales")["state"] is not None
+    assert floe.reset_entity_state(config, "sales") is True
+    with pytest.raises(floe.FloeConfigError, match="available: local"):
+        floe.validate(config)
+    profile = tmp_path / "profile.yml"
+    profile.write_text(
+        "apiVersion: floe/v1\nkind: EnvironmentProfile\nmetadata: {name: test}\n"
+        "execution: {runner: {type: local}, runners: {large: {}}}\n"
+    )
+    floe.validate(config, profile_path=str(profile))
+
+
 def test_1100_state_calls_do_not_reuse_a_client_built_for_an_earlier_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     config = tmp_path / "floe.yml"
     config.write_text(

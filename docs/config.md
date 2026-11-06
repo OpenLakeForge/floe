@@ -197,6 +197,12 @@ Free-form entity metadata. Supported keys: `data_product`, `domain`, `owner`,
 Reference to a domain defined in `domains`. When set, `{{domain.incoming_dir}}`
 is available for templating within that entity.
 
+### `runner` (optional)
+
+Select a runner declared in the environment profile. A domain can set `runner`
+for its entities; an entity value takes precedence. When neither sets it, the
+profile default is used. Validation rejects an undeclared name.
+
 ### Entity identity
 With `version >= "0.3"`, an entity with a `domain` is identified as `<domain>.<name>`;
 otherwise (and in all `0.1`/`0.2` configs) its identity is the bare `name`.

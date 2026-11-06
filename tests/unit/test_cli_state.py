@@ -84,6 +84,38 @@ def test_state_inspect_without_state(
     ]
 
 
+def test_state_commands_do_not_require_a_runner_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config, state = write_config(tmp_path)
+    config.write_text(
+        config.read_text().replace(
+            '    incremental_mode: "file"',
+            '    runner: large\n    incremental_mode: "file"',
+        )
+    )
+    state.parent.mkdir(parents=True)
+    state.write_text(V1_STATE)
+    assert (
+        floe(monkeypatch, capsys, "inspect", "-c", str(config), "--entity", "sales")[0]
+        == 0
+    )
+    assert (
+        floe(
+            monkeypatch,
+            capsys,
+            "reset",
+            "-c",
+            str(config),
+            "--entity",
+            "sales",
+            "--yes",
+        )[0]
+        == 0
+    )
+    assert not state.exists()
+
+
 def test_state_reset_requires_explicit_yes_flag(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -78,6 +78,7 @@ class LineageConfig(BaseModel):
 class DomainConfig(BaseModel):
     name: str
     incoming_dir: str | None
+    runner: str | None = None
     defaults: Hash | None  # raw; `validate_domains` rejects the keys D7 forbids
     resolved_incoming_dir: str | None = None  # set by the template pass
 
@@ -150,7 +151,7 @@ def _hint(entity: object, key: str) -> str | None:
 
 def parse_domain(item: object, version: str) -> DomainConfig:
     hash = yaml_hash(item, "domains")
-    validate_known_keys(hash, "domains", ("name", "incoming_dir", "defaults"))
+    validate_known_keys(hash, "domains", ("name", "incoming_dir", "defaults", "runner"))
     name = get_string(hash, "name", "domains")
     defaults = None
     if "defaults" in hash:
@@ -160,7 +161,12 @@ def parse_domain(item: object, version: str) -> DomainConfig:
     incoming_dir = opt_string(hash, "incoming_dir", "domains")
     if incoming_dir is None and config_version(version) < V0_3:
         raise FloeConfigError("missing required field domains.incoming_dir")
-    return DomainConfig(name=name, incoming_dir=incoming_dir, defaults=defaults)
+    return DomainConfig(
+        name=name,
+        incoming_dir=incoming_dir,
+        defaults=defaults,
+        runner=opt_string(hash, "runner", "domains"),
+    )
 
 
 def parse_sources(value: object, version: str, origin: Path | None) -> dict[str, Hash]:
@@ -241,6 +247,11 @@ def parse_entities(
     for index, entity in enumerate(entities):
         try:
             parsed = parse_entity(*_merge_entity(entity, sources, defaults))
+            if parsed.runner is None:
+                runner = next(
+                    (d.runner for d in domains if d.name == parsed.domain), None
+                )
+                parsed = parsed.model_copy(update={"runner": runner})
             if qualified and parsed.domain is not None:
                 parsed = parsed.model_copy(
                     update={"id": f"{parsed.domain}.{parsed.name}"}

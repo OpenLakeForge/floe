@@ -2,6 +2,10 @@
 
 All notable changes to Floe are documented in this file.
 
+## Unreleased
+
+- Named profile runners inherit from the default runner and can be selected per domain or entity (#1149).
+
 ## v0.9.0
 
 Floe 0.9 accepts configs with `version:` up to `"0.9"` and generates manifests with `spec_version: "0.9"`; use

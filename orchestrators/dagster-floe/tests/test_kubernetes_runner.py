@@ -19,7 +19,7 @@ from floe_dagster.kubernetes_runner import (
     run_kubernetes_job,
     sized_for_domain,
 )
-from floe_dagster.manifest import ManifestRunnerDefinition, load_manifest
+from floe_dagster.manifest import ManifestRunnerDefinition, load_manifest, resolve_entity_runner
 from floe_dagster.runner import LocalRunner, RunResult
 
 
@@ -37,6 +37,47 @@ def _runner() -> ManifestRunnerDefinition:
         poll_interval_seconds=1,
         secrets=None,
     )
+
+
+def test_generated_named_runners_size_each_entity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+
+    monkeypatch.delitem(sys.modules, "boto3")
+    from floe._cli import main
+
+    config = tmp_path / "config.yml"
+    profile = tmp_path / "profile.yml"
+    manifest_path = tmp_path / "manifest.json"
+    config.write_text('''version: "0.3"
+entities:
+  - name: small
+    source: {format: csv, path: ./input.csv}
+    sink: {accepted: {format: parquet, path: ./out}}
+    policy: {severity: warn}
+    schema: {columns: [{name: id, type: string}]}
+  - name: large
+    runner: large
+    source: {format: csv, path: ./input.csv}
+    sink: {accepted: {format: parquet, path: ./out}}
+    policy: {severity: warn}
+    schema: {columns: [{name: id, type: string}]}
+report: {path: ./report}
+''')
+    profile.write_text('''apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata: {name: test}
+execution:
+  runner: {type: kubernetes_job, image: floe:latest, namespace: test, resources: {memory_mb: 512}}
+  runners: {large: {resources: {memory_mb: 2048}}}
+''')
+    monkeypatch.setattr(sys, "argv", ["floe", "manifest", "generate", "-c", str(config), "-p", str(profile), "-o", str(manifest_path)])
+    assert main() == 0
+    manifest = load_manifest(manifest_path)
+    for entity in manifest.entities:
+        runner = resolve_entity_runner(manifest, entity)
+        job = build_k8s_job_spec("test", ["floe", "run"], runner)
+        expected = {"small": "512Mi", "large": "2048Mi"}
+        assert job["spec"]["template"]["spec"]["containers"][0]["resources"]["requests"]["memory"] == expected[entity.name]
 
 
 def _job(active: int = 0, succeeded: int = 0, failed: int = 0, conditions=None):
