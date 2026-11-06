@@ -911,3 +911,15 @@ def test_1166_a_parquet_rejected_sink_refuses_source_files_under_it(
     with pytest.raises(FloeConfigError, match="lies under sink.rejected.path"):
         run_entity(entity, tmp_path, "0.3")
     assert pl.read_parquet(source)["id"].to_list() == ["1", "bad"]
+
+
+def test_1166_an_accepted_path_on_the_rejected_rows_directory_is_refused(tmp_path: Path) -> None:  # fmt: skip
+    """Codex P0 on #1166: `accepted.path: ./out/rows` with `rejected.path: ./out` would put both kinds of part in one directory."""
+    config = PQ_CONFIG.replace("path: ./out/rejected", "path: ./out").replace("path: ./out/accepted", "path: ./out/rows")  # fmt: skip
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id\n1\nbad\n")
+    (tmp_path / "config.yml").write_text(config.format(severity="reject", mismatch="").replace("        - {name: name, type: string}\n", ""))  # fmt: skip
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    with pytest.raises(FloeConfigError, match="sink.accepted.path must differ from the rejected rows directory"):  # fmt: skip
+        run_entity(entity, tmp_path, "0.3")
+    assert not (tmp_path / "out").exists()
