@@ -480,10 +480,21 @@ state file shape, and CAS behavior.
     - Unsupported changes such as drops, renames, type changes, and non-nullable-to-nullable drift still fail the write.
     - The columns are added, but 0.8 does not report it yet: the entity report's `schema_evolution` block stays `applied: false` and no `schema_evolution_applied` event is emitted (#994).
 - `rejected` (required when `policy.severity` is `reject` or `abort`; D39)
-  - `format`: `csv` (v0.1).
+  - `format`: `csv` (default) or `parquet`. `parquet` is accepted by `floe validate`; `floe run` fails with
+    `sink.rejected.format=parquet is not implemented yet` until the writer lands (#1154).
 - `path`: output directory for rejected rows.
   - Supports `{{var}}` templating (see "Templating & domains").
-  - Rejected outputs are written as dataset parts (`part-*.csv`).
+  - Rejected outputs are written as dataset parts (`part-*.csv` or `part-*.parquet`).
+  - Parquet output contract:
+    - Columns are the entity's declared output columns holding the RAW source values: strings for csv, tsv,
+      fixed, json and xml text inputs, native types for parquet, orc and avro inputs. Values are never cast to the
+      Silver target type.
+    - Then four metadata columns: `__floe_row_index` (UInt64, row index in the whole file), `__floe_errors`
+      (String, JSON array as in the CSV), `__floe_run_id` (String) and `__floe_source_uri` (String).
+    - PII masking applies before the write.
+    - Declared column names starting with `__floe_` are rejected by `floe validate` when `sink.rejected` is set.
+    - Parsing normalises nulls and quoting, so byte-faithful replay needs the archived source file
+      (`output.archived_path` in `run.json`), not the rejected Parquet.
 - `archive` (optional)
 - `path`: directory where raw input files are archived after ingestion.
   - If omitted, archiving is disabled.

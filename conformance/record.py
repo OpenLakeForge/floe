@@ -35,6 +35,7 @@ VOLATILE_KEYS = {
     "run_id",
     "started_at",
     "finished_at",
+    "failed_at",
     "duration_ms",
     "elapsed_ms",
     "ts_ms",

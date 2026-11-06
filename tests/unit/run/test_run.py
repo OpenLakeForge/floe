@@ -107,9 +107,14 @@ def test_unresolved_inputs_fail_before_any_entity_starts(tmp_path: Path) -> None
     events: list[dict[str, Any]] = []
     with pytest.raises(FloeRunError, match="no input files matched"):
         run(path, root, observer=events.append)
-    assert [e["event"] for e in events] == ["run_started"]
+    assert [e["event"] for e in events] == [
+        "run_started",
+        "log",
+    ]  # the log names the failure report
     assert not (tmp_path / "out").exists()
-    assert not (tmp_path / "report").exists()
+    assert [p.name for p in (tmp_path / "report").rglob("*.json")] == [
+        "run.failure.json"
+    ]
 
 
 def qualified(tmp_path: Path) -> Any:

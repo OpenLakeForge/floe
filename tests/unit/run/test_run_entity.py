@@ -11,7 +11,7 @@ import pytest
 
 from floe.checks.unique import UniqueTracker
 from floe.config.parse import parse_config
-from floe.errors import FloeRunError
+from floe.errors import FloeConfigError, FloeRunError
 from floe.read import json as json_module
 from floe.read.csv import read_csv
 from floe.read.xml import read_xml
@@ -767,3 +767,19 @@ def test_rejected_raw_values_of_a_pii_column_are_never_plaintext(
     assert "bob" not in text
     assert "x" in _rejected_csv(tmp_path)["id"].to_list()
     assert ("name" in text.splitlines()[0]) == (strategy != "drop")
+
+
+def test_1153_rejected_parquet_is_not_implemented_yet(tmp_path: Path) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "rejected: {format: csv", "rejected: {format: parquet"
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    with pytest.raises(FloeConfigError) as err:
+        run_entity(entity, tmp_path, "0.3")
+    assert (
+        str(err.value)
+        == "entity.name=orders sink.rejected.format=parquet is not implemented yet"
+    )

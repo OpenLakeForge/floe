@@ -268,7 +268,7 @@ class ConfigSchemaTest(unittest.TestCase):
         mutations = [
             lambda doc: doc["entities"][0]["sink"].update(archive={"filesystem": "local"}),
             lambda doc: doc["entities"][0]["sink"]["accepted"].update(format="iceberg", partition_spec=[{"column": "id", "transform": "bucket[16]"}]),
-            lambda doc: doc["entities"][0]["sink"].update(rejected={"format": "parquet", "path": "out"}),
+            lambda doc: doc["entities"][0]["sink"].update(rejected={"format": "json", "path": "out"}),
             lambda doc: doc.update(storages={"definitions": [{"name": "local", "type": "local"}]}),
             lambda doc: doc.update(catalogs={"definitions": []}),
             lambda doc: doc.update(lineage={"url": "https://lineage.example", "namespace": "floe", "max_failures": 0}),

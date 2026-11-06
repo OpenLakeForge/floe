@@ -5,7 +5,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Generator, Iterable, Iterator
-from contextlib import closing, suppress
+from contextlib import closing
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from functools import partial
@@ -148,27 +148,9 @@ def _chunks(entity: EntityConfig, path: Path, names: list[str], head: list[tuple
             )
 
 
-def _read_rule(fmt: str, message: str) -> str:
-    """Rust's `FileReadError.rule`; the readers carry only the message (the XLSX ones prefix the rule)."""
-    head, _, _ = message.partition(": ")
-    if fmt == "xlsx" and head.startswith("xlsx_"):
-        return head
-    if fmt == "xml" and message.startswith(
-        ("invalid selector", "duplicate xml selector")
-    ):
-        return "xml_selector_invalid"
-    if fmt == "json":  # Rust `JsonReadError.rule`
-        if message.startswith(("invalid selector", "duplicate json selector")):
-            return "json_selector_invalid"
-        if message.startswith("non-scalar value for selector"):
-            return "json_selector_non_scalar"
-        return "json_parse_error"
-    return "xml_parse_error" if fmt == "xml" else f"{fmt}_read_error"
-
-
-def _read_message(fmt: str, message: str) -> str:
-    head, _, rest = message.partition(": ")
-    return rest if fmt == "xlsx" and head.startswith("xlsx_") else message
+def _read_rule(fmt: str, error: FloeIoError) -> str:
+    """Rust's `FileReadError.rule`: the reader's own, else its format's parse-error rule."""
+    return error.rule or {"xml": "xml_parse_error", "json": "json_parse_error"}.get(fmt, f"{fmt}_read_error")  # fmt: skip
 
 
 def _failed_file(
@@ -190,8 +172,8 @@ def _failed_file(
         "extra_columns": base.get("extra_columns", []),
         "mismatch_action": action,
         "error": {
-            "rule": _read_rule(fmt, str(error)),
-            "message": f"entity.name={entity.name} {_read_message(fmt, str(error))}",
+            "rule": (rule := _read_rule(fmt, error)),
+            "message": f"entity.name={entity.name} {str(error).removeprefix(f'{rule}: ')}",
         },
     }
     if "warning" in base:
@@ -670,14 +652,14 @@ class Incremental:
         if self.full_refresh:
             # #949: `expired` holds the claims it replaced, which `release` restores if the refresh wrote nothing
             claimed, self.expired = claim_all(self.client, self.uri, e.name, self.run_id, inputs)  # fmt: skip
-            self._hold(claimed)
+            self._hold(claimed, emit)
             return inputs, []
         got = claim_inputs(self.client, self.uri, e.name, self.run_id, inputs, e.sink.write_mode.startswith("merge"), self.dated)  # fmt: skip
         reports = skipped_reports(e, got.already_processed, got.active_claims)
         _emit_skipped(emit, e.name, reports)
         self.expired = got.expired
         if got.claimed:
-            self._hold(got.claimed)
+            self._hold(got.claimed, emit)
         return got.pending, reports
 
     def skip_committed(self, table: Table | None, pending: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:  # fmt: skip
@@ -723,16 +705,18 @@ class Incremental:
         _emit_skipped(emit, self.entity.name, reports)
         return reports
 
-    def _hold(self, claimed: Loaded) -> None:
+    def _hold(self, claimed: Loaded, emit: Emitter) -> None:
         self.claimed = claimed
-        self._thread = threading.Thread(target=self._beat, daemon=True)
+        self._thread = threading.Thread(target=self._beat, args=(emit,), daemon=True)
         self._thread.start()
 
-    def _beat(self) -> None:
+    def _beat(self, emit: Emitter) -> None:
         while not self._stop.wait(RENEW_INTERVAL_S):
-            with suppress(Exception):  # Rust ignores renewal errors
+            try:  # a failed renewal never aborts the run: the next beat retries it
                 if self.claimed:
                     renew(self.client, self.uri, self.run_id, self.claimed)
+            except Exception as e:  # noqa: BLE001 -- any renewal failure is reported, never fatal
+                emit("log", log_level="warn", code="heartbeat_failed", message=f"entity.name={self.entity.name} claim renewal failed: {e}", entity=self.entity.name, input=None)  # fmt: skip
 
     def _end(self) -> Loaded | None:
         self._stop.set()
@@ -908,6 +892,10 @@ def _run_entity(
     target = resolve_target(storages, catalogs, config_dir, entity) if iceberg else None
     # PyIceberg writes an Iceberg table's files, not Floe's storage clients
     base, accepted = resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"{who} sink.accepted.storage")  # fmt: skip
+    if (
+        sink.rejected is not None and sink.rejected.format == "parquet"
+    ):  # ponytail: #1154 writes it and removes this guard
+        raise FloeConfigError(f"{who} sink.rejected.format=parquet is not implemented yet")  # fmt: skip
     rejected = sink.rejected and resolve_path(storages, config_dir, sink.rejected.storage, sink.rejected.path, f"{who} sink.rejected.storage")  # fmt: skip
     strategy = resolve_strategy(entity.schema_)
     columns = entity.schema_.columns

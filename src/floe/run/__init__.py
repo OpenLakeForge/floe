@@ -3,6 +3,7 @@
 import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,7 +14,9 @@ from floe.config.project import RootConfig
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeError
 from floe.iceberg.catalog import clear_catalogs
+from floe.report.entity import serialize
 from floe.report.summary import (
+    build_failure,
     build_summary,
     id_path,
     run_dir,
@@ -107,7 +110,7 @@ def run(
     config_uri: str | None = None,
     workers: int = 1,
 ) -> RunOutcome:
-    """Run the selected entities, writing each entity's report as it finishes. A failing entity raises: no summary, as Rust.
+    """Run the selected entities, writing each entity's report as it finishes. A failing entity raises: no summary, as Rust, but a best-effort `run.failure.json` is written first.
 
     One worker runs them in config order. More run them in parallel threads (observers are called from those threads), never two on the same target; reports and summary stay in config order.
     """
@@ -146,6 +149,9 @@ def run(
         Formatter, root.report.formatter or "json"
     )  # validated with the config
 
+    # entity id -> state for `run.failure.json`; "unknown" until its outcome is proven
+    states = dict.fromkeys((e.id for e in selected), "not_started")
+
     def one(entity: EntityConfig) -> EntityRun:
         emit("entity_started", name=entity.id)
         try:
@@ -154,34 +160,53 @@ def run(
                 root.catalogs, listed.get(entity.id),
             )  # fmt: skip
         except FloeError:
+            states[entity.id] = "failed"
             _finished(emit, entity.id, None)
             raise
 
-    emit("run_started", config=config, report_base=report_path)
-    # Rust resolves every entity's inputs before the first entity_started (#864); run_entity reuses them
-    # D24: a full refresh may rebuild from the archive alone, so run_entity decides
-    to_list = [e for e in selected if not (full_refresh and e.sink.archive and e.incremental_mode in ("none", "archive"))]  # fmt: skip
-    # `map` yields in config order, so the first failure in config order is raised
-    if workers > 1 and len(to_list) > 1:
-        with ThreadPoolExecutor(workers, thread_name_prefix="floe-list") as pool:
-            found = list(pool.map(inputs, to_list))
-    else:
-        found = [inputs(e) for e in to_list]
-    listed = {e.id: f for e, f in zip(to_list, found, strict=True)}
     client = storage_client(report_storage)
 
     def finish(e: EntityConfig) -> dict[str, Any]:
+        states[e.id] = "unknown"
         report = one(e).report
         write_entity_report(run_path, id_path(e), report, client)
+        states[e.id] = "completed"
         _finished(emit, e.id, report)
         return report
 
+    emit("run_started", config=config, report_base=report_path)
     # D36: a policy abort fails only its entity; a FloeError still stops the run
-    if workers > 1 and len(selected) > 1:
-        keys = [exclusive_keys(e, config_dir, root.storages, root.catalogs) for e in selected]  # fmt: skip
-        done = run_parallel(selected, keys, workers, finish)
-    else:
-        done = [finish(e) for e in selected]
+    try:
+        # Rust resolves every entity's inputs before the first entity_started (#864); run_entity reuses them
+        # D24: a full refresh may rebuild from the archive alone, so run_entity decides
+        to_list = [e for e in selected if not (full_refresh and e.sink.archive and e.incremental_mode in ("none", "archive"))]  # fmt: skip
+        # `map` yields in config order, so the first failure in config order is raised
+        if workers > 1 and len(to_list) > 1:
+            with ThreadPoolExecutor(workers, thread_name_prefix="floe-list") as pool:
+                found = list(pool.map(inputs, to_list))
+        else:
+            found = [inputs(e) for e in to_list]
+        listed = {e.id: f for e, f in zip(to_list, found, strict=True)}
+
+        if workers > 1 and len(selected) > 1:
+            keys = [exclusive_keys(e, config_dir, root.storages, root.catalogs) for e in selected]  # fmt: skip
+            done = run_parallel(selected, keys, workers, finish)
+        else:
+            done = [finish(e) for e in selected]
+    # an interrupt too (BaseException): its running entities are left "unknown"
+    except BaseException as err:
+        # best effort: the original error wins, so a failing write is dropped
+        with suppress(Exception):
+            failure = build_failure(
+                root.version, err, [(e, states[e.id]) for e in selected], run_id=run_id,
+                started_at=started, failed_at=_rfc3339(),
+                duration_ms=int((time.monotonic() - timer) * 1000),
+                report_path=report_path, domain=domain,
+            )  # fmt: skip
+            uri = f"{run_path}/run.failure.json"
+            client.write(uri, serialize(failure).encode())
+            emit("log", log_level="info", code="run_failure_report", message=f"run failure report: {uri}", entity=None, input=None)  # fmt: skip
+        raise
     reports = [(id_path(e), r) for e, r in zip(selected, done, strict=True)]
     summary = build_summary(
         root.version, reports,

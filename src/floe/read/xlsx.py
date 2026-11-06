@@ -10,7 +10,7 @@ from floe.errors import FloeIoError
 
 
 def _fail(rule: str, message: str) -> FloeIoError:
-    return FloeIoError(f"{rule}: {message}")
+    return FloeIoError(f"{rule}: {message}", rule=rule)
 
 
 def _header(cells: tuple[str | None, ...]) -> list[str]:
