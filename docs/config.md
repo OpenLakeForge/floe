@@ -484,6 +484,9 @@ state file shape, and CAS behavior.
 - `path`: output directory for rejected rows.
   - Supports `{{var}}` templating (see "Templating & domains").
   - Rejected outputs are written as dataset parts (`part-*.csv` or `part-*.parquet`).
+  - With a Parquet accepted sink, `sink.accepted.path` must differ from `sink.rejected.path`, whatever the rejected
+    format: `reject_file` and `abort` copy the raw file to `<path>/<file>`, and the accepted Parquet writer would
+    overwrite or delete a copy named `part-*.parquet` there. `floe run` refuses the config.
   - Parquet output contract (the rows go to `<path>/rows/part-*.parquet`, apart from the raw file copies and error reports that `reject_file` and `abort` put in `<path>`):
     - With a Parquet accepted sink, `sink.accepted.path` must differ from `<path>` and from `<path>/rows`: accepted parts
       there would overwrite the raw file copies or the rejected rows.
