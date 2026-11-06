@@ -28,6 +28,7 @@ The core install reads and validates local files. Optional backends are extras:
 
 | Extra | Needed for |
 |---|---|
+| `s3` | `s3` storages, and `s3://` config, profile and manifest locations |
 | `xlsx` | `source.format: xlsx` |
 | `all` | every extra above |
 
