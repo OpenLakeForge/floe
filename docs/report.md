@@ -61,6 +61,25 @@ Golden example files live under `example/report/run_2026-01-19T10-23-45Z/`.
 - `schema_evolution`: Entity-level schema-evolution summary for the accepted write path.
 - `results`: Totals for files, rows, accepted/rejected rows, warnings, errors.
 - `files`: Per-file outcomes and validation summary.
+- `timings_ms`: Where the entity spent wall-clock time (see below).
+
+### `timings_ms` (entity report)
+
+Cumulative wall-clock milliseconds (integers, measured with a monotonic clock) per call site, summed over all files of the entity:
+
+| Key | Boundary |
+|---|---|
+| `list_ms` | Listing the entity's source inputs (done for every entity before the first one starts). |
+| `download_wait_ms` | Time blocked waiting for the next input file to be downloaded. Downloads run ahead of the read, so this is waiting only, not download time. Local sources do not wait. |
+| `read_validate_ms` | Reading, casting and checking each file, without its rejected writes. |
+| `rejected_write_ms` | Writing rejected rows, copying rejected raw files and writing reject error reports. |
+| `accepted_write_ms` | Time in the accepted sink between pulls of the next chunk, including the Iceberg commit after the last chunk. There is no separate commit time. |
+| `archive_ms` | Moving the source files to the archive after the sink committed. |
+
+- Reading, validating and the accepted write interleave chunk by chunk, and downloads overlap them, so the phases overlap with the prefetch and their sum is not the entity's elapsed time. Replaying a file's spilled chunks to the sink is in no phase.
+- A phase that did not run is `null`, never `0`: no rejected rows, no archive, no files to read. `0` means the phase ran in under a millisecond.
+- Writing this report is not measured. The run-level write of `run.summary.json` is reported as `report_write_ms` on the `run_finished` event.
+- A failed entity writes no report, so its timings are not available.
 
 ### `accepted_output` (entity report)
 
@@ -197,6 +216,6 @@ When a column has an explicit `source`, row error logs include a `source`
 field (JSON) or an extra column/annotation (CSV/text) alongside `column`.
 
 With `sink.rejected.format: parquet` the rejected rows carry raw source values plus `__floe_row_index`, `__floe_errors`,
-`__floe_run_id` and `__floe_source_uri` (see [Config](config.md)); `output.rejected_path` is then the rejected directory, not one
+`__floe_run_id` and `__floe_source_uri` (see [Config](config.md)); `output.rejected_path` is then the `<sink.rejected.path>/rows` directory, not one
 part. To replay byte-for-byte use the archived source file
 (`output.archived_path`).

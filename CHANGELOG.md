@@ -4,7 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-- `sink.rejected.format: parquet` writes the rejected rows as `part-*.parquet` (#1153, #1154): raw source values plus `__floe_row_index`, `__floe_errors`, `__floe_run_id` and `__floe_source_uri`. Rejected chunks are spilled to disk, not held in memory, and an append retry rewrites the same parts. In the report, `rejected_path` is the rejected directory. Entities with a rejected sink may no longer declare columns named `__floe_*`, nor columns whose normalized output name starts with it. A Parquet rejected sink must not use the accepted Parquet directory (`floe run` refuses it).
+- `sink.rejected.format: parquet` writes the rejected rows as `rows/part-*.parquet` under the rejected path (#1153, #1154): raw source values plus `__floe_row_index`, `__floe_errors`, `__floe_run_id` and `__floe_source_uri`. Rejected chunks are spilled to disk, not held in memory, and an append retry rewrites the same parts. In the report, `rejected_path` is that `rows` directory. Entities with a rejected sink may no longer declare columns named `__floe_*`, nor columns whose normalized output name starts with it. `floe run` refuses source files under `<rejected path>/rows`.
 - `sink.rejected.format: iceberg` writes the rejected rows to an Iceberg quarantine table through the same catalog binding as the accepted sink (#1158): the declared columns as strings plus `__floe_row_index`, `__floe_errors`, `__floe_run_id` and `__floe_source_uri`, appended in one commit per entity run. A retry does not duplicate rows. The accepted and rejected commits are not atomic together.
 - Named profile runners inherit from the default runner and can be selected per domain or entity (#1149).
 - **The rejected CSV holds the source values, not the cast ones (#1152).** The columns are unchanged, but a cell whose
@@ -13,6 +13,8 @@ All notable changes to Floe are documented in this file.
   (Parquet, ORC, Avro) keep their native values. PII strategies are applied to the raw values, so a `hash` of a rejected
   value can differ from the hash of the same value in the accepted rows.
 - A run stopped by an input-listing or entity error writes a best-effort `run.failure.json` (error, per-entity state) before the error is raised, and emits a `log` event with its URI (#1155).
+- Each entity report has a `timings_ms` object (`list_ms`, `download_wait_ms`, `read_validate_ms`, `rejected_write_ms`, `accepted_write_ms`, `archive_ms`: cumulative wall-clock milliseconds, `null` for a phase that did not run), the `entity_finished` event carries it, and `run_finished` has `report_write_ms` (#1156).
+- dagster-floe adds the report's `timings_ms` (`floe/timings/<phase>_ms`), the rejected output's format and URI, and, for a failed run, the `run.failure.json` URI, error and per-entity states to asset metadata (#1157).
 
 ## v0.9.0
 

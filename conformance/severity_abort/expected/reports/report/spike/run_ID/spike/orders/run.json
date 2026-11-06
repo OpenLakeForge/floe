@@ -120,5 +120,6 @@
         ]
       }
     }
-  ]
+  ],
+  "timings_ms": "<volatile>"
 }

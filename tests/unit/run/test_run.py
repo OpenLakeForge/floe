@@ -250,3 +250,25 @@ def test_file_mode_with_no_source_files_has_nothing_pending(tmp_path: Path) -> N
     assert rows(tmp_path, "o") == 2
     with pytest.raises(FloeRunError, match="no input files matched"):
         run(path, parse_config(path, {}), full_refresh=True)
+
+
+def test_timings_ms_are_cumulative_phases_with_null_for_a_phase_that_did_not_run(tmp_path: Path) -> None:  # fmt: skip
+    path, root = setup(tmp_path, ["o"])
+    (tmp_path / "in/o.csv").write_text("id\n1\nx\n")  # `x` is rejected
+    events: list[dict[str, Any]] = []
+    out = run(path, root, observer=events.append)
+    timings = out.entity_reports[0]["timings_ms"]
+    assert list(timings) == ["list_ms", "download_wait_ms", "read_validate_ms", "rejected_write_ms", "accepted_write_ms", "archive_ms"]  # fmt: skip
+    for phase in ("list_ms", "download_wait_ms", "read_validate_ms", "rejected_write_ms", "accepted_write_ms"):  # fmt: skip
+        assert isinstance(timings[phase], int) and timings[phase] >= 0
+    assert timings["archive_ms"] is None  # no `sink.archive`
+    assert json.loads(next((tmp_path / "report").rglob("o/run.json")).read_text())["timings_ms"] == timings  # fmt: skip
+    assert next(e for e in events if e["event"] == "entity_finished")["timings_ms"] == timings  # fmt: skip
+    assert isinstance(next(e for e in events if e["event"] == "run_finished")["report_write_ms"], int)  # fmt: skip
+
+
+def test_timings_ms_has_null_rejected_write_and_archive_times_for_clean_input_and_times_the_archive(tmp_path: Path) -> None:  # fmt: skip
+    archived_once(tmp_path)
+    timings = json.loads(next((tmp_path / "report").rglob("o/run.json")).read_text())["timings_ms"]  # fmt: skip
+    assert timings["rejected_write_ms"] is None
+    assert isinstance(timings["archive_ms"], int)

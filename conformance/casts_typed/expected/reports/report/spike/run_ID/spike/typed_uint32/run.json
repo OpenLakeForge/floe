@@ -139,5 +139,6 @@
         ]
       }
     }
-  ]
+  ],
+  "timings_ms": "<volatile>"
 }

@@ -39,6 +39,8 @@ VOLATILE_KEYS = {
     "duration_ms",
     "elapsed_ms",
     "ts_ms",
+    "timings_ms",
+    "report_write_ms",
 }
 # Recorded, but ignored on compare (G5 ruling on #594).
 WRITER_BYTES_KEYS = {"total_bytes_written", "avg_file_size_mb"}
@@ -106,7 +108,9 @@ def snapshot(work: Path) -> Snapshot:
         out[f"accepted/{d.relative_to(work / 'out/accepted').as_posix()}.parquet"] = (
             pa.concat_tables([pq.read_table(p) for p in parts])
         )
-    for d in sorted({p.parent for p in work.glob("out/rejected/**/part-*.parquet")}):
+    for d in sorted(
+        {p.parent for p in work.glob("out/rejected/**/rows/part-*.parquet")}
+    ):
         table = pa.concat_tables([pq.read_table(p) for p in sorted(d.glob("part-*.parquet"))])  # fmt: skip
         # volatile: the run id and the temp dir
         n = table.num_rows

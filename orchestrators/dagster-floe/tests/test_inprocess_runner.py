@@ -53,7 +53,7 @@ def _materialize(cls: type[LocalRunner], work: Path, monkeypatch: pytest.MonkeyP
     finished = {k: v for k, v in events[-1].items() if k not in ("ts_ms", "schema", "level")}
     run = (result.exit_code, result.status, result.failure_reason, result.backend_metadata)
     metadata = {
-        str(m.asset_key): {k: str(v.value).replace(res.run_id, "<run>") for k, v in m.metadata.items()}
+        str(m.asset_key): {k: str(v.value).replace(res.run_id, "<run>") for k, v in m.metadata.items() if not k.startswith("floe/timings/")}  # wall-clock
         for m in res.asset_materializations_for_node("sales__orders")
     }
     finished = {k: str(v).replace(res.run_id, "<run>") for k, v in finished.items()}
