@@ -133,8 +133,8 @@ The callback is **swappable between calls** — calling `set_observer` again rep
 | `file_started` | `run_id`, `entity`, `input`, `ts_ms` |
 | `file_finished` | `run_id`, `entity`, `input`, `status`, `rows`, `accepted`, `rejected`, `elapsed_ms` |
 | `schema_evolution_applied` | `run_id`, `entity`, `mode`, `added_columns` |
-| `entity_finished` | `run_id`, `name`, `status`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors` |
-| `run_finished` | `run_id`, `status`, `exit_code`, `files`, `rows`, `accepted`, `rejected`, `summary_uri` |
+| `entity_finished` | `run_id`, `name`, `status`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `timings_ms` |
+| `run_finished` | `run_id`, `status`, `exit_code`, `files`, `rows`, `accepted`, `rejected`, `summary_uri`, `report_write_ms` |
 | `log` | `run_id`, `log_level`, `code`, `message`, `entity`, `input` |
 
 All events have an `event` key (string discriminator) and `ts_ms` (Unix timestamp in milliseconds). Each event type is exported as a TypedDict (`floe.RunStartedEvent`, …, `floe.LogEvent`; `floe.RunEvent` is their union), defined in [`src/floe/run/events.py`](../src/floe/run/events.py).

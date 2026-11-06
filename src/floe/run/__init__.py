@@ -95,7 +95,7 @@ def _finished(emit: Emitter, name: str, report: dict[str, Any] | None) -> None:
     status = "failed"
     if report:
         status = run_outcome([f["status"] for f in report["files"]], totals["warnings"])[0]  # fmt: skip
-    emit("entity_finished", name=name, status=status, **totals)
+    emit("entity_finished", name=name, status=status, **totals, timings_ms=report["timings_ms"] if report else None)  # fmt: skip
 
 
 def run(
@@ -130,10 +130,15 @@ def run(
     domain = run_domain(selected)
     run_path = run_dir(report_path, run_id, domain)
 
+    listing_ms: dict[str, int] = {}  # #1156: entity id -> its listing, for `timings_ms`
+
     def inputs(e: EntityConfig) -> ResolvedInputs:
-        return list_source(
+        listing = time.monotonic()
+        found = list_source(
             e, config_dir, root.storages, *resolve_source(e, config_dir, root.storages), full_refresh
         )  # fmt: skip
+        listing_ms[e.id] = int((time.monotonic() - listing) * 1000)
+        return found
 
     if dry_run:  # Rust: no events, no reports; the inputs are only listed
         scanned = {e.id: [f.source_uri for f in inputs(e).files] for e in selected}
@@ -169,6 +174,10 @@ def run(
     def finish(e: EntityConfig) -> dict[str, Any]:
         states[e.id] = "unknown"
         report = one(e).report
+        if (
+            e.id in listing_ms
+        ):  # listed ahead of the entity (#864); else `run_entity` timed its own listing
+            report["timings_ms"]["list_ms"] = listing_ms[e.id]
         write_entity_report(run_path, id_path(e), report, client)
         states[e.id] = "completed"
         _finished(emit, e.id, report)
@@ -215,12 +224,14 @@ def run(
         config_path=config, report_path=report_path,
         metadata=root.metadata, domain=domain,
     )  # fmt: skip
+    writing = time.monotonic()
     write_reports(summary, [], client)
+    report_write_ms = int((time.monotonic() - writing) * 1000)
     r, t = summary["run"], summary["results"]
     emit("run_finished", status=r["status"], exit_code=r["exit_code"], files=t["files_total"],
          files_skipped=t["files_skipped"], rows=t["rows_total"], accepted=t["accepted_total"], rejected=t["rejected_total"],
          warnings=t["warnings_total"], errors=t["errors_total"],
-         summary_uri=summary["report"]["report_file"], report_base=report_path,
+         summary_uri=summary["report"]["report_file"], report_base=report_path, report_write_ms=report_write_ms,
          entity_report_uris={e["name"]: e["report_file"] for e in summary["entities"]})  # fmt: skip
     return RunOutcome(
         run_id, summary, None, report_path, run_path, [r for _, r in reports]

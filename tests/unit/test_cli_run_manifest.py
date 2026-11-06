@@ -21,6 +21,7 @@ VOLATILE = {
     "finished_at",
     "duration_ms",
     "elapsed_ms",
+    "timings_ms",
     "spec_version",
     "version",
 }
@@ -116,7 +117,9 @@ def test_events_and_output_match_the_config_run(
         code = floe(monkeypatch, "run", *source, "--run-id", "r", *flags)
         out, err = capsys.readouterr()
         out, err = (s.replace(str(work), "<ROOT>") for s in (out, err))
-        timing = re.compile(r'(ts_ms|elapsed_ms)(":|=)\d+')
+        timing = re.compile(
+            r'((?:ts_ms|elapsed_ms|report_write_ms)(?:":|=))\d+|("timings_ms":)\{[^}]*\}'
+        )
         return code, timing.sub(r"\1\2T", out), timing.sub(r"\1\2T", err)
 
     by_config = copy_case(case, tmp_path / "c")
