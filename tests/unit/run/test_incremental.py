@@ -347,3 +347,26 @@ def test_overlap_is_judged_by_where_a_symlink_lands(tmp_path: Path) -> None:
     refuse("e", f"local://{sink}", [file(f"{sink}/link/../x.parquet")])
     with pytest.raises(FloeConfigError):
         refuse("e", f"local://{sink}", [file(f"{tmp_path}/into/x.parquet")])
+
+
+def test_a_failed_renewal_emits_a_heartbeat_failed_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    entity = setup(tmp_path)
+    events: list[dict[str, Any]] = []
+
+    def broken(*_: Any) -> None:
+        raise OSError("store down")
+
+    monkeypatch.setattr(entity_module, "RENEW_INTERVAL_S", 0.01)
+    monkeypatch.setattr(entity_module, "renew", broken)
+    real = entity_module._run_file  # pyright: ignore[reportPrivateUsage]
+
+    def slow(*a: Any) -> Any:
+        time.sleep(0.2)
+        return real(*a)
+
+    monkeypatch.setattr(entity_module, "_run_file", slow)
+    run_entity(entity, tmp_path, "0.3", emit=Emitter(events.append, "r1"))
+    beats = [e for e in events if e.get("code") == "heartbeat_failed"]
+    assert beats
+    assert beats[0]["event"] == "log" and beats[0]["log_level"] == "warn"
+    assert beats[0]["entity"] == "orders" and "store down" in beats[0]["message"]
