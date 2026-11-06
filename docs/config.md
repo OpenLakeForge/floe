@@ -484,7 +484,7 @@ state file shape, and CAS behavior.
 - `path`: output directory for rejected rows.
   - Supports `{{var}}` templating (see "Templating & domains").
   - Rejected outputs are written as dataset parts (`part-*.csv` or `part-*.parquet`).
-  - Parquet output contract:
+  - Parquet output contract (the rows go to `<path>/rows/part-*.parquet`, apart from the raw file copies and error reports that `reject_file` and `abort` put in `<path>`):
     - Columns are the entity's declared output columns holding the RAW source values: strings for csv, tsv,
       fixed, json and xml text inputs, native types for parquet, orc and avro inputs. Values are never cast to the
       Silver target type.

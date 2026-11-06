@@ -106,7 +106,7 @@
       },
       "output": {
         "accepted_path": "local://<ROOT>/out/accepted/orders",
-        "rejected_path": "<ROOT>/out/rejected/orders",
+        "rejected_path": "<ROOT>/out/rejected/orders/rows",
         "errors_path": null,
         "archived_path": null
       },

@@ -4,7 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-- `sink.rejected.format: parquet` writes the rejected rows as `part-*.parquet` (#1153, #1154): raw source values plus `__floe_row_index`, `__floe_errors`, `__floe_run_id` and `__floe_source_uri`. Rejected chunks are spilled to disk, not held in memory, and an append retry rewrites the same parts. In the report, `rejected_path` is the rejected directory. Entities with a rejected sink may no longer declare columns named `__floe_*`, nor columns whose normalized output name starts with it. A Parquet rejected sink must not use the accepted Parquet directory (`floe run` refuses it).
+- `sink.rejected.format: parquet` writes the rejected rows as `rows/part-*.parquet` under the rejected path (#1153, #1154): raw source values plus `__floe_row_index`, `__floe_errors`, `__floe_run_id` and `__floe_source_uri`. Rejected chunks are spilled to disk, not held in memory, and an append retry rewrites the same parts. In the report, `rejected_path` is that `rows` directory. Entities with a rejected sink may no longer declare columns named `__floe_*`, nor columns whose normalized output name starts with it. `floe run` refuses source files under `<rejected path>/rows`.
 - Named profile runners inherit from the default runner and can be selected per domain or entity (#1149).
 - **The rejected CSV holds the source values, not the cast ones (#1152).** The columns are unchanged, but a cell whose
   cast failed (`amount: not_a_number` for a decimal, a bad date) now holds the literal from the file instead of an empty

@@ -493,8 +493,8 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
         if _parquet_rejected(plan):
             meta = [pl.lit(plan.run_id).alias("__floe_run_id"), pl.lit(uri).alias("__floe_source_uri")]  # fmt: skip
             frames = (_output(plan, _unspill(p)).with_columns(meta) for p in spilled_rejected)  # fmt: skip
-            write_rejected_parquet(frames, client, target, mode, key)
-            written = target.rstrip("/")  # one directory: a file can have many parts
+            written = f"{target.rstrip('/')}/rows"  # apart from the raw copies in the rejected directory; a file can have many parts  # fmt: skip
+            write_rejected_parquet(frames, client, written, mode, key)
         else:
             written = write_rejected(_output(plan, pl.concat(rejected)), client, target, mode, key)  # fmt: skip
         rejected_path = written.removeprefix("local://")
@@ -912,8 +912,6 @@ def _run_entity(
     # PyIceberg writes an Iceberg table's files, not Floe's storage clients
     base, accepted = resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"{who} sink.accepted.storage")  # fmt: skip
     rejected = sink.rejected and resolve_path(storages, config_dir, sink.rejected.storage, sink.rejected.path, f"{who} sink.rejected.storage")  # fmt: skip
-    if rejected and sink.rejected and sink.rejected.format == "parquet" and not iceberg and rejected[0].rstrip("/") == base.rstrip("/"):  # fmt: skip
-        raise FloeConfigError(f"{who} sink.rejected.path must differ from sink.accepted.path: both would write part-*.parquet files into {base}")  # fmt: skip
     strategy = resolve_strategy(entity.schema_)
     columns = entity.schema_.columns
     names = source_names(columns, strategy)
@@ -973,7 +971,12 @@ def _run_entity(
     if target is None and getattr(client, "endpoint", None) == getattr(accepted_client, "endpoint", None):  # fmt: skip
         _refuse_overlap(who, base, inputs.files)
     if plan.rejected and sink.rejected and sink.rejected.format == "parquet" and getattr(client, "endpoint", None) == getattr(plan.rejected[1], "endpoint", None):  # fmt: skip
-        _refuse_overlap(who, plan.rejected[0], inputs.files, "sink.rejected.path")
+        _refuse_overlap(
+            who,
+            f"{plan.rejected[0].rstrip('/')}/rows",
+            inputs.files,
+            "sink.rejected.path",
+        )
     pending, files = inc.claim(inputs.files, emit)
     if done := inc.skip_committed(plan.table, pending, emit):
         files += done
