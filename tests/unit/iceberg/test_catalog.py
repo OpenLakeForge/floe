@@ -27,6 +27,7 @@ from floe.iceberg.catalog import (
     check_schema_matches,
     ensure_table,
     open_duckdb,
+    run_error,
     transform_name,
 )
 
@@ -326,3 +327,10 @@ def test_a_missing_table_or_namespace_is_created(missing: type[Exception]) -> No
     table, _ = ensure_table(catalog, "ns", "t", schema(ID), "e")  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType] -- a double
     assert catalog.calls == ["load_table", "namespace_exists", "create_namespace", "create_table"]  # fmt: skip
     assert table == "table"  # pyright: ignore[reportUnnecessaryComparison] -- the double returns a str
+
+
+def test_run_error_wraps_io_families_and_lets_bugs_propagate() -> None:
+    with pytest.raises(FloeRunError, match="^ctx: disk full"), run_error("ctx"):
+        raise OSError("disk full")
+    with pytest.raises(KeyError), run_error("ctx"):
+        raise KeyError("bug")

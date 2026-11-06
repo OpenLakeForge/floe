@@ -10,7 +10,10 @@ from collections.abc import Generator, Sequence
 from contextlib import contextmanager, suppress
 from urllib.parse import urlsplit
 
+import botocore.exceptions
 import duckdb
+import polars as pl
+import pyiceberg.exceptions
 from pyiceberg.catalog import Catalog, load_catalog
 from pyiceberg.exceptions import (
     NamespaceAlreadyExistsError,
@@ -46,6 +49,22 @@ def transform_name(field: PartitionField) -> str:
     return str(field.transform)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType] -- PyIceberg leaves Transform unparametrized
 
 
+# PyIceberg has no common base exception: take every class its exceptions module defines
+_PYICEBERG_ERRORS = tuple(
+    c
+    for c in vars(pyiceberg.exceptions).values()
+    if isinstance(c, type)
+    and issubclass(c, Exception)
+    and c.__module__ == pyiceberg.exceptions.__name__
+)
+# ValueError: PyIceberg and Arrow reject bad data and schemas with it. A TypeError, KeyError or
+# AttributeError is a bug in Floe and propagates.
+_RUN_ERRORS = (
+    OSError, ValueError, duckdb.Error, pl.exceptions.PolarsError,
+    botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError, *_PYICEBERG_ERRORS,
+)  # fmt: skip
+
+
 @contextmanager
 def run_error(context: str) -> Generator[None]:
     try:
@@ -54,7 +73,7 @@ def run_error(context: str) -> Generator[None]:
         FloeError
     ):  # already worded for the user, e.g. raised by the stream a write reads
         raise
-    except Exception as e:  # PyIceberg has no common base exception
+    except _RUN_ERRORS as e:
         raise FloeRunError(f"{context}: {e}") from e
 
 

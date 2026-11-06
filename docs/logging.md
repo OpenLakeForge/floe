@@ -32,6 +32,7 @@ The final line on stdout is always the `run_finished` event.
 - `entity_finished`: entity totals (`status`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `ts_ms`)
 - `run_finished`: final run totals and exit code (`status`, `exit_code`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `summary_uri`, `ts_ms`)
 - `log`: structured warning/error line (`log_level`, `code`, `message`, optional `entity`, optional `input`, `ts_ms`)
+  - `code` is `null` or a stable snake_case tag. Today: `heartbeat_failed` (warn): renewing the incremental claims failed; the run continues and the next beat retries, but the claims expire after an hour without a successful renewal.
 
 ### `--log-format off` (default)
 

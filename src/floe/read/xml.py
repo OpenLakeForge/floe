@@ -153,13 +153,17 @@ def read_xml(
     names = [c.source if c.source is not None else c.name for c in columns]
     if len(set(names)) != len(names):
         dup = next(n for n in names if names.count(n) > 1)
-        raise FloeIoError(f"duplicate xml selector source: {dup}")
+        raise FloeIoError(
+            f"duplicate xml selector source: {dup}", rule="xml_selector_invalid"
+        )
     plans: list[Selector] = []
     for name in names:
         try:
             plans.append(parse_selector(name))
         except ValueError as err:
-            raise FloeIoError(f"invalid selector {name}: {err}") from err
+            raise FloeIoError(
+                f"invalid selector {name}: {err}", rule="xml_selector_invalid"
+            ) from err
 
     target = _Rows(
         lambda row: [_evaluate(row, p, namespace, value_tag) for p in plans],

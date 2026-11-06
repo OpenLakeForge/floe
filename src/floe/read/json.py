@@ -117,7 +117,10 @@ def _cell(
         return None
     if _is(row, dict) or _is(row, list):
         if cast_mode != "coerce":
-            raise FloeIoError(f"non-scalar value for selector {source} at {where}")
+            raise FloeIoError(
+                f"non-scalar value for selector {source} at {where}",
+                rule="json_selector_non_scalar",
+            )
         return _compact(row)
     if isinstance(row, bool):
         return "true" if row else "false"
@@ -211,13 +214,17 @@ def read_json(
     names = [c.source if c.source is not None else c.name for c in columns]
     if len(set(names)) != len(names):
         dup = next(n for n in names if names.count(n) > 1)
-        raise FloeIoError(f"duplicate json selector source: {dup}")
+        raise FloeIoError(
+            f"duplicate json selector source: {dup}", rule="json_selector_invalid"
+        )
     plans: list[Selector] = []
     for name in names:
         try:
             plans.append(parse_selector(name))
         except ValueError as err:
-            raise FloeIoError(f"invalid selector {name}: {err}") from err
+            raise FloeIoError(
+                f"invalid selector {name}: {err}", rule="json_selector_invalid"
+            ) from err
 
     def frame(rows: list[list[str | None]]) -> pl.DataFrame:
         cols = zip(*rows, strict=True) if rows else [() for _ in names]
