@@ -9,7 +9,7 @@ entities:
       format: parquet
       path: out/accepted
     rejected:
-      format: parquet
+      format: json
       path: out/rejected
   policy:
     severity: warn

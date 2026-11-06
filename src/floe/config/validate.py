@@ -375,10 +375,16 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
     # D39 (#1007): abort writes the failing file to sink.rejected too; Rust 0.7 only failed at run time
     if entity.policy.severity in ("reject", "abort") and sink.rejected is None:
         raise _fail(entity, f"sink.rejected is required when policy.severity={entity.policy.severity}")  # fmt: skip
-    if sink.rejected is not None and sink.rejected.format != "csv":
+    if sink.rejected is not None and sink.rejected.format not in ("csv", "parquet"):
         raise _fail(
             entity, f"sink.rejected.format={sink.rejected.format} is unsupported"
         )
+    if (
+        sink.rejected is not None
+    ):  # #1153: the rejected output appends its own __floe_* columns
+        for index, column in enumerate(entity.schema_.columns):
+            if column.name.startswith("__floe_"):
+                raise _fail(entity, f"schema.columns[{index}].name={column.name} is reserved (names starting with __floe_ are reserved when sink.rejected is set)")  # fmt: skip
     who = f"entity.name={entity.name} "
     accepted_storage = _storage_ref(
         config, accepted.storage, "sink.accepted.storage", who

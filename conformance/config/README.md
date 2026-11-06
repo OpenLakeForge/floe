@@ -368,11 +368,11 @@ for Python only, because Rust 0.7 rejects that config earlier, at the write-mode
 |---|---|---|
 | 35 | (see source) | not recorded: struct field, not an error site |
 | 409 | (see source) | `val1_source_format_unknown` |
-| 415 | entity.name={} {}={} is unsupported | `val1_source_format_unknown`, `val1_sink_accepted_format_unknown`, `val1_sink_rejected_format_parquet` |
+| 415 | entity.name={} {}={} is unsupported | `val1_source_format_unknown`, `val1_sink_accepted_format_unknown`, `val1_sink_rejected_format_json` |
 | 422 | unsupported {}: {format} | not recorded: unreachable on the validate path: ensure_* discard the adapter error and re-raise the entity-named one (415) |
 | 427 | (see source) | `val1_source_format_unknown` |
 | 441 | (see source) | `val1_sink_accepted_format_unknown` |
-| 452 | (see source) | `val1_sink_rejected_format_parquet` |
+| 452 | (see source) | `val1_sink_rejected_format_json` |
 | 519 | entity.name={} sink.accepted.options.compression={} is unsupported (allowed: snappy, ... | `val1_sink_options_compression_unknown` |
 | 528 | entity.name={} sink.accepted.options.row_group_size must be greater than 0 | `val1_sink_options_row_group_size_zero` |
 | 537 | entity.name={} sink.accepted.options.max_size_per_file must be greater than 0 | `val1_sink_options_max_size_per_file_zero` |

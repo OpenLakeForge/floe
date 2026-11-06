@@ -451,3 +451,28 @@ def test_bare_or_invalid_decimal_is_rejected(
 ) -> None:
     with pytest.raises(FloeConfigError, match=message.replace("(", r"\(")):
         check(tmp_path, f"{{columns: [{{name: amt, type: '{kind}'}}]}}")
+
+
+def test_1153_rejected_parquet_validates(tmp_path: Path) -> None:
+    sink = "{accepted: {format: parquet, path: out}, rejected: {format: parquet, path: rej}}"
+    check(tmp_path, f"{{{COLS}}}", sink=sink)
+
+
+@pytest.mark.parametrize(
+    ("fmt", "schema", "message"),
+    [
+        ("json", COLS, "sink.rejected.format=json is unsupported"),
+        (
+            "parquet",
+            "columns: [{name: __floe_errors, type: string}]",
+            "schema.columns[0].name=__floe_errors is reserved (names starting with __floe_ are reserved when sink.rejected is set)",
+        ),
+    ],
+)
+def test_1153_rejected_errors(
+    tmp_path: Path, fmt: str, schema: str, message: str
+) -> None:
+    sink = f"{{accepted: {{format: parquet, path: out}}, rejected: {{format: {fmt}, path: rej}}}}"
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{schema}}}", sink=sink)
+    assert str(err.value) == f"entity.name=orders {message}"
