@@ -104,8 +104,10 @@ def test_an_unresolved_input_fails_before_any_entity_runs(
         sys, "argv", ["floe", "run", "-c", str(tmp_path / "config.yml")]
     )
     assert main() == 1
-    # Rust resolves every entity's inputs first (#864): `a` never runs, nothing is written
-    assert not (tmp_path / "report").exists()
+    # Rust resolves every entity's inputs first (#864): `a` never runs; only the failure report is written
+    assert [p.name for p in (tmp_path / "report").rglob("*.json")] == [
+        "run.failure.json"
+    ]
     assert not (tmp_path / "out").exists()
 
 

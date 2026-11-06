@@ -1,0 +1,25 @@
+{
+  "spec_version": "0.3",
+  "tool": {
+    "name": "floe",
+    "version": "0.9.0"
+  },
+  "run": {
+    "run_id": "<volatile>",
+    "started_at": "<volatile>",
+    "failed_at": "<volatile>",
+    "duration_ms": "<volatile>",
+    "status": "failed"
+  },
+  "error": {
+    "type": "FloeError",
+    "code": null,
+    "message": "Not a directory (os error 20)"
+  },
+  "entities": [
+    {
+      "name": "first",
+      "state": "failed"
+    }
+  ]
+}

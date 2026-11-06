@@ -94,6 +94,48 @@ def build_summary(
     }
 
 
+def build_failure(
+    version: str,
+    err: BaseException,
+    states: Sequence[tuple[EntityConfig, str]],
+    *,
+    run_id: str,
+    started_at: str,
+    failed_at: str,
+    duration_ms: int,
+    report_path: str,
+    domain: str | None = None,
+) -> dict[str, Any]:
+    """`run.failure.json`: why a run stopped and what each selected entity (config order, with its state) had reached. No row values."""
+    run_path = run_dir(report_path, run_id, domain)
+    return {
+        "spec_version": version,
+        "tool": {"name": "floe", "version": __version__},
+        "run": {"run_id": run_id}
+        | ({"domain": domain} if domain else {})
+        | {
+            "started_at": started_at,
+            "failed_at": failed_at,
+            "duration_ms": duration_ms,
+            "status": "failed",
+        },
+        "error": {
+            "type": type(err).__name__,
+            "code": getattr(err, "code", None),
+            "message": str(err),
+        },
+        "entities": [
+            {"name": e.id, "state": state}
+            | (
+                {"report_file": f"{run_path}/{id_path(e)}/run.json"}
+                if state == "completed"
+                else {}
+            )
+            for e, state in states
+        ],
+    }
+
+
 def write_reports(
     summary: dict[str, Any],
     reports: Sequence[tuple[str, dict[str, Any]]],
