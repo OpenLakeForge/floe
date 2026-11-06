@@ -5,7 +5,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Generator, Iterable, Iterator
-from contextlib import closing
+from contextlib import closing, contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from functools import partial
@@ -112,6 +112,31 @@ from floe.write.outputs import (
 
 Chunks = Iterator[tuple[int, pl.DataFrame, pl.Series | None]]  # fmt: skip  # offset, frame, ragged rows
 
+# #1156: the entity's cumulative wall-clock phases (`timings_ms` in run.json); a phase that did not run is null.
+# ponytail: no commit_ms: `write_iceberg` commits inside PyIceberg's append, so `accepted_write_ms` includes the commit.
+PHASES = ("list_ms", "download_wait_ms", "read_validate_ms", "rejected_write_ms", "accepted_write_ms", "archive_ms")  # fmt: skip
+
+
+@contextmanager
+def _timed(spent: dict[str, float], phase: str) -> Generator[None]:
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        spent[phase] = spent.get(phase, 0.0) + time.monotonic() - started
+
+
+def _pulled(
+    frames: Iterator[pl.DataFrame], spent: dict[str, float]
+) -> Iterator[pl.DataFrame]:
+    """`frames`, counting the time the sink waits for each chunk (reading and validating the next file) under `pulled`."""
+    while True:
+        with _timed(spent, "pulled"):
+            frame = next(frames, None)
+        if frame is None:
+            return
+        yield frame
+
 
 @dataclass(frozen=True)
 class EntityRun:
@@ -198,7 +223,8 @@ def _put(plan: "_Plan", severity: str, name: str, body: bytes) -> str:
     """Write `<rejected>/<name>`; the report shows a local target as a path, as Rust."""
     base, client = _rejected(plan, severity)
     uri = f"{base.rstrip('/')}/{name}"
-    client.write(uri, body)
+    with _timed(plan.spent, "rejected_write_ms"):
+        client.write(uri, body)
     return uri.removeprefix("local://")
 
 
@@ -228,6 +254,9 @@ class _Plan:
     tracker: UniqueTracker
     pii_map: dict[str, str]
     rejected_writes: int = 0
+    spent: dict[str, float] = field(
+        default_factory=dict[str, float]
+    )  # seconds per phase, see PHASES
     prechecked: set[str] = field(
         default_factory=set[str]
     )  # files the precheck settles (unreadable header, rejected or aborted mismatch); Rust settles them before it reads any file
@@ -459,7 +488,8 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
             mode = "append"
         plan.rejected_writes += 1
         target, client = _rejected(plan, "reject")
-        written = write_rejected(_output(plan, pl.concat(rejected)), client, target, mode, f"{plan.input_hash}:{file.source_uri}")  # fmt: skip
+        with _timed(plan.spent, "rejected_write_ms"):
+            written = write_rejected(_output(plan, pl.concat(rejected)), client, target, mode, f"{plan.input_hash}:{file.source_uri}")  # fmt: skip
         rejected_path = written.removeprefix("local://")
     elif bad_total and severity == "abort":
         rejected_path = _copy_raw(plan, path, "abort", file.source_name)
@@ -925,7 +955,8 @@ def _run_entity(
             )
         )
 
-    inputs = source()
+    with _timed(plan.spent, "list_ms") if listed is None else nullcontext():
+        inputs = source()
     if inputs.warning:  # D30
         emit("log", log_level="warn", code=None, message=inputs.warning, entity=entity.name, input=None)  # fmt: skip
     if entity.source.partitioning and entity.incremental_mode == "file":
@@ -968,8 +999,12 @@ def _run_entity(
                 for f in queue:
                     emit("file_started", entity=entity.name, input=f.source_uri)
                     timer = time.monotonic()
-                    local = next(inputs)
+                    with _timed(plan.spent, "download_wait_ms"):
+                        local = next(inputs)
+                    rejecting = plan.spent.get("rejected_write_ms", 0.0)
+                    parsing = time.monotonic()
                     report, kept = _run_file(plan, f, local.local_path, Path(temp_dir))
+                    plan.spent["read_validate_ms"] = plan.spent.get("read_validate_ms", 0.0) + time.monotonic() - parsing - (plan.spent.get("rejected_write_ms", 0.0) - rejecting)  # fmt: skip
                     if local.is_ephemeral:
                         local.local_path.unlink()
                     emit("file_finished", entity=entity.name, input=f.source_uri, status=report["status"],
@@ -996,8 +1031,12 @@ def _run_entity(
                 cast_column(n, c.column_type)[0]
                 for n, c in zip(names, columns, strict=True)
             )
-            frames = chain([_output(plan, empty) if first is None else first], stream)
+            frames = chain(
+                [_output(plan, empty) if first is None else first],
+                _pulled(stream, plan.spent),
+            )
             del first  # the sink holds the chunk it is on, not the first
+            sink_started = time.monotonic()
             if target is None:
                 write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
             else:
@@ -1010,6 +1049,8 @@ def _run_entity(
                 if result.already_committed:  # #920: the commit conflicted and the guard found this batch in the table
                     done = {f.source_uri for f in complete}
                     files[:] = [skipped_report(r["input_file"], "already_committed") if r["input_file"] in done else r for r in files]  # fmt: skip
+            # the sink's time between pulls: the writes, and the Iceberg commit after the last one
+            plan.spent["accepted_write_ms"] = time.monotonic() - sink_started - plan.spent.pop("pulled", 0.0)  # fmt: skip
         else:
             write = AcceptedWrite(0, [], 0, 0.0, 0)
     except Exception:
@@ -1027,7 +1068,8 @@ def _run_entity(
     order = {f.source_uri: i for i, f in enumerate(inputs.files)}
     # #1090: oldest first, so a partial archive leaves the newest batch pending, never only an older one
     for f in sorted(plan.to_archive, key=lambda f: order[f.source_uri]) if latest_first else plan.to_archive:  # fmt: skip
-        by_uri[f.source_uri]["output"]["archived_path"] = _archive(plan, f)
+        with _timed(plan.spent, "archive_ms") if plan.archive else nullcontext():
+            by_uri[f.source_uri]["output"]["archived_path"] = _archive(plan, f)
     unique = [_report_names(r, key, runtime) for r, key in zip(plan.tracker.results(), keys, strict=True)]  # fmt: skip
     report = build_report(
         entity,
@@ -1044,4 +1086,5 @@ def _run_entity(
         merge=merge,
         added_columns=added,
     )
+    report["timings_ms"] = {k: int(plan.spent[k] * 1000) if k in plan.spent else None for k in PHASES}  # fmt: skip
     return EntityRun(report, any(f["status"] == "aborted" for f in files))

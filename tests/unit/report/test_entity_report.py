@@ -145,6 +145,9 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
         rejected_uri=root.format(f"out/rejected/{entity.name}"),
         unique=tracker.results(),
     )
+    report["timings_ms"] = (
+        "<volatile>"  # the recorded goldens mask the timings of a real run
+    )
     parts = (entity.domain, entity.name, "run.json")
     return serialize(report) + "\n", "/".join(p for p in parts if p)
 

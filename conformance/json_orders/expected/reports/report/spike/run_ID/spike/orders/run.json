@@ -226,5 +226,6 @@
         "rules": []
       }
     }
-  ]
+  ],
+  "timings_ms": "<volatile>"
 }
