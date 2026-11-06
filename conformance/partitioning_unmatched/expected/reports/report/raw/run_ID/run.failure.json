@@ -1,0 +1,26 @@
+{
+  "spec_version": "0.3",
+  "tool": {
+    "name": "floe",
+    "version": "0.9.0"
+  },
+  "run": {
+    "run_id": "<volatile>",
+    "domain": "raw",
+    "started_at": "<volatile>",
+    "failed_at": "<volatile>",
+    "duration_ms": "<volatile>",
+    "status": "failed"
+  },
+  "error": {
+    "type": "FloeRunError",
+    "code": null,
+    "message": "entity.name=orders input local://<ROOT>/in/2026/10/24/orders.csv does not match source.partitioning.pattern={yyyy}/{MM}/{dd}/{batch}"
+  },
+  "entities": [
+    {
+      "name": "orders",
+      "state": "not_started"
+    }
+  ]
+}

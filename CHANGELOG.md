@@ -5,7 +5,7 @@ All notable changes to Floe are documented in this file.
 ## Unreleased
 
 - Named profile runners inherit from the default runner and can be selected per domain or entity (#1149).
-- A run stopped by an entity error writes a best-effort `run.failure.json` (error, per-entity state) before the error is raised, and emits a `log` event with its URI (#1155).
+- A run stopped by an input-listing or entity error writes a best-effort `run.failure.json` (error, per-entity state) before the error is raised, and emits a `log` event with its URI (#1155).
 
 ## v0.9.0
 

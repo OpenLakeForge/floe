@@ -433,6 +433,16 @@ def test_a_failure_report_that_cannot_be_written_does_not_mask_the_error(tmp_pat
     assert not [e for e in spy.events if e["event"] == "log"]
 
 
+def test_a_listing_failure_leaves_a_failure_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    path, root = setup(tmp_path, ["a", "b"])
+    slow_listing(monkeypatch, fail=("b",))
+    with pytest.raises(FloeRunError, match="b listing failed"):
+        run(path, root, run_id="r1")
+    doc = json.loads(failure_file(tmp_path).read_text())
+    assert doc["error"]["message"] == "b listing failed"
+    assert [(e["name"], e["state"]) for e in doc["entities"]] == [("a", "not_started"), ("b", "not_started")]  # fmt: skip
+
+
 def test_a_successful_run_writes_no_failure_report(tmp_path: Path) -> None:
     path, root = setup(tmp_path, ["a", "b"])
     run(path, root, run_id="r1")

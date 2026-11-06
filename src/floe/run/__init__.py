@@ -164,17 +164,6 @@ def run(
             _finished(emit, entity.id, None)
             raise
 
-    emit("run_started", config=config, report_base=report_path)
-    # Rust resolves every entity's inputs before the first entity_started (#864); run_entity reuses them
-    # D24: a full refresh may rebuild from the archive alone, so run_entity decides
-    to_list = [e for e in selected if not (full_refresh and e.sink.archive and e.incremental_mode in ("none", "archive"))]  # fmt: skip
-    # `map` yields in config order, so the first failure in config order is raised
-    if workers > 1 and len(to_list) > 1:
-        with ThreadPoolExecutor(workers, thread_name_prefix="floe-list") as pool:
-            found = list(pool.map(inputs, to_list))
-    else:
-        found = [inputs(e) for e in to_list]
-    listed = {e.id: f for e, f in zip(to_list, found, strict=True)}
     client = storage_client(report_storage)
 
     def finish(e: EntityConfig) -> dict[str, Any]:
@@ -185,8 +174,20 @@ def run(
         _finished(emit, e.id, report)
         return report
 
+    emit("run_started", config=config, report_base=report_path)
     # D36: a policy abort fails only its entity; a FloeError still stops the run
     try:
+        # Rust resolves every entity's inputs before the first entity_started (#864); run_entity reuses them
+        # D24: a full refresh may rebuild from the archive alone, so run_entity decides
+        to_list = [e for e in selected if not (full_refresh and e.sink.archive and e.incremental_mode in ("none", "archive"))]  # fmt: skip
+        # `map` yields in config order, so the first failure in config order is raised
+        if workers > 1 and len(to_list) > 1:
+            with ThreadPoolExecutor(workers, thread_name_prefix="floe-list") as pool:
+                found = list(pool.map(inputs, to_list))
+        else:
+            found = [inputs(e) for e in to_list]
+        listed = {e.id: f for e, f in zip(to_list, found, strict=True)}
+
         if workers > 1 and len(selected) > 1:
             keys = [exclusive_keys(e, config_dir, root.storages, root.catalogs) for e in selected]  # fmt: skip
             done = run_parallel(selected, keys, workers, finish)

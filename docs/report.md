@@ -154,7 +154,7 @@ lists every entity, and the run status and exit code stay `aborted` / `2`. A tec
 
 ### Run failure (`run.failure.json`)
 
-When an entity raises, the run stops and Floe writes `<run_dir>/run.failure.json` next to where the summary would
+When listing the inputs or an entity raises (a bad credential, a missing bucket), the run stops and Floe writes `<run_dir>/run.failure.json` next to where the summary would
 be, then re-raises the original error. It is additive: a successful run never writes it.
 
 - `spec_version`, `tool`: as in the run summary.
