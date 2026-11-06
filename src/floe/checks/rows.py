@@ -107,14 +107,20 @@ def split_rows(
     checks: Sequence[RowCheck],
     formatter: Formatter = "json",
     sources: Mapping[str, str] | None = None,
+    raw: pl.DataFrame | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """`(accepted, rejected)`; rejected adds `__floe_row_index` (UInt64, row position in `df`) and `__floe_errors`."""
+    """`(accepted, rejected)`; rejected adds `__floe_row_index` (UInt64, row position in `df`) and `__floe_errors`.
+
+    `raw` is the row-aligned frame before the casts: the rejected rows are taken from it, so a failed cast keeps its source value.
+    """
+    src = df if raw is None else raw
     # a null mask passes the row, as in `error_column`
     if not any(c.mask.any() for c in checks):
         none = [pl.Series(ROW_INDEX, [], pl.UInt64), pl.Series(ERRORS, [], pl.String)]
-        return df, df.clear().with_columns(none)  # replaces a clashing column, as below
+        # with_columns replaces a clashing column, as below
+        return df, src.clear().with_columns(none)
     errors = error_column(df.height, checks, formatter, sources)
-    rejected = df.with_columns(
+    rejected = src.with_columns(
         pl.int_range(pl.len(), dtype=pl.UInt64).alias(ROW_INDEX), errors
     ).filter(errors.is_not_null())
     return df.filter(errors.is_null()), rejected

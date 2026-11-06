@@ -317,9 +317,22 @@ def _output(plan: _Plan, df: pl.DataFrame) -> pl.DataFrame:
     return apply_pii_masking(df, pii.columns, plan.pii_map) if pii else df
 
 
+_CSV_TYPES = {
+    pl.String,
+    pl.Boolean,
+    pl.Null,
+    pl.Date,
+    pl.Datetime,
+    pl.Time,
+    pl.Categorical,
+    pl.Enum,
+}
+
+
 def _typed(
     plan: _Plan, raw: pl.DataFrame, mismatch: MismatchOutcome, derived: list[pl.Expr]
-) -> tuple[pl.DataFrame, list[RowCheck]]:
+) -> tuple[pl.DataFrame, pl.DataFrame, list[RowCheck]]:
+    """The typed frame, the same rows before the casts (what the rejected sink holds) and the row checks."""
     entity, src = plan.entity, plan.entity.source
     # D28 (#913): the derived columns join after the file's own columns are normalised and matched
     df = apply_mismatch(normalize_columns(raw, plan.strategy), mismatch)
@@ -350,12 +363,15 @@ def _typed(
         for n, c in zip(plan.names, columns, strict=True)
         if c.column_type != "string"
     ]  # fmt: skip
+    # ponytail: the rejected CSV holds only these types; any other source column (binary, duration, nested ...) keeps its typed value in the rejected rows until a Parquet rejected sink (#1154) can store it as it is
+    if unwritable := [n for n in plan.names if not (df.schema[n].is_numeric() or df.schema[n].base_type() in _CSV_TYPES)]:  # fmt: skip
+        df = df.with_columns(typed[n] for n in unwritable)
     if entity.policy.severity == "abort" and any(c.mask.any() for c in cast_checks):
-        return typed, cast_checks  # fmt: skip  # Rust: abort-mode cast errors skip not_null and unique
+        return typed, df, cast_checks  # fmt: skip  # Rust: abort-mode cast errors skip not_null and unique
     required = [not_null_check(typed, n) for n in plan.required]
     if plan.history is not None:
         seed_from_history(plan.tracker, plan.history, typed, plan.out_map)
-    return typed, [*required, *cast_checks, *plan.tracker.check(typed)]
+    return typed, df, [*required, *cast_checks, *plan.tracker.check(typed)]
 
 
 def _unspill(path: Path) -> pl.DataFrame:
@@ -425,10 +441,12 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
     errors: list[tuple[int, str]] = []
     try:
         for offset, raw_df, ragged in chain(first, chunks):
-            typed, checks = _typed(plan, raw_df, mismatch, derived)
+            typed, pre_cast, checks = _typed(plan, raw_df, mismatch, derived)
             if ragged is not None and ragged.any():
                 checks.insert(0, RowCheck("csv_read_error", "", RAGGED_MESSAGE, ragged))
-            good, bad = split_rows(typed, checks, plan.formatter, plan.sources)
+            good, bad = split_rows(
+                typed, checks, plan.formatter, plan.sources, pre_cast
+            )
             bad = bad.with_columns(pl.col(ROW_INDEX) + offset)
             rows += typed.height
             bad_total += bad.height

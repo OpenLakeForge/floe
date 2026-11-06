@@ -9,7 +9,8 @@ checks, so checks see the raw values, and the written rows hold masked ones.
 - **Accepted rows** are masked before the accepted sink write.
 - **Rejected rows** (`policy.severity: reject`) are masked the same way before they are
   written to `sink.rejected`: a hashed `email` holds the same digest in the accepted and the
-  rejected output. The `__floe_errors` column names the rule and column, not the value.
+  rejected output. Rejected rows hold the source values (#1152), so a non-string column hashes the
+  source text, which can differ from the digest of its typed value in the accepted rows. The `__floe_errors` column names the rule and column, not the value.
 - **Raw files are never written.** A config that would copy an input file unmasked to
   `sink.rejected` or an archive fails `floe validate` when `pii` is set: `policy.severity: abort`,
   `sink.archive`, and `schema.mismatch.missing_columns` or `extra_columns` set to `reject_file`.

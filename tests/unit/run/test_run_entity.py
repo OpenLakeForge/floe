@@ -1,6 +1,7 @@
 """`run_entity`: statuses, outputs and file-level rejections for a local CSV entity."""
 
 import json
+from datetime import timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -665,6 +666,107 @@ def test_json_late_key_and_late_errors_are_the_same_in_every_chunking(
     if mode == "ndjson":
         statuses = run_in("d", body(*records[:3], "nope"))
         assert statuses == ["rejected"], statuses
+
+
+PII_CONFIG = CONFIG.replace(
+    "    schema:\n",
+    "    pii: {{columns: [{{name: name, strategy: {strategy}}}]}}\n    schema:\n",
+).replace("{{name: id, type: int64, nullable: false}}", "{{name: id, type: int64, unique: true}}")  # fmt: skip
+
+
+def _rejected_csv(tmp_path: Path) -> pl.DataFrame:
+    (part,) = (tmp_path / "out" / "rejected").glob("*.csv")
+    return pl.read_csv(part, infer_schema=False)
+
+
+def test_rejected_rows_hold_the_raw_value_of_a_failed_cast(tmp_path: Path) -> None:
+    """#1152: `not_a_number` stays in the rejected row; the accepted rows are typed."""
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "{name: name, type: string}", "{name: amount, type: 'decimal(10,2)'}"
+    )
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,amount\n1,1.50\n2,not_a_number\n")
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    run_entity(entity, tmp_path, "0.3")
+    assert accepted(tmp_path)["id"].to_list() == [1]
+    assert accepted(tmp_path).schema["amount"] != pl.String
+    rejected = _rejected_csv(tmp_path)
+    assert rejected["amount"].to_list() == ["not_a_number"]
+    assert rejected["__floe_row_index"].to_list() == ["1"]
+
+
+@pytest.mark.parametrize(
+    ("value", "kind"), [(b"alice", "string"), (timedelta(microseconds=7), "int64")]
+)
+def test_a_source_column_csv_cannot_hold_keeps_its_typed_value_in_the_rejected_csv(
+    tmp_path: Path, value: object, kind: str
+) -> None:
+    """#1152 (Codex P1s): a Parquet binary or duration column cannot be written to CSV, so the rejected row keeps its typed value."""
+    config = (
+        CONFIG.format(severity="reject", mismatch="")
+        .replace(
+            'format: csv\n      path: ./in\n      options: {header: true, separator: ","}',
+            "format: parquet\n      path: ./in",
+        )
+        .replace("{name: name, type: string}", f"{{name: name, type: {kind}}}")
+    )
+    (tmp_path / "in").mkdir()
+    pl.DataFrame({"id": ["bad", "1"], "name": [value, value]}).write_parquet(
+        tmp_path / "in" / "orders.parquet"
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert report["results"]["rejected_total"] == 1
+    rejected = _rejected_csv(tmp_path)
+    assert rejected["id"].to_list() == ["bad"]
+    assert (
+        rejected["name"].to_list()
+        == accepted(tmp_path)["name"].cast(pl.String).to_list()
+    )
+
+
+def test_rejected_row_indices_follow_the_file_across_chunks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1152: null, cast and unique failures land on the same whole-file rows in any chunking."""
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        "{name: id, type: int64, nullable: false}",
+        "{name: id, type: int64, nullable: false, unique: true}",
+    )
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(config)
+    # row 1 null id, row 2 cast error, row 4 is a duplicate of row 0 (chunks of 2 rows hold rows 0-1, 2-3, 4-5)
+    (tmp_path / "in" / "orders.csv").write_text(
+        "id,name\n1,a\n,b\nx,c\n3,d\n1,e\n5,f\n"
+    )
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=2))
+    report = run_entity(entity, tmp_path, "0.3").report
+    rejected = _rejected_csv(tmp_path)
+    assert rejected["__floe_row_index"].to_list() == ["1", "2", "4"]
+    assert rejected["name"].to_list() == ["b", "c", "e"]
+    assert rejected["id"].to_list() == [None, "x", "1"]
+    assert report["results"]["rejected_total"] == 3
+
+
+@pytest.mark.parametrize("strategy", ["redact", "hash", "drop"])
+def test_rejected_raw_values_of_a_pii_column_are_never_plaintext(
+    tmp_path: Path, strategy: str
+) -> None:
+    """#1152: PII masking runs on the raw rejected frame before the write."""
+    config = PII_CONFIG.format(severity="reject", mismatch="", strategy=strategy)
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,alice\nx,bob\n")
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    run_entity(entity, tmp_path, "0.3")
+    (part,) = (tmp_path / "out" / "rejected").glob("*.csv")
+    text = part.read_text()
+    assert "bob" not in text
+    assert "x" in _rejected_csv(tmp_path)["id"].to_list()
+    assert ("name" in text.splitlines()[0]) == (strategy != "drop")
 
 
 def test_1153_rejected_parquet_is_not_implemented_yet(tmp_path: Path) -> None:

@@ -66,7 +66,7 @@ def process(
     ]
     if tracker is not None:
         checks += tracker.check(typed)
-    accepted, rejected = split_rows(typed, checks)
+    accepted, rejected = split_rows(typed, checks, raw=raw)
     return (
         apply_pii_masking(accepted, pii or [], {}),
         apply_pii_masking(rejected, pii or [], {}),
