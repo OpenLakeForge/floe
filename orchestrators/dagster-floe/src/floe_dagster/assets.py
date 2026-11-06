@@ -441,6 +441,7 @@ def _entity_events(
     metadata.update(entity_stats)
     if entity_report_uri:
         metadata["entity_report_uri"] = entity_report_uri
+    metadata.update(_timing_metadata(entity_report_json))
     if result.failure_reason:
         metadata["failure_reason"] = result.failure_reason
     if result.status:
@@ -462,6 +463,7 @@ def _entity_events(
             yield check_result
 
     if failed:
+        metadata.update(_failure_evidence(context, result.stdout, config_uri))
         return Failure(description=f"floe run failed for entity {entity_name}", metadata=metadata)
 
     if not accepted_selected:
@@ -479,6 +481,9 @@ def _entity_events(
         }
         if entity.rejected_sink_uri:
             rejected_metadata["dagster/uri"] = MetadataValue.url(entity.rejected_sink_uri)
+        if entity_report_uri:
+            rejected_metadata["entity_report_uri"] = entity_report_uri
+        rejected_metadata.update(_rejected_sink_metadata(entity_report_json, entity.rejected_sink_uri))
         if entity_report_json:
             files_with_rejections = _count_files_with_rejections(entity_report_json)
             dominant = _dominant_rejection_reason(entity_report_json)
@@ -487,6 +492,58 @@ def _entity_events(
                 rejected_metadata["dominant_rejection_reason"] = dominant
         yield Output(value=None, output_name=f"{out_prefix}rejected", metadata=rejected_metadata)
     return None
+
+
+def _timing_metadata(report: dict[str, Any] | None) -> dict[str, Any]:
+    """`floe/timings/<phase>_ms` for each phase that ran; a report without `timings_ms` adds nothing."""
+    timings = report.get("timings_ms") if report else None
+    if not isinstance(timings, dict):
+        return {}
+    return {
+        f"floe/timings/{key}": MetadataValue.int(value)
+        for key, value in timings.items()
+        if isinstance(value, int) and not isinstance(value, bool)
+    }
+
+
+def _rejected_sink_metadata(report: dict[str, Any] | None, configured_uri: str | None) -> dict[str, Any]:
+    """The rejected output's format (csv, parquet, ...) and URI as the entity report recorded them."""
+    sink = (report or {}).get("sink")
+    rejected = sink.get("rejected") if isinstance(sink, dict) else None
+    if not isinstance(rejected, dict):
+        return {}
+    metadata: dict[str, Any] = {}
+    if isinstance(rejected.get("format"), str):
+        metadata["floe/rejected_format"] = rejected["format"]
+    if uri := rejected.get("path") or configured_uri:
+        metadata["floe/rejected_uri"] = str(uri)
+    return metadata
+
+
+def _failure_evidence(context: Any, stdout: str, config_uri: str) -> dict[str, Any]:
+    """What `run.failure.json` says about a failed run; a missing or unreadable file is a note, not an error."""
+    uri = None
+    for event in parse_json_event_lines(stdout):
+        if event.get("event") == "log" and event.get("code") == "run_failure_report":
+            uri = str(event.get("message") or "").removeprefix("run failure report: ") or None
+    if uri is None:
+        return {"floe/failure_evidence": "unavailable: the run emitted no run_failure_report event"}
+    try:
+        report = _load_json_document(uri, config_uri, label="run failure report")
+    except Exception as exc:  # noqa: BLE001 - evidence only; the failure itself is raised by the caller
+        context.log.warning(f"failed to load run failure report: {exc}")
+        return {"floe/failure_report_uri": uri, "floe/failure_evidence": f"unavailable: {exc}"}
+    error = report.get("error") if isinstance(report.get("error"), dict) else {}
+    entities = report.get("entities") if isinstance(report.get("entities"), list) else []
+    return {
+        "floe/failure_report_uri": uri,
+        "floe/error_type": error.get("type"),
+        "floe/error_code": error.get("code"),
+        # a state other than "completed" is never a success: not_started and unknown stay as written
+        "floe/entity_states": MetadataValue.json(
+            {e["name"]: e.get("state") for e in entities if isinstance(e, dict) and "name" in e}
+        ),
+    }
 
 
 def _rejected_key(entity: ManifestEntity) -> list[str]:
