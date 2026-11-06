@@ -455,13 +455,20 @@ source = { editable = "." }
 dependencies = [
     { name = "boto3" },
     { name = "duckdb" },
-    { name = "fastexcel" },
     { name = "polars" },
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pyiceberg" },
     { name = "pyiceberg-core" },
     { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "fastexcel" },
+]
+xlsx = [
+    { name = "fastexcel" },
 ]
 
 [package.dev-dependencies]
@@ -483,7 +490,8 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.36.0" },
     { name = "duckdb", specifier = "==1.5.6" },
-    { name = "fastexcel", specifier = ">=0.21.0" },
+    { name = "fastexcel", marker = "extra == 'xlsx'", specifier = ">=0.21.0" },
+    { name = "floe-python", extras = ["xlsx"], marker = "extra == 'all'" },
     { name = "polars", specifier = ">=2.0.0" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pydantic", specifier = ">=2.14.1" },
@@ -491,6 +499,7 @@ requires-dist = [
     { name = "pyiceberg-core", specifier = ">=0.10.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]
+provides-extras = ["xlsx", "all"]
 
 [package.metadata.requires-dev]
 conformance = [{ name = "pyarrow" }]

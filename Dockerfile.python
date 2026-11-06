@@ -11,10 +11,10 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/floe \
 
 # Dependencies first so source edits do not bust the layer cache.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --extra all --no-install-project
 
 COPY src src
-RUN uv sync --frozen --no-dev --no-editable
+RUN uv sync --frozen --no-dev --extra all --no-editable
 
 FROM python:3.11-slim@sha256:b7a9e5f6a93d6d4a31f129bbd4bdee69efccb6ded0fb230d78aafaf37af98377
 

@@ -10,7 +10,6 @@ requires-python = ">=3.11"
 dependencies = [
     "boto3>=1.36.0",
     "duckdb==1.5.6",
-    "fastexcel>=0.21.0",
     "polars>=2.0.0",
     "pyarrow>=26.0.0",
     "pydantic>=2.14.1",
@@ -18,6 +17,10 @@ dependencies = [
     "pyiceberg-core>=0.10.1",
     "pyyaml>=6.0.3",
 ]
+
+[project.optional-dependencies]
+xlsx = ["fastexcel>=0.21.0"]
+all = ["floe-python[xlsx]"]
 
 [project.scripts]
 floe = "floe._cli:main"

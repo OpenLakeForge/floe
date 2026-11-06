@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --all-groups
+      - run: uv sync --all-groups --all-extras
       - name: Measure floe coverage
         # Explicit bash turns on pipefail so a test failure isn't masked by tee.
         shell: bash

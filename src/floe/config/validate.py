@@ -26,6 +26,7 @@ from floe.config.types import (
 )
 from floe.config.yaml import rust_debug
 from floe.errors import FloeConfigError
+from floe.extras import require
 from floe.pii import token_n
 from floe.read.json import parse_selector as parse_json_selector
 from floe.read.xml import parse_selector
@@ -520,6 +521,7 @@ def _check_source(entity: EntityConfig, config: RootConfig) -> None:
             f"source.options.json_mode={mode} is unsupported (allowed: array, ndjson)",
         )
     if source.format == "xlsx":
+        require("xlsx", "fastexcel", f"entity.name={entity.name} source.format=xlsx")
         sheet, header_row = options.sheet, options.header_row
         if sheet is not None and not sheet.strip():
             raise _fail(entity, "source.options.sheet must not be empty")

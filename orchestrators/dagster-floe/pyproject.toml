@@ -33,7 +33,7 @@ kubernetes = [
   "kubernetes>=28",
 ]
 floe = [
-  "floe-python>=0.9,<0.10",
+  "floe-python[all]>=0.9,<0.10",
 ]
 remote = [
   "fsspec",
