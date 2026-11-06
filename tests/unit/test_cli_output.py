@@ -168,7 +168,7 @@ def test_log_format_json_stdout_is_ndjson_only_and_summary_is_stderr(
     assert list(events[-1])[3:] == [
         *("run_id", "status", "exit_code", "files", "files_skipped", "rows"),
         *("accepted", "rejected", "warnings", "errors", "summary_uri"),
-        *("report_base", "entity_report_uris", "ts_ms"),
+        *("report_base", "report_write_ms", "entity_report_uris", "ts_ms"),
     ]
     assert list(events[-1]["entity_report_uris"]) == ["sales.orders"]
 

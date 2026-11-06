@@ -47,7 +47,7 @@ def _summary(tmp_path: Path, statuses: dict[str, str]) -> str:
     return str(path)
 
 
-def _run(tmp_path: Path, statuses: dict[str, str], *, exit_code: int = 0, selection=None, **manifest_kw: Any):
+def _run(tmp_path: Path, statuses: dict[str, str], *, exit_code: int = 0, selection=None, events: list[dict] | None = None, **manifest_kw: Any):
     """Materialize with the Kubernetes client mocked; returns the result and the Job API mock."""
     manifest = _manifest(tmp_path, **manifest_kw)
     jobs_api, core_api = MagicMock(), MagicMock()
@@ -57,7 +57,7 @@ def _run(tmp_path: Path, statuses: dict[str, str], *, exit_code: int = 0, select
     }
     finished = {"event": "run_finished", "run_id": "r1", "status": "success", "exit_code": exit_code, "summary_uri": _summary(tmp_path, statuses)}
     core_api.list_namespaced_pod.return_value.items = [{"metadata": {"name": "pod-1"}}]
-    core_api.read_namespaced_pod_log.return_value = json.dumps(finished)
+    core_api.read_namespaced_pod_log.return_value = "\n".join(json.dumps(e) for e in [*(events or []), finished])
     with (
         patch("floe_dagster.kubernetes_runner._make_batch_client", return_value=jobs_api),
         patch("floe_dagster.kubernetes_runner._make_core_client", return_value=core_api),
@@ -134,6 +134,34 @@ def test_domain_scope_failed_entity_fails_alone_and_the_ones_before_it_materiali
     [failure] = [e for e in result.all_events if e.event_type_value == "STEP_FAILURE"]
     message = failure.event_specific_data.error.message
     assert "entities returns; not run: refunds" in message
+
+
+def test_domain_scope_failure_carries_the_failure_report_evidence(tmp_path: Path) -> None:
+    failure = tmp_path / "run.failure.json"
+    failure.write_text(
+        json.dumps(
+            {
+                "error": {"type": "FloeStorageError", "code": None, "message": "boom"},
+                "entities": [
+                    {"name": "sales.orders", "state": "failed"},
+                    {"name": "sales.returns", "state": "not_started"},
+                    {"name": "sales.refunds", "state": "unknown"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    events = [{"event": "log", "code": "run_failure_report", "message": f"run failure report: {failure}"}]
+    result, _ = _run(tmp_path, {"orders": "failed"}, exit_code=1, events=events)
+
+    [step] = [e for e in result.all_events if e.event_type_value == "STEP_FAILURE"]
+    meta = {k: getattr(v, "value", v) for k, v in step.event_specific_data.user_failure_data.metadata.items()}
+    assert meta["floe/failure_report_uri"] == str(failure)
+    assert meta["floe/entity_states"] == {
+        "sales.orders": "failed",
+        "sales.returns": "not_started",
+        "sales.refunds": "unknown",
+    }
 
 
 def test_domain_scope_outputs_carry_entity_and_output_metadata(tmp_path: Path) -> None:

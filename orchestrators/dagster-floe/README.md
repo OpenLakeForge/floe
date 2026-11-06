@@ -202,6 +202,13 @@ are unchanged. See [docs/cli.md](../../docs/cli.md) for what `--full-refresh` do
 
 Every accepted and rejected asset carries `floe/entity` (the manifest entity name) and `floe/output` (`"accepted"` or `"rejected"`) in its asset metadata, so tooling can tell the two apart without parsing dagster-floe's output names: `spec.metadata["floe/output"]` on each `AssetSpec` of `multi_asset.specs`.
 
+Materialization metadata also carries, from the entity report (older reports without these keys simply add nothing):
+
+- `floe/timings/<phase>_ms` (accepted asset): one integer per phase of the report's `timings_ms` that ran (`list_ms`, `download_wait_ms`, `read_validate_ms`, `rejected_write_ms`, `accepted_write_ms`, `archive_ms`). The phases overlap; see [docs/report.md](../../docs/report.md).
+- `entity_report_uri` (accepted and rejected asset), and on the rejected asset `floe/rejected_format` (`csv` or `parquet`) and `floe/rejected_uri`, as the report recorded them. Rejected rows are never loaded into Dagster.
+
+When a run fails, the step failure's metadata adds what `run.failure.json` says: `floe/failure_report_uri`, `floe/error_type`, `floe/error_code` and `floe/entity_states` (qualified entity id to `completed`, `failed`, `not_started` or `unknown`; only `completed` means the entity finished). If the file cannot be found or read, `floe/failure_evidence` says `unavailable: <reason>` and the failure is raised as before.
+
 ## Notes
 
 - This connector does **not** parse YAML directly; it consumes Floe manifests (`spec_version` `0.8` or `0.9`), read from a file or built by `floe.build_manifest` in config mode.

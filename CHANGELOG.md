@@ -12,6 +12,8 @@ All notable changes to Floe are documented in this file.
   (Parquet, ORC, Avro) keep their native values. PII strategies are applied to the raw values, so a `hash` of a rejected
   value can differ from the hash of the same value in the accepted rows.
 - A run stopped by an input-listing or entity error writes a best-effort `run.failure.json` (error, per-entity state) before the error is raised, and emits a `log` event with its URI (#1155).
+- Each entity report has a `timings_ms` object (`list_ms`, `download_wait_ms`, `read_validate_ms`, `rejected_write_ms`, `accepted_write_ms`, `archive_ms`: cumulative wall-clock milliseconds, `null` for a phase that did not run), the `entity_finished` event carries it, and `run_finished` has `report_write_ms` (#1156).
+- dagster-floe adds the report's `timings_ms` (`floe/timings/<phase>_ms`), the rejected output's format and URI, and, for a failed run, the `run.failure.json` URI, error and per-entity states to asset metadata (#1157).
 
 ## v0.9.0
 
