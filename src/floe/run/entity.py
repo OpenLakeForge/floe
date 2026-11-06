@@ -369,6 +369,9 @@ def _typed(
         for n, c in zip(plan.names, columns, strict=True)
         if c.column_type != "string"
     ]  # fmt: skip
+    # ponytail: CSV cannot hold binary or nested values; those columns keep their typed value in the rejected rows until a Parquet rejected sink (#1154) can store them as they are
+    if unwritable := [n for n in plan.names if df.schema[n] == pl.Binary or df.schema[n].is_nested() or df.schema[n] == pl.Object]:  # fmt: skip
+        df = df.with_columns(typed[n] for n in unwritable)
     if entity.policy.severity == "abort" and any(c.mask.any() for c in cast_checks):
         return typed, df, cast_checks  # fmt: skip  # Rust: abort-mode cast errors skip not_null and unique
     required = [not_null_check(typed, n) for n in plan.required]

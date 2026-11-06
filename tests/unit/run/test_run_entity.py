@@ -695,6 +695,27 @@ def test_rejected_rows_hold_the_raw_value_of_a_failed_cast(tmp_path: Path) -> No
     assert rejected["__floe_row_index"].to_list() == ["1"]
 
 
+def test_a_binary_source_column_keeps_its_typed_value_in_the_rejected_csv(
+    tmp_path: Path,
+) -> None:
+    """#1152 (Codex P1): a Parquet binary column cannot be written to CSV, so the rejected row keeps its typed value."""
+    config = CONFIG.format(severity="reject", mismatch="").replace(
+        'format: csv\n      path: ./in\n      options: {header: true, separator: ","}',
+        "format: parquet\n      path: ./in",
+    )
+    (tmp_path / "in").mkdir()
+    pl.DataFrame({"id": ["bad", "1"], "name": [b"alice", b"bob"]}).write_parquet(
+        tmp_path / "in" / "orders.parquet"
+    )
+    (tmp_path / "config.yml").write_text(config)
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert report["results"]["rejected_total"] == 1
+    rejected = _rejected_csv(tmp_path)
+    assert rejected["id"].to_list() == ["bad"]
+    assert rejected["name"].to_list() == ["alice"]
+
+
 def test_rejected_row_indices_follow_the_file_across_chunks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
