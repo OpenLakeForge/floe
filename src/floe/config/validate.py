@@ -358,7 +358,7 @@ def _check_iceberg(
                 entity,
                 f"sink.{kind}.iceberg.catalog requires sink.{kind} storage type s3 or gcs (got {type_})",
             )
-    if kind == "rejected" and iceberg.location is not None and iceberg.location.rstrip("/") == target.path.rstrip("/"):  # fmt: skip
+    if kind == "rejected" and iceberg.location is not None and definition.warehouse_storage in (None, storage) and iceberg.location.rstrip("/") == target.path.rstrip("/"):  # fmt: skip  # one string names one place only in one storage
         raise _fail(entity, "sink.rejected.iceberg.location must differ from sink.rejected.path (raw file copies are written to the path)")  # fmt: skip
     if kind == "rejected" and entity.sink.accepted.format == "iceberg":
         other = entity.sink.accepted.iceberg or NO_ICEBERG

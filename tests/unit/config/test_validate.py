@@ -548,3 +548,18 @@ def test_pii_drop_is_refused_for_a_rejected_iceberg_sink(tmp_path: Path) -> None
         "entity.name=orders pii.columns[name=amt].strategy=drop is not supported with "
         "sink.rejected.format=iceberg because the sink enforces the full declared schema"
     )
+
+
+WAREHOUSE = (
+    "storages: {default: s, definitions: [{name: s, type: s3, bucket: b, region: r}, {name: loc, type: local}]}\n"
+    "catalogs: {default: c, definitions: [{name: c, type: rest, uri: u, warehouse_storage: s}]}"
+)
+
+
+def test_rejected_location_and_path_are_compared_in_the_same_storage(tmp_path: Path) -> None:  # fmt: skip
+    """The same string names two places when the warehouse storage (S3) is not the rejected one (local)."""
+    same = ", iceberg: {table: dlq, location: rej}"
+    check(tmp_path, f"{{{COLS}}}", sink=rejected_sink(", storage: loc" + same), catalogs=WAREHOUSE + "\n")  # fmt: skip
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", sink=rejected_sink(", storage: s" + same), catalogs=WAREHOUSE + "\n")  # fmt: skip
+    assert str(err.value) == "entity.name=orders sink.rejected.iceberg.location must differ from sink.rejected.path (raw file copies are written to the path)"  # fmt: skip
