@@ -9,7 +9,7 @@ from floe.config.storage import CatalogsConfig, StoragesConfig
 from floe.config.types import EntityConfig
 from floe.errors import FloeError
 from floe.iceberg.sink import resolve_target
-from floe.run.entity import state_uri
+from floe.run.incremental import state_uri
 from floe.storage.resolve import resolve_path
 
 MERGE = "merge"  # every merge entity shares this key: DuckDB memory, and Polaris conflicts on one table

@@ -11,9 +11,11 @@ import pytest
 from floe.config.parse import parse_config
 from floe.errors import FloeConfigError, FloeRunError
 from floe.run import entity as entity_module  # `floe.run` is the public function
+from floe.run import incremental as incremental_module
 from floe.run import run
-from floe.run.entity import EntityRun, Incremental, run_entity
+from floe.run.entity import EntityRun, run_entity
 from floe.run.events import Emitter
+from floe.run.incremental import Incremental
 from floe.storage.inputs import InputFile
 
 CONFIG = """\
@@ -169,19 +171,20 @@ def test_row_mode_reprocesses_like_rust_0_7(tmp_path: Path) -> None:
 def test_default_state_location(tmp_path: Path, src: str, expected: str) -> None:
     entity = setup(tmp_path, src=src)
     assert (
-        entity_module.state_uri(entity, tmp_path)[0] == f"local://{tmp_path / expected}"
+        incremental_module.state_uri(entity, tmp_path)[0]
+        == f"local://{tmp_path / expected}"
     )
 
 
 def test_state_path_is_local_and_relative_to_the_config(tmp_path: Path) -> None:
     entity = setup(tmp_path, state="state: {path: s/x.json}")
     assert (
-        entity_module.state_uri(entity, tmp_path)[0]
+        incremental_module.state_uri(entity, tmp_path)[0]
         == f"local://{tmp_path / 's/x.json'}"
     )
     remote = setup(tmp_path, state="state: {path: 's3://b/x.json'}")
     with pytest.raises(FloeConfigError, match="must be a local path"):
-        entity_module.state_uri(remote, tmp_path)
+        incremental_module.state_uri(remote, tmp_path)
 
 
 def test_claims_are_renewed_while_the_entity_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
@@ -191,8 +194,8 @@ def test_claims_are_renewed_while_the_entity_runs(tmp_path: Path, monkeypatch: p
     def fake_renew(_client: object, _uri: str, run_id: str, _claimed: object) -> None:
         renewed.append(run_id)
 
-    monkeypatch.setattr(entity_module, "RENEW_INTERVAL_S", 0.01)
-    monkeypatch.setattr(entity_module, "renew", fake_renew)
+    monkeypatch.setattr(incremental_module, "RENEW_INTERVAL_S", 0.01)
+    monkeypatch.setattr(incremental_module, "renew", fake_renew)
     real = entity_module._run_file  # pyright: ignore[reportPrivateUsage]
 
     def slow(*a: Any) -> Any:
@@ -356,8 +359,8 @@ def test_a_failed_renewal_emits_a_heartbeat_failed_warning(tmp_path: Path, monke
     def broken(*_: Any) -> None:
         raise OSError("store down")
 
-    monkeypatch.setattr(entity_module, "RENEW_INTERVAL_S", 0.01)
-    monkeypatch.setattr(entity_module, "renew", broken)
+    monkeypatch.setattr(incremental_module, "RENEW_INTERVAL_S", 0.01)
+    monkeypatch.setattr(incremental_module, "renew", broken)
     real = entity_module._run_file  # pyright: ignore[reportPrivateUsage]
 
     def slow(*a: Any) -> Any:

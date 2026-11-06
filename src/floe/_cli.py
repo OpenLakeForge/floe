@@ -25,7 +25,7 @@ from floe.lineage.observer import run_with_lineage
 from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, ORPHAN_DELAY_DAYS, maintain
 from floe.manifest_run import load_manifest, shown
 from floe.run import domain_entities, select_entities
-from floe.run.entity import state_uri
+from floe.run.incremental import state_uri
 from floe.state import dump_state, read_state, reset
 from floe.storage.paths import normalize_local_path, parse_s3_uri
 from floe.storage.s3 import S3Client

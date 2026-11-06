@@ -37,7 +37,6 @@ from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, ORPHAN_DELAY_DAYS
 from floe.maintain import maintain as _maintain
 from floe.manifest_run import load_manifest, shown
 from floe.report.summary import id_path
-from floe.run.entity import state_uri
 from floe.run.events import (
     EntityFinishedEvent,
     EntityStartedEvent,
@@ -49,6 +48,7 @@ from floe.run.events import (
     RunStartedEvent,
     SchemaEvolutionAppliedEvent,
 )
+from floe.run.incremental import state_uri
 from floe.state import dump_state, read_state, reset
 from floe.storage.paths import normalize_local_path
 from floe.storage.resolve import clear_storage_clients
