@@ -973,9 +973,10 @@ def _run_entity(
         rows = f"{plan.rejected[0].rstrip('/')}/rows"
         if getattr(client, "endpoint", None) == getattr(plan.rejected[1], "endpoint", None):  # fmt: skip
             _refuse_overlap(who, rows, inputs.files, "sink.rejected.path")
-        # the accepted parts and the rejected row parts are both `part-*.parquet`: one directory would let either overwrite the other
-        if target is None and getattr(accepted_client, "endpoint", None) == getattr(plan.rejected[1], "endpoint", None) and _real(base).rstrip("/") == _real(rows).rstrip("/"):  # fmt: skip
-            raise FloeConfigError(f"{who} sink.accepted.path must differ from the rejected rows directory {rows}")  # fmt: skip
+        # accepted parts are `part-*.parquet`: in the rejected directory they would overwrite its raw file copies, in `rows/` its row parts
+        shared = {_real(d).rstrip("/") for d in (plan.rejected[0], rows)}
+        if target is None and getattr(accepted_client, "endpoint", None) == getattr(plan.rejected[1], "endpoint", None) and _real(base).rstrip("/") in shared:  # fmt: skip
+            raise FloeConfigError(f"{who} sink.accepted.path must differ from sink.rejected.path and its rows directory {rows}")  # fmt: skip
     pending, files = inc.claim(inputs.files, emit)
     if done := inc.skip_committed(plan.table, pending, emit):
         files += done
