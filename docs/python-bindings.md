@@ -243,6 +243,6 @@ To work on the library itself, see [`CONTRIBUTING.md`](../CONTRIBUTING.md):
 ```bash
 git clone https://github.com/OpenLakeForge/floe
 cd floe
-uv sync --all-groups
+uv sync --all-groups --all-extras
 uv run pytest
 ```

@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --all-groups
+      - run: uv sync --all-groups --all-extras
       # Same images, credentials and settings as spikes/python/harness/docker-compose.yml (#602).
       - name: Start SeaweedFS and Polaris
         run: |

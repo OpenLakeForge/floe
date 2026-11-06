@@ -24,6 +24,19 @@ uv tool install floe-python   # the `floe` command only
 uv add floe-python            # as a library dependency of your project
 ```
 
+The core install reads and validates local files. Optional backends are extras:
+
+| Extra | Needed for |
+|---|---|
+| `xlsx` | `source.format: xlsx` |
+| `all` | every extra above |
+
+```bash
+pip install 'floe-python[xlsx]'   # or 'floe-python[all]'
+```
+
+A config that needs a missing extra fails `floe validate` with the `pip install` command to run.
+
 The wheel is `py3-none-any`: there is no native extension to build.
 
 ## Docker (GHCR)
@@ -56,7 +69,7 @@ For development (see [`CONTRIBUTING.md`](../CONTRIBUTING.md)):
 ```bash
 git clone https://github.com/OpenLakeForge/floe
 cd floe
-uv sync --all-groups
+uv sync --all-groups --all-extras
 uv run floe --version
 ```
 

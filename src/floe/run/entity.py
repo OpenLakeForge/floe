@@ -64,7 +64,6 @@ from floe.read.csv import RAGGED_MESSAGE, read_csv
 from floe.read.json import JSON_CHUNK_ROWS, JSON_SINGLE_PASS_BYTES, read_json
 from floe.read.orc import read_orc
 from floe.read.parquet import read_parquet
-from floe.read.xlsx import read_xlsx
 from floe.read.xml import read_xml, xml_columns
 from floe.report.entity import build_report, file_report
 from floe.report.summary import run_outcome
@@ -163,6 +162,8 @@ def _chunks(entity: EntityConfig, path: Path, names: list[str], head: list[tuple
             for o in read_orc(path):
                 yield o.offset, o.df, None
         case "xlsx":
+            from floe.read.xlsx import read_xlsx  # the xlsx extra
+
             yield 0, read_xlsx(path, src.options), None
         case "xml":
             for x in read_xml(path, src.options, entity.schema_.columns[: len(names)]):

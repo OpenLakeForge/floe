@@ -2,11 +2,16 @@
 
 from pathlib import Path
 
-import fastexcel
 import polars as pl
 
 from floe.config.types import SourceOptions
 from floe.errors import FloeIoError
+from floe.extras import missing
+
+try:
+    import fastexcel
+except ImportError as e:  # the xlsx extra is not installed
+    raise missing("xlsx", "source.format=xlsx") from e
 
 
 def _fail(rule: str, message: str) -> FloeIoError:

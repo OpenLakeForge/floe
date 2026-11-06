@@ -62,7 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --all-groups
+      - run: uv sync --all-groups --all-extras
       - run: uv run python scripts/test_config_schema.py
 
   python-lint:
@@ -72,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --all-groups
+      - run: uv sync --all-groups --all-extras
       - run: uv run ruff check
       - run: uv run ruff format --check
 
@@ -83,7 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --all-groups
+      - run: uv sync --all-groups --all-extras
       - run: uv run pyright
 
   python-test:
@@ -104,7 +104,7 @@ jobs:
         if: needs.changes.outputs.python_core == 'true'
       - uses: astral-sh/setup-uv@v7
         if: needs.changes.outputs.python_core == 'true'
-      - run: uv sync --all-groups --python ${{ matrix.python-version }}
+      - run: uv sync --all-groups --all-extras --python ${{ matrix.python-version }}
         if: needs.changes.outputs.python_core == 'true'
       - run: uv run --python ${{ matrix.python-version }} pytest
         if: needs.changes.outputs.python_core == 'true'
@@ -118,7 +118,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --all-groups
+      - run: uv sync --all-groups --all-extras
       - name: Python matches every golden case
         run: uv run python conformance/check.py
 
