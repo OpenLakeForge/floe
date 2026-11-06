@@ -39,10 +39,11 @@ from floe.iceberg.catalog import (
 )
 from floe.iceberg.merge import merge_scd1, merge_scd2
 from floe.iceberg.write import (
+    REJECTED_FILES,
     SMALL_FILE_THRESHOLD_BYTES,
     IcebergWriteResult,
-    find_committed,
     parquet_properties,
+    rejected_files,
     write_result,
     write_table,
 )
@@ -239,15 +240,15 @@ def write_iceberg(
 def write_rejected_iceberg(
     entity: EntityConfig,
     target: IcebergTarget,
-    frames: Iterator[pl.DataFrame],
+    parts: list[tuple[str, Callable[[], pl.DataFrame]]],
     names: list[str],
     run_id: str,
     digest: str,
 ) -> IcebergWriteResult:
-    """Append `frames` (at least one: `names`, then the `__floe_*` columns) to the rejected table in one commit.
+    """Append the frames of `parts` (`input_hash` of the one file, loader; `names`, then the `__floe_*` columns) to the rejected table in one commit.
 
-    Every declared column is a string, so the table never drifts with the Silver types. A snapshot carrying
-    `digest` means a retry already appended this batch: nothing is written (no rejected row is duplicated).
+    Every declared column is a string, so the table never drifts with the Silver types. The snapshot records the
+    files it holds; a retry skips those files' rows, so a rejected row is never duplicated, even when the batch grew.
     """
     fields = [*names, ROW_INDEX, ERRORS, "__floe_run_id", "__floe_source_uri"]
     schema = pa.schema([pa.field(n, pa.int64() if n == ROW_INDEX else pa.large_string()) for n in fields])  # fmt: skip
@@ -258,12 +259,15 @@ def write_rejected_iceberg(
         catalog, target.namespace, target.table, iceberg, entity.name, target.location.removeprefix("local://"),
         None, evolution.mode if evolution else "strict", target.catalog.create_database_if_missing,
     )  # fmt: skip
-    if find_committed(table, digest):
+    done = rejected_files(table)
+    todo = [(h, load) for h, load in parts if h not in done]
+    if not todo:
         return replace(write_result(table, []), already_committed=True)
 
     def batches() -> Iterator[pa.RecordBatch]:
-        for df in frames:
-            cast = df.select(pl.col(n).cast(pl.Int64 if n == ROW_INDEX else pl.String) for n in fields)  # fmt: skip
+        for _, load in todo:
+            cast = load().select(pl.col(n).cast(pl.Int64 if n == ROW_INDEX else pl.String) for n in fields)  # fmt: skip
             yield from cast.to_arrow().cast(schema).to_batches()
 
-    return write_table(table, pa.RecordBatchReader.from_batches(schema, batches()), "append", run_id, digest)  # fmt: skip
+    held = {REJECTED_FILES: json.dumps(sorted({h for h, _ in todo}))}
+    return write_table(table, pa.RecordBatchReader.from_batches(schema, batches()), "append", run_id, digest, properties=held)  # fmt: skip

@@ -284,7 +284,11 @@ def keys_of(tmp_path: Path, text: str) -> list[frozenset[str]]:
 
 
 def iceberg_entity(
-    name: str, table: str, mode: str = "overwrite", catalog: str = "polaris", rejected: str = ""
+    name: str,
+    table: str,
+    mode: str = "overwrite",
+    catalog: str = "polaris",
+    rejected: str = "",
 ) -> str:
     return f"""\
   - name: {name}

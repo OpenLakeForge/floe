@@ -772,6 +772,18 @@ def test_rejected_iceberg_rerun_of_the_same_input_appends_nothing(tmp_path: Path
     assert len(table.snapshots()) == 1
 
 
+def test_rejected_iceberg_retry_with_a_new_file_appends_only_the_new_rejects(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    run_rejected(tmp_path, "id,name,amount\n2,b,abc\n")
+    (tmp_path / "in" / "b.csv").write_text(
+        "id,name,amount\n3,c,1.00\n4,d,xyz\n"
+    )  # arrives before the retry
+    run_rejected(tmp_path, None)
+    table = catalog.tables["sales.orders_rejected"]
+    assert sorted(r["id"] for r in table.scan().to_arrow().to_pylist()) == ["2", "4"]
+    run_rejected(tmp_path, None)
+    assert table.scan().to_arrow().num_rows == 2
+
+
 def test_rejected_iceberg_is_one_commit_for_all_the_files(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
     (tmp_path / "in").mkdir()
     (tmp_path / "in" / "a.csv").write_text("id,name,amount\n3,c,x\n")

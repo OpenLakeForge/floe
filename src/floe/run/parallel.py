@@ -30,7 +30,8 @@ def exclusive_keys(e: EntityConfig, config_dir: Path, storages: StoragesConfig |
         if sink.accepted.format == "iceberg":
             t = resolve_target(storages, catalogs, config_dir, e)
             keys.add(f"iceberg://{t.catalog.name}/{t.namespace}/{t.table}")
-        if sink.rejected and sink.rejected.format == "iceberg":  # the quarantine table: two entities racing its create fail
+        # the quarantine table too: two entities racing its create fail
+        if sink.rejected and sink.rejected.format == "iceberg":
             t = resolve_target(storages, catalogs, config_dir, e, "rejected")
             keys.add(f"iceberg://{t.catalog.name}/{t.namespace}/{t.table}")
         if e.incremental_mode == "file":
