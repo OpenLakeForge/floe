@@ -26,6 +26,7 @@ from pyiceberg.table.update import (
 from pyiceberg.types import LongType, NestedField
 
 import floe
+import floe.iceberg.compact as compact_module
 import floe.iceberg.sink as sink_module
 from floe._cli import main
 from floe.maintain import _list  # pyright: ignore[reportPrivateUsage] -- the S3 branch of the listing
@@ -302,7 +303,7 @@ def test_compaction_runs_first_on_its_own_duckdb_connection(tmp_path: Path, cata
             "added_data_files": 1,
         }
 
-    monkeypatch.setattr(module, "compact", compact)
+    monkeypatch.setattr(compact_module, "compact", compact)
     code, out, err = floe_cli(monkeypatch, capsys, "--compact", "--experimental")
     assert (code, err) == (0, ""), err
     assert calls == [15] and len(table.metadata.snapshots) == 10

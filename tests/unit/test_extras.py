@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 
 from floe.config.parse import parse_config
+from floe.config.storage import CatalogDefinition
 from floe.config.validate import validate_entities
 from floe.errors import FloeConfigError
+from floe.iceberg.catalog import open_duckdb
 from floe.storage.s3 import S3Client
 
 XLSX = (
@@ -78,5 +80,45 @@ def test_core_modules_import_without_boto(monkeypatch: pytest.MonkeyPatch) -> No
     for name in ("boto3", "botocore", "botocore.exceptions", "botocore.config"):
         monkeypatch.setitem(sys.modules, name, None)
     for name in ("floe.storage.s3", "floe.iceberg.catalog"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+        importlib.import_module(name)
+
+
+MERGE = "entity.name=orders sink.write_mode=merge_scd1 needs the floe[merge] extra: pip install 'floe-python[merge]'"  # fmt: skip
+
+
+def test_validate_names_the_merge_extra(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    config = tmp_path / "config.yml"
+    config.write_text("""
+version: "0.3"
+storages:
+  default: lake
+  definitions: [{name: lake, type: s3, bucket: b, region: r}]
+catalogs:
+  default: polaris
+  definitions: [{name: polaris, type: rest, uri: "http://polaris", warehouse: w}]
+entities:
+- name: orders
+  source: {format: csv, path: in.csv}
+  sink: {write_mode: merge_scd1, accepted: {format: iceberg, path: t/orders, iceberg: {catalog: polaris}}}
+  policy: {severity: warn}
+  schema: {primary_key: [id], columns: [{name: id, type: string}]}
+""")
+    monkeypatch.setitem(sys.modules, "duckdb", None)
+    with pytest.raises(FloeConfigError) as err:
+        validate_entities(parse_config(config))
+    assert str(err.value) == MERGE
+
+
+def test_open_duckdb_names_the_merge_extra(monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    monkeypatch.setitem(sys.modules, "duckdb", None)
+    with pytest.raises(FloeConfigError) as err:
+        open_duckdb(CatalogDefinition.model_construct(name="c", type="rest"))
+    assert str(err.value) == "iceberg merges and compaction needs the floe[merge] extra: pip install 'floe-python[merge]'"  # fmt: skip
+
+
+def test_core_modules_import_without_duckdb(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "duckdb", None)
+    for name in ("floe", "floe.run", "floe.maintain", "floe.iceberg.sink", "floe.iceberg.catalog"):  # fmt: skip
         monkeypatch.delitem(sys.modules, name, raising=False)
         importlib.import_module(name)

@@ -44,6 +44,7 @@ from test_run_stream import (  # pyright: ignore[reportMissingImports] -- a sibl
 
 import floe
 import floe.iceberg.catalog as catalog_module
+import floe.iceberg.merge as merge_module
 import floe.iceberg.sink as sink_module
 from floe._cli import main
 from floe.config.parse import parse_config
@@ -397,7 +398,7 @@ def merges(monkeypatch: pytest.MonkeyPatch) -> Merges:
         return MergeResult(write_result(table, []), done.rows_inserted, done.rows_updated)  # fmt: skip
 
     monkeypatch.setattr(sink_module, "open_duckdb", lambda *_: duckdb.connect())  # pyright: ignore[reportUnknownLambdaType] -- stub
-    monkeypatch.setattr(sink_module, "merge_scd1", merge_scd1)
+    monkeypatch.setattr(merge_module, "merge_scd1", merge_scd1)
     return calls
 
 

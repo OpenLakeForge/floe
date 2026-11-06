@@ -222,6 +222,7 @@ def _check_write_mode(entity: EntityConfig) -> None:
             f"sink.write_mode={mode} is not supported by sink.accepted.format={fmt}",
         )
     if mode in ("merge_scd1", "merge_scd2"):
+        require("merge", "duckdb", f"entity.name={entity.name} sink.write_mode={mode}")
         primary_key = entity.schema_.primary_key
         if primary_key is None:
             raise _fail(entity, f"sink.write_mode={mode} requires schema.primary_key")
