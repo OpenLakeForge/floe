@@ -252,8 +252,10 @@ class _Plan:
     root: str | None = None  # D29: the source root, when `source.partitioning` is set
 
 
-def _refuse_overlap(who: str, sink: str, inputs: list[InputFile]) -> None:
-    """D34: an input under the accepted Parquet sink would be deleted or re-read as one of its parts."""
+def _refuse_overlap(
+    who: str, sink: str, inputs: list[InputFile], what: str = "sink.accepted.path"
+) -> None:
+    """D34: an input under a Parquet sink (accepted, or a Parquet rejected sink) would be deleted or re-read as one of its parts."""
 
     def real(
         uri: str,
@@ -263,7 +265,7 @@ def _refuse_overlap(who: str, sink: str, inputs: list[InputFile]) -> None:
     root = real(sink).rstrip("/") + "/"
     for f in inputs:
         if real(f.source_uri).startswith(root):
-            raise FloeConfigError(f"{who} source file {f.source_uri} lies under sink.accepted.path {sink}; the sink would overwrite or re-read it")  # fmt: skip
+            raise FloeConfigError(f"{who} source file {f.source_uri} lies under {what} {sink}; the sink would overwrite or re-read it")  # fmt: skip
 
 
 def _archive(plan: _Plan, file: InputFile) -> str | None:
@@ -970,6 +972,8 @@ def _run_entity(
     # D34 (#931): same store only (a bucket name repeats across endpoints); before the claim, so a refusal leaves nothing to release
     if target is None and getattr(client, "endpoint", None) == getattr(accepted_client, "endpoint", None):  # fmt: skip
         _refuse_overlap(who, base, inputs.files)
+    if plan.rejected and sink.rejected and sink.rejected.format == "parquet" and getattr(client, "endpoint", None) == getattr(plan.rejected[1], "endpoint", None):  # fmt: skip
+        _refuse_overlap(who, plan.rejected[0], inputs.files, "sink.rejected.path")
     pending, files = inc.claim(inputs.files, emit)
     if done := inc.skip_committed(plan.table, pending, emit):
         files += done

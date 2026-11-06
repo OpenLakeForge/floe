@@ -880,3 +880,18 @@ def test_1166_a_parquet_rejected_sink_cannot_share_the_accepted_directory(tmp_pa
         assert (
             run_entity(entity, tmp_path, "0.3").report["results"]["rejected_total"] == 1
         )
+
+
+def test_1166_a_parquet_rejected_sink_refuses_source_files_under_it(
+    tmp_path: Path,
+) -> None:
+    """Codex P0 on #1166: an overwrite of the rejected Parquet parts would delete an input `part-*.parquet` there."""
+    config = PQ_CONFIG.replace("format: csv\n      path: ./in\n      options: {{header: true, separator: \",\"}}", "format: parquet\n      path: ./in").replace("path: ./out/rejected", "path: ./in")  # fmt: skip
+    (tmp_path / "in").mkdir()
+    source = tmp_path / "in" / "part-00000.parquet"
+    pl.DataFrame({"id": ["1", "bad"], "name": ["a", "b"]}).write_parquet(source)
+    (tmp_path / "config.yml").write_text(config.format(severity="reject", mismatch=""))
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    with pytest.raises(FloeConfigError, match="lies under sink.rejected.path"):
+        run_entity(entity, tmp_path, "0.3")
+    assert pl.read_parquet(source)["id"].to_list() == ["1", "bad"]
