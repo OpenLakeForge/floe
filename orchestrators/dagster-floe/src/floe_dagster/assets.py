@@ -693,7 +693,11 @@ def _make_domain_multi_asset(
             raise Failure(
                 description=f"floe run failed for entities {', '.join(failures) or 'none'}"
                 + (f"; not run: {', '.join(not_run)}" if not_run else ""),
-                metadata={"failed_entities": failures, "not_run_entities": not_run},
+                metadata={
+                    "failed_entities": failures,
+                    "not_run_entities": not_run,
+                    **_failure_evidence(context, result.stdout, config_uri),
+                },
             )
 
     return _domain_asset
