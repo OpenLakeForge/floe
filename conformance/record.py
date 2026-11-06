@@ -108,6 +108,15 @@ def snapshot(work: Path) -> Snapshot:
         out[f"accepted/{d.relative_to(work / 'out/accepted').as_posix()}.parquet"] = (
             pa.concat_tables([pq.read_table(p) for p in parts])
         )
+    for d in sorted(
+        {p.parent for p in work.glob("out/rejected/**/rows/part-*.parquet")}
+    ):
+        table = pa.concat_tables([pq.read_table(p) for p in sorted(d.glob("part-*.parquet"))])  # fmt: skip
+        # volatile: the run id and the temp dir
+        n = table.num_rows
+        for name, values in (("__floe_run_id", ["<run_id>"] * n), ("__floe_source_uri", [normalize(v, root) for v in table["__floe_source_uri"].to_pylist()])):  # fmt: skip
+            table = table.set_column(table.schema.get_field_index(name), name, pa.array(values, pa.string()))  # fmt: skip
+        out[f"rejected/{d.relative_to(work / 'out/rejected').as_posix()}.parquet"] = table  # fmt: skip
     for path in sorted(work.glob("out/rejected/**/*.csv")):
         key = f"rejected/{UUID_PART.sub('part-UUID', path.relative_to(work / 'out/rejected').as_posix())}"
         if key in out:

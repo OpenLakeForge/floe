@@ -216,5 +216,6 @@ When a column has an explicit `source`, row error logs include a `source`
 field (JSON) or an extra column/annotation (CSV/text) alongside `column`.
 
 With `sink.rejected.format: parquet` the rejected rows carry raw source values plus `__floe_row_index`, `__floe_errors`,
-`__floe_run_id` and `__floe_source_uri` (see [Config](config.md)); to replay byte-for-byte use the archived source file
+`__floe_run_id` and `__floe_source_uri` (see [Config](config.md)); `output.rejected_path` is then the `<sink.rejected.path>/rows` directory, not one
+part. To replay byte-for-byte use the archived source file
 (`output.archived_path`).

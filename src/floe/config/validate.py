@@ -382,9 +382,12 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
     if (
         sink.rejected is not None
     ):  # #1153: the rejected output appends its own __floe_* columns
-        for index, column in enumerate(entity.schema_.columns):
-            if column.name.startswith("__floe_"):
-                raise _fail(entity, f"schema.columns[{index}].name={column.name} is reserved (names starting with __floe_ are reserved when sink.rejected is set)")  # fmt: skip
+        nc, columns = entity.schema_.normalize_columns, entity.schema_.columns
+        strategy = (nc.strategy or "snake_case") if nc and nc.enabled else None
+        for index, (column, out) in enumerate(zip(columns, output_names(columns, strategy), strict=True)):  # fmt: skip
+            if out.startswith("__floe_"):  # the output name, after normalize_columns
+                shown = column.name if out == column.name else f"{column.name} normalizes to {out}, which"  # fmt: skip
+                raise _fail(entity, f"schema.columns[{index}].name={shown} is reserved (names starting with __floe_ are reserved when sink.rejected is set)")  # fmt: skip
     who = f"entity.name={entity.name} "
     accepted_storage = _storage_ref(
         config, accepted.storage, "sink.accepted.storage", who

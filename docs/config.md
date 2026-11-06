@@ -480,12 +480,13 @@ state file shape, and CAS behavior.
     - Unsupported changes such as drops, renames, type changes, and non-nullable-to-nullable drift still fail the write.
     - The columns are added, but 0.8 does not report it yet: the entity report's `schema_evolution` block stays `applied: false` and no `schema_evolution_applied` event is emitted (#994).
 - `rejected` (required when `policy.severity` is `reject` or `abort`; D39)
-  - `format`: `csv` (default) or `parquet`. `parquet` is accepted by `floe validate`; `floe run` fails with
-    `sink.rejected.format=parquet is not implemented yet` until the writer lands (#1154).
+  - `format`: `csv` (default) or `parquet`.
 - `path`: output directory for rejected rows.
   - Supports `{{var}}` templating (see "Templating & domains").
   - Rejected outputs are written as dataset parts (`part-*.csv` or `part-*.parquet`).
-  - Parquet output contract:
+  - Parquet output contract (the rows go to `<path>/rows/part-*.parquet`, apart from the raw file copies and error reports that `reject_file` and `abort` put in `<path>`):
+    - With a Parquet accepted sink, `sink.accepted.path` must differ from `<path>` and from `<path>/rows`: accepted parts
+      there would overwrite the raw file copies or the rejected rows.
     - Columns are the entity's declared output columns holding the RAW source values: strings for csv, tsv,
       fixed, json and xml text inputs, native types for parquet, orc and avro inputs. Values are never cast to the
       Silver target type.

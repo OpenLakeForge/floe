@@ -769,17 +769,141 @@ def test_rejected_raw_values_of_a_pii_column_are_never_plaintext(
     assert ("name" in text.splitlines()[0]) == (strategy != "drop")
 
 
-def test_1153_rejected_parquet_is_not_implemented_yet(tmp_path: Path) -> None:
+PQ_CONFIG = CONFIG.replace("rejected: {{format: csv", "rejected: {{format: parquet")
+
+
+def _rejected_parquet(tmp_path: Path) -> pl.DataFrame:
+    parts = sorted((tmp_path / "out" / "rejected" / "rows").glob("part-*.parquet"))
+    return pl.concat([pl.read_parquet(p) for p in parts])
+
+
+def _run_pq(tmp_path: Path, text: str, config: str = PQ_CONFIG, **fmt: str) -> Any:
+    (tmp_path / "in").mkdir(exist_ok=True)
+    (tmp_path / "in" / "orders.csv").write_text(text)
+    (tmp_path / "config.yml").write_text(config.format(**{"severity": "reject", "mismatch": "", **fmt}))  # fmt: skip
+    return run_entity(parse_config(tmp_path / "config.yml").entities[0], tmp_path, "0.3").report  # fmt: skip
+
+
+def test_1154_rejected_parquet_holds_raw_values_and_metadata(tmp_path: Path) -> None:
+    config = (
+        PQ_CONFIG.replace("{{name: name, type: string}}", "{{name: amount, type: 'decimal(10,2)'}}")
+        .replace("{{name: id, type: int64, nullable: false}}", "{{name: id, type: int64, nullable: false, unique: true}}")
+        .replace("        - {{name: amount", "        - {{name: day, type: date}}\n        - {{name: amount")
+    )  # fmt: skip
+    report = _run_pq(tmp_path, "id,day,amount\n1,2024-01-01,1.50\n2,2024-13-45,abc\n1,2024-01-02,2.00\n,2024-01-03,3.00\n", config)  # fmt: skip
+    rejected = _rejected_parquet(tmp_path)
+    assert rejected.columns == ["id", "day", "amount", "__floe_row_index", "__floe_errors", "__floe_run_id", "__floe_source_uri"]  # fmt: skip
+    assert rejected.schema["__floe_row_index"] == pl.UInt64
+    assert rejected["id"].to_list() == ["2", "1", None]
+    assert rejected["day"].to_list() == ["2024-13-45", "2024-01-02", "2024-01-03"]
+    assert rejected["amount"].to_list() == ["abc", "2.00", "3.00"]
+    assert rejected["__floe_row_index"].to_list() == [1, 2, 3]
+    assert "cast_error" in rejected["__floe_errors"][0]
+    assert "unique" in rejected["__floe_errors"][1] and "not_null" in rejected["__floe_errors"][2]  # fmt: skip
+    assert rejected["__floe_source_uri"].unique().to_list() == [f"local://{tmp_path / 'in' / 'orders.csv'}"]  # fmt: skip
+    assert len(set(rejected["__floe_run_id"])) == 1
+    assert report["files"][0]["output"]["rejected_path"] == str(tmp_path / "out" / "rejected" / "rows")  # fmt: skip
+
+
+def test_1154_rejected_parquet_spills_chunks_and_keeps_whole_file_indices(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spilled: list[str] = []
+    real = pl.DataFrame.write_ipc
+
+    def spy(self: pl.DataFrame, file: Any, *a: Any, **k: Any) -> Any:
+        spilled.append(Path(file).name)
+        return real(self, file, *a, **k)  # pyright: ignore[reportUnknownVariableType]  # spy passes through the untyped args
+
+    monkeypatch.setattr(pl.DataFrame, "write_ipc", spy)
+    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=2))
     (tmp_path / "in").mkdir()
-    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
-    config = CONFIG.format(severity="reject", mismatch="").replace(
-        "rejected: {format: csv", "rejected: {format: parquet"
-    )
-    (tmp_path / "config.yml").write_text(config)
-    entity = parse_config(tmp_path / "config.yml").entities[0]
-    with pytest.raises(FloeConfigError) as err:
-        run_entity(entity, tmp_path, "0.3")
+    (tmp_path / "in" / "a.csv").write_text("id,name\nx,a\n1,b\ny,c\n2,d\nz,e\n")
+    (tmp_path / "in" / "b.csv").write_text("id,name\n1,a\nq,b\n")
+    (tmp_path / "config.yml").write_text(PQ_CONFIG.format(severity="reject", mismatch=""))  # fmt: skip
+    run_entity(parse_config(tmp_path / "config.yml").entities[0], tmp_path, "0.3")
+    rejected = _rejected_parquet(tmp_path)
+    got = {(Path(u).name, i) for u, i in zip(rejected["__floe_source_uri"], rejected["__floe_row_index"])}  # fmt: skip
+    assert got == {("a.csv", 0), ("a.csv", 2), ("a.csv", 4), ("b.csv", 1)}
+    assert {"rejected-0.ipc", "rejected-1.ipc", "rejected-2.ipc"} <= set(spilled)
+
+
+def test_1154_rejected_parquet_keeps_native_binary(tmp_path: Path) -> None:
+    config = PQ_CONFIG.replace("format: csv\n      path: ./in\n      options: {{header: true, separator: \",\"}}", "format: parquet\n      path: ./in")  # fmt: skip
+    (tmp_path / "in").mkdir()
+    pl.DataFrame({"id": ["bad", "1"], "name": [b"alice", b"bob"]}).write_parquet(tmp_path / "in" / "orders.parquet")  # fmt: skip
+    (tmp_path / "config.yml").write_text(config.format(severity="reject", mismatch=""))
+    run_entity(parse_config(tmp_path / "config.yml").entities[0], tmp_path, "0.3")
+    rejected = _rejected_parquet(tmp_path)
+    assert rejected["id"].to_list() == ["bad"]
+    assert rejected.schema["name"] == pl.Binary
+    assert rejected["name"].to_list() == [b"alice"]
+
+
+def test_1154_append_retry_rewrites_the_same_parts(tmp_path: Path) -> None:
+    config = PQ_CONFIG.replace("sink:\n", "sink:\n      write_mode: append\n", 1)
+    _run_pq(tmp_path, "id,name\nx,a\n1,b\n", config)
+    first = sorted(p.name for p in (tmp_path / "out" / "rejected" / "rows").iterdir())
+    run_entity(parse_config(tmp_path / "config.yml").entities[0], tmp_path, "0.3")
     assert (
-        str(err.value)
-        == "entity.name=orders sink.rejected.format=parquet is not implemented yet"
+        sorted(p.name for p in (tmp_path / "out" / "rejected" / "rows").iterdir())
+        == first
     )
+    assert len(first) == 1 and first[0].startswith("part-")
+    assert _rejected_parquet(tmp_path).height == 1
+
+
+@pytest.mark.parametrize("strategy", ["redact", "hash", "drop"])
+def test_1154_rejected_parquet_pii_is_never_plaintext(
+    tmp_path: Path, strategy: str
+) -> None:
+    config = PII_CONFIG.replace(
+        "rejected: {{format: csv", "rejected: {{format: parquet"
+    )
+    _run_pq(tmp_path, "id,name\n1,alice\nx,bob\n", config, strategy=strategy)
+    (part,) = (tmp_path / "out" / "rejected" / "rows").glob("*.parquet")
+    assert b"bob" not in part.read_bytes()
+    assert ("name" in pl.read_parquet(part).columns) == (strategy != "drop")
+
+
+@pytest.mark.parametrize("accepted", ["./out", "./out/rows"])
+def test_1166_an_accepted_path_on_the_rejected_directories_is_refused(tmp_path: Path, accepted: str) -> None:  # fmt: skip
+    """Codex P0s on #1166: accepted parts in `out/` would overwrite the raw file copies there, in `out/rows/` the row parts."""
+    config = PQ_CONFIG.replace("path: ./out/rejected", "path: ./out").replace("path: ./out/accepted", f"path: {accepted}")  # fmt: skip
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text("id\n1\nbad\n")
+    (tmp_path / "config.yml").write_text(config.format(severity="reject", mismatch="").replace("        - {name: name, type: string}\n", ""))  # fmt: skip
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    with pytest.raises(FloeConfigError, match="sink.accepted.path must differ from sink.rejected.path and its rows directory"):  # fmt: skip
+        run_entity(entity, tmp_path, "0.3")
+    assert not (tmp_path / "out").exists()
+
+
+def test_1166_raw_copies_and_row_parts_do_not_overwrite_each_other(tmp_path: Path) -> None:  # fmt: skip
+    """Codex round 3: a raw `part-00000.parquet` copy and a later file's `rows/part-00000.parquet` coexist under overwrite."""
+    config = PQ_CONFIG.replace("format: csv\n      path: ./in\n      options: {{header: true, separator: \",\"}}", "format: parquet\n      path: ./in").replace("      {mismatch}\n", "      mismatch: {{missing_columns: reject_file}}\n")  # fmt: skip
+    (tmp_path / "in").mkdir()
+    pl.DataFrame({"id": [1]}).write_parquet(tmp_path / "in" / "part-00000.parquet")
+    pl.DataFrame({"id": ["x"], "name": ["n"]}).write_parquet(tmp_path / "in" / "z.parquet")  # fmt: skip
+    (tmp_path / "config.yml").write_text(config.format(severity="reject"))
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    files = {Path(f["input_file"]).name: f["output"]["rejected_path"] for f in run_entity(entity, tmp_path, "0.3").report["files"]}  # fmt: skip
+    rejected = tmp_path / "out" / "rejected"
+    assert pl.read_parquet(rejected / "part-00000.parquet")["id"].to_list() == [1]
+    assert pl.read_parquet(rejected / "rows" / "part-00000.parquet")["id"].to_list() == ["x"]  # fmt: skip
+    assert files == {"part-00000.parquet": str(rejected / "part-00000.parquet"), "z.parquet": str(rejected / "rows")}  # fmt: skip
+
+
+def test_1166_a_parquet_rejected_sink_refuses_source_files_under_it(
+    tmp_path: Path,
+) -> None:
+    """Codex P0 on #1166: an overwrite of the rejected Parquet parts would delete an input `part-*.parquet` there."""
+    config = PQ_CONFIG.replace("format: csv\n      path: ./in\n      options: {{header: true, separator: \",\"}}", "format: parquet\n      path: ./in").replace("path: ./in", "path: ./in/rows", 1).replace("path: ./out/rejected", "path: ./in")  # fmt: skip
+    (tmp_path / "in" / "rows").mkdir(parents=True)
+    source = tmp_path / "in" / "rows" / "part-00000.parquet"
+    pl.DataFrame({"id": ["1", "bad"], "name": ["a", "b"]}).write_parquet(source)
+    (tmp_path / "config.yml").write_text(config.format(severity="reject", mismatch=""))
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    with pytest.raises(FloeConfigError, match="lies under sink.rejected.path"):
+        run_entity(entity, tmp_path, "0.3")
+    assert pl.read_parquet(source)["id"].to_list() == ["1", "bad"]
