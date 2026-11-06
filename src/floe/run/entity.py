@@ -890,6 +890,10 @@ def _run_entity(
     target = resolve_target(storages, catalogs, config_dir, entity) if iceberg else None
     # PyIceberg writes an Iceberg table's files, not Floe's storage clients
     base, accepted = resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"{who} sink.accepted.storage")  # fmt: skip
+    if (
+        sink.rejected is not None and sink.rejected.format == "parquet"
+    ):  # ponytail: #1154 writes it and removes this guard
+        raise FloeConfigError(f"{who} sink.rejected.format=parquet is not implemented yet")  # fmt: skip
     rejected = sink.rejected and resolve_path(storages, config_dir, sink.rejected.storage, sink.rejected.path, f"{who} sink.rejected.storage")  # fmt: skip
     strategy = resolve_strategy(entity.schema_)
     columns = entity.schema_.columns

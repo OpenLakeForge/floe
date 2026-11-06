@@ -844,6 +844,7 @@ $defs:
         type: string
         enum:
         - csv
+        - parquet
       path:
         type: string
       storage:

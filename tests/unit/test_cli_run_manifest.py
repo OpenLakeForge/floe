@@ -526,3 +526,29 @@ def test_an_empty_metadata_block_runs_and_is_reported(
     summary = "report/spike/run_r/run.summary.json"
     expected, actual = outputs(by_config)[summary], outputs(by_manifest)[summary]
     assert actual["config"]["metadata"] == expected["config"]["metadata"]
+
+
+DOMAIN_REJECTED = """\
+version: "0.3"
+domains:
+  - name: sales
+    defaults:
+      sink:
+        accepted: {format: parquet, path: ./out/a}
+        rejected: {format: parquet, path: ./out/rej}
+      policy: {severity: reject}
+entities:
+  - name: orders
+    domain: sales
+    source: {format: csv, path: ./in/a.csv}
+    schema: {columns: [{name: id, type: string}]}
+report: {path: ./report}
+"""
+
+
+def test_1153_domain_default_rejected_parquet_survives_the_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _, _ = load_manifest(manifest(tmp_path, monkeypatch, DOMAIN_REJECTED))
+    rejected = root.entities[0].sink.rejected
+    assert rejected is not None and rejected.format == "parquet"
