@@ -397,3 +397,44 @@ def test_the_first_listing_error_in_config_order_is_raised(tmp_path: Path, monke
     slow_listing(monkeypatch, fail=("c", "g"))
     with pytest.raises(FloeRunError, match="c listing failed"):
         run(path, root, workers=4)
+
+
+def failure_file(tmp_path: Path) -> Path:
+    return tmp_path / "report/d/run_r1/run.failure.json"
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_a_failing_entity_leaves_a_failure_report(workers: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    path, root = setup(tmp_path, ["a", "b", "c"])
+    spy = Spy(monkeypatch, {"a": 0.3} if workers > 1 else {"a": 0}, fail={"b": 0.05})
+    with pytest.raises(FloeRunError, match="b failed"):
+        run(path, root, run_id="r1", observer=spy, workers=workers)
+    doc = json.loads(failure_file(tmp_path).read_text())
+    run_dir = (tmp_path / "report/d/run_r1").as_posix()
+    assert doc["run"]["status"] == "failed" and doc["run"]["domain"] == "d"
+    assert doc["error"] == {"type": "FloeRunError", "code": None, "message": "b failed"}
+    assert doc["entities"] == [
+        {"name": "a", "state": "completed", "report_file": f"{run_dir}/d/a/run.json"},
+        {"name": "b", "state": "failed"},
+        {"name": "c", "state": "not_started"},
+    ]
+    assert (tmp_path / "report/d/run_r1/d/a/run.json").exists()
+    assert not (tmp_path / "report/d/run_r1/run.summary.json").exists()
+    logs = [e for e in spy.events if e["event"] == "log"]
+    assert [e["message"] for e in logs] == [f"run failure report: {run_dir}/run.failure.json"]  # fmt: skip
+
+
+def test_a_failure_report_that_cannot_be_written_does_not_mask_the_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    path, root = setup(tmp_path, ["a", "b"])
+    failure_file(tmp_path).mkdir(parents=True)  # a directory where the file goes
+    spy = Spy(monkeypatch, fail={"b": 0.01})
+    with pytest.raises(FloeRunError, match="b failed"):
+        run(path, root, run_id="r1", observer=spy)
+    assert not [e for e in spy.events if e["event"] == "log"]
+
+
+def test_a_successful_run_writes_no_failure_report(tmp_path: Path) -> None:
+    path, root = setup(tmp_path, ["a", "b"])
+    run(path, root, run_id="r1")
+    assert (tmp_path / "report/d/run_r1/run.summary.json").exists()
+    assert not failure_file(tmp_path).exists()

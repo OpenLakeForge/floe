@@ -149,8 +149,26 @@ Exit codes:
 An entity aborted by `policy.severity: abort` fails only that entity (D36, 0.8): its `run.json`
 is written with status `aborted`, and the run continues with the next entity. The run summary
 lists every entity, and the run status and exit code stay `aborted` / `2`. A technical error
-(storage, catalog, credentials, memory) still stops the run at that entity, with no summary.
-Floe 0.7 stopped the run at the first aborted entity.
+(storage, catalog, credentials, memory) still stops the run at that entity, with no summary
+(see `run.failure.json` below). Floe 0.7 stopped the run at the first aborted entity.
+
+### Run failure (`run.failure.json`)
+
+When an entity raises, the run stops and Floe writes `<run_dir>/run.failure.json` next to where the summary would
+be, then re-raises the original error. It is additive: a successful run never writes it.
+
+- `spec_version`, `tool`: as in the run summary.
+- `run`: `run_id`, `domain` (when the run has one), `started_at`, `failed_at`, `duration_ms`, `status: "failed"`.
+- `error`: `type` (exception class name), `code` (`null` until typed error codes exist) and `message`, the same
+  text the terminal shows. No row values.
+- `entities`: every selected entity in config order, with `name` and `state`: `completed` (its `run.json` is
+  written; `report_file` points to it), `failed`, `not_started`, or `unknown` (it started, but its outcome is not
+  proven, for example a bug or an interrupt).
+
+The run also emits a `log` event with `code: "run_failure_report"` whose message carries the file's URI.
+
+The file is best-effort: if it cannot be written, the original error is still raised. Treat the absence of both
+`run.summary.json` and `run.failure.json` as unknown, never as success.
 
 ## Validation payloads
 

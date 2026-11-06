@@ -343,7 +343,7 @@ def test_a_sink_over_an_s3_source_is_refused_only_on_the_same_endpoint(tmp_path:
     if refused:
         with pytest.raises(FloeConfigError, match="lies under sink.accepted.path"):
             go(tmp_path, config)
-        assert src.objects == {"s3://b/in/part-00000.parquet": b"input"}
+        assert src.objects.keys() - {"s3://b/runs/d/run_r1/run.failure.json"} == {"s3://b/in/part-00000.parquet"}  # the failure report is the one write  # fmt: skip
     else:
         go(tmp_path, config)
 
