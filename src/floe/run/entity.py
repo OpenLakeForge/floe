@@ -1024,14 +1024,18 @@ def _run_entity(
     # D34 (#931): same store only (a bucket name repeats across endpoints); before the claim, so a refusal leaves nothing to release
     if target is None and getattr(client, "endpoint", None) == getattr(accepted_client, "endpoint", None):  # fmt: skip
         _refuse_overlap(who, base, inputs.files)
-    if plan.rejected and sink.rejected and sink.rejected.format == "parquet":
+    if plan.rejected and sink.rejected:
+        parquet = sink.rejected.format == "parquet"
         rows = f"{plan.rejected[0].rstrip('/')}/rows"
-        if getattr(client, "endpoint", None) == getattr(plan.rejected[1], "endpoint", None):  # fmt: skip
+        if parquet and getattr(client, "endpoint", None) == getattr(plan.rejected[1], "endpoint", None):  # fmt: skip
             _refuse_overlap(who, rows, inputs.files, "sink.rejected.path")
-        # accepted parts are `part-*.parquet`: in the rejected directory they would overwrite its raw file copies, in `rows/` its row parts
-        shared = {_real(d).rstrip("/") for d in (plan.rejected[0], rows)}
+        # accepted parts are `part-*.parquet`: in the rejected directory they would overwrite its raw file copies (any rejected format), in `rows/` its row parts
+        shared = {
+            _real(d).rstrip("/")
+            for d in (plan.rejected[0], *([rows] if parquet else []))
+        }
         if target is None and getattr(accepted_client, "endpoint", None) == getattr(plan.rejected[1], "endpoint", None) and _real(base).rstrip("/") in shared:  # fmt: skip
-            raise FloeConfigError(f"{who} sink.accepted.path must differ from sink.rejected.path and its rows directory {rows}")  # fmt: skip
+            raise FloeConfigError(f"{who} sink.accepted.path must differ from sink.rejected.path" + (f" and its rows directory {rows}" if parquet else ""))  # fmt: skip
     pending, files = inc.claim(inputs.files, emit)
     if done := inc.skip_committed(plan.table, pending, emit):
         files += done

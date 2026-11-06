@@ -894,6 +894,30 @@ def test_1166_raw_copies_and_row_parts_do_not_overwrite_each_other(tmp_path: Pat
     assert files == {"part-00000.parquet": str(rejected / "part-00000.parquet"), "z.parquet": str(rejected / "rows")}  # fmt: skip
 
 
+def _csv_rejected_parquet_inputs(tmp_path: Path, accepted: str, rejected: str) -> Any:
+    config = PQ_CONFIG.replace("rejected: {{format: parquet", "rejected: {{format: csv").replace("path: ./out/rejected", f"path: {rejected}").replace("path: ./out/accepted", f"path: {accepted}").replace("format: csv\n      path: ./in\n      options: {{header: true, separator: \",\"}}", "format: parquet\n      path: ./in").replace("      {mismatch}\n", "      mismatch: {{missing_columns: reject_file}}\n")  # fmt: skip
+    (tmp_path / "in").mkdir()
+    pl.DataFrame({"id": [1]}).write_parquet(tmp_path / "in" / "part-00000.parquet")
+    pl.DataFrame({"id": [2], "name": ["n"]}).write_parquet(tmp_path / "in" / "z.parquet")  # fmt: skip
+    (tmp_path / "config.yml").write_text(config.format(severity="reject"))
+    return parse_config(tmp_path / "config.yml").entities[0]
+
+
+def test_1168_a_csv_rejected_sink_refuses_a_shared_accepted_path(tmp_path: Path) -> None:  # fmt: skip
+    """Codex on #1166: a raw `part-00000.parquet` copy in a shared directory is overwritten by the accepted Parquet writer."""
+    entity = _csv_rejected_parquet_inputs(tmp_path, "./out", "./out")
+    with pytest.raises(FloeConfigError, match="sink.accepted.path must differ from sink.rejected.path"):  # fmt: skip
+        run_entity(entity, tmp_path, "0.3")
+    assert not (tmp_path / "out").exists()
+
+
+def test_1168_a_csv_rejected_sink_at_another_path_still_runs(tmp_path: Path) -> None:  # fmt: skip
+    entity = _csv_rejected_parquet_inputs(tmp_path, "./out/accepted", "./out/rejected")  # fmt: skip
+    files = {Path(f["input_file"]).name for f in run_entity(entity, tmp_path, "0.3").report["files"]}  # fmt: skip
+    assert files == {"part-00000.parquet", "z.parquet"}
+    assert (tmp_path / "out" / "rejected" / "part-00000.parquet").exists()
+
+
 def test_1166_a_parquet_rejected_sink_refuses_source_files_under_it(
     tmp_path: Path,
 ) -> None:
