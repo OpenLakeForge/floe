@@ -2,6 +2,7 @@
 
 import json
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -272,3 +273,66 @@ def test_timings_ms_has_null_rejected_write_and_archive_times_for_clean_input_an
     timings = json.loads(next((tmp_path / "report").rglob("o/run.json")).read_text())["timings_ms"]  # fmt: skip
     assert timings["rejected_write_ms"] is None
     assert isinstance(timings["archive_ms"], int)
+
+
+def _fail_listing(monkeypatch: pytest.MonkeyPatch, **kw: str) -> None:
+    def boom(*a: Any, **k: Any) -> Any:
+        raise FloeRunError("listing failed", **kw)
+
+    monkeypatch.setattr(sys.modules["floe.run"], "list_source", boom)
+
+
+def test_dagster_parent_on_run_started_and_failure_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1156: the Dagster run and job ids from the runner's env; unset, the keys are absent."""
+    path, root = setup(tmp_path, ["a"])
+    _fail_listing(monkeypatch)
+    for var in ("DAGSTER_RUN_ID", "DAGSTER_JOB_NAME"):
+        monkeypatch.delenv(var, raising=False)
+    events: list[dict[str, Any]] = []
+    with pytest.raises(FloeRunError):
+        run(path, root, observer=events.append)
+    failure = json.loads(next((tmp_path / "report").rglob("run.failure.json")).read_text())  # fmt: skip
+    assert not {"dagster_run_id", "dagster_job_name"} & (events[0].keys() | failure["run"].keys())  # fmt: skip
+
+    monkeypatch.setenv("DAGSTER_RUN_ID", "r1")
+    monkeypatch.setenv("DAGSTER_JOB_NAME", "j")
+    events.clear()
+    with pytest.raises(FloeRunError):
+        run(path, root, observer=events.append)
+    want = {"dagster_run_id": "r1", "dagster_job_name": "j"}
+    assert want.items() <= events[0].items()
+    failures = sorted((tmp_path / "report").rglob("run.failure.json"))
+    assert any(want.items() <= json.loads(f.read_text())["run"].items() for f in failures)  # fmt: skip
+
+
+def test_failure_events_carry_error_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#1156: `error_code` on the failure-report log and the failed `entity_finished`, only when the error has a code."""
+    path, root = setup(tmp_path, ["a"])
+    _fail_listing(monkeypatch, code="storage_denied")
+    events: list[dict[str, Any]] = []
+    with pytest.raises(FloeRunError):
+        run(path, root, observer=events.append)
+    assert events[-1]["code"] == "run_failure_report"
+    assert events[-1]["error_code"] == "storage_denied"
+
+    _fail_listing(monkeypatch)
+    events.clear()
+    with pytest.raises(FloeRunError):
+        run(path, root, observer=events.append)
+    assert "error_code" not in events[-1]
+
+    monkeypatch.undo()
+
+    def boom(*a: Any, **k: Any) -> Any:
+        raise FloeRunError("entity failed", code="bad_row")
+
+    monkeypatch.setattr(sys.modules["floe.run"], "run_entity", boom)
+    events.clear()
+    with pytest.raises(FloeRunError):
+        run(path, root, observer=events.append)
+    finished = next(e for e in events if e["event"] == "entity_finished")
+    assert finished["status"] == "failed" and finished["error_code"] == "bad_row"

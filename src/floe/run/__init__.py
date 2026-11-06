@@ -18,6 +18,7 @@ from floe.report.entity import serialize
 from floe.report.summary import (
     build_failure,
     build_summary,
+    dagster_parent,
     id_path,
     run_dir,
     run_domain,
@@ -87,15 +88,26 @@ def _refresh(entity: EntityConfig) -> EntityConfig:
     return entity.model_copy(update={"sink": entity.sink.model_copy(update={"write_mode": "overwrite"})})  # fmt: skip
 
 
-def _finished(emit: Emitter, name: str, report: dict[str, Any] | None) -> None:
-    """`entity_finished`; a failed entity (no report) counts zeros."""
+def _error_code(err: BaseException | None) -> dict[str, str]:
+    """`error_code` for an event, only when the error carries a typed `code` (#1060)."""
+    code = getattr(err, "code", None)
+    return {"error_code": code} if code else {}
+
+
+def _finished(
+    emit: Emitter,
+    name: str,
+    report: dict[str, Any] | None,
+    err: FloeError | None = None,
+) -> None:
+    """`entity_finished`; a failed entity (no report) counts zeros and carries the error's `error_code` when known."""
     keys = ("files", "files_skipped", "rows", "accepted", "rejected", "warnings", "errors")  # fmt: skip
     results: dict[str, int] = report["results"] if report else {}
     totals = {k: results.get(k if k == "files_skipped" else f"{k}_total", 0) for k in keys}  # fmt: skip
     status = "failed"
     if report:
         status = run_outcome([f["status"] for f in report["files"]], totals["warnings"])[0]  # fmt: skip
-    emit("entity_finished", name=name, status=status, **totals, timings_ms=report["timings_ms"] if report else None)  # fmt: skip
+    emit("entity_finished", name=name, status=status, **totals, timings_ms=report["timings_ms"] if report else None, **_error_code(err))  # fmt: skip
 
 
 def run(
@@ -164,9 +176,9 @@ def run(
                 entity, config_dir, root.version, formatter, root.storages, emit, full_refresh,
                 root.catalogs, listed.get(entity.id),
             )  # fmt: skip
-        except FloeError:
+        except FloeError as err:
             states[entity.id] = "failed"
-            _finished(emit, entity.id, None)
+            _finished(emit, entity.id, None, err)
             raise
 
     client = storage_client(report_storage)
@@ -183,7 +195,7 @@ def run(
         _finished(emit, e.id, report)
         return report
 
-    emit("run_started", config=config, report_base=report_path)
+    emit("run_started", config=config, report_base=report_path, **dagster_parent())
     # D36: a policy abort fails only its entity; a FloeError still stops the run
     try:
         # Rust resolves every entity's inputs before the first entity_started (#864); run_entity reuses them
@@ -214,7 +226,7 @@ def run(
             )  # fmt: skip
             uri = f"{run_path}/run.failure.json"
             client.write(uri, serialize(failure).encode())
-            emit("log", log_level="info", code="run_failure_report", message=f"run failure report: {uri}", entity=None, input=None)  # fmt: skip
+            emit("log", log_level="info", code="run_failure_report", message=f"run failure report: {uri}", entity=None, input=None, **_error_code(err))  # fmt: skip
         raise
     reports = [(id_path(e), r) for e, r in zip(selected, done, strict=True)]
     summary = build_summary(

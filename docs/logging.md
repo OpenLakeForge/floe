@@ -24,18 +24,19 @@ The final line on stdout is always the `run_finished` event.
 
 ## Event types
 
-- `run_started`: run metadata (`run_id`, `config`, `report_base`, `ts_ms`)
+- `run_started`: run metadata (`run_id`, `config`, `report_base`, `ts_ms`); inside a Dagster run also `dagster_run_id` and `dagster_job_name`, read from `DAGSTER_RUN_ID` and `DAGSTER_JOB_NAME` (absent when unset)
 - `entity_started`: entity name (`name`, `ts_ms`)
 - `file_started`: entity/input pair (`entity`, `input`, `ts_ms`)
 - `file_finished`: file outcome and counts (`status`, `rows`, `accepted`, `rejected`, `elapsed_ms`, `ts_ms`)
 - `schema_evolution_applied`: additive schema-evolution audit event (`entity`, `mode`, `added_columns`, `ts_ms`); emitted once per entity run in which `add_columns` adds columns to an Iceberg table
-- `entity_finished`: entity totals (`status`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `timings_ms`, `ts_ms`); `timings_ms` is the entity report's object (`list_ms`, `download_wait_ms`, `read_validate_ms`, `rejected_write_ms`, `accepted_write_ms`, `archive_ms`), or `null` for a failed entity
+- `entity_finished`: entity totals (`status`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `timings_ms`, `ts_ms`); `timings_ms` is the entity report's object (`list_ms`, `download_wait_ms`, `read_validate_ms`, `rejected_write_ms`, `accepted_write_ms`, `archive_ms`), or `null` for a failed entity; a failed entity also has `error_code` when the error carries a typed `code`
 - `run_finished`: final run totals and exit code (`status`, `exit_code`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `summary_uri`, `report_write_ms`, `ts_ms`); `report_write_ms` is the time to write `run.summary.json`
 
 ### `timings_ms`
 
 Cumulative wall-clock milliseconds per phase of one entity, summed over its files; the boundaries are in [report.md](report.md#timings_ms-entity-report). The phases overlap (reading, validating and the accepted write interleave chunk by chunk, and downloads run ahead), so `download_wait_ms` is only the time spent waiting, and the sum is not the entity's elapsed time. `null` means the phase did not run; `0` means it ran in under a millisecond. The Iceberg commit is part of `accepted_write_ms`.
 - `log`: structured warning/error line (`log_level`, `code`, `message`, optional `entity`, optional `input`, `ts_ms`)
+  - `error_code` (optional): the typed `code` of the error behind the failure-report log; absent when the error has none. `code` stays `run_failure_report`.
   - `code` is `null` or a stable snake_case tag. Today: `heartbeat_failed` (warn): renewing the incremental claims failed; the run continues and the next beat retries, but the claims expire after an hour without a successful renewal.
 
 ### `--log-format off` (default)

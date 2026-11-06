@@ -177,14 +177,14 @@ When listing the inputs or an entity raises (a bad credential, a missing bucket)
 be, then re-raises the original error. It is additive: a successful run never writes it.
 
 - `spec_version`, `tool`: as in the run summary.
-- `run`: `run_id`, `domain` (when the run has one), `started_at`, `failed_at`, `duration_ms`, `status: "failed"`.
-- `error`: `type` (exception class name), `code` (`null` until typed error codes exist) and `message`, the same
+- `run`: `run_id`, `domain` (when the run has one), `started_at`, `failed_at`, `duration_ms`, `status: "failed"`; inside a Dagster run also `dagster_run_id` and `dagster_job_name` (from `DAGSTER_RUN_ID` and `DAGSTER_JOB_NAME`, absent when unset).
+- `error`: `type` (exception class name), `code` (the typed error code, `null` when the error has none) and `message`, the same
   text the terminal shows. No row values.
 - `entities`: every selected entity in config order, with `name` (its qualified id, `<domain>.<entity>` when it has a domain, as in events) and `state`: `completed` (its `run.json` is
   written; `report_file` points to it), `failed`, `not_started`, or `unknown` (it started, but its outcome is not
   proven, for example a bug or an interrupt).
 
-The run also emits a `log` event with `code: "run_failure_report"` whose message carries the file's URI.
+The run also emits a `log` event with `code: "run_failure_report"` whose message carries the file's URI, plus `error_code` when the error has a typed `code`.
 
 The file is best-effort: if it cannot be written, the original error is still raised. Treat the absence of both
 `run.summary.json` and `run.failure.json` as unknown, never as success.

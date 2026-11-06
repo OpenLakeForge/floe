@@ -1,5 +1,6 @@
 """Run `run.summary.json`, run status and exit code, report layout (Rust: `report/{mod,output}.rs`, `run/mod.rs`)."""
 
+import os
 from collections.abc import Sequence
 from typing import Any
 
@@ -11,6 +12,12 @@ from floe.storage.types import StorageClient
 
 _TOTALS = ("files_total", "files_skipped", "rows_total", "accepted_total",
            "rejected_total", "warnings_total", "errors_total")  # fmt: skip
+
+
+def dagster_parent() -> dict[str, str]:
+    """The Dagster parent run and job from the variables dagster-floe's runners set; an unset one is left out."""
+    names = {"DAGSTER_RUN_ID": "dagster_run_id", "DAGSTER_JOB_NAME": "dagster_job_name"}  # fmt: skip
+    return {key: v for var, key in names.items() if (v := os.environ.get(var))}
 
 
 def id_path(entity: EntityConfig) -> str:
@@ -113,6 +120,7 @@ def build_failure(
         "tool": {"name": "floe", "version": __version__},
         "run": {"run_id": run_id}
         | ({"domain": domain} if domain else {})
+        | dagster_parent()
         | {
             "started_at": started_at,
             "failed_at": failed_at,
