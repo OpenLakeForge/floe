@@ -525,3 +525,26 @@ def test_1158_rejected_iceberg_errors(
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, f"{{{COLS}}}", sink=rejected_sink(extra), catalogs=catalogs + "\n")  # fmt: skip
     assert str(err.value) == f"entity.name=orders {message}"
+
+
+def test_pii_drop_is_refused_for_a_rejected_iceberg_sink(tmp_path: Path) -> None:
+    path = tmp_path / "config.yml"
+    path.write_text(
+        CATALOG
+        + textwrap.dedent(f"""
+        version: "0.2"
+        entities:
+        - name: orders
+          source: {{format: csv, path: in.csv}}
+          sink: {{accepted: {{format: parquet, path: out}}, rejected: {{format: iceberg, path: rej}}}}
+          policy: {{severity: reject}}
+          schema: {{{COLS}}}
+          pii: {{columns: [{{name: amt, strategy: drop}}]}}
+        """)
+    )
+    with pytest.raises(FloeConfigError) as err:
+        validate_entities(parse_config(path))
+    assert str(err.value) == (
+        "entity.name=orders pii.columns[name=amt].strategy=drop is not supported with "
+        "sink.rejected.format=iceberg because the sink enforces the full declared schema"
+    )

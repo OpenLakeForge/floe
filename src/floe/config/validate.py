@@ -694,11 +694,13 @@ def _check_pii(entity: EntityConfig) -> None:
             )
         # ponytail: Rust's warning for an unkeyed `hash` is not ported.
         fmt = entity.sink.accepted.format
-        if strategy == "drop" and fmt in ("iceberg", "delta"):
+        rejected = entity.sink.rejected
+        refused = f"format={fmt}" if fmt in ("iceberg", "delta") else "sink.rejected.format=iceberg" if rejected and rejected.format == "iceberg" else None  # fmt: skip
+        if strategy == "drop" and refused:
             raise _pii_error(
                 entity,
                 name,
-                f".strategy=drop is not supported with format={fmt} "
+                f".strategy=drop is not supported with {refused} "
                 "because the sink enforces the full declared schema",
             )
         if strategy == "mask":
