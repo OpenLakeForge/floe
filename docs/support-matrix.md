@@ -51,6 +51,7 @@ Notes:
 | Accepted: Iceberg | ❌ | ✅ (REST or Glue catalog) | `overwrite`, `append`, `merge_scd1` and `merge_scd2` in one catalog commit per entity; merges need a REST catalog |
 | Rejected: CSV | ✅ | ✅ (upload) | Dataset parts `part-*.csv`; the default |
 | Rejected: Parquet | ✅ | ✅ (upload) | Dataset parts `part-*.parquet`, bounded by size; raw-value columns plus `__floe_*` metadata, see [Config](config.md). `output.rejected_path` is the directory |
+| Rejected: Iceberg | ❌ | ✅ (REST or Glue catalog) | Opt-in quarantine table through the accepted sink's catalog binding: all-string declared columns plus `__floe_*` metadata, one append commit per entity run, retry-safe; not atomic with the accepted commit. See [Config](config.md) |
 | Reports: JSON | ✅ | ✅ (upload) | |
 
 Notes:

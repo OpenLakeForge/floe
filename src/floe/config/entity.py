@@ -367,9 +367,9 @@ def _sink_target(
     value: object, ctx: str, allow_options: bool, write_mode: WriteMode
 ) -> SinkTarget:
     h = yaml_hash(value, ctx)
-    allowed = ("format", "path", "storage", "filesystem")
+    allowed = ("format", "path", "storage", "filesystem", "iceberg")
     if allow_options:
-        allowed += ("options", "merge", "iceberg", "delta", "duckdb")
+        allowed += ("options", "merge", "delta", "duckdb")
         allowed += ("partition_by", "partition_spec")
     validate_known_keys(h, ctx, allowed)
     storage = _storage(h, ctx)

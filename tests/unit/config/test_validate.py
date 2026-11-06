@@ -486,3 +486,42 @@ def test_1166_reserved_prefix_applies_to_the_normalized_output_name(
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, f"{{{schema}}}", sink=sink)
     assert str(err.value) == "entity.name=orders schema.columns[0].name=__FLOE_RUN_ID normalizes to __floe_run_id, which is reserved (names starting with __floe_ are reserved when sink.rejected is set)"  # fmt: skip
+
+
+ICEBERG_ACCEPTED = "accepted: {format: iceberg, path: out, iceberg: {catalog: c}}"
+
+
+def rejected_sink(extra: str = "") -> str:
+    return f"{{{ICEBERG_ACCEPTED}, rejected: {{format: iceberg, path: rej{extra}}}}}"
+
+
+def test_1158_rejected_iceberg_validates(tmp_path: Path) -> None:
+    check(tmp_path, f"{{{COLS}}}", sink=rejected_sink(), catalogs=CATALOG + "\n")
+
+
+@pytest.mark.parametrize(
+    ("catalogs", "extra", "message"),
+    [
+        (
+            CATALOG.replace("default: c, ", ""),
+            "",
+            "sink.rejected.iceberg.catalog is required (or set catalogs.default)",
+        ),
+        (
+            CATALOG,
+            ", iceberg: {table: ORDERS}",
+            "sink.rejected.iceberg must not write to the accepted table",
+        ),
+        (
+            CATALOG,
+            ", iceberg: {table: dlq, location: rej/}",
+            "sink.rejected.iceberg.location must differ from sink.rejected.path (raw file copies are written to the path)",
+        ),
+    ],
+)
+def test_1158_rejected_iceberg_errors(
+    tmp_path: Path, catalogs: str, extra: str, message: str
+) -> None:
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", sink=rejected_sink(extra), catalogs=catalogs + "\n")  # fmt: skip
+    assert str(err.value) == f"entity.name=orders {message}"

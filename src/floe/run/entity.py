@@ -49,10 +49,12 @@ from floe.config.storage import CatalogsConfig, StorageDefinition, StoragesConfi
 from floe.config.types import EntityConfig, with_partition_columns
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
 from floe.iceberg.sink import (
+    IcebergTarget,
     existing_table,
     input_hash,
     resolve_target,
     write_iceberg,
+    write_rejected_iceberg,
 )
 from floe.iceberg.unique import cache_table_keys
 from floe.iceberg.write import find_committed
@@ -250,6 +252,8 @@ class _Plan:
     )
     derived: dict[str, list[pl.Expr]] = field(default_factory=dict[str, list[pl.Expr]])  # D28: by input URI  # fmt: skip
     root: str | None = None  # D29: the source root, when `source.partitioning` is set
+    rejected_table: IcebergTarget | None = None  # an Iceberg `sink.rejected`
+    rejected_spills: list[tuple[Path, str]] = field(default_factory=list[tuple[Path, str]])  # fmt: skip  # its spilled chunks with their source URI; one commit writes them all
 
 
 def _refuse_overlap(
@@ -336,6 +340,11 @@ def _parquet_rejected(plan: _Plan) -> bool:
     return plan.entity.sink.rejected is not None and plan.entity.sink.rejected.format == "parquet"  # fmt: skip
 
 
+def _raw_rejected(plan: _Plan) -> bool:
+    """Parquet and Iceberg rejects hold the raw parsed values and spill every chunk."""
+    return plan.entity.sink.rejected is not None and plan.entity.sink.rejected.format in ("parquet", "iceberg")  # fmt: skip
+
+
 def _typed(
     plan: _Plan, raw: pl.DataFrame, mismatch: MismatchOutcome, derived: list[pl.Expr]
 ) -> tuple[pl.DataFrame, pl.DataFrame, list[RowCheck]]:
@@ -370,7 +379,7 @@ def _typed(
         for n, c in zip(plan.names, columns, strict=True)
         if c.column_type != "string"
     ]  # fmt: skip
-    # the rejected CSV holds only these types; any other source column (binary, duration, nested ...) keeps its typed value there. A rejected Parquet keeps the native value as it is
+    # the rejected CSV holds only these types; any other source column (binary, duration, nested ...) keeps its typed value there. A rejected Parquet keeps the native value as it is; an Iceberg one casts it to string
     if unwritable := [] if _parquet_rejected(plan) else [n for n in plan.names if not (df.schema[n].is_numeric() or df.schema[n].base_type() in _CSV_TYPES)]:  # fmt: skip
         df = df.with_columns(typed[n] for n in unwritable)
     if entity.policy.severity == "abort" and any(c.mask.any() for c in cast_checks):
@@ -379,6 +388,10 @@ def _typed(
     if plan.history is not None:
         seed_from_history(plan.tracker, plan.history, typed, plan.out_map)
     return typed, df, [*required, *cast_checks, *plan.tracker.check(typed)]
+
+
+def _source_columns(plan: _Plan, uri: str) -> list[pl.Expr]:
+    return [pl.lit(plan.run_id).alias("__floe_run_id"), pl.lit(uri).alias("__floe_source_uri")]  # fmt: skip
 
 
 def _unspill(path: Path) -> pl.DataFrame:
@@ -473,8 +486,8 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
             else:
                 accepted.append(frame)
             if severity == "reject" and bad.height:
-                if _parquet_rejected(plan):
-                    bad.write_ipc(spilled := spill / f"rejected-{len(spilled_rejected)}.ipc")  # fmt: skip
+                if _raw_rejected(plan):
+                    bad.write_ipc(spilled := spill / f"rejected-{len(plan.rejected_spills) + len(spilled_rejected)}.ipc")  # fmt: skip
                     spilled_rejected.append(spilled)
                 else:
                     rejected.append(bad)
@@ -483,16 +496,20 @@ def _run_file(plan: _Plan, file: InputFile, path: Path, spill: Path) -> tuple[di
 
     merged = [RowCheck(r, c, m, pl.concat(s)) for (r, c, m), s in masks.items()]
     rejected_path = errors_path = None
-    if bad_total and severity == "reject":
+    if bad_total and severity == "reject" and plan.rejected_table is not None:
+        plan.rejected_spills += [
+            (p, uri) for p in spilled_rejected
+        ]  # one commit for the run
+        rejected_path = _rejected(plan, "reject")[0].rstrip("/")
+    elif bad_total and severity == "reject":
         mode = entity.sink.write_mode
         if mode == "overwrite" and plan.rejected_writes:
             mode = "append"
         plan.rejected_writes += 1
         target, client = _rejected(plan, "reject")
         key = f"{plan.input_hash}:{file.source_uri}"
-        if _parquet_rejected(plan):
-            meta = [pl.lit(plan.run_id).alias("__floe_run_id"), pl.lit(uri).alias("__floe_source_uri")]  # fmt: skip
-            frames = (_output(plan, _unspill(p)).with_columns(meta) for p in spilled_rejected)  # fmt: skip
+        if _raw_rejected(plan):
+            frames = (_output(plan, _unspill(p)).with_columns(_source_columns(plan, uri)) for p in spilled_rejected)  # fmt: skip
             write_rejected_parquet(frames, client, target, mode, key)
             written = target.rstrip("/")  # one directory: a file can have many parts
         else:
@@ -909,6 +926,11 @@ def _run_entity(
     who = f"entity.name={entity.name}"
     source_uri, client = resolve_source(entity, config_dir, storages)
     target = resolve_target(storages, catalogs, config_dir, entity) if iceberg else None
+    rejected_table = resolve_target(storages, catalogs, config_dir, entity, "rejected") if sink.rejected and sink.rejected.format == "iceberg" else None  # fmt: skip
+    if target and rejected_table and (target.catalog, target.namespace, target.table) == (rejected_table.catalog, rejected_table.namespace, rejected_table.table):  # fmt: skip
+        raise FloeConfigError(
+            f"{who} sink.rejected.iceberg must not write to the accepted table"
+        )
     # PyIceberg writes an Iceberg table's files, not Floe's storage clients
     base, accepted = resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"{who} sink.accepted.storage")  # fmt: skip
     rejected = sink.rejected and resolve_path(storages, config_dir, sink.rejected.storage, sink.rejected.path, f"{who} sink.rejected.storage")  # fmt: skip
@@ -936,6 +958,7 @@ def _run_entity(
             if (n := c.name if c.source else normalize_name(c.name, strategy)) != c.name
         },
         run_id=emit.run_id, rejected=rejected and (rejected[0], storage_client(rejected[1])),
+        rejected_table=rejected_table,
     )  # fmt: skip
     location = archive_location(entity, config_dir, storages)
     if location and entity.incremental_mode in ("none", "archive"):
@@ -1017,6 +1040,10 @@ def _run_entity(
                     if report["status"] == "aborted":
                         break
                     complete.append(f)
+                if plan.rejected_spills:  # before the accepted commit: a retry finds the batch in the rejected table and skips it
+                    assert plan.rejected_table is not None
+                    frames = (_output(plan, _unspill(p)).with_columns(_source_columns(plan, uri)) for p, uri in plan.rejected_spills)  # fmt: skip
+                    write_rejected_iceberg(entity, plan.rejected_table, frames, [plan.out_map.get(n, n) for n in names], emit.run_id, input_hash(entity, complete))  # fmt: skip  # the same files as the accepted fingerprint
         except Exception as err:
             # the sinks wrap what they read; this error reaches the caller as it is
             failure.append(err)

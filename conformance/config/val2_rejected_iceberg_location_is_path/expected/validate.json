@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.rejected.iceberg.location must differ from sink.rejected.path (raw file copies are written to the path)"
+}

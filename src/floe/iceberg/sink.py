@@ -7,10 +7,10 @@ import hashlib
 import json
 import time
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import chain
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import polars as pl
 import pyarrow as pa
@@ -19,6 +19,7 @@ from pyiceberg.exceptions import NoSuchNamespaceError, NoSuchTableError
 from pyiceberg.schema import Schema, assign_fresh_schema_ids
 from pyiceberg.table import Table
 
+from floe.checks.rows import ERRORS, ROW_INDEX
 from floe.checks.unique import resolve_unique_keys
 from floe.config.storage import (
     CatalogDefinition,
@@ -26,7 +27,7 @@ from floe.config.storage import (
     StorageDefinition,
     StoragesConfig,
 )
-from floe.config.types import EntityConfig, WriteMode
+from floe.config.types import NO_ICEBERG, EntityConfig, WriteMode, catalog_ident
 from floe.config.validate import SCD2_DEFAULTS
 from floe.errors import FloeConfigError, FloeRunError
 from floe.iceberg.catalog import (
@@ -40,7 +41,9 @@ from floe.iceberg.merge import merge_scd1, merge_scd2
 from floe.iceberg.write import (
     SMALL_FILE_THRESHOLD_BYTES,
     IcebergWriteResult,
+    find_committed,
     parquet_properties,
+    write_result,
     write_table,
 )
 from floe.storage.inputs import InputFile
@@ -57,39 +60,43 @@ class IcebergTarget:
     accepted_uri: str  # `sink.accepted.path` resolved, as Rust reports it
 
 
-def catalog_ident(value: str) -> str:
-    """Rust `normalize_catalog_ident`."""
-    out = "".join(c.lower() if c.isascii() and (c.isalnum() or c in "_-") else "_" for c in value)  # fmt: skip
-    return out.strip("_") or "default"
-
-
-def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | None, config_dir: Path, entity: EntityConfig) -> IcebergTarget:  # fmt: skip
-    """Rust `CatalogResolver::resolve_iceberg_target`; the catalog reference is validated."""
-    sink = entity.sink.accepted
-    if sink.iceberg is None:
+def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | None, config_dir: Path, entity: EntityConfig, kind: Literal["accepted", "rejected"] = "accepted") -> IcebergTarget:  # fmt: skip
+    """Rust `CatalogResolver::resolve_iceberg_target`; the catalog reference is validated. A rejected sink's table defaults to `<entity>_rejected`."""
+    sink = entity.sink.accepted if kind == "accepted" else entity.sink.rejected
+    assert sink is not None  # the caller checked `format`
+    options = sink.iceberg or (
+        NO_ICEBERG if kind == "rejected" else None
+    )  # a rejected sink needs no `iceberg` block, only a default catalog
+    if options is None:
         # ponytail: Rust 0.7 also wrote catalog-less filesystem tables; PyIceberg has no such catalog without sqlalchemy
         raise FloeRunError(f"entity.name={entity.name} sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8")  # fmt: skip
-    name = sink.iceberg.catalog or (catalogs and catalogs.default)
+    name = options.catalog or (catalogs and catalogs.default)
     catalog = next((c for c in (catalogs.definitions if catalogs else []) if c.name == name), None)  # fmt: skip
     if catalog is None:  # validated; kept for callers that skip validation
-        raise FloeConfigError(f"entity.name={entity.name} sink.accepted.iceberg.catalog references unknown catalog {name}")  # fmt: skip
+        raise FloeConfigError(f"entity.name={entity.name} sink.{kind}.iceberg.catalog references unknown catalog {name}")  # fmt: skip
     # what `{domain}` in the database stands for (validated: set when the database has the token)
-    scope = sink.iceberg.namespace or entity.domain
+    scope = options.namespace or entity.domain
     database = catalog.database
     if database is not None:
         database = database.replace("{domain}", catalog_ident(scope or ""))
     namespace = catalog_ident(scope or database or "default")
-    table = catalog_ident(sink.iceberg.table or entity.name)
-    field = f"entity.name={entity.name} sink.accepted.storage"
+    table = catalog_ident(
+        options.table
+        or (entity.name if kind == "accepted" else f"{entity.name}_rejected")
+    )
+    field = f"entity.name={entity.name} sink.{kind}.storage"
     accepted_uri, storage = resolve_path(storages, config_dir, sink.storage, sink.path, field)  # fmt: skip
     where = catalog.warehouse_storage or sink.storage
-    if sink.iceberg.location is not None:
-        location, storage = resolve_path(storages, config_dir, where, sink.iceberg.location, field)  # fmt: skip
+    if options.location is not None:
+        location, storage = resolve_path(storages, config_dir, where, options.location, field)  # fmt: skip
     elif catalog.warehouse_storage is not None or catalog.warehouse_prefix is not None:
         parts = ((catalog.warehouse_prefix or "").strip("/"), namespace, table)
         location, storage = resolve_path(storages, config_dir, where, "/".join(p for p in parts if p), field)  # fmt: skip
     else:
-        location = accepted_uri
+        # a rejected table sits below `path`: raw file copies (mismatch, abort) stay outside it, safe from orphan cleanup
+        location = (
+            accepted_uri if kind == "accepted" else f"{accepted_uri.rstrip('/')}/table"
+        )
     # Rust: the Glue database holds the table; the namespace only names its location
     if database is not None:
         namespace = database
@@ -227,3 +234,36 @@ def write_iceberg(
         "iceberg_table": target.table,
     }
     return result, fields, merge, added
+
+
+def write_rejected_iceberg(
+    entity: EntityConfig,
+    target: IcebergTarget,
+    frames: Iterator[pl.DataFrame],
+    names: list[str],
+    run_id: str,
+    digest: str,
+) -> IcebergWriteResult:
+    """Append `frames` (at least one: `names`, then the `__floe_*` columns) to the rejected table in one commit.
+
+    Every declared column is a string, so the table never drifts with the Silver types. A snapshot carrying
+    `digest` means a retry already appended this batch: nothing is written (no rejected row is duplicated).
+    """
+    fields = [*names, ROW_INDEX, ERRORS, "__floe_run_id", "__floe_source_uri"]
+    schema = pa.schema([pa.field(n, pa.int64() if n == ROW_INDEX else pa.large_string()) for n in fields])  # fmt: skip
+    iceberg: Schema = assign_fresh_schema_ids(Catalog._convert_schema_if_needed(schema))  # pyright: ignore[reportPrivateUsage] -- as `write_iceberg`
+    evolution = entity.schema_.schema_evolution
+    catalog = open_catalog(target.catalog, target.storage)
+    table, _ = ensure_table(
+        catalog, target.namespace, target.table, iceberg, entity.name, target.location.removeprefix("local://"),
+        None, evolution.mode if evolution else "strict", target.catalog.create_database_if_missing,
+    )  # fmt: skip
+    if find_committed(table, digest):
+        return replace(write_result(table, []), already_committed=True)
+
+    def batches() -> Iterator[pa.RecordBatch]:
+        for df in frames:
+            cast = df.select(pl.col(n).cast(pl.Int64 if n == ROW_INDEX else pl.String) for n in fields)  # fmt: skip
+            yield from cast.to_arrow().cast(schema).to_batches()
+
+    return write_table(table, pa.RecordBatchReader.from_batches(schema, batches()), "append", run_id, digest)  # fmt: skip

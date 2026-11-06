@@ -126,6 +126,15 @@ class IcebergSinkOptions(_Model):
     location: str | None
 
 
+def catalog_ident(value: str) -> str:
+    """Rust `normalize_catalog_ident`."""
+    out = "".join(c.lower() if c.isascii() and (c.isalnum() or c in "_-") else "_" for c in value)  # fmt: skip
+    return out.strip("_") or "default"
+
+
+NO_ICEBERG = IcebergSinkOptions(catalog=None, namespace=None, table=None, location=None)  # fmt: skip
+
+
 class IcebergPartitionField(_Model):
     column: str
     transform: str

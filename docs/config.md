@@ -480,7 +480,7 @@ state file shape, and CAS behavior.
     - Unsupported changes such as drops, renames, type changes, and non-nullable-to-nullable drift still fail the write.
     - The columns are added, but 0.8 does not report it yet: the entity report's `schema_evolution` block stays `applied: false` and no `schema_evolution_applied` event is emitted (#994).
 - `rejected` (required when `policy.severity` is `reject` or `abort`; D39)
-  - `format`: `csv` (default) or `parquet`.
+  - `format`: `csv` (default), `parquet` or `iceberg`.
 - `path`: output directory for rejected rows.
   - Supports `{{var}}` templating (see "Templating & domains").
   - Rejected outputs are written as dataset parts (`part-*.csv` or `part-*.parquet`).
@@ -494,6 +494,28 @@ state file shape, and CAS behavior.
     - Declared column names starting with `__floe_` are rejected by `floe validate` when `sink.rejected` is set.
     - Parsing normalises nulls and quoting, so byte-faithful replay needs the archived source file
       (`output.archived_path` in `run.json`), not the rejected Parquet.
+  - Iceberg output contract (`format: iceberg`, opt-in quarantine table):
+    - Binds a catalog like the accepted sink: `iceberg: {catalog, namespace, table, location}` under `sink.rejected`.
+      The catalog falls back to `catalogs.default`; without one `floe validate` fails with
+      `sink.rejected.iceberg.catalog is required (or set catalogs.default)`. The table defaults to
+      `<entity>_rejected`; naming the accepted table fails with `sink.rejected.iceberg must not write to the accepted table`.
+      `path` and `storage` locate the table as for the accepted sink.
+    - Columns: the declared output columns, ALL `string` (a failed `decimal` cast lands as the text `abc`), then
+      `__floe_row_index` (`long`), `__floe_errors`, `__floe_run_id` and `__floe_source_uri` (`string`). Typed inputs
+      are cast to string.
+    - Append only, whatever `sink.write_mode` is: one commit per entity run for all its files, never per file or row.
+      The snapshot carries the run's `floe.input_hash`; a retry or rerun of the same claimed files finds it and appends
+      nothing. With `schema.schema_evolution.mode: add_columns` new declared columns are added to the table.
+    - The rejected commit happens just BEFORE the accepted commit. The two commits are NOT atomic together: if the
+      accepted commit fails, the rejected rows stay in their table; a retry does not duplicate them.
+    - PII masking applies before the write, so the quarantine table holds masked values. Its access and retention are
+      the deployment's responsibility.
+    - Whole-file rejects (schema mismatch, `abort`) still copy the raw file to `<path>/<file>`. The table itself
+      defaults to `<path>/table`, so those copies never sit in the table location (orphan-file cleanup or an overwrite
+      could delete them). `iceberg.location` equal to `path` fails `floe validate` with
+      `sink.rejected.iceberg.location must differ from sink.rejected.path (raw file copies are written to the path)`.
+    - `output.rejected_path` is the resolved `path`.
+    - The retry guard keys on `floe.input_hash`, the same fingerprint of the run's completed files as the accepted snapshot.
 - `archive` (optional)
 - `path`: directory where raw input files are archived after ingestion.
   - If omitted, archiving is disabled.

@@ -8,6 +8,7 @@ import sys
 from collections.abc import Callable, Collection, Iterator, Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -727,3 +728,93 @@ def test_a_run_opens_the_catalog_once_and_the_next_run_opens_it_again(
     assert opened == ["polaris"]
     run_project(tmp_path / "config.yml", root)
     assert opened == ["polaris", "polaris"]
+
+
+REJECTED = "rejected: {format: iceberg, path: tables/orders_rejected, storage: lake}"
+
+
+def run_rejected(
+    tmp_path: Path, rows: str | None, pii: str = "report:"
+) -> dict[str, Any]:
+    (tmp_path / "in").mkdir(exist_ok=True)
+    if rows is not None:
+        (tmp_path / "in" / "orders.csv").write_text(rows)
+    config(tmp_path, mode="append", extra='- {name: amount, type: "decimal(10,2)"}')
+    path = tmp_path / "config.yml"
+    path.write_text(path.read_text().replace("rejected: {format: csv, path: ./out/rejected}", REJECTED).replace("report:", pii))  # fmt: skip
+    root = parse_config(path)
+    return run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, catalogs=root.catalogs).report  # fmt: skip
+
+
+def test_rejected_iceberg_keeps_the_raw_values_as_strings(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    report = run_rejected(tmp_path, "id,name,amount\n1,a,1.50\n2,b,abc\n")
+    assert rows(catalog) == [(1, "a", Decimal("1.50"))]
+    table = catalog.tables["sales.orders_rejected"]
+    assert [(f.name, str(f.field_type)) for f in table.schema().fields] == [
+        ("id", "string"), ("name", "string"), ("amount", "string"), ("__floe_row_index", "long"),
+        ("__floe_errors", "string"), ("__floe_run_id", "string"), ("__floe_source_uri", "string"),
+    ]  # fmt: skip
+    (row,) = table.scan().to_arrow().to_pylist()
+    assert (row["id"], row["amount"], row["__floe_row_index"]) == ("2", "abc", 1)
+    assert "amount" in row["__floe_errors"]
+    assert row["__floe_run_id"] == NO_EVENTS.run_id
+    assert row["__floe_source_uri"].endswith("orders.csv")
+    assert report["files"][0]["output"]["rejected_path"] == "s3://warehouse/floe/tables/orders_rejected"  # fmt: skip
+
+
+def test_rejected_iceberg_rerun_of_the_same_input_appends_nothing(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    run_rejected(tmp_path, "id,name,amount\n2,b,abc\n")
+    run_rejected(
+        tmp_path, None
+    )  # the same file again, as after a crash before the state was promoted
+    table = catalog.tables["sales.orders_rejected"]
+    assert table.scan().to_arrow().num_rows == 1
+    assert len(table.snapshots()) == 1
+
+
+def test_rejected_iceberg_is_one_commit_for_all_the_files(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "a.csv").write_text("id,name,amount\n3,c,x\n")
+    run_rejected(tmp_path, "id,name,amount\n2,b,abc\n")
+    table = catalog.tables["sales.orders_rejected"]
+    assert table.scan().to_arrow().num_rows == 2
+    assert len(table.snapshots()) == 1
+
+
+def test_rejected_iceberg_masks_pii_before_the_write(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    pii = "    pii: {columns: [{name: name, strategy: redact}]}\nreport:"
+    run_rejected(tmp_path, "id,name,amount\n2,secret,abc\n", pii=pii)
+    (row,) = catalog.tables["sales.orders_rejected"].scan().to_arrow().to_pylist()
+    assert row["name"] != "secret"
+
+
+def test_rejected_iceberg_casts_binary_and_nested_source_columns_to_strings(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    (tmp_path / "in").mkdir()
+    frame = pl.DataFrame({"id": [1, 2], "name": [b"alice", b"bob"], "amount": ["abc", "1.00"]})  # fmt: skip
+    frame.write_parquet(tmp_path / "in" / "orders.parquet")
+    config(tmp_path, mode="append", extra='- {name: amount, type: "decimal(10,2)"}')  # fmt: skip
+    path = tmp_path / "config.yml"
+    text = path.read_text().replace(
+        "rejected: {format: csv, path: ./out/rejected}", REJECTED
+    )
+    path.write_text(text.replace("      format: csv\n      path: ./in\n      options: {header: true, separator: \",\"}", "      format: parquet\n      path: ./in"))  # fmt: skip
+    root = parse_config(path)
+    run_entity(root.entities[0], tmp_path, "0.3", storages=root.storages, catalogs=root.catalogs)  # fmt: skip
+    (row,) = catalog.tables["sales.orders_rejected"].scan().to_arrow().to_pylist()
+    assert (row["id"], row["amount"], row["name"]) == ("1", "abc", "alice")
+
+
+def test_rejected_iceberg_table_sits_below_the_path_not_in_it(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    run_rejected(tmp_path, "id,name,amount\n2,b,abc\n")
+    assert catalog.locations[-1] == "s3://warehouse/floe/tables/orders_rejected/table"
+
+
+def test_the_accepted_target_resolves_its_catalog_through_catalogs_default(tmp_path: Path) -> None:  # fmt: skip
+    path = tmp_path / "config.yml"
+    text = CONFIG.format(
+        mode="append", severity="reject", partition="", evolution="", extra=""
+    )
+    path.write_text(text.replace("iceberg: {{catalog: polaris}}".replace("{{", "{").replace("}}", "}"), "iceberg: {}"))  # fmt: skip
+    root = parse_config(path)
+    target = sink_module.resolve_target(root.storages, root.catalogs, tmp_path, root.entities[0])  # fmt: skip
+    assert (target.catalog.name, target.table) == ("polaris", "orders")
