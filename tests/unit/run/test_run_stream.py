@@ -13,7 +13,7 @@ from polars.testing import assert_frame_equal
 from floe.config.parse import parse_config
 from floe.errors import FloeIoError, FloeRunError
 from floe.read.csv import CsvChunk, read_csv
-from floe.run import entity as entity_module  # `floe.run` is the public function
+from floe.run import file as file_module
 from floe.run.entity import run_entity
 
 CHUNK = 100
@@ -98,7 +98,7 @@ class Probe:
 
 def test_peak_rows_in_memory_follow_the_chunk_not_the_entity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     probe = Probe()
-    monkeypatch.setattr(entity_module, "read_csv", probe.reader())
+    monkeypatch.setattr(file_module, "read_csv", probe.reader())
     probe.parts(monkeypatch)
     report = run(tmp_path, {"orders.csv": csv_rows(range(100 * CHUNK))}, part_bytes=CHUNK * 24)  # fmt: skip
     assert report["results"]["accepted_total"] == 100 * CHUNK
@@ -109,7 +109,7 @@ def test_peak_rows_in_memory_follow_the_chunk_not_the_entity(tmp_path: Path, mon
 def test_a_multi_chunk_run_writes_what_a_single_chunk_run_writes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     files = {"a.csv": csv_rows(range(250)), "b.csv": csv_rows(range(250, 400)).replace("\n300,n300", "\n,n300")}  # fmt: skip
     whole = run(tmp_path / "whole", files)
-    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=7))
+    monkeypatch.setattr(file_module, "read_csv", partial(read_csv, chunk_rows=7))
     chunked = run(tmp_path / "chunked", files)
     assert_frame_equal(accepted(tmp_path / "chunked"), accepted(tmp_path / "whole"))
     assert chunked["results"] == whole["results"]
@@ -123,7 +123,7 @@ def test_rows_of_a_file_that_fails_late_are_not_written(tmp_path: Path, monkeypa
                 raise FloeIoError("csv read failed: boom")
             yield chunk
 
-    monkeypatch.setattr(entity_module, "read_csv", read)
+    monkeypatch.setattr(file_module, "read_csv", read)
     files = {"a.csv": csv_rows(range(150)), "b.csv": csv_rows(range(1000, 1500))}
     report = run(tmp_path, files)
     assert accepted(tmp_path)["id"].to_list() == list(range(150))
@@ -131,7 +131,7 @@ def test_rows_of_a_file_that_fails_late_are_not_written(tmp_path: Path, monkeypa
 
 
 def test_rows_of_an_aborted_file_are_not_written(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
-    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=CHUNK))
+    monkeypatch.setattr(file_module, "read_csv", partial(read_csv, chunk_rows=CHUNK))
     bad = csv_rows(range(1000, 1500)) + "x,n,1.5,2026-01-01\n"
     report = run(tmp_path, {"a.csv": csv_rows(range(150)), "b.csv": bad, "c.csv": csv_rows(range(2000, 2010))}, severity="abort")  # fmt: skip
     assert accepted(tmp_path)["id"].to_list() == list(range(150))
@@ -146,7 +146,7 @@ def test_a_failure_after_parts_were_written_leaves_none_and_keeps_its_message(tm
                 raise FloeRunError("boom")
             yield chunk
 
-    monkeypatch.setattr(entity_module, "read_csv", read)
+    monkeypatch.setattr(file_module, "read_csv", read)
     files = {"a.csv": csv_rows(range(400)), "b.csv": csv_rows(range(1000, 1500))}
     with pytest.raises(FloeRunError, match="^boom$"):
         run(tmp_path, files, mode=mode, part_bytes=CHUNK * 24)

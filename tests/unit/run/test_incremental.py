@@ -80,7 +80,7 @@ def test_failed_run_releases_its_claims(tmp_path: Path, monkeypatch: pytest.Monk
     def boom(*_: Any) -> None:
         raise FloeRunError("boom")
 
-    monkeypatch.setattr(entity_module, "_run_file", boom)
+    monkeypatch.setattr(entity_module, "run_file", boom)
     with pytest.raises(FloeRunError):
         go(entity, tmp_path, "r1")
     assert not (tmp_path / "in/.floe/state/d/orders/state.json").exists()
@@ -196,13 +196,13 @@ def test_claims_are_renewed_while_the_entity_runs(tmp_path: Path, monkeypatch: p
 
     monkeypatch.setattr(incremental_module, "RENEW_INTERVAL_S", 0.01)
     monkeypatch.setattr(incremental_module, "renew", fake_renew)
-    real = entity_module._run_file  # pyright: ignore[reportPrivateUsage]
+    real = entity_module.run_file
 
     def slow(*a: Any) -> Any:
         time.sleep(0.2)
         return real(*a)
 
-    monkeypatch.setattr(entity_module, "_run_file", slow)
+    monkeypatch.setattr(entity_module, "run_file", slow)
     go(entity, tmp_path, "r1")
     assert set(renewed) == {"r1"}
 
@@ -361,13 +361,13 @@ def test_a_failed_renewal_emits_a_heartbeat_failed_warning(tmp_path: Path, monke
 
     monkeypatch.setattr(incremental_module, "RENEW_INTERVAL_S", 0.01)
     monkeypatch.setattr(incremental_module, "renew", broken)
-    real = entity_module._run_file  # pyright: ignore[reportPrivateUsage]
+    real = entity_module.run_file
 
     def slow(*a: Any) -> Any:
         time.sleep(0.2)
         return real(*a)
 
-    monkeypatch.setattr(entity_module, "_run_file", slow)
+    monkeypatch.setattr(entity_module, "run_file", slow)
     run_entity(entity, tmp_path, "0.3", emit=Emitter(events.append, "r1"))
     beats = [e for e in events if e.get("code") == "heartbeat_failed"]
     assert beats

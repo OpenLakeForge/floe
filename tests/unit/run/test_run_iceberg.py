@@ -57,6 +57,7 @@ from floe.iceberg.sink import input_hash, partition_fields
 from floe.iceberg.write import INPUT_HASH, RUN_ID, find_committed, write_result
 from floe.read.csv import read_csv
 from floe.run import entity as entity_module  # `floe.run` is the public function
+from floe.run import file as file_module
 from floe.run import incremental as incremental_module
 from floe.run import run as run_project
 from floe.run.entity import run_entity
@@ -269,7 +270,7 @@ def test_append_rejects_keys_already_in_the_table(tmp_path: Path, catalog: Local
 def test_append_scans_the_table_once_however_many_chunks_the_batch_has(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     """#1057: the history was scanned once per chunk."""
     run(tmp_path, "id,name\n1,a\n3,c\n", mode="append")
-    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=2))
+    monkeypatch.setattr(file_module, "read_csv", partial(read_csv, chunk_rows=2))
     scans: list[Table] = []
     scan_iceberg = pl.scan_iceberg
 
@@ -347,7 +348,7 @@ def test_nulls_in_a_required_column_fail_the_write(tmp_path: Path, catalog: Loca
 @pytest.mark.parametrize("mode", ["overwrite", "append"])
 def test_an_entity_of_many_chunks_lands_as_one_snapshot(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch, mode: str) -> None:  # fmt: skip
     """#1056: chunks are written as they are read, still in one commit."""
-    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=3))
+    monkeypatch.setattr(file_module, "read_csv", partial(read_csv, chunk_rows=3))
     (tmp_path / "in").mkdir()
     (tmp_path / "in" / "a.csv").write_text("id,name\n" + "".join(f"{i},n{i}\n" for i in range(20)))  # fmt: skip
     report = run(tmp_path, "id,name\n" + "".join(f"{i},n{i}\n" for i in range(20, 31)), mode=mode)  # fmt: skip
@@ -358,7 +359,7 @@ def test_an_entity_of_many_chunks_lands_as_one_snapshot(tmp_path: Path, catalog:
 
 
 def test_a_null_in_a_late_chunk_fails_the_write_and_commits_nothing(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
-    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=2))
+    monkeypatch.setattr(file_module, "read_csv", partial(read_csv, chunk_rows=2))
     with pytest.raises(FloeRunError, match="^iceberg write rejected nulls for non-nullable column id$"):  # fmt: skip
         run(tmp_path, "id,name\n1,a\n2,b\n3,c\n,d\n", severity="warn")
     assert catalog.commits == 0
@@ -366,7 +367,7 @@ def test_a_null_in_a_late_chunk_fails_the_write_and_commits_nothing(tmp_path: Pa
 
 def test_peak_rows_in_memory_follow_the_chunk_not_the_entity(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     probe = Probe()
-    monkeypatch.setattr(entity_module, "read_csv", probe.reader())
+    monkeypatch.setattr(file_module, "read_csv", probe.reader())
     write = sink_module.write_table
 
     def tapped(
