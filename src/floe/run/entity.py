@@ -34,7 +34,15 @@ from floe.errors import FloeConfigError, FloeRunError
 from floe.extras import require
 from floe.report.entity import build_report
 from floe.run.events import NO_EVENTS, Emitter
-from floe.run.file import Plan, output, run_file, source_columns, timed, unspill
+from floe.run.file import (
+    Plan,
+    output,
+    run_file,
+    sink_write,
+    source_columns,
+    timed,
+    unspill,
+)
 from floe.run.incremental import Incremental, skipped_report
 from floe.run.sources import archive_location, list_source, resolve_source
 from floe.storage.archive import archive_input_file
@@ -173,6 +181,7 @@ def run_entity(
     full_refresh: bool = False,
     catalogs: CatalogsConfig | None = None,
     listed: ResolvedInputs | None = None,
+    sinks: dict[str, str] | None = None,
 ) -> EntityRun:
     """Run one entity on local or S3 storage, with Parquet or Iceberg sinks; `config_dir` is absolute and normalised."""
     inc = Incremental(entity, config_dir, emit.run_id, full_refresh, storages)
@@ -187,6 +196,7 @@ def run_entity(
             inc,
             catalogs,
             listed,
+            sinks,
         )
     except BaseException:
         if inc.committed is None:
@@ -208,6 +218,7 @@ def _run_entity(
     inc: Incremental,
     catalogs: CatalogsConfig | None,
     listed: ResolvedInputs | None,
+    sinks: dict[str, str] | None,
 ) -> EntityRun:
     entity = with_partition_columns(
         entity
@@ -271,6 +282,8 @@ def _run_entity(
         run_id=emit.run_id, rejected=rejected and (rejected[0], storage_client(rejected[1])),
         rejected_table=rejected_table,
     )  # fmt: skip
+    if sinks is not None:
+        plan.sinks = sinks
     location = archive_location(entity, config_dir, storages)
     if location and entity.incremental_mode in ("none", "archive"):
         plan.archive = location[0], storage_client(location[1])
@@ -376,7 +389,7 @@ def _run_entity(
                     frames = (output(plan, unspill(p)).with_columns(source_columns(plan, uri)) for p, uri in plan.rejected_spills)  # fmt: skip
                     from floe.iceberg.sink import write_rejected_iceberg
 
-                    with timed(plan.spent, "rejected_write_ms"):
+                    with sink_write(plan, "rejected", "rejected_write_ms"):
                         write_rejected_iceberg(entity, plan.rejected_table, frames, [plan.out_map.get(n, n) for n in names], emit.run_id, input_hash(entity, complete))  # fmt: skip
         except Exception as err:
             # the sinks wrap what they read; this error reaches the caller as it is
@@ -400,6 +413,7 @@ def _run_entity(
             )
             del first  # the sink holds the chunk it is on, not the first
             sink_started = time.monotonic()
+            plan.sinks["accepted"] = "unknown"
             if target is None:
                 write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
             else:
@@ -416,6 +430,7 @@ def _run_entity(
                     files[:] = [skipped_report(r["input_file"], "already_committed") if r["input_file"] in done else r for r in files]  # fmt: skip
             # the sink's time between pulls: the writes, and the Iceberg commit after the last one
             plan.spent["accepted_write_ms"] = time.monotonic() - sink_started - plan.spent.pop("pulled", 0.0)  # fmt: skip
+            plan.sinks["accepted"] = "committed"
         else:
             write = AcceptedWrite(0, [], 0, 0.0, 0)
     except Exception:

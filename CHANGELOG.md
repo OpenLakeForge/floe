@@ -14,7 +14,7 @@ All notable changes to Floe are documented in this file.
   cell. Which rows are rejected, `__floe_row_index`, `__floe_errors` and the run reports are unchanged. Typed inputs
   (Parquet, ORC, Avro) keep their native values. PII strategies are applied to the raw values, so a `hash` of a rejected
   value can differ from the hash of the same value in the accepted rows.
-- A run stopped by an input-listing or entity error writes a best-effort `run.failure.json` (error, per-entity state) before the error is raised, and emits a `log` event with its URI (#1155).
+- A run stopped by an input-listing or entity error writes a best-effort `run.failure.json` (error, per-entity state) before the error is raised, and emits a `log` event with its URI (#1155). For an entity that failed or was interrupted it records each sink's state (`sinks.rejected`, `sinks.accepted`: `not_started`, `committed` or `unknown`).
 - Each entity report has a `timings_ms` object (`list_ms`, `download_wait_ms`, `read_validate_ms`, `rejected_write_ms`, `accepted_write_ms`, `archive_ms`: cumulative wall-clock milliseconds, `null` for a phase that did not run), the `entity_finished` event carries it, and `run_finished` has `report_write_ms` (#1156).
 - The `run_started` event and `run.failure.json` carry `dagster_run_id` and `dagster_job_name` when `DAGSTER_RUN_ID` and `DAGSTER_JOB_NAME` are set, and the failure-report `log` event and a failed `entity_finished` carry `error_code` when the error has a typed `code`. Both are optional and absent otherwise (#1156).
 - dagster-floe adds the report's `timings_ms` (`floe/timings/<phase>_ms`), the rejected output's format and URI, and, for a failed run, the `run.failure.json` URI, error and per-entity states to asset metadata (#1157).
