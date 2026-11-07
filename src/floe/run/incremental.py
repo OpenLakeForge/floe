@@ -4,15 +4,11 @@ import threading
 from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
-
-from pyiceberg.table import Table
+from typing import TYPE_CHECKING, Any
 
 from floe.config.storage import StoragesConfig
 from floe.config.types import EntityConfig
 from floe.errors import FloeRunError
-from floe.iceberg.sink import input_hash
-from floe.iceberg.write import find_committed
 from floe.report.summary import run_outcome
 from floe.run.events import Emitter
 from floe.state import (
@@ -27,11 +23,14 @@ from floe.state import (
     release,
     renew,
 )
-from floe.storage.inputs import InputFile, suffixes_for_format
+from floe.storage.inputs import InputFile, input_hash, suffixes_for_format
 from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
 from floe.storage.resolve import resolve_path, storage_client
 from floe.storage.types import StorageClient
+
+if TYPE_CHECKING:
+    from pyiceberg.table import Table
 
 RENEW_INTERVAL_S = float(min(max(CLAIM_TTL_SECONDS // 3, 1), 300))
 _SEPARATORS = "/\\"
@@ -175,7 +174,7 @@ class Incremental:
             self._hold(got.claimed, emit)
         return got.pending, reports
 
-    def skip_committed(self, table: Table | None, pending: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:  # fmt: skip
+    def skip_committed(self, table: "Table | None", pending: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:  # fmt: skip
         """#545 retry guard (append): the reports of the pending inputs a dead run already committed, before any is read.
 
         `file` mode re-derives each dead run's batch from its expired claims (by `run_id`, with their size and mtime),
@@ -185,6 +184,10 @@ class Incremental:
         e = self.entity
         if table is None or not pending or self.full_refresh:
             return []
+        from floe.iceberg.write import (
+            find_committed,
+        )  # lazy: a table exists only with the iceberg extra
+
         if e.incremental_mode != "file":
             done = pending if find_committed(table, input_hash(e, pending)) else []
             return self._skipped(done, emit)

@@ -3,12 +3,12 @@
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from floe.config.storage import CatalogsConfig, StoragesConfig
-from floe.config.types import EntityConfig
+from floe.config.types import EntityConfig, SinkTarget
 from floe.errors import FloeError
-from floe.iceberg.sink import resolve_target
+from floe.extras import require
 from floe.run.incremental import state_uri
 from floe.storage.resolve import resolve_path
 
@@ -27,13 +27,19 @@ def exclusive_keys(e: EntityConfig, config_dir: Path, storages: StoragesConfig |
     sink = e.sink
     try:
         keys = {_canonical(resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"entity.name={e.name} sink.accepted.storage")[0])}  # fmt: skip
-        if sink.accepted.format == "iceberg":
-            t = resolve_target(storages, catalogs, config_dir, e)
-            keys.add(f"iceberg://{t.catalog.name}/{t.namespace}/{t.table}")
         # the quarantine table too: two entities racing its create fail
-        if sink.rejected and sink.rejected.format == "iceberg":
-            t = resolve_target(storages, catalogs, config_dir, e, "rejected")
-            keys.add(f"iceberg://{t.catalog.name}/{t.namespace}/{t.table}")
+        kinds: tuple[tuple[Literal["accepted", "rejected"], SinkTarget | None], ...] = (("accepted", sink.accepted), ("rejected", sink.rejected))  # fmt: skip
+        for kind, target in kinds:
+            if target and target.format == "iceberg":
+                require(
+                    "iceberg",
+                    "pyiceberg",
+                    f"entity.name={e.name} sink.{kind}.format=iceberg",
+                )
+                from floe.iceberg.sink import resolve_target
+
+                t = resolve_target(storages, catalogs, config_dir, e, kind)
+                keys.add(f"iceberg://{t.catalog.name}/{t.namespace}/{t.table}")
         if e.incremental_mode == "file":
             keys.add(_canonical(state_uri(e, config_dir, storages)[0]))
     except FloeError:

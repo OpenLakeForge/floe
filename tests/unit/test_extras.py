@@ -122,3 +122,38 @@ def test_core_modules_import_without_duckdb(monkeypatch: pytest.MonkeyPatch) -> 
     for name in ("floe", "floe.run", "floe.maintain", "floe.iceberg.sink", "floe.iceberg.catalog"):  # fmt: skip
         monkeypatch.delitem(sys.modules, name, raising=False)
         importlib.import_module(name)
+
+
+ICEBERG = "entity.name=orders sink.accepted.format=iceberg needs the floe[iceberg] extra: pip install 'floe-python[iceberg]'"  # fmt: skip
+
+
+def test_validate_names_the_iceberg_extra(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    config = tmp_path / "config.yml"
+    config.write_text("""
+version: "0.3"
+catalogs:
+  default: polaris
+  definitions: [{name: polaris, type: rest, uri: "http://polaris", warehouse: w}]
+storages:
+  default: lake
+  definitions: [{name: lake, type: s3, bucket: b, region: r}]
+entities:
+- name: orders
+  source: {format: csv, path: in.csv}
+  sink: {accepted: {format: iceberg, path: t/orders, iceberg: {catalog: polaris}}}
+  policy: {severity: warn}
+  schema: {columns: [{name: id, type: string}]}
+""")
+    monkeypatch.setitem(sys.modules, "pyiceberg", None)
+    with pytest.raises(FloeConfigError) as err:
+        validate_entities(parse_config(config))
+    assert str(err.value) == ICEBERG
+
+
+def test_core_modules_import_without_pyiceberg(monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    monkeypatch.setitem(sys.modules, "pyiceberg", None)
+    for name in list(sys.modules):
+        if name == "floe" or name.startswith("floe."):
+            monkeypatch.delitem(sys.modules, name)
+    for name in ("floe", "floe.run", "floe.maintain", "floe._cli"):
+        importlib.import_module(name)
