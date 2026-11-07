@@ -43,7 +43,6 @@ from floe.storage.inputs import (
     ResolvedInputs,
     input_hash,
 )
-from floe.storage.local import LocalClient
 from floe.storage.partitioning import (
     advance,
     partition_date,
@@ -52,7 +51,7 @@ from floe.storage.partitioning import (
 )
 from floe.storage.prefetch import localized_inputs
 from floe.storage.resolve import resolve_path, storage_client
-from floe.storage.types import StorageClient
+from floe.storage.types import Downloader, StorageClient
 from floe.write.outputs import (
     AcceptedWrite,
     part_uris,
@@ -308,19 +307,19 @@ def _run_entity(
     archive = plan.archive  # a full refresh lists it too
     plan.derived = _derived(entity, source_uri, archive and archive[0], inputs.files)
     # D34 (#931): same store only (a bucket name repeats across endpoints); before the claim, so a refusal leaves nothing to release
-    if target is None and getattr(client, "endpoint", None) == getattr(accepted_client, "endpoint", None):  # fmt: skip
+    if target is None and client.endpoint == accepted_client.endpoint:  # fmt: skip
         _refuse_overlap(who, base, inputs.files)
     if plan.rejected and sink.rejected:
         parquet = sink.rejected.format == "parquet"
         rows = f"{plan.rejected[0].rstrip('/')}/rows"
-        if parquet and getattr(client, "endpoint", None) == getattr(plan.rejected[1], "endpoint", None):  # fmt: skip
+        if parquet and client.endpoint == plan.rejected[1].endpoint:  # fmt: skip
             _refuse_overlap(who, rows, inputs.files, "sink.rejected.path")
         # accepted parts are `part-*.parquet`: in the rejected directory they would overwrite its raw file copies (any rejected format), in `rows/` its row parts
         shared = {
             _real(d).rstrip("/")
             for d in (plan.rejected[0], *([rows] if parquet else []))
         }
-        if target is None and getattr(accepted_client, "endpoint", None) == getattr(plan.rejected[1], "endpoint", None) and _real(base).rstrip("/") in shared:  # fmt: skip
+        if target is None and accepted_client.endpoint == plan.rejected[1].endpoint and _real(base).rstrip("/") in shared:  # fmt: skip
             raise FloeConfigError(f"{who} sink.accepted.path must differ from sink.rejected.path" + (f" and its rows directory {rows}" if parquet else ""))  # fmt: skip
     pending, files = inc.claim(inputs.files, emit)
     if done := inc.skip_committed(plan.table, pending, emit):
@@ -333,7 +332,9 @@ def _run_entity(
     # #545: the snapshot's fingerprint names only the files it holds in full, never an aborted batch
     complete: list[InputFile] = []
     skipped = len(files)
-    downloader = None if isinstance(client, LocalClient) else client
+    downloader = (
+        client if isinstance(client, Downloader) else None
+    )  # a local client downloads nothing
     failure: list[Exception] = []
     # #1090: a merge keeps a key's latest version, so the newest file is checked first; the first row of a file still wins.
     # Not under abort: a duplicate aborts there anyway, and newer files committed ahead of a pending older one would let it merge stale rows later

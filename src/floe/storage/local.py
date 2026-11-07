@@ -81,6 +81,8 @@ def _file_lock(base: Path) -> Generator[None]:
 
 
 class LocalClient:
+    endpoint: None = None  # no endpoint: one local store, and nothing to download
+
     def resolve_uri(self, path: str) -> str:
         return f"local://{normalize_local_path(Path.cwd() / path)}"
 
