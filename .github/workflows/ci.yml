@@ -86,6 +86,9 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --all-groups --all-extras
       - run: uv run pyright
+      # dagster-floe is checked in basic mode (its own pyrightconfig.json) against the real dagster types
+      - run: uv pip install -e "orchestrators/dagster-floe[kubernetes]"
+      - run: uv run --no-sync pyright -p orchestrators/dagster-floe
 
   python-test:
     needs: changes

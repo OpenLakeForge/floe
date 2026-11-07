@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -54,7 +54,7 @@ def parse_json_event_lines(stdout: str) -> list[dict[str, Any]]:
     return events
 
 
-def render_log_event(event: dict[str, Any]) -> str | None:
+def render_log_event(event: Mapping[str, Any]) -> str | None:
     """Render a Floe JSON event as a compact Dagster log line."""
     event_name = event.get("event")
     if not isinstance(event_name, str) or not event_name:
@@ -165,7 +165,7 @@ def parse_run_finished(event: dict[str, Any], summary_uri_field: str = "summary_
     return FloeRunFinished(
         run_id=str(event.get("run_id")),
         status=str(event.get("status")),
-        exit_code=int(event.get("exit_code")),
+        exit_code=int(event.get("exit_code")),  # pyright: ignore[reportArgumentType] -- a missing code raises TypeError
         summary_uri=event.get(summary_uri_field),
         report_base=event.get("report_base"),
         entity_report_uris=event.get("entity_report_uris") or {},

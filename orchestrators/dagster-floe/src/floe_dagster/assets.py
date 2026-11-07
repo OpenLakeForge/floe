@@ -109,7 +109,7 @@ def build_floe_asset_defs(
         raise TypeError("runner is required")
     manifest, config_uri = load_manifest_source(manifest_path, config_path, profile_path, manifest_name)
     # in config mode it names the source in errors; no `{manifest_uri}` token is left to render
-    manifest_path = manifest_path or config_path
+    manifest_path = manifest_path or config_path or ""
     entity_items = selected_manifest_entities(manifest, entities)
     if domains is not None:
         unknown = sorted(set(domains) - {e.domain for e in manifest.entities})
@@ -370,7 +370,7 @@ def _parse_finished(context: Any, result: RunResult, execution: ManifestExecutio
         context.log.warning(f"failed to parse Floe run events: {exc}")
         synthetic_status = result.status or ("success" if result.exit_code == 0 else "failed")
         return FloeRunFinished(
-            run_id=(result.backend_metadata or {}).get("backend_run_id") or (run_id or "unknown"),
+            run_id=str((result.backend_metadata or {}).get("backend_run_id") or run_id or "unknown"),
             status=synthetic_status,
             exit_code=result.exit_code,
             summary_uri=None,
@@ -451,7 +451,10 @@ def _entity_events(
         entity_report_uri=entity_report_uri,
     )
     for check_result in check_results:
-        if selected_checks is None or AssetCheckKey(AssetKey(accepted_key), check_result.check_name) in selected_checks:
+        if (
+            selected_checks is None
+            or AssetCheckKey(AssetKey(accepted_key), check_result.check_name or "") in selected_checks
+        ):
             yield check_result
 
     if failed:
@@ -525,8 +528,10 @@ def _failure_evidence(context: Any, stdout: str, config_uri: str) -> dict[str, A
     except Exception as exc:  # noqa: BLE001 - evidence only; the failure itself is raised by the caller
         context.log.warning(f"failed to load run failure report: {exc}")
         return {"floe/failure_report_uri": uri, "floe/failure_evidence": f"unavailable: {exc}"}
-    error = report.get("error") if isinstance(report.get("error"), dict) else {}
-    entities = report.get("entities") if isinstance(report.get("entities"), list) else []
+    error = report.get("error")
+    error = error if isinstance(error, dict) else {}
+    entities = report.get("entities")
+    entities = entities if isinstance(entities, list) else []
     return {
         "floe/failure_report_uri": uri,
         "floe/error_type": error.get("type"),
@@ -771,7 +776,7 @@ def _fsspec_read_text(uri: str) -> str:
     except ImportError as exc:
         raise ImportError("reading remote report URIs requires fsspec; install it with: pip install fsspec") from exc
     with fsspec.open(uri, "r", encoding="utf-8", **_fsspec_storage_options(uri)) as f:
-        return f.read()
+        return f.read()  # pyright: ignore[reportAttributeAccessIssue] -- stub types a glob result
 
 
 def _extract_entity_stats(summary_json: dict[str, Any], entity_name: str) -> dict[str, Any]:
