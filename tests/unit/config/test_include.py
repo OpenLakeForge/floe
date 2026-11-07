@@ -116,7 +116,7 @@ def test_included_sources(tmp_path: Path) -> None:
         ),
         (
             {"config.yml": 'version: "0.3"\ninclude: {domains: [nowhere/*.yml]}'},
-            'include.domains pattern "nowhere/*.yml" matched no file (includes resolve against local files only; a remote project cannot include)',
+            "include.domains pattern 'nowhere/*.yml' matched no file (includes resolve against local files only; a remote project cannot include)",
         ),
         (
             {"config.yml": 'version: "0.3"\ninclude: {domains: ["a/***/b"]}'},
@@ -144,7 +144,7 @@ def test_included_sources(tmp_path: Path) -> None:
                 "domains/s/_domain.yml": "name: s",
                 "domains/s/e.yml": "name: e\ndomain: f",
             },
-            '<ROOT>/domains/s/e.yml has domain "f" but its _domain.yml names "s"',
+            "<ROOT>/domains/s/e.yml has domain 'f' but its _domain.yml names 's'",
         ),
         (
             {"config.yml": ROOT + "entities: x", "domains/s/_domain.yml": "name: s"},

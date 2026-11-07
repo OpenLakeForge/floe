@@ -80,7 +80,7 @@ entities:
 | Situation | Error (example) |
 |-----------|-----------------|
 | Reference to undefined variable | `variable "${MISSING}" is referenced but not defined` |
-| Unclosed placeholder | `variable "PATH": unclosed placeholder in value "/data/${UNCLOSED"` |
+| Unclosed placeholder | `variable "PATH": unclosed placeholder in value '/data/${UNCLOSED'` |
 | Empty placeholder | `variable "VAR": empty placeholder ${}` |
 | Circular reference | `circular variable reference detected: A -> B -> A` |
 | Depth limit exceeded | `variable expansion exceeded maximum depth (32)` |

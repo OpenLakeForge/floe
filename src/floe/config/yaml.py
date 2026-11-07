@@ -2,7 +2,6 @@
 
 import copy
 import re
-import unicodedata
 from collections.abc import Container, Iterator
 from pathlib import Path
 from typing import cast
@@ -47,37 +46,8 @@ def _plain(v: str) -> object:
     return float(v) if _FLOAT.fullmatch(v) else v
 
 
-_MARKS = ("Mn", "Me")
-_FILLERS = "\u115f\u1160\u3164\uffa0"
-_ESCAPES = {'"': '\\"', "\\": "\\\\", "\t": "\\t", "\n": "\\n", "\r": "\\r", "\0": "\\0"}  # fmt: skip
-
-
-def _debug_char(c: str) -> str:
-    # ponytail: Rust also hides other grapheme-extend/default-ignorable characters; this covers Mn, Me and the Hangul fillers
-    hidden = not c.isprintable() or unicodedata.category(c) in _MARKS or c in _FILLERS
-    return _ESCAPES.get(c) or (f"\\u{{{ord(c):x}}}" if hidden else c)
-
-
-def rust_debug(s: str) -> str:
-    """Rust's `{:?}` of a `str`."""
-    return '"' + "".join(map(_debug_char, s)) + '"'
-
-
-def _where(index: int, line: int, column: int) -> str:
-    # yaml-rust2 says "byte" but counts characters
-    return f"at byte {index} line {line + 1} column {column + 1}"
-
-
-def _debug(key: object, node: Node) -> str:
-    if key is None:
-        return "Null"
-    if isinstance(key, bool):
-        return f"Boolean({str(key).lower()})"
-    if isinstance(key, int):
-        return f"Integer({key})"
-    if isinstance(key, float):
-        return f"Real({rust_debug(cast(str, node.value))})"
-    return f"String({rust_debug(cast(str, key))})"
+def _where(line: int, column: int) -> str:
+    return f"at line {line + 1} column {column + 1}"
 
 
 def _build(node: Node, active: tuple[int, ...] = ()) -> object:
@@ -104,10 +74,8 @@ def _build(node: Node, active: tuple[int, ...] = ()) -> object:
             collection = isinstance(value_node, CollectionNode)
             mark = value_node.end_mark if collection else value_node.start_mark
             back = int(collection and bool(value_node.flow_style))
-            where = _where(mark.index - back, mark.line, mark.column - back)
-            raise FloeError(
-                f"{_debug(key, key_node)}: duplicated key in mapping {where}"
-            )
+            where = _where(mark.line, mark.column - back)
+            raise FloeError(f"duplicated key {key!r} in mapping {where}")
         seen.add(identity)
         result[key] = value
     return result
@@ -134,11 +102,10 @@ def parse_yaml(text: str) -> list[object]:
         )
         return [_build(doc) for doc in docs]
     except MarkedYAMLError as e:
-        # ponytail: only some scanner messages match yaml-rust2 word for word; the rest keep PyYAML's wording
         context = f"{e.context}, " if e.context else ""
-        problem = (e.problem or "").split(", but got")[0]
+        problem = e.problem or ""
         mark = e.problem_mark
-        where = _where(mark.index, mark.line, mark.column) if mark else ""
+        where = _where(mark.line, mark.column) if mark else ""
         raise FloeError(f"{context}{problem} {where}".strip()) from e
     except yaml.YAMLError as e:
         raise FloeError(str(e)) from e

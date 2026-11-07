@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "variable \"X\": unclosed placeholder in value \"${Y\""
+  "error": "variable \"X\": unclosed placeholder in value '${Y'"
 }

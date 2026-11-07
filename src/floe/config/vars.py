@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 
-from floe.config.yaml import load_yaml, rust_debug, yaml_hash, yaml_string
+from floe.config.yaml import load_yaml, yaml_hash, yaml_string
 from floe.errors import FloeConfigError, FloeError
 from floe.storage.paths import normalize_local_path
 
@@ -111,7 +111,7 @@ def resolve_vars(
             rest = rest[start + 2 :]
             end = rest.find("}")
             if end == -1:
-                quoted = rust_debug(value)
+                quoted = repr(value)
                 raise FloeConfigError(
                     f'variable "{owner}": unclosed placeholder in value {quoted}'
                 )
