@@ -55,3 +55,7 @@ markers = [
     "s3: needs an S3-compatible service (set FLOE_S3_ENDPOINT)",
     "glue: needs a Glue-compatible service and S3 (set FLOE_GLUE_ENDPOINT, FLOE_S3_ENDPOINT)",
 ]
+
+[tool.coverage.report]
+# the measured total was 94.97% when #1063 set it; raise it, never lower it
+fail_under = 94

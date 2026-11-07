@@ -318,3 +318,43 @@ def test_each_scd2_attempt_stamps_its_own_time(
     assert (
         len(stamps) == 5
     )  # a retry reusing the first attempt's time could close a rival's newer version
+
+
+def test_scd1_merge_inserts_updates_and_skips_unchanged_rows(
+    server: tuple[RestCatalog, CatalogDefinition],
+) -> None:
+    """#1063: the real `MERGE INTO` runs in the required unit job, not only against Polaris."""
+    _, definition = server
+    table = new_table(definition)
+    with open_duckdb(definition) as con:
+        first = merge_scd1(con, table, reader((1, "a"), (2, "b")), ["id"])
+        second = merge_scd1(con, table, reader((2, "B"), (3, "c")), ["id"])
+        rerun = merge_scd1(con, table, reader((2, "B"), (3, "c")), ["id"])
+        ignored = merge_scd1(con, table, reader((1, "z")), ["id"], {"v"})
+    counts = [(r.inserted_count, r.updated_count) for r in (first, second, rerun, ignored)]  # fmt: skip
+    assert counts == [(2, 0), (1, 1), (0, 0), (0, 0)]
+    assert sorted((r["id"], r["v"]) for r in rows(table)) == [(1, "a"), (2, "B"), (3, "c")]  # fmt: skip
+
+
+def test_scd2_merge_closes_the_changed_version_and_inserts_the_new_one(
+    server: tuple[RestCatalog, CatalogDefinition],
+) -> None:
+    _, definition = server
+    system = ["is_current", "valid_from", "valid_to"]
+    table = new_table(
+        definition,
+        Schema(
+            *SCHEMA.fields,
+            NestedField(3, system[0], BooleanType()),
+            NestedField(4, system[1], TimestampType()),
+            NestedField(5, system[2], TimestampType()),
+        ),
+    )
+    with open_duckdb(definition) as con:
+        merge_scd2(con, table, reader((1, "a")), ["id"], system_columns=system)
+        again = merge_scd2(con, table, reader((1, "a")), ["id"], system_columns=system)
+        changed = merge_scd2(con, table, reader((1, "b")), ["id"], system_columns=system)  # fmt: skip
+    assert (again.inserted_count, again.closed_count) == (0, 0)
+    assert (changed.inserted_count, changed.closed_count) == (1, 1)
+    history = sorted((r["v"], r["is_current"], r["valid_to"] is None) for r in rows(table))  # fmt: skip
+    assert history == [("a", False, False), ("b", True, True)]
