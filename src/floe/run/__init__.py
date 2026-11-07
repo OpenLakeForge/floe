@@ -26,9 +26,10 @@ from floe.report.summary import (
     write_entity_report,
     write_reports,
 )
-from floe.run.entity import EntityRun, list_source, resolve_source, run_entity
+from floe.run.entity import EntityRun, run_entity
 from floe.run.events import Emitter, Observer
 from floe.run.parallel import exclusive_keys, run_parallel
+from floe.run.sources import list_source, resolve_source
 from floe.storage.inputs import ResolvedInputs
 from floe.storage.paths import normalize_local_path
 from floe.storage.resolve import clear_storage_clients, resolve_path, storage_client

@@ -16,6 +16,7 @@ from floe.read import json as json_module
 from floe.read.csv import read_csv
 from floe.read.xml import read_xml
 from floe.run import entity as entity_module  # `floe.run` is the public function
+from floe.run import sources as sources_module
 from floe.run.entity import run_entity
 
 CONFIG = """\
@@ -585,14 +586,14 @@ def test_json_file_removed_after_listing_is_a_failed_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """#1115: the size comes from the listing, so a vanished file still fails as a read error."""
-    real = entity_module.resolve_inputs
+    real = sources_module.resolve_inputs
 
     def listed_then_removed(*args: Any, **kwargs: Any) -> Any:
         inputs = real(*args, **kwargs)
         (tmp_path / "in" / "a.json").unlink()
         return inputs
 
-    monkeypatch.setattr(entity_module, "resolve_inputs", listed_then_removed)
+    monkeypatch.setattr(sources_module, "resolve_inputs", listed_then_removed)
     (tmp_path / "in").mkdir()
     (tmp_path / "in" / "a.json").write_text('{"id": 1}')
     config = CONFIG.format(severity="reject", mismatch="")
@@ -612,14 +613,14 @@ def test_file_removed_after_listing_with_a_rejected_sink_is_a_failed_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fmt: str
 ) -> None:
     """#1121: the raw copy of a vanished file is skipped, so the read error is reported and the run goes on."""
-    real = entity_module.resolve_inputs
+    real = sources_module.resolve_inputs
 
     def listed_then_removed(*args: Any, **kwargs: Any) -> Any:
         inputs = real(*args, **kwargs)
         (tmp_path / "in" / f"a.{fmt}").unlink()
         return inputs
 
-    monkeypatch.setattr(entity_module, "resolve_inputs", listed_then_removed)
+    monkeypatch.setattr(sources_module, "resolve_inputs", listed_then_removed)
     (tmp_path / "in").mkdir()
     body = '{"id": 1}' if fmt == "json" else "id\n1\n"
     (tmp_path / "in" / f"a.{fmt}").write_text(body)
