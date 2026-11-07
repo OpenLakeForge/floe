@@ -29,6 +29,7 @@ import floe
 import floe.iceberg.compact as compact_module
 import floe.iceberg.sink as sink_module
 from floe._cli import main
+from floe.iceberg import catalog as catalog_module
 from floe.maintain import _list  # pyright: ignore[reportPrivateUsage] -- the S3 branch of the listing
 from floe.storage.types import ObjectRef
 
@@ -291,8 +292,7 @@ def test_compaction_needs_the_experimental_opt_in_and_no_dry_run(tmp_path: Path,
 
 def test_compaction_runs_first_on_its_own_duckdb_connection(tmp_path: Path, catalog: StubCatalog, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:  # fmt: skip
     table = seed(tmp_path, catalog)
-    module = sys.modules["floe.maintain"]
-    monkeypatch.setattr(module, "open_duckdb", lambda *_: duckdb.connect())  # pyright: ignore[reportUnknownLambdaType] -- stub
+    monkeypatch.setattr(catalog_module, "open_duckdb", lambda *_: duckdb.connect())  # pyright: ignore[reportUnknownLambdaType] -- stub
     calls: list[int] = []
 
     def compact(t: Table, _: object) -> dict[str, int]:

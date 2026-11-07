@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, cast
 
@@ -13,7 +14,6 @@ from floe.checks.rows import Formatter
 from floe.config.project import RootConfig
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeError
-from floe.iceberg.catalog import clear_catalogs
 from floe.report.entity import serialize
 from floe.report.summary import (
     build_failure,
@@ -129,7 +129,10 @@ def run(
     """
     clear_storage_clients()
     started, timer = _rfc3339(), time.monotonic()
-    clear_catalogs()
+    if find_spec("pyiceberg"):  # no iceberg extra: no catalog was opened
+        from floe.iceberg.catalog import clear_catalogs
+
+        clear_catalogs()
     selected = select_entities(root, entities)
     if full_refresh:
         selected = [_refresh(e) for e in selected]

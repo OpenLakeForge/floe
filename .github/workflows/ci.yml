@@ -109,6 +109,22 @@ jobs:
       - run: uv run --python ${{ matrix.python-version }} pytest
         if: needs.changes.outputs.python_core == 'true'
 
+  core-only:
+    # No extras: a local CSV to Parquet run must work with the core dependencies alone.
+    needs: changes
+    if: needs.changes.outputs.python_core == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv venv --python 3.11 "$RUNNER_TEMP/core" && uv pip install --python "$RUNNER_TEMP/core" .
+      - run: |
+          cp -r example/standalone "$RUNNER_TEMP/work"
+          cd "$RUNNER_TEMP/work"
+          "$RUNNER_TEMP/core/bin/floe" validate -c config.yml
+          "$RUNNER_TEMP/core/bin/floe" run -c config.yml
+          test -f out/accepted/orders/part-00000.parquet
+
   golden:
     # The branch ruleset requires the check named `conformance`.
     name: conformance

@@ -1,11 +1,15 @@
 """Input resolution, ported from `io/storage/ops/inputs.rs` (`resolve_inputs`)."""
 
+import hashlib
+import json
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePath
 from typing import Literal
 
+from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeError, FloeRunError
 from floe.glob import MatchOptions, Pattern, PatternError, glob
 from floe.storage.paths import normalize_local_path, parse_s3_uri
@@ -300,3 +304,9 @@ def localize_input(
     if temp_dir is None:
         raise FloeRunError(f"temp_dir required to download {file.source_uri}")
     return LocalInputFile(file, client.download(file.source_uri, temp_dir), True)
+
+
+def input_hash(entity: EntityConfig, files: Sequence[InputFile]) -> str:
+    """`floe.input_hash`: the entity and its claimed files with size and mtime (ADR "Retry guard"; Rust has none)."""
+    claimed = sorted([f.source_uri, f.source_size, f.source_mtime] for f in files)
+    return hashlib.sha256(json.dumps([entity.id, claimed]).encode()).hexdigest()

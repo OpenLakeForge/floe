@@ -6,10 +6,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from itertools import chain
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
-from pyiceberg.table import Table
 
 from floe.checks.cast import CAST_ERROR_MESSAGE, cast_column
 from floe.checks.mismatch import (
@@ -36,9 +35,6 @@ from floe.checks.unique import (
 )
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
-from floe.iceberg.sink import (
-    IcebergTarget,
-)
 from floe.pii import apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.csv import RAGGED_MESSAGE, read_csv
@@ -55,6 +51,11 @@ from floe.write.outputs import (
     write_rejected,
     write_rejected_parquet,
 )
+
+if TYPE_CHECKING:
+    from pyiceberg.table import Table
+
+    from floe.iceberg.sink import IcebergTarget
 
 Chunks = Iterator[tuple[int, pl.DataFrame, pl.Series | None]]  # fmt: skip  # offset, frame, ragged rows
 
@@ -193,7 +194,7 @@ class Plan:
         ""  # of the claimed files; names the rejected parts so a retry overwrites them
     )
     rejected: tuple[str, StorageClient] | None = None  # `sink.rejected` URI and client
-    table: Table | None = (
+    table: "Table | None" = (
         None  # the Iceberg target whose keys seed the tracker (append)
     )
     history: pl.LazyFrame | None = (
@@ -204,7 +205,7 @@ class Plan:
     )
     derived: dict[str, list[pl.Expr]] = field(default_factory=dict[str, list[pl.Expr]])  # D28: by input URI  # fmt: skip
     root: str | None = None  # D29: the source root, when `source.partitioning` is set
-    rejected_table: IcebergTarget | None = None  # an Iceberg `sink.rejected`
+    rejected_table: "IcebergTarget | None" = None  # an Iceberg `sink.rejected`
     rejected_spills: list[tuple[Path, str]] = field(default_factory=list[tuple[Path, str]])  # fmt: skip  # its spilled chunks with their source file; one commit writes them all
 
 

@@ -51,9 +51,10 @@ from floe.config.parse import parse_config
 from floe.config.project import RootConfig
 from floe.config.storage import CatalogDefinition
 from floe.errors import FloeConfigError, FloeRunError
+from floe.iceberg import write as write_module
 from floe.iceberg.catalog import open_catalog, open_duckdb
 from floe.iceberg.merge import MergeResult
-from floe.iceberg.sink import input_hash, partition_fields
+from floe.iceberg.sink import partition_fields
 from floe.iceberg.write import INPUT_HASH, RUN_ID, find_committed, write_result
 from floe.read.csv import read_csv
 from floe.run import entity as entity_module  # `floe.run` is the public function
@@ -62,7 +63,7 @@ from floe.run import incremental as incremental_module
 from floe.run import run as run_project
 from floe.run.entity import run_entity
 from floe.run.events import NO_EVENTS, Emitter
-from floe.storage.inputs import InputFile
+from floe.storage.inputs import InputFile, input_hash
 
 CONFIG = """\
 version: "0.3"
@@ -413,6 +414,14 @@ def test_a_merge_without_the_merge_extra_names_it(tmp_path: Path, catalog: Local
     assert str(err.value) == "entity.name=Orders sink.write_mode=merge_scd1 needs the floe[merge] extra: pip install 'floe-python[merge]'"  # fmt: skip
 
 
+def test_an_iceberg_run_without_the_iceberg_extra_names_it(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """A manifest run skips validation, so the run itself names the missing extra (the #1175 gap)."""
+    monkeypatch.setitem(sys.modules, "pyiceberg", None)
+    with pytest.raises(FloeConfigError) as err:
+        run(tmp_path, "id,name\n1,a\n")
+    assert str(err.value) == "entity.name=Orders sink.accepted.format=iceberg needs the floe[iceberg] extra: pip install 'floe-python[iceberg]'"  # fmt: skip
+
+
 def test_merge_scd1_upserts_and_reports_the_counts(tmp_path: Path, catalog: LocalCatalog, merges: Merges) -> None:  # fmt: skip
     ignore = "merge: {ignore_columns: [name]}"
     first = run(tmp_path, "id,name\n1,a\n2,b\n", mode="merge_scd1", partition=ignore)
@@ -629,10 +638,10 @@ def test_a_retry_skips_the_batch_a_dead_run_committed(tmp_path: Path, catalog: L
     def broken(*_: object) -> None:
         raise FloeRunError("catalog down")
 
-    monkeypatch.setattr(incremental_module, "find_committed", broken)
+    monkeypatch.setattr(write_module, "find_committed", broken)
     with pytest.raises(FloeRunError, match="catalog down"):
         go("failed-retry")  # its release puts the dead run's claims back
-    monkeypatch.setattr(incremental_module, "find_committed", find_committed)
+    monkeypatch.setattr(write_module, "find_committed", find_committed)
     report = go("retry")
     assert rows(catalog) == [(1, "a"), (2, "b")]
     assert not (tmp_path / "out" / "rejected").exists()
@@ -704,13 +713,13 @@ def test_find_committed_walks_back_to_the_claim(tmp_path: Path, catalog: LocalCa
 
 def test_a_commit_conflict_that_finds_the_batch_committed_reports_the_files_skipped(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     """#920: `write_table` says another run committed the batch; the files are reported like the guard does."""
-    real = entity_module.write_iceberg
+    real = sink_module.write_iceberg
 
     def conflicted(*args: Any) -> Any:
         result, *rest = real(*args)
         return replace(result, files_written=0, already_committed=True), *rest
 
-    monkeypatch.setattr(entity_module, "write_iceberg", conflicted)
+    monkeypatch.setattr(sink_module, "write_iceberg", conflicted)
     (file,) = run(tmp_path, "id,name\n1,a\n", mode="append")["files"]
     assert (file["status"], file["skip_reason"]) == ("skipped", "already_committed")
 
