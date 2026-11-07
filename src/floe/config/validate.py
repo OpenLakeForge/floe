@@ -330,6 +330,9 @@ def _check_iceberg(
             entity,
             f"sink.{kind}.iceberg is only supported for sink.{kind}.format=iceberg",
         )
+    require(
+        "iceberg", "pyiceberg", f"entity.name={entity.name} sink.{kind}.format=iceberg"
+    )
     catalogs = config.catalogs
     name = (
         iceberg.catalog

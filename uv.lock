@@ -456,8 +456,6 @@ dependencies = [
     { name = "polars" },
     { name = "pyarrow" },
     { name = "pydantic" },
-    { name = "pyiceberg" },
-    { name = "pyiceberg-core" },
     { name = "pyyaml" },
 ]
 
@@ -466,6 +464,12 @@ all = [
     { name = "boto3" },
     { name = "duckdb" },
     { name = "fastexcel" },
+    { name = "pyiceberg" },
+    { name = "pyiceberg-core" },
+]
+iceberg = [
+    { name = "pyiceberg" },
+    { name = "pyiceberg-core" },
 ]
 merge = [
     { name = "duckdb" },
@@ -497,15 +501,15 @@ requires-dist = [
     { name = "boto3", marker = "extra == 's3'", specifier = ">=1.36.0" },
     { name = "duckdb", marker = "extra == 'merge'", specifier = "==1.5.6" },
     { name = "fastexcel", marker = "extra == 'xlsx'", specifier = ">=0.21.0" },
-    { name = "floe-python", extras = ["s3", "merge", "xlsx"], marker = "extra == 'all'" },
+    { name = "floe-python", extras = ["s3", "iceberg", "merge", "xlsx"], marker = "extra == 'all'" },
     { name = "polars", specifier = ">=2.0.0" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pydantic", specifier = ">=2.14.1" },
-    { name = "pyiceberg", specifier = ">=0.12.0" },
-    { name = "pyiceberg-core", specifier = ">=0.10.1" },
+    { name = "pyiceberg", marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
+    { name = "pyiceberg-core", marker = "extra == 'iceberg'", specifier = ">=0.10.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]
-provides-extras = ["s3", "merge", "xlsx", "all"]
+provides-extras = ["s3", "iceberg", "merge", "xlsx", "all"]
 
 [package.metadata.requires-dev]
 conformance = [{ name = "pyarrow" }]

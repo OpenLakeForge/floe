@@ -3,10 +3,8 @@
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingTypeStubs=false
 # ^ pyarrow ships no type stubs
 
-import hashlib
-import json
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
@@ -44,7 +42,6 @@ from floe.iceberg.write import (
     parquet_properties,
     write_table,
 )
-from floe.storage.inputs import InputFile
 from floe.storage.resolve import resolve_path
 
 
@@ -109,12 +106,6 @@ def existing_table(target: IcebergTarget) -> Table | None:
             return None
     with run_error("rest catalog load_table failed"):
         return catalog.load_table(identifier)
-
-
-def input_hash(entity: EntityConfig, files: Sequence[InputFile]) -> str:
-    """`floe.input_hash`: the entity and its claimed files with size and mtime (ADR "Retry guard"; Rust has none)."""
-    claimed = sorted([f.source_uri, f.source_size, f.source_mtime] for f in files)
-    return hashlib.sha256(json.dumps([entity.id, claimed]).encode()).hexdigest()
 
 
 _WIDER: dict[pl.DataType, pl.DataType] = {pl.UInt8(): pl.Int32(), pl.UInt16(): pl.Int32(), pl.UInt32(): pl.Int64()}  # fmt: skip

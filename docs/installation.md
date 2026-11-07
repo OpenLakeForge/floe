@@ -7,7 +7,7 @@ unrelated project) that installs the `floe` command and the
 ## pip (all platforms)
 
 Requires Python 3.11 or later. Install into its own virtual environment: Floe pins `duckdb` (the `merge` extra) and
-needs recent `polars`, `pyarrow` and `pyiceberg` releases, which can conflict with other tools
+needs recent `polars`, `pyarrow` and (the `iceberg` extra) `pyiceberg` releases, which can conflict with other tools
 in a shared environment.
 
 ```bash
@@ -29,6 +29,7 @@ The core install reads and validates local files. Optional backends are extras:
 | Extra | Needed for |
 |---|---|
 | `s3` | `s3` storages, and `s3://` config, profile and manifest locations |
+| `iceberg` | `sink.accepted.format: iceberg`, `sink.rejected.format: iceberg` and `floe maintain` |
 | `merge` | `sink.write_mode: merge_scd1` and `merge_scd2` and `floe maintain --compact` |
 | `xlsx` | `source.format: xlsx` |
 | `all` | every extra above |

@@ -9,10 +9,9 @@ from dataclasses import dataclass, field, replace
 from functools import partial
 from itertools import chain
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
-from pyiceberg.table import Table
 
 from floe.checks.cast import CAST_ERROR_MESSAGE, cast_column
 from floe.checks.mismatch import (
@@ -46,15 +45,7 @@ from floe.checks.unique import (
 from floe.config.storage import CatalogsConfig, StoragesConfig
 from floe.config.types import EntityConfig, with_partition_columns
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
-from floe.iceberg.sink import (
-    IcebergTarget,
-    existing_table,
-    input_hash,
-    resolve_target,
-    write_iceberg,
-    write_rejected_iceberg,
-)
-from floe.iceberg.unique import cache_table_keys
+from floe.extras import require
 from floe.pii import apply_pii_masking
 from floe.read.avro import read_avro
 from floe.read.csv import RAGGED_MESSAGE, read_csv
@@ -70,6 +61,7 @@ from floe.storage.archive import archive_input_file
 from floe.storage.inputs import (
     InputFile,
     ResolvedInputs,
+    input_hash,
 )
 from floe.storage.local import LocalClient
 from floe.storage.partitioning import (
@@ -88,6 +80,11 @@ from floe.write.outputs import (
     write_rejected,
     write_rejected_parquet,
 )
+
+if TYPE_CHECKING:
+    from pyiceberg.table import Table
+
+    from floe.iceberg.sink import IcebergTarget
 
 Chunks = Iterator[tuple[int, pl.DataFrame, pl.Series | None]]  # fmt: skip  # offset, frame, ragged rows
 
@@ -248,7 +245,7 @@ class _Plan:
         ""  # of the claimed files; names the rejected parts so a retry overwrites them
     )
     rejected: tuple[str, StorageClient] | None = None  # `sink.rejected` URI and client
-    table: Table | None = (
+    table: "Table | None" = (
         None  # the Iceberg target whose keys seed the tracker (append)
     )
     history: pl.LazyFrame | None = (
@@ -259,7 +256,7 @@ class _Plan:
     )
     derived: dict[str, list[pl.Expr]] = field(default_factory=dict[str, list[pl.Expr]])  # D28: by input URI  # fmt: skip
     root: str | None = None  # D29: the source root, when `source.partitioning` is set
-    rejected_table: IcebergTarget | None = None  # an Iceberg `sink.rejected`
+    rejected_table: "IcebergTarget | None" = None  # an Iceberg `sink.rejected`
     rejected_spills: list[tuple[Path, str]] = field(default_factory=list[tuple[Path, str]])  # fmt: skip  # its spilled chunks with their source file; one commit writes them all
 
 
@@ -511,6 +508,8 @@ def _key_cache(plan: _Plan, client: StorageClient, base: str, temp: Path) -> pl.
     cache = temp / "unique-keys"
     cache.mkdir()
     if plan.table is not None:
+        from floe.iceberg.unique import cache_table_keys
+
         cache_table_keys(plan.table, plan.tracker.keys, plan.out_map, cache / "table.parquet")  # fmt: skip
     else:
         columns = sorted({plan.out_map.get(n, n) for k in plan.tracker.keys for n in k})  # the sink holds output names  # fmt: skip
@@ -611,8 +610,23 @@ def _run_entity(
     iceberg = sink.accepted.format == "iceberg"
     who = f"entity.name={entity.name}"
     source_uri, client = resolve_source(entity, config_dir, storages)
-    target = resolve_target(storages, catalogs, config_dir, entity) if iceberg else None
-    rejected_table = resolve_target(storages, catalogs, config_dir, entity, "rejected") if sink.rejected and sink.rejected.format == "iceberg" else None  # fmt: skip
+    rejected_iceberg = bool(sink.rejected and sink.rejected.format == "iceberg")
+    target = rejected_table = None
+    if iceberg or rejected_iceberg:
+        # a manifest run skips validation: name the missing extra before the import fails
+        require(
+            "iceberg",
+            "pyiceberg",
+            f"{who} sink.{'accepted' if iceberg else 'rejected'}.format=iceberg",
+        )
+        from floe.iceberg.sink import (
+            resolve_target,
+        )  # lazy: PyIceberg is the optional iceberg extra
+
+        target = (
+            resolve_target(storages, catalogs, config_dir, entity) if iceberg else None
+        )
+        rejected_table = resolve_target(storages, catalogs, config_dir, entity, "rejected") if rejected_iceberg else None  # fmt: skip
     if target and rejected_table and (target.catalog, target.namespace, target.table) == (rejected_table.catalog, rejected_table.namespace, rejected_table.table):  # fmt: skip
         raise FloeConfigError(
             f"{who} sink.rejected.iceberg must not write to the accepted table"
@@ -655,6 +669,8 @@ def _run_entity(
         )  # the tracker's check name
     accepted_client = storage_client(accepted)
     if sink.write_mode == "append" and target is not None:
+        from floe.iceberg.sink import existing_table
+
         plan.table = existing_table(target)  # fmt: skip  # Rust `seed_unique_tracker`, and the retry guard
 
     def source() -> ResolvedInputs:
@@ -743,6 +759,8 @@ def _run_entity(
                 if plan.rejected_spills:
                     assert plan.rejected_table is not None
                     frames = (_output(plan, _unspill(p)).with_columns(_source_columns(plan, uri)) for p, uri in plan.rejected_spills)  # fmt: skip
+                    from floe.iceberg.sink import write_rejected_iceberg
+
                     with _timed(plan.spent, "rejected_write_ms"):
                         write_rejected_iceberg(entity, plan.rejected_table, frames, [plan.out_map.get(n, n) for n in names], emit.run_id, input_hash(entity, complete))  # fmt: skip
         except Exception as err:
@@ -770,6 +788,8 @@ def _run_entity(
             if target is None:
                 write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
             else:
+                from floe.iceberg.sink import write_iceberg
+
                 outputs = [plan.out_map.get(n, n) for n in names]
                 result, table, merge, added = write_iceberg(configured, target, frames, outputs, sink.write_mode, emit.run_id, lambda: input_hash(entity, complete))  # fmt: skip
                 write = AcceptedWrite(result.files_written, result.file_paths, result.total_bytes_written,

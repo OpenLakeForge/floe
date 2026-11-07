@@ -7,21 +7,20 @@ import time
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
-
-from pyiceberg.table import Table
 
 from floe.config.project import RootConfig
 from floe.config.storage import StorageDefinition
 from floe.config.validate import validate_config
 from floe.errors import FloeConfigError, FloeRunError
 from floe.extras import require
-from floe.iceberg.catalog import open_duckdb, run_error
-from floe.iceberg.sink import existing_table, resolve_target
 from floe.run import select_entities
 from floe.storage.paths import normalize_local_path, parse_s3_uri
 from floe.storage.s3 import S3Client
+
+if TYPE_CHECKING:
+    from pyiceberg.table import Table
 
 # the retention floor (#545 decision 4): the retry guard reads snapshot summaries this recent
 FLOOR_DAYS, FLOOR_SNAPSHOTS = 7, 10
@@ -30,11 +29,13 @@ ORPHAN_DELAY_DAYS, ORPHAN_FLOOR_DAYS = 3, 1
 DAY = 86_400
 
 
-def expire_snapshots(table: Table, older_than_days: int, retain_last: int, dry_run: bool) -> tuple[int, int]:  # fmt: skip
+def expire_snapshots(table: "Table", older_than_days: int, retain_last: int, dry_run: bool) -> tuple[int, int]:  # fmt: skip
     """Expire snapshots older than the window and outside the newest `retain_last`; returns (expired, kept).
 
     Metadata only: no file is deleted. Branch and tag heads are never expired.
     """
+    from floe.iceberg.catalog import run_error
+
     cutoff = (time.time() - older_than_days * DAY) * 1000
     newest = sorted(table.metadata.snapshots, key=lambda s: s.timestamp_ms, reverse=True)  # fmt: skip
     protected = {ref.snapshot_id for ref in table.metadata.refs.values()}
@@ -69,8 +70,10 @@ def _list(location: str, storage: StorageDefinition | None) -> list[tuple[str, f
     return [(f"file://{p}", (st := p.stat()).st_mtime, st.st_size) for p in files]
 
 
-def _reachable(table: Table) -> set[str]:
+def _reachable(table: "Table") -> set[str]:
     """Every file the table's retained metadata references."""
+    from floe.iceberg.catalog import run_error
+
     m, inspect = table.metadata, table.inspect
     paths = [table.metadata_location, *(e.metadata_file for e in m.metadata_log), *(s.manifest_list for s in m.snapshots)]  # fmt: skip
     paths += [s.statistics_path for s in m.statistics] + [s.statistics_path for s in m.partition_statistics]  # fmt: skip
@@ -79,8 +82,10 @@ def _reachable(table: Table) -> set[str]:
     return {_key(p) for p in paths}
 
 
-def remove_orphans(table: Table, storage: StorageDefinition | None, delay_days: int, dry_run: bool) -> list[tuple[str, int]]:  # fmt: skip
+def remove_orphans(table: "Table", storage: StorageDefinition | None, delay_days: int, dry_run: bool) -> list[tuple[str, int]]:  # fmt: skip
     """Delete the objects under the table location that no retained metadata references and older than the delay."""
+    from floe.iceberg.catalog import run_error
+
     listed = _list(table.location(), storage)
     if _key(table.metadata_location) not in {_key(uri) for uri, _, _ in listed}:
         # a listing that misses the current metadata would make every file look orphaned
@@ -120,6 +125,14 @@ def maintain(path: Path, root: RootConfig, entities: Sequence[str], older_than_d
     for entity in select_entities(root, entities):
         if entity.sink.accepted.format != "iceberg":
             continue
+        require(
+            "iceberg",
+            "pyiceberg",
+            f"entity.name={entity.name} sink.accepted.format=iceberg",
+        )
+        from floe.iceberg.catalog import open_duckdb
+        from floe.iceberg.sink import existing_table, resolve_target
+
         target = resolve_target(root.storages, root.catalogs, config_dir, entity)
         table = existing_table(target)
         compacted = None
