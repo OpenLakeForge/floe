@@ -14,9 +14,9 @@ floe = pytest.importorskip("floe")
 if not hasattr(floe, "build_manifest"):
     pytest.skip("needs the Floe Python core", allow_module_level=True)
 
-from floe_dagster.assets import load_floe_assets  # noqa: E402 -- after the skip
-from floe_dagster.definitions import build_definitions, build_job_run_config_from_manifest  # noqa: E402
-from floe_dagster.runner import InProcessRunner, LocalRunner, RunResult  # noqa: E402
+from floe_dagster.assets import load_floe_assets
+from floe_dagster.definitions import build_definitions, build_job_run_config_from_manifest
+from floe_dagster.runner import InProcessRunner, LocalRunner, RunResult
 
 EXAMPLE = Path(__file__).parents[1] / "example" / "config.yml"
 PROFILE = """\
@@ -64,7 +64,7 @@ def test_config_mode_matches_manifest_mode_but_runs_with_config_and_profile(path
     assert manifest_calls == [["floe", "run", "--manifest", manifest, *tail, e] for e in ("invoices", "orders")]
     assert config_calls == [["floe", "run", "-c", config, "-p", profile, *tail, e] for e in ("invoices", "orders")]
 
-    jobs = lambda defs: sorted(j.name for j in defs.resolve_all_job_defs())  # noqa: E731
+    jobs = lambda defs: sorted(j.name for j in defs.resolve_all_job_defs())
     runner = LocalRunner()
     assert jobs(build_definitions(config_path=config, profile_path=profile, runner=runner)) == jobs(
         build_definitions(manifest_path=manifest, runner=runner)
@@ -80,7 +80,7 @@ def test_manifest_path_and_config_path_are_exclusive(paths) -> None:
 
 
 def test_in_process_runner_runs_from_the_config_and_profile(paths) -> None:
-    config, profile, _ = paths
+    config, _, _ = paths
     calls: list[tuple[str, dict[str, object]]] = []
 
     class Outcome:
@@ -104,7 +104,9 @@ def test_full_refresh_run_tag_adds_the_flag_to_kubernetes_job_runs(paths) -> Non
     tail = ["--log-format", "json", "--quiet", "--entities"]
     _, tagged = _k8s_args(tags={"floe/full_refresh": "true"}, manifest_path=manifest)
     _, untagged = _k8s_args(manifest_path=manifest)
-    assert tagged == [["floe", "run", "--manifest", manifest, *tail, e, "--full-refresh"] for e in ("invoices", "orders")]
+    assert tagged == [
+        ["floe", "run", "--manifest", manifest, *tail, e, "--full-refresh"] for e in ("invoices", "orders")
+    ]
     assert untagged == [["floe", "run", "--manifest", manifest, *tail, e] for e in ("invoices", "orders")]
 
 

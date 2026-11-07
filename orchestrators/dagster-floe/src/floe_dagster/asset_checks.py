@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 from dagster import AssetCheckResult, AssetCheckSeverity, AssetCheckSpec
 
@@ -109,15 +110,10 @@ def _build_summary_fallback_results(ctx: FloeCheckContext) -> list[AssetCheckRes
             elif file_status_warn:
                 passed = False
                 severity = AssetCheckSeverity.WARN
-            description = (
-                "Floe file status check derived from summary only "
-                "(entity report unavailable)."
-            )
+            description = "Floe file status check derived from summary only (entity report unavailable)."
         elif run_failed:
             passed = False
-            description = (
-                "Floe run status indicates failure/abort; detailed entity report unavailable."
-            )
+            description = "Floe run status indicates failure/abort; detailed entity report unavailable."
 
         results.append(
             AssetCheckResult(
@@ -146,9 +142,7 @@ def _make_rule_check_result(
 
     passed = True
     severity = AssetCheckSeverity.ERROR
-    if ctx.run_status in _TERMINAL_RUN_STATUSES:
-        passed = False
-    elif reject_violations > 0:
+    if ctx.run_status in _TERMINAL_RUN_STATUSES or reject_violations > 0:
         passed = False
     elif warn_violations > 0:
         passed = False
@@ -169,8 +163,7 @@ def _make_rule_check_result(
         metadata["top_columns"] = top_columns
 
     description = (
-        f"Floe {rule_name} violations={total_violations} "
-        f"(reject={reject_violations}, warn={warn_violations})."
+        f"Floe {rule_name} violations={total_violations} (reject={reject_violations}, warn={warn_violations})."
     )
     if ctx.run_status in _TERMINAL_RUN_STATUSES:
         description = f"Floe run status is {ctx.run_status}; treating {rule_name} check as failed."
@@ -195,9 +188,7 @@ def _make_schema_check_result(
 
     passed = True
     severity = AssetCheckSeverity.ERROR
-    if ctx.run_status in _TERMINAL_RUN_STATUSES:
-        passed = False
-    elif rejected_files > 0:
+    if ctx.run_status in _TERMINAL_RUN_STATUSES or rejected_files > 0:
         passed = False
     elif files_impacted > 0:
         passed = False
@@ -241,18 +232,12 @@ def _make_file_status_check_result(
     if not isinstance(counts, Mapping):
         counts = {}
 
-    failed_file_count = sum(
-        count for status, count in counts.items() if _as_str(status) in _FAIL_FILE_STATUSES
-    )
-    warn_file_count = sum(
-        count for status, count in counts.items() if _as_str(status) in _WARN_FILE_STATUSES
-    )
+    failed_file_count = sum(count for status, count in counts.items() if _as_str(status) in _FAIL_FILE_STATUSES)
+    warn_file_count = sum(count for status, count in counts.items() if _as_str(status) in _WARN_FILE_STATUSES)
 
     passed = True
     severity = AssetCheckSeverity.ERROR
-    if ctx.run_status in _TERMINAL_RUN_STATUSES:
-        passed = False
-    elif failed_file_count > 0:
+    if ctx.run_status in _TERMINAL_RUN_STATUSES or failed_file_count > 0:
         passed = False
     elif warn_file_count > 0:
         passed = False
@@ -338,8 +323,7 @@ def _summarize_rules(files: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, 
         column_counts = bucket.pop("column_counts", Counter())
         if isinstance(column_counts, Counter):
             bucket["top_columns"] = [
-                {"column": name, "violations": count}
-                for name, count in column_counts.most_common(3)
+                {"column": name, "violations": count} for name, count in column_counts.most_common(3)
             ]
         else:
             bucket["top_columns"] = []
@@ -365,8 +349,7 @@ def _summarize_schema_mismatches(files: Iterable[Mapping[str, Any]]) -> dict[str
         message = _as_str(error.get("message"))
 
         has_schema_mismatch = bool(
-            (error_rule == "schema_mismatch")
-            or (action and action != "none" and (any(missing) or any(extra)))
+            (error_rule == "schema_mismatch") or (action and action != "none" and (any(missing) or any(extra)))
         )
         if not has_schema_mismatch:
             continue

@@ -9,7 +9,7 @@ from dagster import AssetCheckSeverity, materialize
 from floe_dagster.asset_checks import FLOE_CHECK_NAMES, build_asset_check_results
 from floe_dagster.assets import build_floe_asset_defs
 from floe_dagster.events import FloeRunFinished
-from floe_dagster.runner import RunResult, Runner
+from floe_dagster.runner import Runner, RunResult
 
 
 class _StaticRunner(Runner):
@@ -281,5 +281,5 @@ def _meta_value(value: Any) -> Any:
         if hasattr(value, attr):
             return getattr(value, attr)
     if hasattr(value, "data"):
-        return getattr(value, "data")
+        return value.data
     return value

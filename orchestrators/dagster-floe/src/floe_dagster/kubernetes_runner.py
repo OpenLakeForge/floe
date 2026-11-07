@@ -11,7 +11,7 @@ from typing import Any
 from .k8s_status import (
     STATUS_CANCELED,
     STATUS_FAILED,
-    STATUS_RUNNING,
+    STATUS_RUNNING,  # noqa: F401 -- re-exported, imported from here by the tests
     STATUS_SUBMITTED,
     STATUS_SUCCEEDED,
     STATUS_TIMEOUT,
@@ -198,9 +198,7 @@ def build_k8s_job_spec(
     # the defaults win: `floe-job` is how the runner finds the pod again
     run_label = {_RUN_ID_LABEL: dagster_run_id} if dagster_run_id and _LABEL_VALUE.fullmatch(dagster_run_id) else {}
     job_labels = {"app": "floe-runner", **run_label}
-    pod_metadata: dict[str, Any] = {
-        "labels": {**(runner.labels or {}), **job_labels, "floe-job": job_name}
-    }
+    pod_metadata: dict[str, Any] = {"labels": {**(runner.labels or {}), **job_labels, "floe-job": job_name}}
     if runner.annotations:
         pod_metadata["annotations"] = runner.annotations
 

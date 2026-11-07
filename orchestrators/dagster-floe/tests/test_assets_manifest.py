@@ -1,10 +1,9 @@
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from dagster import AssetKey, AssetOut, Definitions, multi_asset
 
 from floe_dagster.assets import (
@@ -15,7 +14,7 @@ from floe_dagster.assets import (
 )
 from floe_dagster.definitions import build_definitions, build_definitions_from_manifest_paths
 from floe_dagster.manifest import ManifestRunnerDefinition
-from floe_dagster.runner import LocalRunner, RunResult, Runner
+from floe_dagster.runner import LocalRunner, Runner, RunResult
 
 
 class _NoopRunner(Runner):
@@ -39,6 +38,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "manifest.json"
 
 
 # ── load-time: manifest parsing ───────────────────────────────────────────────
+
 
 def test_no_runner_manifest_loads_and_defaults_to_local() -> None:
     """Entity with no explicit runner → falls back to manifest default (local_process)."""
@@ -72,6 +72,7 @@ def test_kubernetes_runner_manifest_loads_successfully() -> None:
 
 # ── execution-time: LocalRunner routing ───────────────────────────────────────
 
+
 def test_local_runner_accepts_local_process_definition() -> None:
     """LocalRunner.run_floe_entity proceeds when runner_definition.runner_type is local_process."""
     runner = LocalRunner(floe_bin="floe")
@@ -88,9 +89,7 @@ def test_local_runner_accepts_local_process_definition() -> None:
         poll_interval_seconds=None,
         secrets=None,
     )
-    fake_result = subprocess.CompletedProcess(
-        args=[], returncode=0, stdout="", stderr=""
-    )
+    fake_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
     with patch("subprocess.run", return_value=fake_result):
         result = runner.run_floe_entity(
             config_uri="local:///tmp/config.yml",
@@ -128,6 +127,7 @@ def test_local_runner_raises_not_implemented_for_unknown_runner() -> None:
 
 
 # ── multi-asset structure ──────────────────────────────────────────────────────
+
 
 def _get_asset_def(manifest_path, entity_name):
     asset_defs, _source_assets, entities = build_floe_asset_defs(
@@ -224,6 +224,7 @@ def test_multi_asset_source_dep_declared() -> None:
 
 # ── SourceAsset registration ───────────────────────────────────────────────────
 
+
 def test_build_floe_asset_defs_returns_source_assets() -> None:
     """build_floe_asset_defs returns a non-empty list of SourceAsset objects."""
     _asset_defs, source_assets, _entities = build_floe_asset_defs(
@@ -290,9 +291,7 @@ def _crm_manifest(tmp_path, project: str, uri: str | None) -> Path:
     for entity in payload["entities"]:
         entity["source"]["ref"] = "crm"
         entity["asset_key"] = [project, *entity["asset_key"]]
-    payload["sources"] = [
-        {"name": "crm", "format": "csv", "uri": uri, "entities": ["employees", "orders"]}
-    ]
+    payload["sources"] = [{"name": "crm", "format": "csv", "uri": uri, "entities": ["employees", "orders"]}]
     manifest_path = tmp_path / f"{project}.manifest.json"
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
     return manifest_path
@@ -302,9 +301,7 @@ def test_entities_sharing_a_named_source_depend_on_one_source_asset(tmp_path) ->
     """D20: entities with the same source.ref share the asset of that `sources` entry."""
     manifest_path = _crm_manifest(tmp_path, "sales", "s3://b/crm")
 
-    asset_defs, source_assets, _entities = build_floe_asset_defs(
-        manifest_path=str(manifest_path), runner=_NoopRunner()
-    )
+    asset_defs, source_assets, _entities = build_floe_asset_defs(manifest_path=str(manifest_path), runner=_NoopRunner())
     shared = AssetKey(["sources", "sales", "crm"])
     assert [sa.key for sa in source_assets] == [shared]
     assert source_assets[0].metadata["dagster/uri"].url == "s3://b/crm"
@@ -425,6 +422,7 @@ def test_load_floe_assets_register_source_assets_false() -> None:
 
 # ── rejected metadata helpers ─────────────────────────────────────────────────
 
+
 def test_count_files_with_rejections_empty_report() -> None:
     assert _count_files_with_rejections({}) == 0
 
@@ -444,35 +442,40 @@ def test_dominant_rejection_reason_empty_report() -> None:
 
 
 def test_dominant_rejection_reason_no_violations() -> None:
-    report = {
-        "files": [{"validation": {"rules": [{"rule": "not_null", "violations": 0}]}}]
-    }
+    report = {"files": [{"validation": {"rules": [{"rule": "not_null", "violations": 0}]}}]}
     assert _dominant_rejection_reason(report) is None
 
 
 def test_dominant_rejection_reason_single_rule() -> None:
-    report = {
-        "files": [{"validation": {"rules": [{"rule": "cast_error", "violations": 5}]}}]
-    }
+    report = {"files": [{"validation": {"rules": [{"rule": "cast_error", "violations": 5}]}}]}
     assert _dominant_rejection_reason(report) == "cast_error"
 
 
 def test_dominant_rejection_reason_picks_highest_count() -> None:
     report = {
         "files": [
-            {"validation": {"rules": [
-                {"rule": "not_null", "violations": 2},
-                {"rule": "cast_error", "violations": 7},
-            ]}},
-            {"validation": {"rules": [
-                {"rule": "not_null", "violations": 3},
-            ]}},
+            {
+                "validation": {
+                    "rules": [
+                        {"rule": "not_null", "violations": 2},
+                        {"rule": "cast_error", "violations": 7},
+                    ]
+                }
+            },
+            {
+                "validation": {
+                    "rules": [
+                        {"rule": "not_null", "violations": 3},
+                    ]
+                }
+            },
         ]
     }
     assert _dominant_rejection_reason(report) == "cast_error"
 
 
 # ── defensive: malformed report payloads ─────────────────────────────────────
+
 
 def test_count_files_with_rejections_files_is_null() -> None:
     assert _count_files_with_rejections({"files": None}) == 0
@@ -517,6 +520,7 @@ def test_dominant_rejection_reason_non_dict_rule_element() -> None:
 
 # ── schema-drift / type-coercion edge cases ───────────────────────────────────
 
+
 def test_count_files_with_rejections_string_count() -> None:
     """rejected_count as string (schema drift) is coerced to int."""
     report = {"files": [{"rejected_count": "2"}, {"rejected_count": "0"}]}
@@ -536,11 +540,13 @@ def test_build_floe_asset_defs_raises_on_intra_manifest_source_key_collision(tmp
     fixture = Path(__file__).parent / "fixtures" / "manifest.json"
     payload = json.loads(fixture.read_text(encoding="utf-8"))
     employees = payload["entities"][0]
-    payload["entities"].append({
-        **employees,
-        "name": "employees_source",
-        "asset_key": employees["asset_key"][:-1] + [employees["asset_key"][-1] + "_source"],
-    })
+    payload["entities"].append(
+        {
+            **employees,
+            "name": "employees_source",
+            "asset_key": employees["asset_key"][:-1] + [employees["asset_key"][-1] + "_source"],
+        }
+    )
     manifest_path = tmp_path / "manifest.collision.json"
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate asset key"):
@@ -549,6 +555,7 @@ def test_build_floe_asset_defs_raises_on_intra_manifest_source_key_collision(tmp
 
 # ── domains filter and op names ────────────────────────────────────────────────
 
+
 def _two_domain_manifest(tmp_path) -> Path:
     """sales.accounts and finance.accounts share an entity name across domains."""
     import json
@@ -556,8 +563,13 @@ def _two_domain_manifest(tmp_path) -> Path:
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     employees = payload["entities"][0]
     payload["entities"] = [
-        {**employees, "name": f"{domain}.accounts", "domain": domain,
-         "group_name": domain, "asset_key": [domain, "accounts"]}
+        {
+            **employees,
+            "name": f"{domain}.accounts",
+            "domain": domain,
+            "group_name": domain,
+            "asset_key": [domain, "accounts"],
+        }
         for domain in ("sales", "finance")
     ]
     manifest_path = tmp_path / "manifest.domains.json"
@@ -569,9 +581,7 @@ def test_same_entity_name_in_two_domains_loads(tmp_path) -> None:
     manifest_path = str(_two_domain_manifest(tmp_path))
     # Building the job is where Dagster rejects duplicate op names.
     load_floe_assets(manifest_path=manifest_path, runner=_NoopRunner()).resolve_implicit_global_asset_job_def()
-    asset_defs, _source_assets, _entities = build_floe_asset_defs(
-        manifest_path=manifest_path, runner=_NoopRunner()
-    )
+    asset_defs, _source_assets, _entities = build_floe_asset_defs(manifest_path=manifest_path, runner=_NoopRunner())
     assert sorted(a.node_def.name for a in asset_defs) == ["finance__accounts", "sales__accounts"]
 
 
@@ -585,9 +595,7 @@ def test_domains_filter_keeps_only_requested_domain(tmp_path) -> None:
 
 def test_domains_filter_unknown_domain_raises(tmp_path) -> None:
     with pytest.raises(ValueError, match="unknown domain"):
-        load_floe_assets(
-            manifest_path=str(_two_domain_manifest(tmp_path)), runner=_NoopRunner(), domains=["hr"]
-        )
+        load_floe_assets(manifest_path=str(_two_domain_manifest(tmp_path)), runner=_NoopRunner(), domains=["hr"])
 
 
 def test_op_name_unchanged_without_domain(tmp_path) -> None:
@@ -615,6 +623,7 @@ def test_qualified_op_name_colliding_with_domainless_name_raises(tmp_path) -> No
 
 
 # ── floe/table concurrency tag (#924) ──────────────────────────────────────────
+
 
 def _iceberg_manifest(tmp_path, entities, catalogs=None):
     data = json.loads(FIXTURE.read_text())
@@ -675,7 +684,10 @@ def test_glue_table_tag_uses_the_database_the_run_writes(tmp_path) -> None:
     glue = {"name": "glue", "type_config": {"type": "glue", "region": "eu-west-1", "database": "sales_silver"}}
     path = _iceberg_manifest(
         tmp_path,
-        [("a", "sales", {"namespace": "sales", "table": "orders"}), ("b", "other", {"namespace": "other", "table": "orders"})],
+        [
+            ("a", "sales", {"namespace": "sales", "table": "orders"}),
+            ("b", "other", {"namespace": "other", "table": "orders"}),
+        ],
         catalogs={"default": "glue", "definitions": [glue]},
     )
     assert set(_table_tags(path).values()) == {"glue.sales_silver.orders"}

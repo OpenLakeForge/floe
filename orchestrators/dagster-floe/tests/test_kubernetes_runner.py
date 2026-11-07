@@ -48,7 +48,7 @@ def test_generated_named_runners_size_each_entity(tmp_path: Path, monkeypatch: p
     config = tmp_path / "config.yml"
     profile = tmp_path / "profile.yml"
     manifest_path = tmp_path / "manifest.json"
-    config.write_text('''version: "0.3"
+    config.write_text("""version: "0.3"
 entities:
   - name: small
     source: {format: csv, path: ./input.csv}
@@ -62,22 +62,26 @@ entities:
     policy: {severity: warn}
     schema: {columns: [{name: id, type: string}]}
 report: {path: ./report}
-''')
-    profile.write_text('''apiVersion: floe/v1
+""")
+    profile.write_text("""apiVersion: floe/v1
 kind: EnvironmentProfile
 metadata: {name: test}
 execution:
   runner: {type: kubernetes_job, image: floe:latest, namespace: test, resources: {memory_mb: 512}}
   runners: {large: {resources: {memory_mb: 2048}}}
-''')
-    monkeypatch.setattr(sys, "argv", ["floe", "manifest", "generate", "-c", str(config), "-p", str(profile), "-o", str(manifest_path)])
+""")
+    monkeypatch.setattr(
+        sys, "argv", ["floe", "manifest", "generate", "-c", str(config), "-p", str(profile), "-o", str(manifest_path)]
+    )
     assert main() == 0
     manifest = load_manifest(manifest_path)
     for entity in manifest.entities:
         runner = resolve_entity_runner(manifest, entity)
         job = build_k8s_job_spec("test", ["floe", "run"], runner)
         expected = {"small": "512Mi", "large": "2048Mi"}
-        assert job["spec"]["template"]["spec"]["containers"][0]["resources"]["requests"]["memory"] == expected[entity.name]
+        assert (
+            job["spec"]["template"]["spec"]["containers"][0]["resources"]["requests"]["memory"] == expected[entity.name]
+        )
 
 
 def _job(active: int = 0, succeeded: int = 0, failed: int = 0, conditions=None):
@@ -102,7 +106,9 @@ def test_build_k8s_job_spec_minimal_mapping() -> None:
 
 def test_build_k8s_job_spec_args_override_keeps_the_entity_selection() -> None:
     runner = replace(_runner(), command=["python"], args=["-m", "floe"])
-    spec = build_k8s_job_spec("floe-orders-abc", ["floe", "run", "--manifest", "m.json", "--entities", "orders"], runner)
+    spec = build_k8s_job_spec(
+        "floe-orders-abc", ["floe", "run", "--manifest", "m.json", "--entities", "orders"], runner
+    )
     container = spec["spec"]["template"]["spec"]["containers"][0]
     assert container["command"] == ["python"]
     assert container["args"] == ["-m", "floe", "run", "--manifest", "m.json", "--entities", "orders"]
@@ -168,11 +174,7 @@ def test_run_kubernetes_job_surfaces_timeout_reason() -> None:
     pods = MagicMock()
     pod = {
         "metadata": {"name": "pod-1"},
-        "status": {
-            "container_statuses": [
-                {"state": {"terminated": {"reason": "Error", "exit_code": 137}}}
-            ]
-        },
+        "status": {"container_statuses": [{"state": {"terminated": {"reason": "Error", "exit_code": 137}}}]},
     }
     pods.items = [pod]
     core_api.list_namespaced_pod.return_value = pods
@@ -203,11 +205,7 @@ def test_run_kubernetes_job_surfaces_image_pull_reason() -> None:
     pods = MagicMock()
     pod = {
         "metadata": {"name": "pod-1"},
-        "status": {
-            "container_statuses": [
-                {"state": {"waiting": {"reason": "ImagePullBackOff"}}}
-            ]
-        },
+        "status": {"container_statuses": [{"state": {"waiting": {"reason": "ImagePullBackOff"}}}]},
     }
     pods.items = [pod]
     core_api.list_namespaced_pod.return_value = pods
@@ -242,9 +240,7 @@ def test_build_k8s_job_spec_without_resources_is_unchanged() -> None:
 
 
 def test_manifest_runner_definition_parses_resources() -> None:
-    runner = ManifestRunnerDefinition.from_dict(
-        {"type": "kubernetes_job", "resources": {"cpu": "1", "memory_mb": 512}}
-    )
+    runner = ManifestRunnerDefinition.from_dict({"type": "kubernetes_job", "resources": {"cpu": "1", "memory_mb": 512}})
     assert runner.resources == {"cpu": "1", "memory_mb": 512}
 
 
@@ -258,11 +254,7 @@ def test_run_kubernetes_job_surfaces_oom_killed_reason() -> None:
     pods.items = [
         {
             "metadata": {"name": "pod-1"},
-            "status": {
-                "container_statuses": [
-                    {"state": {"terminated": {"reason": "OOMKilled", "exit_code": 137}}}
-                ]
-            },
+            "status": {"container_statuses": [{"state": {"terminated": {"reason": "OOMKilled", "exit_code": 137}}}]},
         }
     ]
     core_api.list_namespaced_pod.return_value = pods
@@ -303,9 +295,7 @@ def test_run_floe_entities_creates_one_job_named_for_the_domain() -> None:
     execution = load_manifest(Path(__file__).parent / "fixtures" / "manifest.json").execution
     runner = replace(_runner(), domain_resources={"sales": {"cpu": "2"}})
     jobs_api, core_api = MagicMock(), MagicMock()
-    jobs_api.read_namespaced_job.return_value = _job(
-        succeeded=1, conditions=[{"type": "Complete", "status": "True"}]
-    )
+    jobs_api.read_namespaced_job.return_value = _job(succeeded=1, conditions=[{"type": "Complete", "status": "True"}])
     core_api.list_namespaced_pod.return_value.items = []
 
     with (
@@ -334,9 +324,7 @@ def test_run_floe_entities_creates_one_job_named_for_the_domain() -> None:
 def test_run_floe_entities_job_carries_the_dagster_run_for_lineage() -> None:
     execution = load_manifest(Path(__file__).parent / "fixtures" / "manifest.json").execution
     jobs_api, core_api = MagicMock(), MagicMock()
-    jobs_api.read_namespaced_job.return_value = _job(
-        succeeded=1, conditions=[{"type": "Complete", "status": "True"}]
-    )
+    jobs_api.read_namespaced_job.return_value = _job(succeeded=1, conditions=[{"type": "Complete", "status": "True"}])
     core_api.list_namespaced_pod.return_value.items = []
     runner = replace(_runner(), labels={"dagster/run-id": "hijacked"})
 
@@ -366,9 +354,7 @@ def test_run_floe_entities_job_carries_the_dagster_run_for_lineage() -> None:
 def test_run_floe_entity_job_carries_the_dagster_run_for_lineage() -> None:
     execution = load_manifest(Path(__file__).parent / "fixtures" / "manifest.json").execution
     jobs_api, core_api = MagicMock(), MagicMock()
-    jobs_api.read_namespaced_job.return_value = _job(
-        succeeded=1, conditions=[{"type": "Complete", "status": "True"}]
-    )
+    jobs_api.read_namespaced_job.return_value = _job(succeeded=1, conditions=[{"type": "Complete", "status": "True"}])
     core_api.list_namespaced_pod.return_value.items = []
 
     with (
@@ -522,7 +508,9 @@ def test_a_failed_job_reports_the_latest_attempt() -> None:
         _attempt("attempt-2", "Failed", "2026-01-01T10:05:00Z"),
         _attempt("attempt-3", "Failed", "2026-01-01T10:10:00Z"),
     ]
-    job = _job_with_retries(2, failed=3, conditions=[{"type": "Failed", "status": "True", "reason": "BackoffLimitExceeded"}])
+    job = _job_with_retries(
+        2, failed=3, conditions=[{"type": "Failed", "status": "True", "reason": "BackoffLimitExceeded"}]
+    )
     for ordered in (pods, pods[::-1]):
         result = _run_with_pods(ordered, job)
         assert result.stdout == "logs of attempt-3"
@@ -558,7 +546,9 @@ def test_a_poll_timeout_collects_logs_then_deletes_the_job_and_still_reports_tim
     core_api.list_namespaced_pod.return_value = MagicMock(items=[pod])
     core_api.read_namespaced_pod_log.side_effect = lambda **k: order.append("logs") or "last words"
     with patch("time.sleep"), patch("time.monotonic", side_effect=[0, 61]):
-        result = run_kubernetes_job(["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api)
+        result = run_kubernetes_job(
+            ["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api
+        )
     assert result.status == STATUS_TIMEOUT
     assert result.stdout == "last words"
     assert result.backend_metadata["pod_name"] == "pod-1"
