@@ -13,6 +13,8 @@ NO_FILES = "entity.name=customers source.storage=local no input files matched"
 
 
 class FakeClient:
+    endpoint: str | None = None
+
     def __init__(self, keys: list[str]) -> None:
         self.keys = keys
         self.prefixes: list[str] = []

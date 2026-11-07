@@ -1,7 +1,7 @@
 """Storage client types, ported from `io/storage/mod.rs` and `planner.rs`."""
 
 from pathlib import Path
-from typing import NamedTuple, Protocol
+from typing import NamedTuple, Protocol, runtime_checkable
 
 
 class ObjectRef(NamedTuple):
@@ -17,6 +17,9 @@ class StoredObject(NamedTuple):
 
 
 class StorageClient(Protocol):
+    # identifies the store behind a bucket name; None for local
+    @property
+    def endpoint(self) -> str | None: ...
     def resolve_uri(self, path: str) -> str: ...
     def list(self, prefix: str, start_after: str = "") -> list[ObjectRef]: ...
     def write(self, uri: str, body: bytes) -> None: ...
@@ -32,5 +35,6 @@ class StorageClient(Protocol):
     def delete_conditional(self, uri: str, expected_version: str | None) -> bool: ...
 
 
+@runtime_checkable
 class Downloader(Protocol):
     def download(self, uri: str, temp_dir: Path) -> Path: ...
