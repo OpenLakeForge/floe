@@ -288,7 +288,7 @@ def test_d30_a_failed_run_keeps_an_older_day_listed_for_its_retry(tmp_path: Path
     state["claims"][old] = {"run_id": "dead", "acquired_at": "2026-01-01T00:00:00Z", "expires_at": "2026-01-01T01:00:00Z"}  # fmt: skip
     path.write_text(json.dumps(state))
     with monkeypatch.context() as m:
-        m.setattr(entity_module, "_run_file", boom)
+        m.setattr(entity_module, "run_file", boom)
         with pytest.raises(FloeRunError, match="boom"):
             go(tmp_path, "incremental_mode: file")
     go(tmp_path, "incremental_mode: file")
@@ -309,7 +309,7 @@ def test_d30_a_failed_full_refresh_keeps_a_dead_claim_for_its_retry(tmp_path: Pa
     state["claims"][dead] = {"run_id": "dead", "acquired_at": "2026-01-01T00:00:00Z", "expires_at": "2026-01-01T01:00:00Z"}  # fmt: skip
     path.write_text(json.dumps(state))
     with monkeypatch.context() as m:
-        m.setattr(entity_module, "_run_file", boom)
+        m.setattr(entity_module, "run_file", boom)
         with pytest.raises(FloeRunError, match="boom"):
             go(tmp_path, "incremental_mode: file", full_refresh=True)
     state = state_of(tmp_path)

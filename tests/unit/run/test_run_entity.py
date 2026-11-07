@@ -15,7 +15,7 @@ from floe.errors import FloeConfigError, FloeRunError
 from floe.read import json as json_module
 from floe.read.csv import read_csv
 from floe.read.xml import read_xml
-from floe.run import entity as entity_module  # `floe.run` is the public function
+from floe.run import file as file_module
 from floe.run import sources as sources_module
 from floe.run.entity import run_entity
 
@@ -200,7 +200,7 @@ def test_append_seeds_only_the_history_keys_a_chunk_holds(
         seed(tracker, df)
 
     monkeypatch.setattr(UniqueTracker, "seed", spy)
-    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=1))
+    monkeypatch.setattr(file_module, "read_csv", partial(read_csv, chunk_rows=1))
     (tmp_path / "in" / "orders.csv").write_text("id,name\n7,a\n200,b\n")
     report = run_entity(entity, tmp_path, "0.3").report
     assert sorted(i for ids in seeded for i in ids) == [
@@ -242,7 +242,7 @@ def test_append_fails_when_a_sink_part_lacks_a_unique_key_column(tmp_path: Path)
 def test_an_unreadable_file_leaves_no_unique_keys_behind(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(entity_module, "read_xml", partial(read_xml, chunk_rows=1))
+    monkeypatch.setattr(file_module, "read_xml", partial(read_xml, chunk_rows=1))
     config = CONFIG.format(severity="reject", mismatch="")
     config = config.replace(
         "format: csv\n      path: ./in", "format: xml\n      path: ./in"
@@ -566,7 +566,7 @@ def test_json_file_is_parsed_once_up_to_the_single_pass_cap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cap: int, passes: int
 ) -> None:
     """#1115: the key probe and the read share one parse; a file over the byte cap parses twice."""
-    monkeypatch.setattr(entity_module, "JSON_SINGLE_PASS_BYTES", cap)
+    monkeypatch.setattr(file_module, "JSON_SINGLE_PASS_BYTES", cap)
     parsed: list[str] = []
     real = json_module.json_loads
 
@@ -643,7 +643,7 @@ def test_json_late_key_and_late_errors_are_the_same_in_every_chunking(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, chunk_rows: int, mode: str
 ) -> None:
     """D40 and the error order hold whether the file is one chunk (4 rows = exactly full) or several."""
-    monkeypatch.setattr(entity_module, "JSON_CHUNK_ROWS", chunk_rows)
+    monkeypatch.setattr(file_module, "JSON_CHUNK_ROWS", chunk_rows)
     records = ['{"id": 1}', '{"id": 2}', '{"id": 3}', '{"id": 4, "late": 1}']
     options = f"{{json_mode: {mode}}}"
 
@@ -743,7 +743,7 @@ def test_rejected_row_indices_follow_the_file_across_chunks(
         "id,name\n1,a\n,b\nx,c\n3,d\n1,e\n5,f\n"
     )
     entity = parse_config(tmp_path / "config.yml").entities[0]
-    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=2))
+    monkeypatch.setattr(file_module, "read_csv", partial(read_csv, chunk_rows=2))
     report = run_entity(entity, tmp_path, "0.3").report
     rejected = _rejected_csv(tmp_path)
     assert rejected["__floe_row_index"].to_list() == ["1", "2", "4"]
@@ -817,7 +817,7 @@ def test_1154_rejected_parquet_spills_chunks_and_keeps_whole_file_indices(
         return real(self, file, *a, **k)  # pyright: ignore[reportUnknownVariableType]  # spy passes through the untyped args
 
     monkeypatch.setattr(pl.DataFrame, "write_ipc", spy)
-    monkeypatch.setattr(entity_module, "read_csv", partial(read_csv, chunk_rows=2))
+    monkeypatch.setattr(file_module, "read_csv", partial(read_csv, chunk_rows=2))
     (tmp_path / "in").mkdir()
     (tmp_path / "in" / "a.csv").write_text("id,name\nx,a\n1,b\ny,c\n2,d\nz,e\n")
     (tmp_path / "in" / "b.csv").write_text("id,name\n1,a\nq,b\n")
