@@ -34,7 +34,7 @@ $defs:
         type:
         - string
         - 'null'
-        pattern: ^\s*(?:[nN][oO][nN][eE]|[aA][rR][cC][hH][iI][vV][eE]|[fF][iI][lL][eE]|[rR][oO][wW])\s*$
+        pattern: ^\s*(?:[nN][oO][nN][eE]|[aA][rR][cC][hH][iI][vV][eE]|[fF][iI][lL][eE])\s*$
       state:
         $ref: '#/$defs/entity_state'
       source:

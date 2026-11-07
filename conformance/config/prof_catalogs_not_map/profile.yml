@@ -23,5 +23,3 @@ execution:
 variables:
   A: b
 catalogs: c
-validation:
-  strict: true

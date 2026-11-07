@@ -14,7 +14,5 @@ entities:
     columns:
     - name: id
       type: string
-      width: 3
     - name: amt
       type: number
-      width: 3

@@ -104,7 +104,7 @@ def _selectors(root: RootConfig, args: argparse.Namespace) -> list[str]:
 def _run(args: argparse.Namespace) -> int:
     run_id = args.run_id or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S.%fZ")
     console = Console(args.log_format, run_id)
-    if args.manifest is not None:  # Rust ignores `-p` here: the manifest is compiled
+    if args.manifest is not None:
         try:  # Rust logs a manifest that fails to load after a `run_started`
             root, observed, path = load_manifest(args.manifest)
         except FloeIoError as e:  # Rust: a bare io error, logged with code `error`
@@ -305,7 +305,12 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    args, extra = _parser().parse_known_args()
+    parser = _parser()
+    args, extra = parser.parse_known_args()
+    if args.command == "run" and args.manifest is not None and args.profile is not None:
+        parser.error(
+            "argument -p/--profile: not allowed with argument --manifest (the manifest is already compiled)"
+        )
     if extra:  # clap's wording for an unknown flag
         print(f"error: unexpected argument '{extra[0]}' found\n\nFor more information, try '--help'.", file=sys.stderr)  # fmt: skip
         return 2

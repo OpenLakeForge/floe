@@ -13,7 +13,7 @@ entities:
       merge:
         compare_columns:
         - zz
-    write_mode: merge_scd1
+    write_mode: merge_scd2
   policy:
     severity: warn
   schema:

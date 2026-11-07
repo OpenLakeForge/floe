@@ -18,5 +18,3 @@ variables:
   INCOMING_DIR: /tmp/floe/incoming
   OUTPUT_DIR: /tmp/floe/output
   REPORT_DIR: /tmp/floe/reports
-validation:
-  strict: false

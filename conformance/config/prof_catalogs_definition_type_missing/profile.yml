@@ -27,5 +27,3 @@ catalogs:
   definitions:
   - name: r
     uri: u
-validation:
-  strict: true

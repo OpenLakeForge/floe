@@ -28,8 +28,6 @@ catalogs:
   - name: other
     type: rest
     uri: u
-validation:
-  strict: true
 storages:
   default: lake
   definitions:

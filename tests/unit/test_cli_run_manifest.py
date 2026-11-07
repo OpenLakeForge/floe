@@ -555,3 +555,42 @@ def test_1153_domain_default_rejected_parquet_survives_the_manifest(
     root, _, _ = load_manifest(manifest(tmp_path, monkeypatch, DOMAIN_REJECTED))
     rejected = root.entities[0].sink.rejected
     assert rejected is not None and rejected.format == "parquet"
+
+
+@pytest.mark.parametrize(
+    ("edit", "error"),
+    [
+        ({"incremental_mode": "row"}, "incremental_mode=row is not supported"),
+        ({"trim": True}, "schema.columns.trim is not supported"),
+        ({"width": 3}, "schema.columns.width is not supported"),
+        ({"merge": {"compare_columns": ["id"]}}, "compare_columns with sink.write_mode=merge_scd1 is not supported"),
+    ],
+)  # fmt: skip
+def test_1009_a_manifest_carrying_a_refused_option_fails_before_the_run(
+    edit: dict[str, Any], error: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:  # fmt: skip
+    path = manifest(tmp_path, monkeypatch, QUALIFIED)
+    doc = json.loads(path.read_text())
+    entity = doc["entities"][0]
+    if "trim" in edit or "width" in edit:
+        entity["schema"]["columns"][0].update(edit)
+    elif "merge" in edit:
+        entity["write_mode"] = "merge_scd1"
+        entity["sinks"]["accepted"].update(edit)
+    else:
+        entity.update(edit)
+    path.write_text(json.dumps(doc))
+    capsys.readouterr()
+    assert floe(monkeypatch, "run", "--manifest", str(path)) == 1
+    assert error in capsys.readouterr().err
+
+
+def test_1009_a_profile_with_a_manifest_is_a_usage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:  # fmt: skip
+    path = manifest(tmp_path, monkeypatch, QUALIFIED)
+    capsys.readouterr()
+    with pytest.raises(SystemExit) as exit_:
+        floe(monkeypatch, "run", "--manifest", str(path), "-p", str(tmp_path / "p.yml"))
+    assert exit_.value.code == 2
+    assert "-p/--profile: not allowed with argument --manifest" in capsys.readouterr().err  # fmt: skip

@@ -36,8 +36,6 @@ execution:                   # optional
     max_concurrent_entities: 4  # optional; integer >= 1
 variables:                   # optional; flat string → string map
   KEY: value
-validation:                  # optional
-  strict: false              # optional bool; default behaviour is determined by the config
 ```
 
 ### Required fields
@@ -124,8 +122,6 @@ variables:
   INCOMING_DIR: /tmp/floe/incoming
   OUTPUT_DIR: /tmp/floe/output
   REPORT_DIR: /tmp/floe/reports
-validation:
-  strict: false
 ```
 
 ### uat.yml
@@ -146,8 +142,6 @@ variables:
   INCOMING_DIR: /data/uat/incoming
   OUTPUT_DIR: /data/uat/output
   REPORT_DIR: /data/uat/reports
-validation:
-  strict: true
 ```
 
 ### prod.yml
@@ -168,8 +162,6 @@ variables:
   INCOMING_DIR: /data/prod/incoming
   OUTPUT_DIR: /data/prod/output
   REPORT_DIR: /data/prod/reports
-validation:
-  strict: true
 ```
 
 ### Named runners
@@ -210,8 +202,6 @@ execution:
       service_principal_oauth_ref: env://DATABRICKS_TOKEN
 variables:
   CATALOG: prod_catalog
-validation:
-  strict: true
 ```
 
 `config_uri` and `python_file_uri` are intentionally separate: the first is the
@@ -437,9 +427,8 @@ Current profile feature gaps and fixes:
    before loading the profile, so profile-provided catalogs could not satisfy
    catalog bindings. Fixed by loading the profile first and passing profile
    catalogs into config validation.
-5. **Remaining hardening work** — profile `validation.strict` is parsed but not
-   enforced, profile paths are local-only while config supports URI resolution,
+5. **Remaining hardening work** — profile paths are local-only while config supports URI resolution,
    and profile catalog validation cannot fully verify `warehouse_storage` without
-   a config. Future work should wire `strict` into schema checks, reuse config URI
+   a config. Future work should reuse config URI
    resolution for profile loading, and add a combined validation report that
    clearly separates profile-only errors from config/profile integration errors.

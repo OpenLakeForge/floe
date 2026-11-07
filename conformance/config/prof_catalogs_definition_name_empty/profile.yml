@@ -27,5 +27,3 @@ catalogs:
   - name: ''
     type: rest
     uri: u
-validation:
-  strict: true

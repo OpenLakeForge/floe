@@ -191,7 +191,7 @@ $defs:
         properties:
           incremental_mode:
             type: string
-            pattern: ^\s*(?:[fF][iI][lL][eE]|[rR][oO][wW])\s*$
+            pattern: ^\s*(?:[fF][iI][lL][eE])\s*$
       then:
         properties:
           sink:
@@ -216,7 +216,7 @@ $defs:
         type:
         - string
         - 'null'
-        pattern: ^\s*(?:[nN][oO][nN][eE]|[aA][rR][cC][hH][iI][vV][eE]|[fF][iI][lL][eE]|[rR][oO][wW])\s*$
+        pattern: ^\s*(?:[nN][oO][nN][eE]|[aA][rR][cC][hH][iI][vV][eE]|[fF][iI][lL][eE])\s*$
       state:
         $ref: '#/$defs/entity_state'
       source:
@@ -238,34 +238,12 @@ $defs:
         properties:
           incremental_mode:
             type: string
-            pattern: ^\s*(?:[fF][iI][lL][eE]|[rR][oO][wW])\s*$
+            pattern: ^\s*(?:[fF][iI][lL][eE])\s*$
           sink:
             required:
             - archive
       then:
         not: {}
-    - if:
-        required:
-        - source
-        properties:
-          source:
-            required:
-            - format
-            properties:
-              format:
-                const: fixed
-      then:
-        properties:
-          schema:
-            properties:
-              columns:
-                items:
-                  required:
-                  - width
-                  properties:
-                    width:
-                      minimum: 1
-                      type: integer
     - if:
         required:
         - source
@@ -1187,16 +1165,6 @@ $defs:
         type:
         - boolean
         - 'null'
-      width:
-        type:
-        - integer
-        - 'null'
-        maximum: 9223372036854775807
-        minimum: 0
-      trim:
-        type:
-        - boolean
-        - 'null'
   pii_fragment:
     type: object
     additionalProperties: false
@@ -1847,7 +1815,7 @@ $defs:
         type:
         - string
         - 'null'
-        pattern: ^\s*(?:[nN][oO][nN][eE]|[aA][rR][cC][hH][iI][vV][eE]|[fF][iI][lL][eE]|[rR][oO][wW])\s*$
+        pattern: ^\s*(?:[nN][oO][nN][eE]|[aA][rR][cC][hH][iI][vV][eE]|[fF][iI][lL][eE])\s*$
       state:
         $ref: '#/$defs/entity_state'
       source:

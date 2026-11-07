@@ -49,8 +49,6 @@ entities:
           type: string
           nullable: false
           unique: true
-          width: 10
-          trim: true
         - name: region
           type: string
         - name: email

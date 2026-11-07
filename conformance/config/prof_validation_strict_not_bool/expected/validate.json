@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "profile.validation.strict must be a boolean"
+  "error": "profile.validation.strict is not supported (see CHANGELOG)"
 }

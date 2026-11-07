@@ -71,15 +71,7 @@ def test_full_entity() -> None:
                 "schema_evolution": {"mode": "Add_Columns"},
                 "primary_key": ["id"],
                 "unique_keys": [["id", "amt"]],
-                "columns": [
-                    {
-                        "name": "id",
-                        "source": "$.id",
-                        "type": "uint8",
-                        "width": 3,
-                        "trim": True,
-                    }
-                ],
+                "columns": [{"name": "id", "source": "$.id", "type": "uint8"}],
             },
             pii={
                 "columns": [
@@ -103,19 +95,18 @@ def test_full_entity() -> None:
         "fail",
     )
     assert schema.unique_keys == [["id", "amt"]]
-    assert schema.columns[0].width == 3
     assert parsed.pii is not None
     assert parsed.pii.columns == [PiiColumn("id", "mask", mask_pattern="{first2}")]
 
 
 def test_choice_trims_rust_white_space_only() -> None:
     assert (
-        parse_entity(entity(incremental_mode="\u00a0row\u3000")).incremental_mode
-        == "row"
+        parse_entity(entity(incremental_mode="\u00a0file\u3000")).incremental_mode
+        == "file"
     )
     # U+001C is not White_Space in Rust, so `trim()` keeps it and the value is rejected
-    assert message(entity(incremental_mode="\x1crow")) == (
-        "unsupported value at entity.incremental_mode: \x1crow (allowed: none, archive, file, row)"
+    assert message(entity(incremental_mode="\x1cfile")) == (
+        "unsupported value at entity.incremental_mode: \x1cfile (allowed: none, archive, file)"
     )
 
 
@@ -164,7 +155,7 @@ def test_entity_errors(value: object, expected: str) -> None:
         # parse_incremental_mode_unsupported
         (
             {"incremental_mode": "daily"},
-            "unsupported value at entity.incremental_mode: daily (allowed: none, archive, file, row)",
+            "unsupported value at entity.incremental_mode: daily (allowed: none, archive, file)",
         ),
         # parse_policy_severity_unsupported / parse_policy_severity_case_sensitive
         (
@@ -235,13 +226,17 @@ def test_entity_errors(value: object, expected: str) -> None:
             },
             "schema.columns[1]: missing required field schema.columns.type",
         ),
-        (
-            {"schema": {"columns": [{"name": "id", "type": "string", "width": -1}]}},
-            "schema.columns[0]: expected positive integer at schema.columns.width",
+        (  # #1009: accepted but never applied, now refused
+            {"schema": {"columns": [{"name": "id", "type": "string", "width": 3}]}},
+            "schema.columns[0]: schema.columns.width is not supported (see CHANGELOG)",
         ),
         (
-            {"schema": {"columns": [{"name": "id", "type": "string", "width": "3"}]}},
-            "schema.columns[0]: expected integer at schema.columns.width",
+            {"schema": {"columns": [{"name": "id", "type": "string", "trim": True}]}},
+            "schema.columns[0]: schema.columns.trim is not supported (see CHANGELOG)",
+        ),
+        (
+            {"incremental_mode": " Row "},
+            "incremental_mode=row is not supported (see CHANGELOG)",
         ),
         (
             {"schema": {"columns": [{"name": "id", "type": "string", "x": 1}]}},

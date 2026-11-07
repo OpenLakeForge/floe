@@ -541,31 +541,13 @@ class ConfigSchemaTest(unittest.TestCase):
             "entities": [complete_entity()],
         })
 
-    def test_fixed_columns_require_width(self):
-        entity = complete_entity()
-        entity["source"]["format"] = "fixed"
-        document = {"version": "0.3", "entities": [entity]}
-        self.assert_invalid(ROOT_VALIDATOR, document)
-        self.assert_invalid(validator_for("entity_file"), entity)
-        entity["schema"]["columns"][0]["width"] = None
-        self.assert_invalid(ROOT_VALIDATOR, document)
-        self.assert_invalid(validator_for("entity_file"), entity)
-        entity["schema"]["columns"][0]["width"] = 12
-        self.assert_valid(ROOT_VALIDATOR, document)
-        self.assert_valid(validator_for("entity_file"), entity)
-
     def test_format_specific_numeric_limits_match_runtime(self):
         entity = complete_entity()
-        entity["schema"]["columns"][0]["width"] = 0
         entity["source"]["options"] = {"header_row": 0, "data_row": 0}
         document = {"version": "0.3", "entities": [entity]}
         self.assert_valid(ROOT_VALIDATOR, document)
         self.assert_valid(validator_for("entity_file"), entity)
 
-        entity["source"].update(format="fixed", options={})
-        self.assert_invalid(ROOT_VALIDATOR, document)
-        self.assert_invalid(validator_for("entity_file"), entity)
-        entity["schema"]["columns"][0]["width"] = 1
         entity["source"].update(format="xlsx", options={"header_row": 0, "data_row": 2})
         self.assert_invalid(ROOT_VALIDATOR, document)
         entity["source"]["options"] = {"header_row": 1, "data_row": 2}
@@ -592,10 +574,6 @@ class ConfigSchemaTest(unittest.TestCase):
             document = {"version": "0.3", "entities": [complete_entity()]}
             document["entities"][0]["source"]["options"] = {field: value}
             cases.append((field, document, ROOT_VALIDATOR, ("entities", 0, "source", "options", field)))
-
-        document = {"version": "0.3", "entities": [complete_entity()]}
-        document["entities"][0]["schema"]["columns"][0]["width"] = 1.0
-        cases.append(("width", document, ROOT_VALIDATOR, ("entities", 0, "schema", "columns", 0, "width")))
 
         for field in ("row_group_size", "max_size_per_file"):
             document = {"version": "0.3", "entities": [complete_entity()]}
@@ -869,10 +847,6 @@ class ConfigSchemaTest(unittest.TestCase):
                 self.assert_invalid(ROOT_VALIDATOR, document)
                 self.assert_invalid(validator_for("entity_file"), entity)
         entity["source"].pop("options")
-        entity["schema"]["columns"][0]["width"] = -1
-        self.assert_invalid(ROOT_VALIDATOR, document)
-        self.assert_invalid(validator_for("entity_file"), entity)
-        entity["schema"]["columns"][0].pop("width")
         entity["sink"]["accepted"]["format"] = "delta"
         for field in ("row_group_size", "max_size_per_file"):
             entity["sink"]["accepted"]["options"] = {field: -1}
@@ -1156,12 +1130,8 @@ class ConfigSchemaTest(unittest.TestCase):
     def test_unsigned_yaml_integer_limits_match_parser(self):
         entity = complete_entity()
         document = {"version": "0.3", "entities": [entity]}
-        entity["schema"]["columns"][0]["width"] = 9223372036854775807
         entity["source"]["options"] = {"header_row": 9223372036854775807, "data_row": 1}
         self.assert_valid(ROOT_VALIDATOR, document)
-        entity["schema"]["columns"][0]["width"] += 1
-        self.assert_invalid(ROOT_VALIDATOR, document)
-        entity["schema"]["columns"][0].pop("width")
         entity["source"]["options"]["header_row"] = 9223372036854775808
         self.assert_invalid(ROOT_VALIDATOR, document)
         entity["source"]["options"] = {"header_row": 1, "data_row": 9223372036854775808}

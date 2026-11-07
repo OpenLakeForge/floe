@@ -25,5 +25,3 @@ variables:
 catalogs:
   default: r
   definitions: d
-validation:
-  strict: true

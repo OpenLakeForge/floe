@@ -6,7 +6,7 @@
   "manifest_revision": "<volatile>",
   "runtime_env": "cli",
   "config_uri": "local://<ROOT>/work/config.yml",
-  "config_checksum": "sha256:8295bf1e2f215601e9daaaf0bef7883c37f8c86ea46ff1fab98509526107535b",
+  "config_checksum": "sha256:ca7a2416c94ced4cbb6b62208abcbd52f71a4fec81d5cb00acb4b5eae9118a7d",
   "report_base_uri": "local://<ROOT>/work/report",
   "domains": [
     {
@@ -213,9 +213,7 @@
             "column_type": "string",
             "source": "ID",
             "nullable": false,
-            "unique": true,
-            "width": 10,
-            "trim": true
+            "unique": true
           },
           {
             "name": "region",
