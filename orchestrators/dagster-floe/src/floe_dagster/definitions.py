@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from dagster import AssetSelection, Definitions, define_asset_job
 
@@ -36,9 +37,7 @@ def _timeout_from_env() -> float | None:
     try:
         timeout = float(raw)
     except ValueError as exc:
-        raise ValueError(
-            f"FLOE_RUN_TIMEOUT_SECONDS must be a number, got {raw!r}"
-        ) from exc
+        raise ValueError(f"FLOE_RUN_TIMEOUT_SECONDS must be a number, got {raw!r}") from exc
     if timeout <= 0:
         raise ValueError("FLOE_RUN_TIMEOUT_SECONDS must be positive")
     return timeout
@@ -87,14 +86,10 @@ def build_definitions_from_manifest_dir(
     with_job: bool = True,
 ) -> Definitions:
     paths = sorted(
-        str(path.resolve())
-        for path in Path(manifest_dir).expanduser().resolve().glob(pattern)
-        if path.is_file()
+        str(path.resolve()) for path in Path(manifest_dir).expanduser().resolve().glob(pattern) if path.is_file()
     )
     if not paths:
-        raise ValueError(
-            f"no manifest files found in {manifest_dir!r} using pattern {pattern!r}"
-        )
+        raise ValueError(f"no manifest files found in {manifest_dir!r} using pattern {pattern!r}")
     return build_definitions_from_manifest_paths(
         manifest_paths=paths,
         runner=runner,
@@ -102,7 +97,9 @@ def build_definitions_from_manifest_dir(
     )
 
 
-_Source = dict[str, "str | None"]  # load_manifest_source kwargs: manifest_path, config_path, profile_path, manifest_name
+_Source = dict[
+    str, "str | None"
+]  # load_manifest_source kwargs: manifest_path, config_path, profile_path, manifest_name
 
 
 def build_definitions_from_manifest_paths(
@@ -261,7 +258,6 @@ def _validate_no_duplicate_asset_keys(
         if key_tuple in seen_asset_keys:
             key_value = "/".join(asset_key_parts)
             raise ValueError(
-                f"duplicate asset key {key_value!r} across manifests; "
-                f"conflict found while processing {manifest_path}"
+                f"duplicate asset key {key_value!r} across manifests; conflict found while processing {manifest_path}"
             )
         seen_asset_keys.add(key_tuple)

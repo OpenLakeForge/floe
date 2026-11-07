@@ -3,9 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from pathlib import Path
 from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
@@ -21,14 +21,13 @@ from dagster import (
     multi_asset,
 )
 
-from .k8s_status import STATUS_SUCCEEDED
-
 from .asset_checks import build_asset_check_results, build_asset_check_specs
 from .events import FloeRunFinished, last_run_finished, parse_json_event_lines, parse_run_finished, render_log_event
+from .k8s_status import STATUS_SUCCEEDED
 from .manifest import (
     DagsterManifest,
-    ManifestExecution,
     ManifestEntity,
+    ManifestExecution,
     ManifestRunnerDefinition,
     _boto3_read_text,
     _fsspec_storage_options,
@@ -36,7 +35,7 @@ from .manifest import (
     load_manifest_source,
     resolve_entity_runner,
 )
-from .runner import RunResult, Runner
+from .runner import Runner, RunResult
 
 # Advisory Dagster tag (#924): entities writing one Iceberg table share its value, so a
 # `tag_concurrency_limits` entry on this key keeps their runs apart.
@@ -198,9 +197,7 @@ def build_floe_asset_defs(
     return assets_defs, source_assets, entity_items
 
 
-def selected_manifest_entities(
-    manifest: DagsterManifest, entities: list[str] | None = None
-) -> list[ManifestEntity]:
+def selected_manifest_entities(manifest: DagsterManifest, entities: list[str] | None = None) -> list[ManifestEntity]:
     if not entities:
         return list(manifest.entities)
     selected = set(entities)
@@ -238,10 +235,7 @@ def _count_files_with_rejections(report: dict[str, Any]) -> int:
     files = report.get("files")
     if not isinstance(files, list):
         return 0
-    return sum(
-        1 for f in files
-        if isinstance(f, dict) and _safe_int(f.get("rejected_count")) > 0
-    )
+    return sum(1 for f in files if isinstance(f, dict) and _safe_int(f.get("rejected_count")) > 0)
 
 
 def _dominant_rejection_reason(report: dict[str, Any]) -> str | None:
@@ -291,9 +285,7 @@ def _make_entity_multi_asset(
     entity_name = entity.name
 
     outs: dict[str, AssetOut] = {
-        "accepted": AssetOut(
-            key=AssetKey(accepted_key), is_required=True, metadata=_out_metadata(entity, "accepted")
-        ),
+        "accepted": AssetOut(key=AssetKey(accepted_key), is_required=True, metadata=_out_metadata(entity, "accepted")),
     }
     if has_rejected:
         outs["rejected"] = AssetOut(
@@ -634,10 +626,15 @@ def _make_domain_multi_asset(
         dagster_job_name = getattr(run, "job_name", None) if run is not None else None
         names = [entity.name for entity in chosen]
         # the whole domain of the manifest: `floe run --domain` says it; a custom template stays as written
-        whole_domain = bool(names) and set(names) == domain_names and execution.per_entity_args == [
-            "--entities",
-            "{entity_name}",
-        ]
+        whole_domain = (
+            bool(names)
+            and set(names) == domain_names
+            and execution.per_entity_args
+            == [
+                "--entities",
+                "{entity_name}",
+            ]
+        )
         result = runner.run_floe_entities(
             config_uri=config_uri,
             manifest_uri=manifest_uri or manifest_path,
@@ -703,7 +700,6 @@ def _make_domain_multi_asset(
     return _domain_asset
 
 
-
 def _log_floe_stderr(context: Any, stderr: str) -> None:
     for line in stderr.splitlines():
         stripped = line.strip()
@@ -713,8 +709,7 @@ def _log_floe_stderr(context: Any, stderr: str) -> None:
 
 def _log_floe_output(context: Any, stdout: str, events: list[dict[str, Any]]) -> None:
     rendered_by_raw = {
-        json.dumps(event, sort_keys=True, separators=(",", ":")): render_log_event(event)
-        for event in events
+        json.dumps(event, sort_keys=True, separators=(",", ":")): render_log_event(event) for event in events
     }
     for line in stdout.splitlines():
         stripped = line.strip()
@@ -751,7 +746,7 @@ def _load_json_document(ref: str, config_uri: str, *, label: str) -> dict[str, A
 
 def _read_json_text(ref: str, config_uri: str) -> str:
     if ref.startswith("local://"):
-        raw_path = unquote(ref[len("local://"):])
+        raw_path = unquote(ref[len("local://") :])
         path = Path(raw_path)
         if not path.is_absolute() and "://" not in config_uri:
             path = (Path(config_uri).resolve().parent / path).resolve()
@@ -774,10 +769,7 @@ def _fsspec_read_text(uri: str) -> str:
     try:
         import fsspec
     except ImportError as exc:
-        raise ImportError(
-            "reading remote report URIs requires fsspec; "
-            "install it with: pip install fsspec"
-        ) from exc
+        raise ImportError("reading remote report URIs requires fsspec; install it with: pip install fsspec") from exc
     with fsspec.open(uri, "r", encoding="utf-8", **_fsspec_storage_options(uri)) as f:
         return f.read()
 
@@ -820,9 +812,7 @@ def _source_scope(manifest: DagsterManifest) -> str:
     return manifest.manifest_name or manifest.manifest_id
 
 
-def _source_key(
-    entity: ManifestEntity, sources: dict[str, dict[str, Any]] | None, scope: str
-) -> list[str]:
+def _source_key(entity: ManifestEntity, sources: dict[str, dict[str, Any]] | None, scope: str) -> list[str]:
     """D20: a source named in the manifest `sources` index is one asset shared by its entities."""
     if sources and entity.source_ref in sources:
         return ["sources", scope, entity.source_ref]
