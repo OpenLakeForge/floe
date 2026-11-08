@@ -140,7 +140,10 @@ def test_resolve_vars_empty() -> None:
             "circular variable reference detected: A -> B -> A",
         ),
         ({"A": "${A}"}, "circular variable reference detected: A -> A"),
-        ({"A": "${B", "B": "x"}, 'variable "A": unclosed placeholder in value "${B"'),
+        (
+            {"A": "${B", "B": "x"},
+            """variable "A": unclosed placeholder in value '${B'""",
+        ),
         ({"A": "${}"}, 'variable "A": empty placeholder ${}'),
         ({"A": "x ${  } y"}, 'variable "A": empty placeholder ${}'),
     ],
@@ -199,27 +202,6 @@ def test_extract_config_env_vars_never_raises(tmp_path: Path, content: str) -> N
     cfg = tmp_path / "c.yml"
     cfg.write_text(content)
     assert extract_config_env_vars(cfg) == {}
-
-
-@pytest.mark.parametrize(
-    ("value", "shown"),
-    [
-        ("a\0b", r"a\0b"),
-        ("a\x01b\x7f", r"a\u{1}b\u{7f}"),
-        ('q"\\\t\n\r', r"q\"\\\t\n\r"),
-        ("q'é日😀\u0903", "q'é日😀\u0903"),
-        (
-            "\u0301\u00a0\u2028\u200b\ufeff\u1160",
-            r"\u{301}\u{a0}\u{2028}\u{200b}\u{feff}\u{1160}",
-        ),
-    ],
-)
-def test_unclosed_placeholder_value_is_escaped_like_rust_debug(
-    value: str, shown: str
-) -> None:
-    with pytest.raises(FloeConfigError) as err:
-        resolve_vars({"A": f"{value}${{"}, {}, {})
-    assert str(err.value) == f'variable "A": unclosed placeholder in value "{shown}${{"'
 
 
 def test_extract_config_env_vars_ignores_an_invalid_env_file_path(

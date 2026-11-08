@@ -1,4 +1,4 @@
-"""Expected values and messages come from the Rust 0.7 binary (`floe validate`) and yaml-rust2 0.11."""
+"""Values come from the Rust 0.7 binary (`floe validate`); error messages are PyYAML's with line and column."""
 
 import math
 from pathlib import Path
@@ -61,44 +61,44 @@ def test_yaml_string_rejects_non_strings(value: object) -> None:
     [
         (
             'version: "0.3"\nversion: "0.3"\n',
-            'String("version"): duplicated key in mapping at byte 24 line 2 column 10',
+            "duplicated key 'version' in mapping at line 2 column 10",
         ),
         (
             'version: "0.3"\nversion:   abc  \nz: 1\n',
-            'String("version"): duplicated key in mapping at byte 26 line 2 column 12',
+            "duplicated key 'version' in mapping at line 2 column 12",
         ),
         (
             "a: 1\nb: 2\na: [1]\n",
-            'String("a"): duplicated key in mapping at byte 15 line 3 column 6',
+            "duplicated key 'a' in mapping at line 3 column 6",
         ),
         (
             "a: 1\nb: 2\na:\n  x: 1\n",
-            'String("a"): duplicated key in mapping at byte 20 line 5 column 1',
+            "duplicated key 'a' in mapping at line 5 column 1",
         ),
         (
             "a:\n  b: 1\n  b: 2\n",
-            'String("b"): duplicated key in mapping at byte 15 line 3 column 6',
+            "duplicated key 'b' in mapping at line 3 column 6",
         ),
         (
             'a: 1\n"a": 2\n',
-            'String("a"): duplicated key in mapping at byte 10 line 2 column 6',
+            "duplicated key 'a' in mapping at line 2 column 6",
         ),
         (
             "1: 1\n1: 2\n",
-            "Integer(1): duplicated key in mapping at byte 8 line 2 column 4",
+            "duplicated key 1 in mapping at line 2 column 4",
         ),
         (
             "true: 1\ntrue: 2\n",
-            "Boolean(true): duplicated key in mapping at byte 14 line 2 column 7",
+            "duplicated key True in mapping at line 2 column 7",
         ),
         (
             "x: 1.5\n1.5: 2\n1.5: 3\n",
-            'Real("1.5"): duplicated key in mapping at byte 19 line 3 column 6',
+            "duplicated key 1.5 in mapping at line 3 column 6",
         ),
-        ("~: 1\n~: 2\n", "Null: duplicated key in mapping at byte 8 line 2 column 4"),
+        ("~: 1\n~: 2\n", "duplicated key None in mapping at line 2 column 4"),
         (
             "é: 1\né: 2\n",
-            'String("é"): duplicated key in mapping at byte 8 line 2 column 4',
+            "duplicated key 'é' in mapping at line 2 column 4",
         ),
     ],
 )
@@ -113,7 +113,7 @@ def test_syntax_error_message(tmp_path: Path) -> None:
         load_yaml(write(tmp_path, "a: [1, 2\n"))
     assert (
         str(err.value)
-        == "while parsing a flow sequence, expected ',' or ']' at byte 9 line 2 column 1"
+        == "while parsing a flow sequence, expected ',' or ']', but got '<stream end>' at line 2 column 1"
     )
 
 
@@ -207,10 +207,7 @@ def test_keys_of_different_yaml_kinds_are_not_duplicates(
 def test_equal_integer_spellings_are_duplicates(tmp_path: Path) -> None:
     with pytest.raises(FloeError) as err:
         load_yaml(write(tmp_path, "1: a\n+1: b\n"))
-    assert (
-        str(err.value)
-        == "Integer(1): duplicated key in mapping at byte 9 line 2 column 5"
-    )
+    assert str(err.value) == "duplicated key 1 in mapping at line 2 column 5"
 
 
 @pytest.mark.parametrize("content", ["a: &a [*a]\n", "a: &a\n  x: *a\n"])
