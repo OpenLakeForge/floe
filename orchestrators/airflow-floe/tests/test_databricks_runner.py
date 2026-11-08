@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import os
-import unittest
-from unittest.mock import patch
-from pathlib import Path
 import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -69,7 +69,9 @@ class DatabricksRunnerTests(unittest.TestCase):
         self.assertEqual(payload["entity"], "orders")
         self.assertNotIn("failure_reason", payload)
         self.assertEqual(payload["backend_metadata"]["job_id"], 123)
-        self.assertEqual(payload["backend_metadata"]["run_page_url"], "https://adb.example.com/jobs/456")
+        self.assertEqual(
+            payload["backend_metadata"]["run_page_url"], "https://adb.example.com/jobs/456"
+        )
 
     @patch.dict(os.environ, {"DATABRICKS_TOKEN": "token"}, clear=False)
     def test_failure_maps_to_failed_with_failure_reason(self) -> None:
@@ -274,11 +276,16 @@ class DatabricksRunnerTests(unittest.TestCase):
                 client.ensure_domain_job.return_value = 1
                 client.run_now.return_value = 2
                 client.poll_run_to_terminal.return_value = DatabricksRunResult(
-                    run_id=2, state="TERMINATED", result_state="SUCCESS",
-                    state_message="ok", run_page_url=None,
+                    run_id=2,
+                    state="TERMINATED",
+                    result_state="SUCCESS",
+                    state_message="ok",
+                    run_page_url=None,
                 )
                 run_databricks_job(
-                    cmd_args=["floe", "run"], runner=self._runner(), entities=["orders"],
+                    cmd_args=["floe", "run"],
+                    runner=self._runner(),
+                    entities=["orders"],
                 )
             self.assertEqual(client_cls.call_args.kwargs["oauth_bearer_token"], "from-auth-ref")
 
@@ -286,7 +293,9 @@ class DatabricksRunnerTests(unittest.TestCase):
         with patch.dict(os.environ, {"FLOE_DATABRICKS_OAUTH_TOKEN": "fallback"}, clear=True):
             with self.assertRaisesRegex(ValueError, "DATABRICKS_TOKEN"):
                 run_databricks_job(
-                    cmd_args=["floe", "run"], runner=self._runner(), entities=["orders"],
+                    cmd_args=["floe", "run"],
+                    runner=self._runner(),
+                    entities=["orders"],
                 )
 
     def test_non_env_auth_scheme_is_rejected(self) -> None:
@@ -294,7 +303,9 @@ class DatabricksRunnerTests(unittest.TestCase):
         with patch.dict(os.environ, {"FLOE_DATABRICKS_OAUTH_TOKEN": "fallback"}, clear=True):
             with self.assertRaisesRegex(ValueError, "env://"):
                 run_databricks_job(
-                    cmd_args=["floe", "run"], runner=runner, entities=["orders"],
+                    cmd_args=["floe", "run"],
+                    runner=runner,
+                    entities=["orders"],
                 )
 
     def test_fallback_used_when_no_auth_ref(self) -> None:
@@ -305,11 +316,16 @@ class DatabricksRunnerTests(unittest.TestCase):
                 client.ensure_domain_job.return_value = 1
                 client.run_now.return_value = 2
                 client.poll_run_to_terminal.return_value = DatabricksRunResult(
-                    run_id=2, state="TERMINATED", result_state="SUCCESS",
-                    state_message="ok", run_page_url=None,
+                    run_id=2,
+                    state="TERMINATED",
+                    result_state="SUCCESS",
+                    state_message="ok",
+                    run_page_url=None,
                 )
                 run_databricks_job(
-                    cmd_args=["floe", "run"], runner=runner, entities=["orders"],
+                    cmd_args=["floe", "run"],
+                    runner=runner,
+                    entities=["orders"],
                 )
             self.assertEqual(client_cls.call_args.kwargs["oauth_bearer_token"], "fallback")
 

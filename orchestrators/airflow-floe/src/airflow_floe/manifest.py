@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,7 @@ class ManifestEntity:
     runner: str | None
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestEntity":
+    def from_dict(data: dict[str, Any]) -> ManifestEntity:
         name = _required_str(data, "name")
         group_name = _required_str(data, "group_name")
         source_format = _required_str(data, "source_format")
@@ -31,8 +31,10 @@ class ManifestEntity:
         rejected_sink_uri = _optional_str(data, "rejected_sink_uri")
         domain = _optional_str(data, "domain")
         asset_key = data.get("asset_key")
-        if not isinstance(asset_key, list) or not asset_key or not all(
-            isinstance(part, str) and part for part in asset_key
+        if (
+            not isinstance(asset_key, list)
+            or not asset_key
+            or not all(isinstance(part, str) and part for part in asset_key)
         ):
             raise ValueError("manifest entity asset_key must be a non-empty string list")
 
@@ -55,7 +57,7 @@ class ManifestExecutionResultContract:
     exit_codes: dict[str, str]
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestExecutionResultContract":
+    def from_dict(data: dict[str, Any]) -> ManifestExecutionResultContract:
         run_finished_event = data.get("run_finished_event")
         if not isinstance(run_finished_event, bool):
             raise ValueError("execution.result_contract.run_finished_event must be boolean")
@@ -74,7 +76,7 @@ class ManifestExecutionDefaults:
     workdir: str | None
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestExecutionDefaults":
+    def from_dict(data: dict[str, Any]) -> ManifestExecutionDefaults:
         return ManifestExecutionDefaults(
             env=_required_string_map(data, "env"),
             workdir=_optional_str(data, "workdir"),
@@ -91,7 +93,7 @@ class ManifestExecution:
     defaults: ManifestExecutionDefaults
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestExecution":
+    def from_dict(data: dict[str, Any]) -> ManifestExecution:
         return ManifestExecution(
             entrypoint=_required_str(data, "entrypoint"),
             base_args=_required_string_list(data, "base_args"),
@@ -100,9 +102,7 @@ class ManifestExecution:
             result_contract=ManifestExecutionResultContract.from_dict(
                 _required_object(data, "result_contract")
             ),
-            defaults=ManifestExecutionDefaults.from_dict(
-                _required_object(data, "defaults")
-            ),
+            defaults=ManifestExecutionDefaults.from_dict(_required_object(data, "defaults")),
         )
 
 
@@ -112,7 +112,7 @@ class ManifestRunnerResources:
     memory_mb: int | None
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestRunnerResources":
+    def from_dict(data: dict[str, Any]) -> ManifestRunnerResources:
         memory_mb_raw = data.get("memory_mb")
         if memory_mb_raw is not None and not isinstance(memory_mb_raw, int):
             raise ValueError("runners.definitions.*.resources.memory_mb must be int or null")
@@ -146,7 +146,7 @@ class ManifestRunnerDefinition:
     env_parameters: dict[str, str] | None = None
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestRunnerDefinition":
+    def from_dict(data: dict[str, Any]) -> ManifestRunnerDefinition:
         resources_obj = data.get("resources")
         resources = None
         if resources_obj is not None:
@@ -158,8 +158,7 @@ class ManifestRunnerDefinition:
         env = None
         if env_obj is not None:
             if not isinstance(env_obj, dict) or not all(
-                isinstance(key, str) and isinstance(value, str)
-                for key, value in env_obj.items()
+                isinstance(key, str) and isinstance(value, str) for key, value in env_obj.items()
             ):
                 raise ValueError("runners.definitions.*.env must be map<string,string> or null")
             env = env_obj
@@ -226,7 +225,7 @@ class ManifestRunners:
     definitions: dict[str, ManifestRunnerDefinition]
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestRunners":
+    def from_dict(data: dict[str, Any]) -> ManifestRunners:
         default = _required_str(data, "default")
         definitions_raw = _required_object(data, "definitions")
         definitions = {
@@ -254,7 +253,7 @@ class AirflowManifest:
     profile_checksum: str | None = None
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "AirflowManifest":
+    def from_dict(data: dict[str, Any]) -> AirflowManifest:
         spec_version = data.get("spec_version")
         if spec_version not in SUPPORTED_SPEC_VERSIONS:
             raise ValueError(
@@ -294,11 +293,19 @@ class AirflowManifest:
             "generated_at_ts_ms": self.generated_at_ts_ms,
             "floe_version": self.floe_version,
             **({"manifest_name": self.manifest_name} if self.manifest_name is not None else {}),
-            **({"manifest_revision": self.manifest_revision} if self.manifest_revision is not None else {}),
+            **(
+                {"manifest_revision": self.manifest_revision}
+                if self.manifest_revision is not None
+                else {}
+            ),
             "config_uri": self.config_uri,
             "config_checksum": self.config_checksum,
             **({"profile_uri": self.profile_uri} if self.profile_uri is not None else {}),
-            **({"profile_checksum": self.profile_checksum} if self.profile_checksum is not None else {}),
+            **(
+                {"profile_checksum": self.profile_checksum}
+                if self.profile_checksum is not None
+                else {}
+            ),
             "execution": {
                 "entrypoint": self.execution.entrypoint,
                 "base_args": self.execution.base_args,

@@ -15,14 +15,14 @@ from typing import Any
 from .k8s_status import (
     STATUS_CANCELED,
     STATUS_FAILED,
-    STATUS_RUNNING,
+    STATUS_RUNNING,  # noqa: F401 -- re-exported, tests import it from here
     STATUS_SUBMITTED,
     STATUS_SUCCEEDED,
     STATUS_TIMEOUT,
     extract_k8s_job_failure_reason,
     map_k8s_job_status,
 )
-from .manifest import ManifestExecution, ManifestRunnerDefinition
+from .manifest import ManifestRunnerDefinition
 
 _DEFAULT_POLL_INTERVAL_S = 10
 _DEFAULT_TIMEOUT_S = 3600
@@ -326,7 +326,9 @@ def _collect_job_logs(core_api: Any, job_name: str, namespace: str) -> str:
 
 def _collect_pod_context(core_api: Any, job_name: str, namespace: str) -> dict[str, Any]:
     try:
-        pods = core_api.list_namespaced_pod(namespace=namespace, label_selector=f"floe-job={job_name}")
+        pods = core_api.list_namespaced_pod(
+            namespace=namespace, label_selector=f"floe-job={job_name}"
+        )
         items = getattr(pods, "items", None) or pods.get("items", [])
         if not items:
             return {}

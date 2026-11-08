@@ -6,7 +6,7 @@ import os
 import time
 from typing import Any
 
-from .databricks_client import DatabricksJobSpec, DatabricksJobsClient
+from .databricks_client import DatabricksJobsClient, DatabricksJobSpec
 from .manifest import ManifestRunnerDefinition
 
 
@@ -20,12 +20,7 @@ def run_databricks_job(
     existing_cluster_id = runner.existing_cluster_id
     config_uri = runner.config_uri
     python_file_uri = runner.python_file_uri
-    if (
-        not workspace_url
-        or not existing_cluster_id
-        or not config_uri
-        or not python_file_uri
-    ):
+    if not workspace_url or not existing_cluster_id or not config_uri or not python_file_uri:
         raise ValueError(
             "databricks_job runner requires workspace_url, existing_cluster_id, "
             "config_uri and python_file_uri"
@@ -261,9 +256,7 @@ def _infra_failure_payload(
     return payload
 
 
-def _map_databricks_status(
-    *, life_cycle_state: str | None, result_state: str | None
-) -> str:
+def _map_databricks_status(*, life_cycle_state: str | None, result_state: str | None) -> str:
     normalized_result = (result_state or "").strip().upper()
     normalized_lifecycle = (life_cycle_state or "").strip().upper()
 
