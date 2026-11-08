@@ -63,3 +63,12 @@ def test_a_failed_accepted_write_after_the_rejected_one_is_unknown(tmp_path: Pat
 def test_a_failure_after_the_accepted_write_reports_it_committed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     monkeypatch.setattr(sys.modules["floe.run.entity"], "build_report", boom)
     assert fail_run(tmp_path)["sinks"] == {"rejected": "committed", "accepted": "committed"}  # fmt: skip
+
+
+def test_the_failure_file_holds_no_credential_from_the_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s3cr3t-key-value")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIA-id-value")
+    monkeypatch.setattr(sys.modules["floe.run.file"], "write_rejected", boom)
+    fail_run(tmp_path)
+    text = (tmp_path / "report/run_r1/run.failure.json").read_text()
+    assert "s3cr3t-key-value" not in text and "AKIA-id-value" not in text
