@@ -291,7 +291,7 @@ SUPERSET = "id,name\n7,q\ny,bad2\n"  # arrives after the crash: the retry's inpu
 
 @pytest.mark.xfail(
     strict=True,
-    reason="#TBD: the rejected part is named from the input hash, so a retry with a new input writes the dead run's rejected rows again",
+    reason="#1197: the rejected part is named from the input hash, so a retry with a new input writes the dead run's rejected rows again",
 )
 @pytest.mark.parametrize("sink", ["parquet", "iceberg"])
 def test_a_retry_with_a_new_input_does_not_duplicate_the_dead_runs_rejected_rows(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch, sink: str) -> None:  # fmt: skip
@@ -310,7 +310,7 @@ def test_a_retry_with_a_new_input_does_not_duplicate_the_dead_runs_rejected_rows
 
 @pytest.mark.xfail(
     strict=True,
-    reason="#TBD: Parquet append seeds the unique keys from the dead run's own parts, so the retry rejects them as duplicates",
+    reason="#1198: Parquet append seeds the unique keys from the dead run's own parts, so the retry rejects them as duplicates",
 )
 def test_parquet_append_with_a_primary_key_does_not_reject_the_dead_runs_rows_on_retry(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     p = Pipeline(tmp_path, "parquet", "append")
