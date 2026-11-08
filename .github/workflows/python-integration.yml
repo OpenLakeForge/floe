@@ -1,5 +1,6 @@
 name: Python integration (Polaris)
 
+# Also nightly: the `glue` tests against moto and the `perf` memory test (#1063).
 # Runs the `polaris` and `s3` marked tests against the #602 harness (Polaris + SeaweedFS).
 # Not a required check yet (#840): the maintainer makes it required once it is stable.
 on:
@@ -81,3 +82,33 @@ jobs:
         run: |
           docker logs seaweedfs
           docker logs polaris
+
+  # Nightly and on demand only: Glue (moto) and the memory regression need no harness.
+  glue:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      FLOE_GLUE_ENDPOINT: http://localhost:5055
+      FLOE_S3_ENDPOINT: http://localhost:5055
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups --all-extras
+      # moto serves Glue and S3 on one port; its own tool environment keeps it out of the project's lockfile
+      - name: Start moto
+        run: |
+          uvx --from "moto[server]==5.2.5" moto_server -p 5055 > moto.log 2>&1 &
+          timeout 60 sh -c 'until curl -s localhost:5055 >/dev/null; do sleep 1; done'
+      - run: uv run pytest -m glue -rs tests/integration
+      - name: Moto log
+        if: failure()
+        run: cat moto.log
+
+  perf:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups --all-extras
+      - run: uv run pytest -m perf tests/perf

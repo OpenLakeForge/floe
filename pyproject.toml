@@ -50,7 +50,10 @@ pythonVersion = "3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# perf runs on its own (`pytest -m perf`); a later -m on the command line replaces this one
+addopts = "-m 'not perf'"
 markers = [
+    "perf: memory regression run, slow; nightly only (-m perf)",
     "polaris: needs a running Polaris, enabled by FLOE_POLARIS_URI",
     "s3: needs an S3-compatible service (set FLOE_S3_ENDPOINT)",
     "glue: needs a Glue-compatible service and S3 (set FLOE_GLUE_ENDPOINT, FLOE_S3_ENDPOINT)",

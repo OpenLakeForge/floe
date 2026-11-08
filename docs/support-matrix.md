@@ -83,6 +83,23 @@ Notes:
 - S3-compatible stores (MinIO, SeaweedFS, …) work through `AWS_ENDPOINT_URL_S3` /
   `AWS_ENDPOINT_URL`; see [storages/s3.md](storages/s3.md).
 
+## Fault scenarios (Iceberg and S3)
+
+Tested against local services (Polaris + SeaweedFS in `python-integration.yml`, moto for Glue), nightly
+and on demand. Anything else is untested against a real cloud.
+
+| Scenario | Status |
+|---|---|
+| Commit conflict on a REST catalog (stale writer retries on the fresh table) | Automated (Polaris) |
+| Rival copy of the same batch is not appended twice | Automated (Polaris) |
+| Writer failure mid-stream commits nothing; the retry lands once | Automated (Polaris) |
+| Read-after-commit: a fresh reader sees the new snapshot | Automated (Polaris) |
+| Glue catalog: overwrite, append, per-domain databases | Automated (moto, not real AWS) |
+| Real AWS S3 + Glue, cloud-backed Polaris | Manual: needs credentials and costs money |
+| Credential expiry mid-run | Manual: the local harness cannot expire a credential |
+| Missing permissions (denied catalog or bucket access) | Manual |
+| Object-store partial failure (a part uploaded, then the connection drops) | Manual |
+
 ## Config keys (storage)
 
 ```yaml
