@@ -1,0 +1,2 @@
+id,card,ssn,ip,email,__floe_row_index,__floe_errors
+,4111****2222,***,,[REDACTED],3,"[{""rule"":""not_null"",""column"":""id"",""message"":""required value missing""}]"

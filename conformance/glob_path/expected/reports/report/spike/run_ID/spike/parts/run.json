@@ -1,0 +1,127 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "spike.parts"
+  },
+  "source": {
+    "format": "csv",
+    "path": "local://<ROOT>/in/part_*.csv",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ","
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "directory",
+      "file_count": 2,
+      "files": [
+        "local://<ROOT>/in/part_1.csv",
+        "local://<ROOT>/in/part_2.csv"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/parts"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/parts"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/parts",
+    "table_root_uri": "local://<ROOT>/out/accepted/parts",
+    "write_mode": "overwrite",
+    "accepted_rows": 2,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 870,
+    "avg_file_size_mb": 0.0008296966552734375,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "results": {
+    "files_total": 2,
+    "files_skipped": 0,
+    "rows_total": 2,
+    "accepted_total": 2,
+    "rejected_total": 0,
+    "warnings_total": 0,
+    "errors_total": 0
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/part_1.csv",
+      "status": "success",
+      "row_count": 1,
+      "accepted_count": 1,
+      "rejected_count": 0,
+      "mismatch": {
+        "declared_columns_count": 2,
+        "input_columns_count": 2,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/parts",
+        "rejected_path": null,
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 0,
+        "warnings": 0,
+        "rules": []
+      }
+    },
+    {
+      "input_file": "local://<ROOT>/in/part_2.csv",
+      "status": "success",
+      "row_count": 1,
+      "accepted_count": 1,
+      "rejected_count": 0,
+      "mismatch": {
+        "declared_columns_count": 2,
+        "input_columns_count": 2,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/parts",
+        "rejected_path": null,
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 0,
+        "warnings": 0,
+        "rules": []
+      }
+    }
+  ],
+  "timings_ms": "<volatile>"
+}

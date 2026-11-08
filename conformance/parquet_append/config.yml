@@ -1,0 +1,26 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: scores
+    domain: spike
+    source:
+      format: parquet
+      path: "./in"
+    sink:
+      write_mode: append
+      accepted:
+        format: parquet
+        path: "./out/accepted/scores"
+      rejected:
+        format: csv
+        path: "./out/rejected/scores"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - { name: id, type: int64, nullable: false }
+        - { name: name, type: string, nullable: false }
+        - { name: score, type: number }
+report:
+  path: "./report"

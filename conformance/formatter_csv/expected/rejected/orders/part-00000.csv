@@ -1,0 +1,4 @@
+id,qty,email,__floe_row_index,__floe_errors
+2,abc,b@x.io,1,"""cast_error,qty,invalid value for target type"""
+,3,c@x.io,2,"""not_null,id,required value missing"""
+4,x,,3,"""not_null,email,required value missing\ncast_error,qty,invalid value for target type"""

@@ -1,0 +1,36 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: people
+    domain: spike
+    source:
+      format: csv
+      path: "./in"
+      options: {header: true, separator: ","}
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/people"
+      rejected:
+        format: csv
+        path: "./out/rejected/people"
+    policy:
+      severity: reject
+    pii:
+      columns:
+        - { name: card, strategy: mask, mask_pattern: "{first4}****{last4}" }
+        - { name: ssn, strategy: redact, redact_value: "***" }
+        - { name: ip, strategy: nullify }
+        - { name: notes, strategy: drop }
+        - { name: email, strategy: redact }
+    schema:
+      columns:
+        - { name: id, type: int64, nullable: false }
+        - { name: card, type: string }
+        - { name: ssn, type: string }
+        - { name: ip, type: string }
+        - { name: notes, type: string }
+        - { name: email, type: string }
+report:
+  path: "./report"
