@@ -8,6 +8,7 @@
   "config_uri": "local://<ROOT>/work/config.yml",
   "config_checksum": "sha256:1d26ca838472f227167db8692f091779097e2c61f6ad6578740307b0272903f0",
   "report_base_uri": "local://<ROOT>/work/report",
+  "report_formatter": "text",
   "domains": [
     {
       "name": "spike"

@@ -94,6 +94,49 @@ def test_a_run_from_the_generated_manifest_matches_the_config_run(
     assert actual == expected
 
 
+def test_1188_entity_metadata_and_formatter_survive_the_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def run(work: Path, manifest: bool) -> dict[str, Any]:
+        copy_case("formatter_text", work)
+        config = work / "config.yml"
+        config.write_text(
+            config.read_text().replace(
+                "    domain: spike\n",
+                "    domain: spike\n    metadata: {data_product: dp, owner: o, description: d, tags: [a, b]}\n",
+            )
+        )
+        monkeypatch.chdir(work)
+        if manifest:
+            assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+        source = ["--manifest", "m.json"] if manifest else ["-c", "config.yml"]
+        floe(monkeypatch, "run", *source, "--run-id", "r")
+        return outputs(work)
+
+    expected, actual = run(tmp_path / "c", False), run(tmp_path / "m", True)
+    entity = next(v for k, v in expected.items() if k.endswith("orders/run.json"))
+    assert entity["entity"]["metadata"]["tags"] == ["a", "b"]
+    for outs, path in ((expected, "<ROOT>/config.yml"), (actual, "m.json")):
+        summary = next(k for k in outs if k.endswith("run.summary.json"))
+        assert outs[summary]["config"].pop("path") == path
+    assert actual == expected  # the text formatter shapes the rejected CSV
+
+
+def test_1188_a_manifest_without_metadata_fields_still_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = copy_case("formatter_text", tmp_path / "w")
+    monkeypatch.chdir(work)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    doc = json.loads((work / "m.json").read_text())
+    assert doc.pop("report_formatter") == "text"
+    doc["entities"][0]["tags"] = {"owner": "o"}  # as generated before #1188
+    (work / "m.json").write_text(json.dumps(doc))
+    root, entities, _ = load_manifest(work / "m.json")
+    assert root.report.formatter is None
+    assert entities[0].metadata and entities[0].metadata.owner == "o"
+
+
 @pytest.mark.parametrize(
     ("case", "flags"),
     [

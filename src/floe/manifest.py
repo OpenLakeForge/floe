@@ -198,6 +198,9 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
             "accepted_sink_uri": accepted.uri,
             "rejected_sink_uri": rejected and rejected.uri,
             "tags": tags or None,
+            **_put(
+                {}, description=meta and meta.description, tag_list=meta and meta.tags
+            ),
             "source": _put(
                 source.json(entity.source.format),
                 ref=entity.source.source_ref,
@@ -500,6 +503,7 @@ def build_manifest(
         "profile_uri": profile_uri,
         "profile_checksum": profile_checksum,
         "report_base_uri": report.uri,
+        **_put({}, report_formatter=root.report.formatter),
         "domains": [
             _put(
                 {"name": d.name},

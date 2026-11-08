@@ -8,6 +8,7 @@
   "config_uri": "local://<ROOT>/work/config.yml",
   "config_checksum": "sha256:2317f4494503a3c2295b4a2968a51ffbfd463ac0c1d84ce40d36b6cbc90f9be3",
   "report_base_uri": "local://<ROOT>/work/report",
+  "report_formatter": "json",
   "domains": [],
   "execution": {
     "entrypoint": "floe",

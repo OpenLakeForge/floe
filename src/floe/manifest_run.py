@@ -23,6 +23,7 @@ from floe.config.project import (
 from floe.config.storage import CatalogsConfig, StorageDefinition, StoragesConfig
 from floe.config.types import (
     EntityConfig,
+    EntityMetadata,
     IcebergPartitionField,
     IcebergSinkOptions,
     MergeOptions,
@@ -126,6 +127,14 @@ def _schema(s: Json) -> Json:
     }
 
 
+def _entity_metadata(m: Json) -> Json | None:
+    """`tags` holds `data_product`, `domain` and `owner`; `description` and `tag_list` ride beside it."""
+    fields: Json = cast(Json, m.get("tags") or {}) | {"description": m.get("description"), "tags": m.get("tag_list")}  # fmt: skip
+    if all(v is None for v in fields.values()):
+        return None
+    return {k: fields.get(k) for k in EntityMetadata.model_fields}
+
+
 def _entity(m: Json, named_local: bool) -> EntityConfig:
     src, sinks = m["source"], m["sinks"]
     write_mode = _pick(m.get("write_mode"), _WRITE_MODES, "overwrite")
@@ -161,7 +170,7 @@ def _entity(m: Json, named_local: bool) -> EntityConfig:
         {
             "id": m["name"],
             "name": (m.get("asset_key") or [m["name"]])[-1],
-            "metadata": None,
+            "metadata": _entity_metadata(m),
             "domain": m.get("domain"),
             "incremental_mode": incremental,
             "state": {"path": m["state_path"]} if m.get("state_path") else None,
@@ -197,11 +206,11 @@ def _catalog_def(d: Json) -> Json:
     return {k: v for k, v in d.items() if k != "type_config"} | d["type_config"]
 
 
-def _report(base: str, storages: StoragesConfig | None) -> tuple[ReportConfig, StoragesConfig | None]:  # fmt: skip
+def _report(base: str, formatter: str | None, storages: StoragesConfig | None) -> tuple[ReportConfig, StoragesConfig | None]:  # fmt: skip
     """Rust `RunContext::from_config`: an `s3://` base uses the storage on its bucket, else a synthetic one."""
     if not base.startswith("s3://"):
         local = storages and next((d.name for d in storages.definitions if d.type == "local"), None)  # fmt: skip
-        return ReportConfig(path=base.removeprefix("local://"), formatter=None, storage=local), storages  # fmt: skip
+        return ReportConfig(path=base.removeprefix("local://"), formatter=formatter, storage=local), storages  # fmt: skip
     bucket = parse_s3_uri(base)[0]
     defs = storages.definitions if storages else []
     found = next((d.name for d in defs if d.type == "s3" and d.bucket == bucket), None)  # fmt: skip
@@ -212,7 +221,7 @@ def _report(base: str, storages: StoragesConfig | None) -> tuple[ReportConfig, S
         synthetic = StorageDefinition(name=found, type="s3", bucket=bucket, **none)
         local = [] if storages else [StorageDefinition(name="local", type="local", bucket=None, **none)]  # fmt: skip
         storages = StoragesConfig(default=storages and storages.default, definitions=[*defs, *local, synthetic])  # fmt: skip
-    return ReportConfig(path=base, formatter=None, storage=found), storages
+    return ReportConfig(path=base, formatter=formatter, storage=found), storages
 
 
 def _cloud(target: _M, uri: str | None) -> _M:
@@ -294,7 +303,7 @@ def load_manifest(location: str | Path) -> tuple[RootConfig, list[EntityConfig],
     if not supported:
         floe = f"{FLOE_VERSION[0]}.{FLOE_VERSION[1]}"
         raise FloeConfigError(f"manifest spec_version={spec} is unsupported (newer than Floe {floe})")  # fmt: skip
-    report, storages = _report(report_base, _section(StoragesConfig, m, "storages", _storage_def))  # fmt: skip
+    report, storages = _report(report_base, m.get("report_formatter"), _section(StoragesConfig, m, "storages", _storage_def))  # fmt: skip
     root = RootConfig(
         version=spec,
         metadata=metadata,
