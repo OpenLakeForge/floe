@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-
 # ---------------------------------------------------------------------------
 # Airflow stub (same pattern as other test files)
 # ---------------------------------------------------------------------------
@@ -45,7 +44,7 @@ def _install_airflow_stub() -> None:
 _install_airflow_stub()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from airflow_floe.kubernetes_runner import (  # noqa: E402
+from airflow_floe.kubernetes_runner import (
     STATUS_CANCELED,
     STATUS_FAILED,
     STATUS_RUNNING,
@@ -56,11 +55,10 @@ from airflow_floe.kubernetes_runner import (  # noqa: E402
     map_k8s_job_status,
     run_kubernetes_job,
 )
-from airflow_floe.manifest import (  # noqa: E402
+from airflow_floe.manifest import (
     ManifestRunnerDefinition,
     ManifestRunnerResources,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -226,9 +224,7 @@ class BuildJobSpecTests(unittest.TestCase):
         self.assertEqual(container["args"], ["-m", "floe", "run", "--entities", "orders"])
 
         # Service account
-        self.assertEqual(
-            spec["spec"]["template"]["spec"]["serviceAccountName"], "floe-sa"
-        )
+        self.assertEqual(spec["spec"]["template"]["spec"]["serviceAccountName"], "floe-sa")
 
         # Resources
         self.assertEqual(container["resources"]["requests"]["cpu"], "500m")
@@ -307,13 +303,15 @@ class MapK8sJobStatusTests(unittest.TestCase):
 
     def test_failed_condition_is_failed(self) -> None:
         job = _make_job_status(
-            failed=1, conditions=[{"type": "Failed", "status": "True", "reason": "BackoffLimitExceeded"}]
+            failed=1,
+            conditions=[{"type": "Failed", "status": "True", "reason": "BackoffLimitExceeded"}],
         )
         self.assertEqual(map_k8s_job_status(job), STATUS_FAILED)
 
     def test_failed_deadline_exceeded_is_timeout(self) -> None:
         job = _make_job_status(
-            failed=1, conditions=[{"type": "Failed", "status": "True", "reason": "DeadlineExceeded"}]
+            failed=1,
+            conditions=[{"type": "Failed", "status": "True", "reason": "DeadlineExceeded"}],
         )
         self.assertEqual(map_k8s_job_status(job), STATUS_TIMEOUT)
 
@@ -346,7 +344,9 @@ class MapK8sJobStatusTests(unittest.TestCase):
 
 
 class RunKubernetesJobTests(unittest.TestCase):
-    def _runner(self, *, timeout_seconds: int = 300, poll_interval_seconds: int = 1) -> ManifestRunnerDefinition:
+    def _runner(
+        self, *, timeout_seconds: int = 300, poll_interval_seconds: int = 1
+    ) -> ManifestRunnerDefinition:
         return ManifestRunnerDefinition(
             runner_type="kubernetes_job",
             image="floe-runner:latest",
@@ -429,9 +429,7 @@ class RunKubernetesJobTests(unittest.TestCase):
         # Job stays active indefinitely; connector-side timeout triggers
         runner = self._runner(timeout_seconds=1, poll_interval_seconds=1)
         always_active = _make_job_status(active=1)
-        jobs_api = _make_mock_jobs_api(
-            poll_responses=[always_active] * 10
-        )
+        jobs_api = _make_mock_jobs_api(poll_responses=[always_active] * 10)
         core_api = _make_mock_core_api(logs="")
 
         # Patch time.monotonic to simulate deadline exceeded after first poll
@@ -478,9 +476,7 @@ class RunKubernetesJobTests(unittest.TestCase):
 
     def test_no_run_finished_event_uses_infra_status(self) -> None:
         # Logs exist but contain no run_finished event
-        jobs_api = _make_mock_jobs_api(
-            poll_responses=[_make_job_status(succeeded=1)]
-        )
+        jobs_api = _make_mock_jobs_api(poll_responses=[_make_job_status(succeeded=1)])
         core_api = _make_mock_core_api(logs="some unexpected output\n")
 
         with patch("time.sleep"):
@@ -498,9 +494,7 @@ class RunKubernetesJobTests(unittest.TestCase):
 
     def test_plural_entities_omit_entity_key(self) -> None:
         logs = _run_finished_line()
-        jobs_api = _make_mock_jobs_api(
-            poll_responses=[_make_job_status(succeeded=1)]
-        )
+        jobs_api = _make_mock_jobs_api(poll_responses=[_make_job_status(succeeded=1)])
         core_api = _make_mock_core_api(logs=logs)
 
         with patch("time.sleep"):
@@ -520,9 +514,7 @@ class RunKubernetesJobTests(unittest.TestCase):
             report_base="s3://bucket/reports",
             entity_report_uris={"orders": "s3://bucket/reports/run_1/entities/orders.report.json"},
         )
-        jobs_api = _make_mock_jobs_api(
-            poll_responses=[_make_job_status(succeeded=1)]
-        )
+        jobs_api = _make_mock_jobs_api(poll_responses=[_make_job_status(succeeded=1)])
         core_api = _make_mock_core_api(logs=logs)
 
         with patch("time.sleep"):
@@ -540,9 +532,7 @@ class RunKubernetesJobTests(unittest.TestCase):
 
     def test_new_fields_absent_when_not_in_event(self) -> None:
         logs = _run_finished_line()  # fixture has no report_base / entity_report_uris
-        jobs_api = _make_mock_jobs_api(
-            poll_responses=[_make_job_status(succeeded=1)]
-        )
+        jobs_api = _make_mock_jobs_api(poll_responses=[_make_job_status(succeeded=1)])
         core_api = _make_mock_core_api(logs=logs)
 
         with patch("time.sleep"):
@@ -560,9 +550,7 @@ class RunKubernetesJobTests(unittest.TestCase):
 
     def test_job_submitted_to_correct_namespace(self) -> None:
         runner = self._runner()
-        jobs_api = _make_mock_jobs_api(
-            poll_responses=[_make_job_status(succeeded=1)]
-        )
+        jobs_api = _make_mock_jobs_api(poll_responses=[_make_job_status(succeeded=1)])
         core_api = _make_mock_core_api()
 
         with patch("time.sleep"):
@@ -576,12 +564,12 @@ class RunKubernetesJobTests(unittest.TestCase):
             )
 
         call_kwargs = jobs_api.create_namespaced_job.call_args
-        self.assertEqual(call_kwargs.kwargs.get("namespace") or call_kwargs[1].get("namespace"), "data")
+        self.assertEqual(
+            call_kwargs.kwargs.get("namespace") or call_kwargs[1].get("namespace"), "data"
+        )
 
     def test_job_name_derived_from_entity(self) -> None:
-        jobs_api = _make_mock_jobs_api(
-            poll_responses=[_make_job_status(succeeded=1)]
-        )
+        jobs_api = _make_mock_jobs_api(poll_responses=[_make_job_status(succeeded=1)])
         core_api = _make_mock_core_api()
 
         with patch("time.sleep"):
@@ -597,9 +585,7 @@ class RunKubernetesJobTests(unittest.TestCase):
         self.assertTrue(payload["backend_run_id"].startswith("floe-my-entity-"))
 
     def test_create_job_called_once(self) -> None:
-        jobs_api = _make_mock_jobs_api(
-            poll_responses=[_make_job_status(succeeded=1)]
-        )
+        jobs_api = _make_mock_jobs_api(poll_responses=[_make_job_status(succeeded=1)])
         core_api = _make_mock_core_api()
 
         with patch("time.sleep"):

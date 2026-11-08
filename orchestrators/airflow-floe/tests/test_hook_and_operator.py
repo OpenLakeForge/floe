@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import io
 import json
-from pathlib import Path
-import subprocess
 import sys
 import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 
@@ -33,10 +32,10 @@ def _install_airflow_stub() -> None:
 _install_airflow_stub()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from airflow_floe.hooks import FloeManifestHook  # noqa: E402
-from airflow_floe.manifest import ManifestExecution  # noqa: E402
-from airflow_floe.operators import FloeRunHook, FloeRunOperator  # noqa: E402
-from airflow_floe.runtime import build_dag_manifest_context  # noqa: E402
+from airflow_floe.hooks import FloeManifestHook
+from airflow_floe.manifest import ManifestExecution
+from airflow_floe.operators import FloeRunHook, FloeRunOperator
+from airflow_floe.runtime import build_dag_manifest_context
 
 
 def _execution_and_runners(config_path: str) -> dict:
@@ -414,9 +413,12 @@ class ManifestRoutingTests(unittest.TestCase):
             base = Path(tmp)
             config_path = base / "config.yml"
             config_path.write_text("version: v1\n", encoding="utf-8")
-            manifest_path = self._write_manifest_with_runner_type(base, config_path, "local_process")
+            manifest_path = self._write_manifest_with_runner_type(
+                base, config_path, "local_process"
+            )
 
             from airflow_floe.runtime import build_dag_manifest_context
+
             manifest_context = build_dag_manifest_context(str(manifest_path))
 
             operator = FloeRunOperator(
@@ -440,6 +442,7 @@ class ManifestRoutingTests(unittest.TestCase):
             manifest_path = self._write_manifest_with_runner_type(base, config_path, "docker")
 
             from airflow_floe.runtime import build_dag_manifest_context
+
             manifest_context = build_dag_manifest_context(str(manifest_path))
 
             operator = FloeRunOperator(

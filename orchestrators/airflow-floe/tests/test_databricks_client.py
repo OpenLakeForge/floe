@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import sys
 import unittest
 from pathlib import Path
-import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from airflow_floe.databricks_client import DatabricksJobSpec, DatabricksJobsClient
+from airflow_floe.databricks_client import DatabricksJobsClient, DatabricksJobSpec
 
 
 class _FakeHttp:
@@ -68,7 +68,9 @@ class DatabricksClientTests(unittest.TestCase):
 
         job_id = client.ensure_domain_job(spec)
         run_id = client.run_now(job_id=job_id)
-        terminal = client.poll_run_to_terminal(run_id=run_id, poll_interval_seconds=1, timeout_seconds=5)
+        terminal = client.poll_run_to_terminal(
+            run_id=run_id, poll_interval_seconds=1, timeout_seconds=5
+        )
 
         self.assertEqual(job_id, 123)
         self.assertEqual(run_id, 999)

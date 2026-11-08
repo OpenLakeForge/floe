@@ -2,9 +2,9 @@
 
 from .hooks import FloeManifestHook, load_manifest_context
 from .manifest import (
+    SUPPORTED_SPEC_VERSIONS,
     AirflowManifest,
     ManifestEntity,
-    SUPPORTED_SPEC_VERSIONS,
     load_manifest,
 )
 from .manifest_discovery import ManifestDagSpec, discover_manifest_dag_specs
@@ -22,6 +22,7 @@ from .runtime import (
 )
 
 __all__ = [
+    "SUPPORTED_SPEC_VERSIONS",
     "AirflowManifest",
     "DagManifestContext",
     "FloeManifestHook",
@@ -29,7 +30,6 @@ __all__ = [
     "FloeRunOperator",
     "ManifestDagSpec",
     "ManifestEntity",
-    "SUPPORTED_SPEC_VERSIONS",
     "build_asset_event_extra",
     "build_dag_manifest_context",
     "build_dag_manifest_context_or_empty",

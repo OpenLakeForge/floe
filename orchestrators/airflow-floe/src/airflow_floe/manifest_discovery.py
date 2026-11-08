@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
 
 
 @dataclass(frozen=True)
@@ -24,9 +24,7 @@ def discover_manifest_dag_specs(
         return []
 
     manifest_paths = sorted(
-        path.resolve()
-        for path in directory.glob("*.manifest.json")
-        if path.is_file()
+        path.resolve() for path in directory.glob("*.manifest.json") if path.is_file()
     )
 
     specs: list[ManifestDagSpec] = []

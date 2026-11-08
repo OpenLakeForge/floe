@@ -72,13 +72,15 @@ def source_names(columns: Sequence[ColumnConfig], strategy: str | None) -> list[
     """Normalised `source or name` of each column; two columns on one name are an error."""
     seen: dict[str, str] = {}
     for column in columns:
-        source = column.source or column.name
-        name = normalize_name(source, strategy)
+        name = normalize_name(column.source or column.name, strategy)
+        label = (
+            f"{column.name} (source {column.source})" if column.source else column.name
+        )
         if name in seen:
             raise FloeConfigError(
-                f"column source collision: {seen[name]} and {source} -> {name}"
+                f"column source collision: {seen[name]} and {label} -> {name}"
             )
-        seen[name] = source
+        seen[name] = label
     return list(seen)
 
 

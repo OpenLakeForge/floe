@@ -46,6 +46,7 @@ jobs:
               - "tests/**"
               - "conformance/**"
               - "orchestrators/dagster-floe/**"
+              - "orchestrators/airflow-floe/**"
               - "pyproject.toml"
               - "uv.lock"
               - ".github/workflows/ci.yml"
