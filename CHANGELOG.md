@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- airflow-floe honours `execution.orchestration`, `job_scope`, `domain_resources` and the resource limits like dagster-floe (#1009): the example DAG gets one task per entity (one per domain with `job_scope: domain`) and `max_active_tasks` from the orchestration block. **Breaking:** a `kubernetes_job` pod's limits now come only from `cpu_limit` and `memory_limit_mb`; they no longer copy `cpu` and `memory_mb`, so a manifest that relied on that has no limits until you set them.
 - `floe run --manifest` keeps the entity `metadata` (`data_product`, `domain`, `owner`, `description`, `tags`) in the run report and honours `report.formatter` (#1188, #1009). The manifest gains optional fields: a top-level `report_formatter` and, per entity, `description` and `tag_list` (the metadata `tags` list; the existing `tags` object still holds `data_product`, `domain` and `owner`). A manifest generated before this change still runs as before: no entity metadata and JSON `__floe_errors`; regenerate it to get both.
 - `floe validate`, `run`, `state` and `manifest generate` fail with `a config must be a local path; download it first` for `-c s3://...` instead of `No such file or directory` (#1009). Only `--manifest` and `-p` read `s3://`.
 - A `normalize_columns` source collision now names the declared columns, with their `source:` (#1009): `column source collision: order_id and order_ref (source order.id) -> order_id` instead of `order_id and order.id -> order_id`.
