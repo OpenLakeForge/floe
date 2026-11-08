@@ -24,7 +24,6 @@ from floe.config.types import (
     catalog_ident,
     with_partition_columns,
 )
-from floe.config.yaml import rust_debug
 from floe.errors import NOT_SUPPORTED, FloeConfigError
 from floe.extras import require
 from floe.pii import token_n
@@ -554,9 +553,7 @@ def _check_source(entity: EntityConfig, config: RootConfig) -> None:
     if source.format in ("csv", "tsv"):
         separator, encoding = options.separator or "", options.encoding or "utf8"
         if len(separator.encode()) != 1:
-            raise _fail(
-                entity, f"separator must be a single byte, got {rust_debug(separator)}"
-            )
+            raise _fail(entity, f"separator must be a single byte, got {separator!r}")
         if _canonical(encoding) not in ("utf8", "lossyutf8"):
             raise _fail(entity, f"unsupported encoding: {encoding}")
 

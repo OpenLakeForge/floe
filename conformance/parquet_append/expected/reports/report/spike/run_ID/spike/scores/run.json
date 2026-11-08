@@ -1,0 +1,113 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "spike.scores"
+  },
+  "source": {
+    "format": "parquet",
+    "path": "local://<ROOT>/in",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ";"
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "directory",
+      "file_count": 1,
+      "files": [
+        "local://<ROOT>/in/data.parquet"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/scores"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/scores"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/scores",
+    "table_root_uri": "local://<ROOT>/out/accepted/scores",
+    "write_mode": "append",
+    "accepted_rows": 2,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-<uuid>.parquet"
+    ],
+    "total_bytes_written": 1185,
+    "avg_file_size_mb": 0.0011301040649414062,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 3,
+    "accepted_total": 2,
+    "rejected_total": 1,
+    "warnings_total": 0,
+    "errors_total": 1
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/data.parquet",
+      "status": "rejected",
+      "row_count": 3,
+      "accepted_count": 2,
+      "rejected_count": 1,
+      "mismatch": {
+        "declared_columns_count": 3,
+        "input_columns_count": 3,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/scores",
+        "rejected_path": "<ROOT>/out/rejected/scores/part-<uuid>.csv",
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 1,
+        "warnings": 0,
+        "rules": [
+          {
+            "rule": "not_null",
+            "severity": "reject",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "name",
+                "violations": 1
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "timings_ms": "<volatile>"
+}

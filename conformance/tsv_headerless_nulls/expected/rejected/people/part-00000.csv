@@ -1,0 +1,2 @@
+column_1,column_2,column_3,__floe_row_index,__floe_errors
+x,cy,9,3,"[{""rule"":""not_null"",""column"":""column_1"",""message"":""required value missing""},{""rule"":""cast_error"",""column"":""column_1"",""message"":""invalid value for target type""}]"

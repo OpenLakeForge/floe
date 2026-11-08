@@ -404,7 +404,7 @@ _ERRORS: list[tuple[dict[str, object], str]] = [
     ),
     (
         {"sink": {"accepted": {**_ACCEPTED, "duckdb": {"table": "t"}}}},
-        'sink.accepted.duckdb is only valid when format is "duckdb" (found format="parquet")',
+        """sink.accepted.duckdb is only valid when format is "duckdb" (found format='parquet')""",
     ),
     (
         {"source": {"format": "csv", "path": "p", "source_ref": "x"}},

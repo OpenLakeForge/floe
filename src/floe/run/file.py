@@ -69,6 +69,15 @@ def timed(spent: dict[str, float], phase: str) -> Generator[None]:
         spent[phase] = spent.get(phase, 0.0) + time.monotonic() - started
 
 
+@contextmanager
+def sink_write(plan: "Plan", sink: str, phase: str) -> Generator[None]:
+    """`timed`, and the sink's commit state for `run.failure.json`: unknown once the write starts, committed only once it returned (#1155)."""
+    plan.sinks[sink] = "unknown"
+    with timed(plan.spent, phase):
+        yield
+    plan.sinks[sink] = "committed"
+
+
 def _chunks(entity: EntityConfig, path: Path, names: list[str], head: list[tuple[str, Any]] | None = None) -> Chunks:  # fmt: skip
     src = entity.source
     match src.format:
@@ -150,7 +159,7 @@ def _put(plan: "Plan", severity: str, name: str, body: bytes) -> str:
     """Write `<rejected>/<name>`; the report shows a local target as a path, as Rust."""
     base, client = _rejected(plan, severity)
     uri = f"{base.rstrip('/')}/{name}"
-    with timed(plan.spent, "rejected_write_ms"):
+    with sink_write(plan, "rejected", "rejected_write_ms"):
         client.write(uri, body)
     return uri.removeprefix("local://")
 
@@ -181,6 +190,7 @@ class Plan:
     tracker: UniqueTracker
     pii_map: dict[str, str]
     rejected_writes: int = 0
+    sinks: dict[str, str] = field(default_factory=lambda: {"rejected": "not_started", "accepted": "not_started"})  # fmt: skip  # #1155: `run()` passes its own, to report a failure
     spent: dict[str, float] = field(
         default_factory=dict[str, float]
     )  # seconds per phase, see PHASES
@@ -400,7 +410,7 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
         plan.rejected_writes += 1
         target, client = _rejected(plan, "reject")
         key = f"{plan.input_hash}:{file.source_uri}"
-        with timed(plan.spent, "rejected_write_ms"):
+        with sink_write(plan, "rejected", "rejected_write_ms"):
             if _parquet_rejected(plan):
                 frames = (output(plan, unspill(p)).with_columns(source_columns(plan, uri)) for p in spilled_rejected)  # fmt: skip
                 written = f"{target.rstrip('/')}/rows"  # apart from the raw copies in the rejected directory; a file can have many parts  # fmt: skip

@@ -44,7 +44,6 @@ from floe.config.yaml import (
     opt_u64,
     opt_vec_string,
     opt_vec_vec_string,
-    rust_debug,
     validate_known_keys,
     yaml_array,
     yaml_hash,
@@ -379,7 +378,7 @@ def _sink_target(
     fmt = get_string(h, "format", ctx)
     if "duckdb" in h and fmt != "duckdb":
         raise FloeConfigError(
-            f'{ctx}.duckdb is only valid when format is "duckdb" (found format={rust_debug(fmt)})'
+            f'{ctx}.duckdb is only valid when format is "duckdb" (found format={fmt!r})'
         )
     spec = _partition_spec(h, ctx)
     return SinkTarget(
