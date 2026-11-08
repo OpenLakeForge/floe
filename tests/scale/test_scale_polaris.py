@@ -36,7 +36,7 @@ storages:
   default: local
   definitions:
     - {{name: local, type: local}}
-    - {{name: lake, type: s3, bucket: warehouse, region: us-east-1, endpoint: "{s3}", path_style_access: true, prefix: spike/{tag}}}
+    - {{name: lake, type: s3, bucket: warehouse, region: us-east-1, endpoint: "{s3}", path_style_access: true, prefix: spike}}
 catalogs:
   default: polaris
   definitions:
@@ -55,7 +55,7 @@ def test_a_subset_lands_in_iceberg_with_one_snapshot_per_run_and_the_rejects_cou
         ENTITIES,
         domains=2,
         tag=tag,
-        iceberg=CLUSTER.format(s3=S3, uri=URI, tag=tag),
+        iceberg=CLUSTER.format(s3=S3, uri=URI),
     )
     path = tmp_path / "config.yml"
     root = parse_config(path, {})

@@ -47,7 +47,7 @@ defaults:
 """
 PARQUET = '{format: parquet, path: "./out/accepted/{{domain.name}}/{{entity.name}}"}'
 ICEBERG = (
-    '{format: iceberg, path: "tables/{{domain.name}}/{{entity.name}}", storage: lake,'
+    '{format: iceberg, path: "{{domain.name}}/{{entity.name}}", storage: lake,'
     " iceberg: {catalog: polaris}}"
 )
 ENTITY = """\
