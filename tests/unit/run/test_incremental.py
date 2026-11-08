@@ -1,4 +1,4 @@
-"""Incremental `file` mode in `run_entity`: skip, release, `row` parity, state location, renewal."""
+"""Incremental `file` mode in `run_entity`: skip, release, state location, renewal."""
 
 import json
 import time
@@ -149,15 +149,6 @@ def test_an_abort_promotes_the_files_written_before_it(
     assert sorted(accepted["id"].to_list()) == [1, 2, 3]
 
 
-def test_row_mode_reprocesses_like_rust_0_7(tmp_path: Path) -> None:
-    entity = setup(tmp_path, mode="row")
-    go(entity, tmp_path, "r1")
-    report = go(entity, tmp_path, "r2").report
-    assert report["results"]["files_skipped"] == 0
-    assert "skip_reason" not in report["files"][0]
-    assert not (tmp_path / "in/.floe").exists()
-
-
 @pytest.mark.parametrize(
     ("src", "expected"),
     [
@@ -239,7 +230,7 @@ def test_glob_with_a_parent_directory_component_resolves(tmp_path: Path) -> None
     assert go(entity, tmp_path, "r1").report["results"]["files_total"] == 1
 
 
-@pytest.mark.parametrize(("mode", "moved"), [("archive", True), ("none", True), ("file", False), ("row", False)])  # fmt: skip
+@pytest.mark.parametrize(("mode", "moved"), [("archive", True), ("none", True), ("file", False)])  # fmt: skip
 def test_archive_follows_rust_archive_enabled(tmp_path: Path, mode: str, moved: bool) -> None:  # fmt: skip
     """#824: only `archive`, or `none` with `sink.archive`, moves the source (Rust `archive_enabled()`)."""
     setup(tmp_path, mode=mode)

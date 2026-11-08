@@ -505,15 +505,8 @@ $defs:
   profile_validation:
     type: object
     additionalProperties: false
-    description: Validation behaviour overrides for this environment.
-    properties:
-      strict:
-        type: boolean
-        description: >
-          When true, the engine applies strict validation rules (e.g. all
-          schema columns must be present, no extra columns allowed).
-          When false or absent, validation follows the default behaviour
-          defined in the main Floe config.
+    description: No keys are accepted; `strict` was removed (see CHANGELOG).
+    properties: {}
 
   storages:
     type: object

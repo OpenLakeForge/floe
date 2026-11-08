@@ -18,3 +18,8 @@ class FloeStorageError(FloeError): ...
 
 
 class FloeIoError(FloeError): ...
+
+
+NOT_SUPPORTED = (
+    "is not supported (see CHANGELOG)"  # config inputs Floe used to accept and ignore
+)

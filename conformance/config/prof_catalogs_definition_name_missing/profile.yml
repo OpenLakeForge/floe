@@ -26,5 +26,3 @@ catalogs:
   definitions:
   - type: rest
     uri: u
-validation:
-  strict: true

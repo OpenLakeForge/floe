@@ -18,5 +18,3 @@ variables:
   INCOMING_DIR: /data/uat/incoming
   OUTPUT_DIR: /data/uat/output
   REPORT_DIR: /data/uat/reports
-validation:
-  strict: true

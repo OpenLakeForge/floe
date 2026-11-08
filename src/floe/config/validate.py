@@ -24,7 +24,7 @@ from floe.config.types import (
     catalog_ident,
     with_partition_columns,
 )
-from floe.errors import FloeConfigError
+from floe.errors import NOT_SUPPORTED, FloeConfigError
 from floe.extras import require
 from floe.pii import token_n
 from floe.read.json import parse_selector as parse_json_selector
@@ -180,6 +180,11 @@ def _check_merge(entity: EntityConfig) -> None:
         raise _fail(
             entity,
             "sink.accepted.merge is only supported with sink.write_mode=merge_scd1 or merge_scd2",
+        )
+    if mode == "merge_scd1" and merge.compare_columns is not None:
+        raise _fail(
+            entity,
+            f"sink.accepted.merge.compare_columns with sink.write_mode=merge_scd1 {NOT_SUPPORTED}",
         )
     for field in ("ignore_columns", "compare_columns"):
         values = getattr(merge, field)
@@ -594,7 +599,7 @@ def _check_state(entity: EntityConfig) -> None:
     if mode == "archive" and archive is None:
         raise _fail(entity, "incremental_mode=archive requires sink.archive")
     # ponytail: Rust's deprecation warning for `sink.archive` without a mode is not ported.
-    if archive is not None and mode in ("file", "row"):
+    if archive is not None and mode == "file":
         raise _fail(
             entity,
             f"sink.archive conflicts with incremental_mode={mode}; "

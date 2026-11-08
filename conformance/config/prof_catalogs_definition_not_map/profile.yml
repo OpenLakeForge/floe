@@ -26,5 +26,3 @@ catalogs:
   default: r
   definitions:
   - x
-validation:
-  strict: true

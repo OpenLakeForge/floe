@@ -249,7 +249,7 @@ for Python only, because Rust 0.7 rejects that config earlier, at the write-mode
 | 388 | entity.name={} pii.columns[name={}].mask_pattern must contain at least one token ({{f... | `val1_pii_mask_pattern_without_token`, `val1_pii_mask_pattern_zero_width_token` |
 | 420 | entity.name={} entity.state.path must not be empty | `val1_state_path_blank` |
 | 429 | entity.name={} incremental_mode=archive requires sink.archive | `val1_incremental_archive_without_sink_archive` |
-| 449 | entity.name={} sink.archive conflicts with incremental_mode={}; use incremental_mode=... | `val1_archive_conflicts_with_file_mode`, `val1_archive_conflicts_with_row_mode` |
+| 449 | entity.name={} sink.archive conflicts with incremental_mode={}; use incremental_mode=... | `val1_archive_conflicts_with_file_mode` |
 | 467 | entity.name={} source.cast_mode={} is unsupported (allowed: {}) | `val1_source_cast_mode_unknown` |
 | 488 | entity.name={} source.options.json_mode={} is unsupported (allowed: array, ndjson) | `val1_source_json_mode_unknown` |
 | 500 | entity.name={} source.options.sheet must not be empty | not recorded: D1: xlsx source (source.options.sheet) -> `d1_source_xlsx` |

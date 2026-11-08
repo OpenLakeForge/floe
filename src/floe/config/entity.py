@@ -48,7 +48,7 @@ from floe.config.yaml import (
     yaml_array,
     yaml_hash,
 )
-from floe.errors import FloeConfigError, FloeError
+from floe.errors import NOT_SUPPORTED, FloeConfigError, FloeError
 from floe.pii import PiiColumn, Strategy
 
 _T = TypeVar("_T", bound=str)
@@ -163,17 +163,16 @@ def _schema_evolution(value: object) -> SchemaEvolutionConfig:
 def _column(value: object) -> ColumnConfig:
     ctx = "schema.columns"
     h = yaml_hash(value, ctx)
-    validate_known_keys(
-        h, ctx, ("name", "source", "type", "nullable", "unique", "width", "trim")
-    )
+    for key in ("width", "trim"):
+        if key in h:
+            raise FloeConfigError(f"{ctx}.{key} {NOT_SUPPORTED}")
+    validate_known_keys(h, ctx, ("name", "source", "type", "nullable", "unique"))
     return ColumnConfig(
         name=get_string(h, "name", ctx),
         source=opt_string(h, "source", ctx),
         column_type=get_string(h, "type", ctx),
         nullable=opt_bool(h, "nullable", ctx),
         unique=opt_bool(h, "unique", ctx),
-        width=opt_u64(h, "width", ctx),
-        trim=opt_bool(h, "trim", ctx),
     )
 
 
@@ -453,6 +452,8 @@ def parse_entity(
     metadata = _metadata(h["metadata"]) if "metadata" in h else None
     domain = opt_string(h, "domain", "entity")
     mode = opt_string(h, "incremental_mode", "entity")
+    if mode is not None and _norm(mode) == "row":
+        raise FloeConfigError(f"incremental_mode=row {NOT_SUPPORTED}")
     incremental_mode: IncrementalMode = (
         "none"
         if mode is None

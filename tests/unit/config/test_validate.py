@@ -563,3 +563,9 @@ def test_rejected_location_and_path_are_compared_in_the_same_storage(tmp_path: P
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, f"{{{COLS}}}", sink=rejected_sink(", storage: s" + same), catalogs=WAREHOUSE + "\n")  # fmt: skip
     assert str(err.value) == "entity.name=orders sink.rejected.iceberg.location must differ from sink.rejected.path (raw file copies are written to the path)"  # fmt: skip
+
+
+def test_compare_columns_is_refused_for_merge_scd1(tmp_path: Path) -> None:
+    sink = "{write_mode: merge_scd1, accepted: {format: iceberg, path: out, iceberg: {}, merge: {compare_columns: [amt]}}}"  # fmt: skip
+    with pytest.raises(FloeConfigError, match=r"entity.name=orders sink.accepted.merge.compare_columns with sink.write_mode=merge_scd1 is not supported \(see CHANGELOG\)"):  # fmt: skip
+        check(tmp_path, f"{{{COLS}, primary_key: [id]}}", sink=sink, catalogs=CATALOG)

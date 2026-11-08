@@ -37,7 +37,7 @@ from floe.config.types import (
     SourcePartitioning,
 )
 from floe.config.validate import FLOE_VERSION
-from floe.errors import FloeConfigError, FloeIoError
+from floe.errors import NOT_SUPPORTED, FloeConfigError, FloeIoError
 from floe.storage.paths import normalize_local_path, parse_s3_uri
 from floe.storage.s3 import read_s3
 
@@ -84,6 +84,11 @@ def _storage(name: str, named_local: bool) -> str | None:
 
 
 def _sink(t: Json, write_mode: str, named_local: bool) -> Json:
+    merge = _lenient(MergeOptions, t.get("merge"))
+    if write_mode == "merge_scd1" and merge and merge.compare_columns is not None:
+        raise FloeConfigError(
+            f"sink.accepted.merge.compare_columns with sink.write_mode=merge_scd1 {NOT_SUPPORTED}"
+        )
     return {
         "format": t["format"],
         "path": t["path"],
@@ -100,7 +105,11 @@ def _sink(t: Json, write_mode: str, named_local: bool) -> Json:
 
 
 def _schema(s: Json) -> Json:
-    keys = ("source", "nullable", "unique", "width", "trim")
+    keys = ("source", "nullable", "unique")
+    for c in s["columns"]:
+        for key in ("width", "trim"):
+            if c.get(key) is not None:
+                raise FloeConfigError(f"schema.columns.{key} {NOT_SUPPORTED}")
     return {
         "columns": [
             {"name": c["name"], "column_type": c["column_type"]}
@@ -143,7 +152,11 @@ def _entity(m: Json, named_local: bool) -> EntityConfig:
             "storage": _storage(archive["storage"], named_local),
         },
     }
-    incremental = _pick(m.get("incremental_mode"), ("archive", "file", "row"), "none")
+    if m.get("incremental_mode") == "row":
+        raise FloeConfigError(
+            f"entity.name={m['name']} incremental_mode=row {NOT_SUPPORTED}"
+        )
+    incremental = _pick(m.get("incremental_mode"), ("archive", "file"), "none")
     return EntityConfig.model_validate(
         {
             "id": m["name"],

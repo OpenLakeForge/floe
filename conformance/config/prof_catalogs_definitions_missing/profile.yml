@@ -24,5 +24,3 @@ variables:
   A: b
 catalogs:
   default: r
-validation:
-  strict: true

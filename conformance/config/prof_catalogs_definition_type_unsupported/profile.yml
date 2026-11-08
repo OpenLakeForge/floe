@@ -28,5 +28,3 @@ catalogs:
   - name: r
     type: hive
     uri: u
-validation:
-  strict: true

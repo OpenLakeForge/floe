@@ -18,5 +18,3 @@ variables:
   INCOMING_DIR: /data/prod/incoming
   OUTPUT_DIR: /data/prod/output
   REPORT_DIR: /data/prod/reports
-validation:
-  strict: true

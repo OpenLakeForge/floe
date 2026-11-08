@@ -18,7 +18,7 @@
     paths in a remote manifest resolve under its `work_root`, else `FLOE_WORK_ROOT`, else `/work` for an
     `image` manifest or the current directory for a `cli` one. An `s3://` `report_base_uri` writes the
     reports there.
-  - `-p` applies an environment profile (ignored with `--manifest`: the manifest is already compiled).
+  - `-p` applies an environment profile (a usage error with `--manifest`: the manifest is already compiled).
     It takes a local path, an `s3://` URI read as `--manifest` is, or `env:NAME`, the profile YAML held in environment
     variable `NAME` (every command that takes `-p` does the same).
   - `--domain` selects every entity of the named domains (repeatable or comma-separated), in config order.

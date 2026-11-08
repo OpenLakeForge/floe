@@ -25,7 +25,7 @@ from floe.config.yaml import (
     yaml_hash,
     yaml_string,
 )
-from floe.errors import FloeConfigError, FloeIoError
+from floe.errors import NOT_SUPPORTED, FloeConfigError, FloeIoError
 from floe.storage.s3 import read_s3
 
 Hash = dict[object, object]
@@ -261,9 +261,9 @@ def _metadata(value: object) -> str:
 def _validation(value: object) -> None:
     ctx = "profile.validation"
     hash = yaml_hash(value, ctx)
-    validate_known_keys(hash, ctx, ("strict",))
-    if "strict" in hash and not isinstance(hash["strict"], bool):
-        raise FloeConfigError(f"{ctx}.strict must be a boolean")
+    if "strict" in hash:
+        raise FloeConfigError(f"{ctx}.strict {NOT_SUPPORTED}")
+    validate_known_keys(hash, ctx, ())
 
 
 def _parse_doc(doc: object) -> ProfileConfig:

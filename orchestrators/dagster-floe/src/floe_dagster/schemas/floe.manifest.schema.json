@@ -899,8 +899,7 @@
             "enum": [
               "none",
               "archive",
-              "file",
-              "row"
+              "file"
             ]
           },
           "schema": {
@@ -943,19 +942,6 @@
                       ]
                     },
                     "unique": {
-                      "type": [
-                        "boolean",
-                        "null"
-                      ]
-                    },
-                    "width": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ],
-                      "minimum": 0
-                    },
-                    "trim": {
                       "type": [
                         "boolean",
                         "null"

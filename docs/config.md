@@ -224,7 +224,7 @@ otherwise (and in all `0.1`/`0.2` configs) its identity is the bare `name`.
   - `none` (default)
   - `archive`
   - `file`
-  - `row` (reserved contract value, not runtime-enabled in this release)
+  - `row` was never implemented and is refused: `incremental_mode: row` fails validation.
 - `incremental_mode: archive` requires `sink.archive`.
 - `incremental_mode: file` enables per-file state tracking and skip logic.
 - For backward compatibility, `sink.archive` without `incremental_mode` is still
@@ -441,7 +441,7 @@ state file shape, and CAS behavior.
       - List of schema business columns excluded from merge update/compare behavior.
       - Columns must exist in `schema.columns`.
       - `schema.primary_key` columns are not allowed.
-    - `compare_columns` (optional; most relevant for `merge_scd2`)
+    - `compare_columns` (optional; `merge_scd2` only: `merge_scd1` has no change detection and refuses it)
       - Explicit list of schema business columns used for change detection.
       - Columns must exist in `schema.columns`.
       - `schema.primary_key` columns are not allowed.

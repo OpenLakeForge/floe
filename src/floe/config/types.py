@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from floe.pii import PiiColumn
 
-IncrementalMode = Literal["none", "archive", "file", "row"]
+IncrementalMode = Literal["none", "archive", "file"]
 PolicySeverity = Literal["warn", "reject", "abort"]
 SchemaEvolutionMode = Literal["strict", "add_columns"]
 SchemaEvolutionIncompatibleAction = Literal["fail"]
@@ -54,8 +54,6 @@ class ColumnConfig(_Model):
     column_type: str
     nullable: bool | None
     unique: bool | None
-    width: int | None
-    trim: bool | None
 
 
 class SchemaConfig(_Model):
@@ -195,7 +193,7 @@ def with_partition_columns(entity: EntityConfig) -> EntityConfig:
     date_type = "datetime" if "{HH}" in p.pattern else "date"
     derived = [(p.date_column, date_type), (p.batch_column, "string")]
     columns = [
-        ColumnConfig(name=n, source=n, column_type=t, nullable=False, unique=None, width=None, trim=None)
+        ColumnConfig(name=n, source=n, column_type=t, nullable=False, unique=None)
         for n, t in derived
         if n is not None
     ]  # fmt: skip  # `source` keeps the name out of normalize_columns

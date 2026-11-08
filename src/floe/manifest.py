@@ -227,8 +227,6 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
                             source=c.source,
                             nullable=c.nullable,
                             unique=c.unique,
-                            width=c.width,
-                            trim=c.trim,
                         )
                         for c in schema.columns
                     ],

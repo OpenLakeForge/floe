@@ -31,5 +31,3 @@ catalogs:
   - name: b
     type: rest
     uri: v
-validation:
-  strict: true
