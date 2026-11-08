@@ -57,6 +57,11 @@ def part_uris(client: StorageClient, base: str, ext: str) -> list[str]:
     return sorted(u for u in uris if u.rpartition("/")[0] == base and u.endswith(f".{ext}") and _PART.fullmatch(u.rpartition("/")[2].removesuffix(f".{ext}")))  # fmt: skip
 
 
+def keyed_part(key: str, index: int, ext: str) -> str:
+    """The name of a keyed part: the same `key` and index always give the same name (#919)."""
+    return f"part-{uuid.uuid5(uuid.NAMESPACE_URL, f'{key}:{index}')}.{ext}"
+
+
 @contextmanager
 def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str | None = None) -> Generator[Callable[[bytes], str]]:  # fmt: skip
     """Yield `put(body) -> name`. Every part is staged as `_staging-<id>-<name>` (invisible to `part_uris`).
@@ -73,8 +78,7 @@ def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str
     names: list[str] = []
 
     def put(body: bytes) -> str:
-        stem = uuid.uuid5(uuid.NAMESPACE_URL, f"{key}:{len(names)}") if key else uuid.uuid4()  # fmt: skip
-        name = f"part-{len(names):05}.{ext}" if overwrite else f"part-{stem}.{ext}"
+        name = f"part-{len(names):05}.{ext}" if overwrite else keyed_part(key, len(names), ext) if key else f"part-{uuid.uuid4()}.{ext}"  # fmt: skip
         names.append(name)  # before the write: a partial file needs cleanup too
         client.write(f"{base}/{stage}{name}", body)
         return name
@@ -123,8 +127,12 @@ def write_accepted(
     base: str,
     mode: WriteMode = "overwrite",
     options: SinkOptions | None = None,
+    key: str | None = None,
 ) -> AcceptedWrite:
-    """Write `frames` (at least one) as `part-*.parquet` files under `base`, each holding about `max_size_per_file`."""
+    """Write `frames` (at least one) as `part-*.parquet` files under `base`, each holding about `max_size_per_file`.
+
+    With a `key` (the run's input hash) an append part is named from it, so a retry replaces the dead run's parts (#1198).
+    """
     base = base.rstrip("/")
     max_size = (options and options.max_size_per_file) or DEFAULT_MAX_SIZE_PER_FILE
     kwargs: dict[str, str | int] = {}
@@ -134,7 +142,7 @@ def write_accepted(
         kwargs["row_group_size"] = options.row_group_size
     files: list[str] = []
     sizes: list[int] = []
-    with _os_errors(), _parts(client, base, mode, "parquet") as put:
+    with _os_errors(), _parts(client, base, mode, "parquet", key) as put:
         for chunk in _part_frames(frames, max_size):
             # ponytail: a part is held in memory (≤ max_size_per_file) before the put; stream multipart uploads if that is too much
             body = io.BytesIO()
