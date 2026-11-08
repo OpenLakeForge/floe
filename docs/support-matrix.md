@@ -100,6 +100,30 @@ and on demand. Anything else is untested against a real cloud.
 | Missing permissions (denied catalog or bucket access) | Manual |
 | Object-store partial failure (a part uploaded, then the connection drops) | Manual |
 
+## Scale (200 entities)
+
+`tests/scale/` generates a split project (`example/project/` layout) of 200 small entities in 5 domains:
+3 named sources (CSV, JSON, Parquet), domain defaults for the sinks and `incremental_mode: file`, and 2 input
+files per entity with 3 rejected rows out of 20. `pytest -m scale tests/scale -rP` runs it nightly and on demand
+(`python-integration.yml`) and prints the table below. Measured on 4 vCPUs, local disk, Parquet sinks:
+
+| Step | Runtime | Peak RSS |
+|---|---|---|
+| `floe --version` (cold start) | 0.4 s | 101 MiB |
+| `floe validate` (200 entities) | 0.6 s | 105 MiB |
+| `floe manifest generate` (200 entities) | 0.6 s | 107 MiB |
+| `floe run`, 400 files, 4000 rows, 3400 accepted, 600 rejected, 4 entities at a time | 3.0 s | 189 MiB |
+| the same, one entity at a time | 5.6 s | not measured |
+| restart: all 400 files already ingested, nothing read | 1.8 s | 154 MiB |
+| retry after 3 new files: only those 3 are read | 1.8 s | 181 MiB |
+| `floe run --entities <one>` of the same project | 0.9 s | 178 MiB |
+
+A run costs about 0.4 s of start-up plus about 12 ms per entity here. The 10-entity Iceberg subset
+(`-m "polaris and scale"`, nightly in the `polaris` job) asserts one snapshot per table after the first run, none
+added by a restart, one added by a retry with a new file, and the rejected counts of the run report; its timings
+are in the nightly log, not measured locally (no Docker). Times are one machine's, and noisy: the tests assert
+counts and a 600 MiB RSS ceiling, not runtimes.
+
 ## Config keys (storage)
 
 ```yaml

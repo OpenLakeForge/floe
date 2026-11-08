@@ -1,6 +1,7 @@
 name: Python integration (Polaris)
 
-# Also nightly: the `glue` tests against moto and the `perf` memory test (#1063).
+# Also nightly: the `glue` tests against moto, the `perf` memory test (#1063) and the 200-entity `scale` suite (#558),
+# whose 10-entity Iceberg subset runs in the `polaris` job below.
 # Runs the `polaris` and `s3` marked tests against the #602 harness (Polaris + SeaweedFS).
 # Not a required check yet (#840): the maintainer makes it required once it is stable.
 on:
@@ -77,6 +78,9 @@ jobs:
           TOKEN=$(token spike-client spike-secret)
           api POST /catalog/v1/spike/namespaces '{"namespace": ["spike"]}'
       - run: uv run pytest -m "polaris or s3" -rs tests/integration
+      - name: Scale subset on Polaris
+        if: github.event_name != 'pull_request'
+        run: uv run pytest -m "polaris and scale" -rs tests/scale
       - name: Container logs
         if: failure()
         run: |
@@ -112,3 +116,5 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --all-groups --all-extras
       - run: uv run pytest -m perf tests/perf
+      # the run summary (runtime, startup, peak RSS per step) is in the log: -rP prints it
+      - run: uv run pytest -m "scale and not polaris" -rP tests/scale
