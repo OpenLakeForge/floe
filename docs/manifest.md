@@ -166,6 +166,7 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
   "profile_checksum": "sha256:...",      // SHA-256 of the profile file (if any)
   "report_base_uri": "./report",         // where run reports are written
   "metadata": {"project": "sales", "owner": "data-team"}, // the config's project metadata (if any)
+  "report_formatter": "text", // report.formatter, when the config sets it; absent means json
 
   // Index of the named config sources, derived from the entities that use them (if any).
   // Descriptive only: the runner reads entities[].source. `uri` is the longest common prefix
@@ -220,6 +221,8 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
       "source_format": "csv",
       "accepted_sink_uri": "./out/accepted/orders",
       "rejected_sink_uri": "./out/rejected/orders",
+      "tags": {"data_product": "sales-orders", "owner": "data-team"}, // entity metadata, when set
+      "description": "Orders", "tag_list": ["core"],                  // entity metadata description and tags (if set)
       "schema": {
         "columns": [
           { "name": "order_id", "type": "string", "nullable": false },
@@ -392,11 +395,6 @@ If the diff is non-empty, the committed manifest is stale. Commit manifests in t
 
 ## Known limits of manifest runs in 0.8
 
-- `report.formatter` is not carried in the manifest, so `floe run --manifest` writes the rejected
-  rows' `__floe_errors` as JSON even when the config sets `csv` or `text` (as in Floe 0.7). Run
-  with `-c` if you need another formatter (#1009).
-- Entity `metadata` is reduced to its `data_product`, `domain` and `owner` tags in the manifest, so
-  the run report's entity block carries no other metadata (#1009).
 - PII `hash` keys must be `${ENV_VAR}` references: a manifest never stores secrets, so
   `manifest generate` refuses a literal key (#1006).
 

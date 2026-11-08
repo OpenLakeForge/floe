@@ -221,6 +221,17 @@ def run(
             done = run_parallel(selected, keys, workers, finish)
         else:
             done = [finish(e) for e in selected]
+        reports = [(id_path(e), r) for e, r in zip(selected, done, strict=True)]
+        summary = build_summary(
+            root.version, reports,
+            run_id=run_id, started_at=started, finished_at=_rfc3339(),
+            duration_ms=int((time.monotonic() - timer) * 1000),
+            config_path=config, report_path=report_path,
+            metadata=root.metadata, domain=domain,
+        )  # fmt: skip
+        writing = time.monotonic()
+        write_reports(summary, [], client)
+        report_write_ms = int((time.monotonic() - writing) * 1000)
     # an interrupt too (BaseException): its running entities are left "unknown"
     except BaseException as err:
         # best effort: the original error wins, so a failing write is dropped
@@ -235,17 +246,6 @@ def run(
             client.write(uri, serialize(failure).encode())
             emit("log", log_level="info", code="run_failure_report", message=f"run failure report: {uri}", entity=None, input=None, **_error_code(err))  # fmt: skip
         raise
-    reports = [(id_path(e), r) for e, r in zip(selected, done, strict=True)]
-    summary = build_summary(
-        root.version, reports,
-        run_id=run_id, started_at=started, finished_at=_rfc3339(),
-        duration_ms=int((time.monotonic() - timer) * 1000),
-        config_path=config, report_path=report_path,
-        metadata=root.metadata, domain=domain,
-    )  # fmt: skip
-    writing = time.monotonic()
-    write_reports(summary, [], client)
-    report_write_ms = int((time.monotonic() - writing) * 1000)
     r, t = summary["run"], summary["results"]
     emit("run_finished", status=r["status"], exit_code=r["exit_code"], files=t["files_total"],
          files_skipped=t["files_skipped"], rows=t["rows_total"], accepted=t["accepted_total"], rejected=t["rejected_total"],

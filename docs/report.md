@@ -173,7 +173,7 @@ lists every entity, and the run status and exit code stay `aborted` / `2`. A tec
 
 ### Run failure (`run.failure.json`)
 
-When listing the inputs or an entity raises (a bad credential, a missing bucket), the run stops and Floe writes `<run_dir>/run.failure.json` next to where the summary would
+When listing the inputs, an entity or the final summary write raises (a bad credential, a missing bucket), the run stops and Floe writes `<run_dir>/run.failure.json` next to where the summary would
 be, then re-raises the original error. It is additive: a successful run never writes it.
 
 - `spec_version`, `tool`: as in the run summary.
@@ -189,7 +189,7 @@ be, then re-raises the original error. It is additive: a successful run never wr
 
 The run also emits a `log` event with `code: "run_failure_report"` whose message carries the file's URI, plus `error_code` when the error has a typed `code`.
 
-The file is best-effort: if it cannot be written, the original error is still raised. Treat the absence of both
+The file is best-effort: if it cannot be written, the original error is still raised. When the report storage itself cannot be resolved (a bad `report.storage`), there is nowhere to write it: no file is written and only the terminal event carries the error. The file holds paths and URIs (references to the report, never copies of rows) but no row values and no credentials. Read it with plain `json`: it needs no Iceberg or Polars import. Treat the absence of both
 `run.summary.json` and `run.failure.json` as unknown, never as success.
 
 ## Validation payloads

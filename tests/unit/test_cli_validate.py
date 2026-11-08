@@ -109,3 +109,14 @@ def test_validate_accepts_the_tutorial_example_config(
         monkeypatch, capsys, "validate", "-c", str(REPO / "example/config.yml")
     )
     assert (code, err) == (0, "")
+
+
+def test_validate_remote_config_is_refused(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, _, err = floe(monkeypatch, capsys, "validate", "-c", "s3://b/config.yml")
+    assert code == 1
+    assert (
+        err
+        == "Error: s3://b/config.yml: a config must be a local path; download it first\n"
+    )

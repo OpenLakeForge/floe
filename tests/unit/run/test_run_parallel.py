@@ -487,3 +487,18 @@ def test_an_interrupted_sequential_run_leaves_a_failure_report(tmp_path: Path, m
     doc = json.loads(failure_file(tmp_path).read_text())
     assert doc["error"]["type"] == "KeyboardInterrupt"
     assert [(e["name"], e["state"]) for e in doc["entities"]] == [("d.a", "completed"), ("d.b", "unknown"), ("d.c", "not_started")]  # fmt: skip
+
+
+def test_a_failed_summary_write_leaves_a_failure_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    path, root = setup(tmp_path, ["a", "b"])
+
+    def broken(*_: object, **__: object) -> None:
+        raise OSError("summary store down")
+
+    monkeypatch.setattr(sys.modules["floe.run"], "write_reports", broken)
+    with pytest.raises(OSError, match="summary store down"):
+        run(path, root, run_id="r1")
+    doc = json.loads(failure_file(tmp_path).read_text())
+    assert doc["error"]["message"] == "summary store down"
+    assert [(e["name"], e["state"]) for e in doc["entities"]] == [("d.a", "completed"), ("d.b", "completed")]  # fmt: skip
+    assert not (tmp_path / "report/d/run_r1/run.summary.json").exists()

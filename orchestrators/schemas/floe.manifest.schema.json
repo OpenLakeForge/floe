@@ -759,6 +759,23 @@
               "type": "string"
             }
           },
+          "description": {
+            "description": "Entity metadata.description, when set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tag_list": {
+            "description": "Entity metadata.tags (a list; `tags` above holds data_product, domain and owner), when set.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
           "runner": {
             "type": [
               "string",
@@ -1001,6 +1018,15 @@
           }
         }
       }
+    },
+    "report_formatter": {
+      "description": "report.formatter of the config (json, csv or text); absent means json.",
+      "type": "string",
+      "enum": [
+        "json",
+        "csv",
+        "text"
+      ]
     }
   },
   "$defs": {
