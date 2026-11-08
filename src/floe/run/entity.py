@@ -345,7 +345,6 @@ def _run_entity(
         # `archive` mode: the archive is the marker
         plan.to_archive += [f for f in pending if f.source_uri in skip]
         pending = [f for f in pending if f.source_uri not in skip]
-    plan.input_hash = input_hash(entity, pending)
     # #545: the snapshot's fingerprint names only the files it holds in full, never an aborted batch
     complete: list[InputFile] = []
     skipped = len(files)

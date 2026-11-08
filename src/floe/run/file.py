@@ -45,6 +45,7 @@ from floe.read.xml import read_xml, xml_columns
 from floe.report.entity import file_report
 from floe.storage.inputs import (
     InputFile,
+    input_hash,
 )
 from floe.storage.types import StorageClient
 from floe.write.outputs import (
@@ -200,9 +201,6 @@ class Plan:
     archive: tuple[str, StorageClient] | None = None  # Rust `archive_enabled()`
     to_archive: list[InputFile] = field(default_factory=list[InputFile])  # fmt: skip  # moved after the sink commit (#914)
     run_id: str = ""
-    input_hash: str = (
-        ""  # of the claimed files; names the rejected parts so a retry overwrites them
-    )
     rejected: tuple[str, StorageClient] | None = None  # `sink.rejected` URI and client
     table: "Table | None" = (
         None  # the Iceberg target whose keys seed the tracker (append)
@@ -409,7 +407,9 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
             mode = "append"
         plan.rejected_writes += 1
         target, client = _rejected(plan, "reject")
-        key = f"{plan.input_hash}:{file.source_uri}"
+        key = input_hash(
+            entity, [file]
+        )  # per file, so a retry that claims a larger set overwrites the dead run's parts (#1197)
         with sink_write(plan, "rejected", "rejected_write_ms"):
             if _parquet_rejected(plan):
                 frames = (output(plan, unspill(p)).with_columns(source_columns(plan, uri)) for p in spilled_rejected)  # fmt: skip
