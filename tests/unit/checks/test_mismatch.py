@@ -5,6 +5,7 @@ Strategy cases come from Rust's `tests/unit/run/normalize.rs` and `run/schema_mi
 """
 
 import json
+import re
 import textwrap
 from pathlib import Path
 
@@ -87,7 +88,10 @@ def test_source_names_use_source_and_detect_collisions(tmp_path: Path) -> None:
         columns="[{name: a, source: A B, type: string}, {name: b, source: a_b, type: string}]",
     ).schema_.columns
     with pytest.raises(
-        FloeConfigError, match="column source collision: A B and a_b -> a_b"
+        FloeConfigError,
+        match=re.escape(
+            "column source collision: a (source A B) and b (source a_b) -> a_b"
+        ),
     ):
         source_names(dup, "snakecase")
 
