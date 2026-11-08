@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 import json
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
 try:
-    from airflow.sdk import Asset
+    from airflow.sdk import Asset  # pyright: ignore[reportAssignmentType] -- the fallback class below stands in for it
 except Exception:  # pragma: no cover - fallback for local unit tests without Airflow
+
     @dataclass
     class Asset:  # type: ignore[override]
         name: str
         uri: str
         group: str | None = None
+
 
 from .manifest import AirflowManifest, ManifestEntity, load_manifest
 
@@ -42,9 +44,7 @@ def build_dag_manifest_context(
         unknown = sorted(set(domains) - {e.domain for e in manifest.entities})
         if unknown:
             raise ValueError(f"unknown domain(s) {unknown} in {manifest_path}")
-        manifest = replace(
-            manifest, entities=[e for e in manifest.entities if e.domain in domains]
-        )
+        manifest = replace(manifest, entities=[e for e in manifest.entities if e.domain in domains])
     config_path = config_override or resolve_config_path(manifest_path, manifest.config_uri)
     assets_by_entity = build_entity_assets(manifest, manifest_path)
     entities_by_name = {entity.name: entity for entity in manifest.entities}
@@ -74,9 +74,7 @@ def build_dag_manifest_context_or_empty(
     except Exception:
         fallback_config = config_override or default_config_path
         if fallback_config is None:
-            raise ValueError(
-                "manifest loading failed and no fallback config path was provided"
-            )
+            raise ValueError("manifest loading failed and no fallback config path was provided")
         return DagManifestContext(
             manifest_path=manifest_path,
             manifest=None,

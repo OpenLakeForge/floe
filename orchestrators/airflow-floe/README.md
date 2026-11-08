@@ -9,6 +9,8 @@ For local setup of both Dagster and Airflow with isolated virtual environments, 
 
 - `orchestrators/LOCAL_DEV.md`
 
+airflow-floe is a supported Floe connector (Beta), linted and type-checked in CI like dagster-floe.
+
 ## Supported Floe versions
 
 | airflow-floe | Floe |

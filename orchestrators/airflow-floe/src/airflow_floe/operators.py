@@ -8,8 +8,8 @@ import subprocess
 import threading
 from typing import Any
 
-from .kubernetes_runner import run_kubernetes_job
 from .databricks_runner import run_databricks_job
+from .kubernetes_runner import run_kubernetes_job
 from .manifest import ManifestExecution, ManifestRunnerDefinition
 from .runtime import (
     DagManifestContext,
@@ -20,8 +20,9 @@ from .runtime import (
 )
 
 try:
-    from airflow.models.baseoperator import BaseOperator
+    from airflow.models.baseoperator import BaseOperator  # pyright: ignore[reportMissingImports] -- Airflow 3 re-exports it through a lazy deprecation shim pyright cannot follow
 except Exception:  # pragma: no cover - fallback for local unit tests without Airflow
+
     class BaseOperator:  # type: ignore[override]
         template_fields: tuple[str, ...] = ()
 
@@ -124,9 +125,7 @@ class FloeRunHook:
 
         run_finished = parse_run_finished(stdout_text)
         summary_uri_field = (
-            execution.result_contract.summary_uri_field
-            if execution is not None
-            else "summary_uri"
+            execution.result_contract.summary_uri_field if execution is not None else "summary_uri"
         )
         payload: dict[str, Any] = {
             "schema": "floe.airflow.run.v1",
@@ -153,7 +152,7 @@ class FloeRunHook:
         return payload
 
 
-class FloeRunOperator(BaseOperator):
+class FloeRunOperator(BaseOperator):  # pyright: ignore[reportGeneralTypeIssues] -- BaseOperator is unresolved above
     """Run Floe CLI and push normalized run payload to XCom.
 
     Manifest-driven routing
@@ -217,9 +216,7 @@ class FloeRunOperator(BaseOperator):
         runners = manifest.runners
 
         entity_names = (
-            self.entities
-            if self.entities
-            else list(self.manifest_context.entities_by_name.keys())
+            self.entities if self.entities else list(self.manifest_context.entities_by_name.keys())
         )
         requested_runner_names = set()
         for entity_name in entity_names:
@@ -239,21 +236,17 @@ class FloeRunOperator(BaseOperator):
         runner_name = next(iter(requested_runner_names))
         runner_definition = runners.definitions.get(runner_name)
         if runner_definition is None:
-            raise ValueError(
-                f"runner '{runner_name}' not found in manifest.runners.definitions"
-            )
+            raise ValueError(f"runner '{runner_name}' not found in manifest.runners.definitions")
 
         return execution, runner_definition
 
-    def _emit_asset_events(
-        self, payload: dict[str, Any], context: dict[str, Any] | None
-    ) -> None:
+    def _emit_asset_events(self, payload: dict[str, Any], context: dict[str, Any] | None) -> None:
         if self.manifest_context is None:
             return
         if not isinstance(context, dict):
             return
         outlet_events = context.get("outlet_events")
-        if not hasattr(outlet_events, "get"):
+        if outlet_events is None or not hasattr(outlet_events, "get"):
             return
 
         summary = load_run_summary(payload.get("summary_uri"), self.config_path)
@@ -286,9 +279,7 @@ def _render_tokens(tokens: list[str], config_uri: str) -> list[str]:
     return [token.replace("{config_uri}", config_uri) for token in tokens]
 
 
-def _render_entity_tokens(
-    tokens: list[str], config_uri: str, entities: list[str]
-) -> list[str]:
+def _render_entity_tokens(tokens: list[str], config_uri: str, entities: list[str]) -> list[str]:
     joined_entities = ",".join(entities)
     return [
         token.replace("{config_uri}", config_uri).replace("{entity_name}", joined_entities)

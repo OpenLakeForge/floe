@@ -1,0 +1,7 @@
+{
+  // ponytail: basic mode on src only. Ceiling: strict and tests are not checked (Airflow's typing and the
+  // Any-heavy manifest dicts). Upgrade path: fix per file, then switch to "strict" and add "tests".
+  "include": ["src"],
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.11"
+}
