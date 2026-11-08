@@ -289,10 +289,6 @@ def test_a_retry_inside_the_claim_ttl_runs_nothing(tmp_path: Path, lake: LocalCa
 SUPERSET = "id,name\n7,q\ny,bad2\n"  # arrives after the crash: the retry's input set is no longer the dead run's
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1197: the rejected part is named from the input hash, so a retry with a new input writes the dead run's rejected rows again",
-)
 @pytest.mark.parametrize("sink", ["parquet", "iceberg"])
 def test_a_retry_with_a_new_input_does_not_duplicate_the_dead_runs_rejected_rows(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch, sink: str) -> None:  # fmt: skip
     p, _ = crashed(tmp_path, lake, monkeypatch, sink, "append", "first_write")
