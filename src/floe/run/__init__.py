@@ -172,13 +172,16 @@ def run(
 
     # entity id -> state for `run.failure.json`; "unknown" until its outcome is proven
     states = dict.fromkeys((e.id for e in selected), "not_started")
+    sinks = {
+        e.id: {"rejected": "not_started", "accepted": "not_started"} for e in selected
+    }  # #1155
 
     def one(entity: EntityConfig) -> EntityRun:
         emit("entity_started", name=entity.id)
         try:
             return run_entity(
                 entity, config_dir, root.version, formatter, root.storages, emit, full_refresh,
-                root.catalogs, listed.get(entity.id),
+                root.catalogs, listed.get(entity.id), sinks[entity.id],
             )  # fmt: skip
         except FloeError as err:
             states[entity.id] = "failed"
@@ -226,7 +229,7 @@ def run(
                 root.version, err, [(e, states[e.id]) for e in selected], run_id=run_id,
                 started_at=started, failed_at=_rfc3339(),
                 duration_ms=int((time.monotonic() - timer) * 1000),
-                report_path=report_path, domain=domain,
+                report_path=report_path, domain=domain, sinks=sinks,
             )  # fmt: skip
             uri = f"{run_path}/run.failure.json"
             client.write(uri, serialize(failure).encode())
