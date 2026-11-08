@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from airflow_floe.manifest_discovery import discover_manifest_dag_specs  # noqa: E402
+from airflow_floe.manifest_discovery import discover_manifest_dag_specs
 
 
 class ManifestDiscoveryTests(unittest.TestCase):
@@ -33,7 +33,9 @@ class ManifestDiscoveryTests(unittest.TestCase):
             (base / "sales_data.manifest.json").write_text("{}", encoding="utf-8")
 
             specs = discover_manifest_dag_specs(str(base))
-            self.assertEqual([spec.dag_id for spec in specs], ["floe_sales_data", "floe_sales_data_2"])
+            self.assertEqual(
+                [spec.dag_id for spec in specs], ["floe_sales_data", "floe_sales_data_2"]
+            )
 
     def test_discover_manifest_dag_specs_returns_empty_for_missing_dir(self) -> None:
         specs = discover_manifest_dag_specs("/definitely/missing/path")

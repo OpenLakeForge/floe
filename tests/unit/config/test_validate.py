@@ -175,12 +175,12 @@ def test_json_column_limit(tmp_path: Path) -> None:
         (
             "json",
             "[{name: order_id, type: string}, {name: order_id2, source: order.id, type: string}]",
-            "order_id and order.id -> order_id",
+            "order_id and order_id2 (source order.id) -> order_id",
         ),
         (
             "xml",
             "[{name: order_id, type: string}, {name: order_id2, source: order/id, type: string}]",
-            "order_id and order/id -> order_id",
+            "order_id and order_id2 (source order/id) -> order_id",
         ),
     ],
 )

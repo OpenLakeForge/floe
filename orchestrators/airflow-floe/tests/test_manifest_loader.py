@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import sys
 import tempfile
 import unittest
-
-import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from airflow_floe.manifest import (  # noqa: E402
+from airflow_floe.manifest import (
     AirflowManifest,
     load_manifest,
 )
-from airflow_floe.runtime import build_dag_manifest_context  # noqa: E402 -- after the sys.path insert above
+from airflow_floe.runtime import build_dag_manifest_context
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -105,9 +104,7 @@ class ManifestLoaderTests(unittest.TestCase):
 
         self.assertEqual(context.entity_names, ["finance.orders", "sales.orders"])
         self.assertEqual(context.manifest.spec_version, "0.8")
-        self.assertEqual(
-            context.config_path, "/srv/floe/manifest_run/config.yml"
-        )
+        self.assertEqual(context.config_path, "/srv/floe/manifest_run/config.yml")
 
     def test_load_manifest_accepts_floe_0_9(self) -> None:
         payload = self._manifest_payload()
@@ -148,9 +145,7 @@ class ManifestLoaderTests(unittest.TestCase):
                     "args": ["run", "-c", "dbfs:/floe/configs/prod.yml"],
                     "poll_interval_seconds": 20,
                     "timeout_seconds": 1800,
-                    "auth": {
-                        "service_principal_oauth_ref": "env://DATABRICKS_TOKEN"
-                    },
+                    "auth": {"service_principal_oauth_ref": "env://DATABRICKS_TOKEN"},
                     "env_parameters": {"FLOE_ENV": "prod"},
                 }
             },

@@ -1,0 +1,14 @@
+extend = "../../pyproject.toml"
+line-length = 100  # the package was written at ~100; the root's 88 would rewrite about twice as many lines
+# Byte-identical copies of the canonical dagster-floe modules (scripts/check_orchestrator_drift.py), formatted at 120;
+# operators.py and runtime.py join in the next PR of the stack (8-file cap).
+# ponytail: the shared pair goes away when the shared code moves into one package (#1062 step 4)
+extend-exclude = ["src/airflow_floe/databricks_client.py", "src/airflow_floe/k8s_status.py", "src/airflow_floe/operators.py", "src/airflow_floe/runtime.py"]
+
+[lint.per-file-ignores]
+# ValueError is the manifest error contract callers catch; TypeError would change it.
+"src/airflow_floe/manifest.py" = ["TRY004"]
+# Best-effort Kubernetes cleanup and status reads must never mask the run's own error.
+"src/airflow_floe/kubernetes_runner.py" = ["BLE001", "S110"]
+# Nested with-blocks keep the patched environment visible apart from the assertion context.
+"tests/test_databricks_runner.py" = ["SIM117"]
