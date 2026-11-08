@@ -1,0 +1,65 @@
+"""#1155: `run.failure.json` says what each sink of the failed entity had confirmed (committed), never more."""
+
+import json
+import sys
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
+
+import polars as pl
+import pytest
+
+from floe.config.parse import parse_config
+from floe.run import run
+
+CONFIG = """\
+version: "0.3"
+entities:
+  - name: a
+    source: {format: csv, path: ./in, options: {header: true, separator: ","}}
+    sink:
+      accepted: {format: parquet, path: ./out/accepted}
+      rejected: {format: csv, path: ./out/rejected}
+    policy: {severity: reject}
+    schema:
+      columns:
+        - {name: id, type: int64}
+report: {path: ./report}
+"""
+
+
+def fail_run(tmp_path: Path) -> dict[str, Any]:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in/a.csv").write_text("id\n1\nsecret-bad-value\n")
+    path = tmp_path / "config.yml"
+    path.write_text(CONFIG)
+    with pytest.raises(RuntimeError, match="boom"):
+        run(path, parse_config(path, {}), run_id="r1")
+    text = (tmp_path / "report/run_r1/run.failure.json").read_text()
+    assert "secret-bad-value" not in text
+    return json.loads(text)["entities"][0]
+
+
+def boom(*_: object, **__: object) -> None:
+    raise RuntimeError("boom")
+
+
+def test_a_failed_rejected_write_is_unknown_and_the_accepted_sink_not_started(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    monkeypatch.setattr(sys.modules["floe.run.file"], "write_rejected", boom)
+    assert fail_run(tmp_path)["sinks"] == {"rejected": "unknown", "accepted": "not_started"}  # fmt: skip
+
+
+def test_a_failed_accepted_write_after_the_rejected_one_is_unknown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    def drain_then_fail(frames: Iterable[pl.DataFrame], *_: object, **__: object) -> None:  # fmt: skip
+        list(frames)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        sys.modules["floe.run.entity"], "write_accepted", drain_then_fail
+    )
+    assert fail_run(tmp_path)["sinks"] == {"rejected": "committed", "accepted": "unknown"}  # fmt: skip
+
+
+def test_a_failure_after_the_accepted_write_reports_it_committed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    monkeypatch.setattr(sys.modules["floe.run.entity"], "build_report", boom)
+    assert fail_run(tmp_path)["sinks"] == {"rejected": "committed", "accepted": "committed"}  # fmt: skip

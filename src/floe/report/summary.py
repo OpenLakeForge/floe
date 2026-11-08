@@ -1,7 +1,7 @@
 """Run `run.summary.json`, run status and exit code, report layout (Rust: `report/{mod,output}.rs`, `run/mod.rs`)."""
 
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from floe import __version__
@@ -112,6 +112,7 @@ def build_failure(
     duration_ms: int,
     report_path: str,
     domain: str | None = None,
+    sinks: Mapping[str, Mapping[str, str]] | None = None,
 ) -> dict[str, Any]:
     """`run.failure.json`: why a run stopped and what each selected entity (config order, with its state) had reached. No row values."""
     run_path = run_dir(report_path, run_id, domain)
@@ -137,6 +138,11 @@ def build_failure(
             | (
                 {"report_file": f"{run_path}/{id_path(e)}/run.json"}
                 if state == "completed"
+                else {}
+            )
+            | (
+                {"sinks": sinks[e.id]}
+                if sinks and state in ("failed", "unknown")
                 else {}
             )
             for e, state in states

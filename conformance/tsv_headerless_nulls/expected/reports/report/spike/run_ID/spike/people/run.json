@@ -1,0 +1,125 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "spike.people"
+  },
+  "source": {
+    "format": "tsv",
+    "path": "local://<ROOT>/in",
+    "options": {
+      "encoding": "UTF8",
+      "header": false,
+      "null_values": [
+        "NA"
+      ],
+      "recursive": false,
+      "separator": "\t"
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "directory",
+      "file_count": 1,
+      "files": [
+        "local://<ROOT>/in/data.tsv"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/people"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/people"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/people",
+    "table_root_uri": "local://<ROOT>/out/accepted/people",
+    "write_mode": "overwrite",
+    "accepted_rows": 3,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 1305,
+    "avg_file_size_mb": 0.0012445449829101562,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 4,
+    "accepted_total": 3,
+    "rejected_total": 1,
+    "warnings_total": 0,
+    "errors_total": 2
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/data.tsv",
+      "status": "rejected",
+      "row_count": 4,
+      "accepted_count": 3,
+      "rejected_count": 1,
+      "mismatch": {
+        "declared_columns_count": 3,
+        "input_columns_count": 3,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/people",
+        "rejected_path": "<ROOT>/out/rejected/people/part-00000.csv",
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 2,
+        "warnings": 0,
+        "rules": [
+          {
+            "rule": "not_null",
+            "severity": "reject",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "column_1",
+                "violations": 1
+              }
+            ]
+          },
+          {
+            "rule": "cast_error",
+            "severity": "reject",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "column_1",
+                "violations": 1,
+                "target_type": "int64"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "timings_ms": "<volatile>"
+}

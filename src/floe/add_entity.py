@@ -21,7 +21,7 @@ from floe.config.parse import parse_config
 from floe.config.project import V0_3, config_version, validate_domains
 from floe.config.types import SourceOptions
 from floe.config.validate import validate_entities
-from floe.config.yaml import _FLOAT, load_yaml, parse_yaml, rust_debug  # pyright: ignore[reportPrivateUsage] -- the YAML float grammar the emitter must quote
+from floe.config.yaml import _FLOAT, load_yaml, parse_yaml  # pyright: ignore[reportPrivateUsage] -- the YAML float grammar the emitter must quote
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.glob import MatchOptions, Pattern, PatternError, glob
 
@@ -355,9 +355,9 @@ def _included_domain(
         try:
             matches = glob(os.path.join(base, pattern))
         except PatternError as e:
-            raise FloeConfigError(f"invalid include.domains pattern {rust_debug(pattern)} in {config}: {e}") from e  # fmt: skip
+            raise FloeConfigError(f"invalid include.domains pattern {pattern!r} in {config}: {e}") from e  # fmt: skip
         except FloeError as e:
-            raise FloeConfigError(f"failed to match include.domains pattern {rust_debug(pattern)} in {config}: {e}") from e  # fmt: skip
+            raise FloeConfigError(f"failed to match include.domains pattern {pattern!r} in {config}: {e}") from e  # fmt: skip
         for file in matches:
             try:
                 docs: list[object] = load_yaml(Path(file))

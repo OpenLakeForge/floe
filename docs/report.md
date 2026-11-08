@@ -183,6 +183,9 @@ be, then re-raises the original error. It is additive: a successful run never wr
 - `entities`: every selected entity in config order, with `name` (its qualified id, `<domain>.<entity>` when it has a domain, as in events) and `state`: `completed` (its `run.json` is
   written; `report_file` points to it), `failed`, `not_started`, or `unknown` (it started, but its outcome is not
   proven, for example a bug or an interrupt).
+  A `failed` or `unknown` entity also has `sinks`: `{"rejected": ..., "accepted": ...}`, each `not_started` (no write began), `committed` (every write that began returned) or
+  `unknown` (a write began and did not confirm, so it may or may not have landed). `committed` is never claimed without the sink returning. An Iceberg quarantine commit is `rejected`; an accepted
+  `committed` means the rows are in the sink even though the entity's `run.json` was not written.
 
 The run also emits a `log` event with `code: "run_failure_report"` whose message carries the file's URI, plus `error_code` when the error has a typed `code`.
 

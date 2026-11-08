@@ -19,7 +19,11 @@
   "entities": [
     {
       "name": "first",
-      "state": "failed"
+      "state": "failed",
+      "sinks": {
+        "rejected": "not_started",
+        "accepted": "unknown"
+      }
     }
   ]
 }
