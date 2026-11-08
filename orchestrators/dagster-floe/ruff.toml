@@ -1,5 +1,4 @@
 extend = "../../pyproject.toml"
-extend-exclude = ["src/floe_dagster/assets.py", "src/floe_dagster/definitions.py", "src/floe_dagster/events.py", "src/floe_dagster/manifest.py"]  # ponytail: joined in the next PR of the stack
 line-length = 120  # the package was written at 120; the root's 88 would rewrite ~600 lines
 
 [lint.per-file-ignores]

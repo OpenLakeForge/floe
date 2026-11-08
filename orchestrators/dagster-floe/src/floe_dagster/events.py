@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -158,9 +159,7 @@ def last_run_finished(events: Iterable[dict[str, Any]]) -> dict[str, Any]:
     return last
 
 
-def parse_run_finished(
-    event: dict[str, Any], summary_uri_field: str = "summary_uri"
-) -> FloeRunFinished:
+def parse_run_finished(event: dict[str, Any], summary_uri_field: str = "summary_uri") -> FloeRunFinished:
     if event.get("event") != "run_finished":
         raise ValueError("expected run_finished event")
     return FloeRunFinished(

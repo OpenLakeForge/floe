@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+import json
+import os
+import posixpath
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib import resources
-import json
-import os
 from pathlib import Path
 from typing import Any
-import posixpath
 from urllib.parse import unquote, urlparse, urlunparse
 
 from jsonschema import Draft202012Validator
@@ -35,7 +35,7 @@ class ManifestEntity:
     iceberg: dict[str, Any] | None = None  # sinks.accepted.iceberg when the sink is Iceberg
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestEntity":
+    def from_dict(data: dict[str, Any]) -> ManifestEntity:
         asset_key = _required_string_list(data, "asset_key")
         if not asset_key:
             raise ValueError("entities[].asset_key must contain at least one part")
@@ -68,7 +68,7 @@ class ManifestOrchestration:
     strategy: str | None
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestOrchestration":
+    def from_dict(data: dict[str, Any]) -> ManifestOrchestration:
         return ManifestOrchestration(
             max_concurrent_entities=_optional_int(data, "max_concurrent_entities"),
             strategy=_optional_str(data, "strategy"),
@@ -82,7 +82,7 @@ class ManifestExecutionResultContract:
     exit_codes: dict[str, str]
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestExecutionResultContract":
+    def from_dict(data: dict[str, Any]) -> ManifestExecutionResultContract:
         run_finished_event = data.get("run_finished_event")
         if not isinstance(run_finished_event, bool):
             raise ValueError("execution.result_contract.run_finished_event must be boolean")
@@ -99,7 +99,7 @@ class ManifestExecutionDefaults:
     workdir: str | None
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestExecutionDefaults":
+    def from_dict(data: dict[str, Any]) -> ManifestExecutionDefaults:
         return ManifestExecutionDefaults(
             env=_required_string_map(data, "env"),
             workdir=_optional_str(data, "workdir"),
@@ -117,24 +117,20 @@ class ManifestExecution:
     orchestration: ManifestOrchestration | None = None
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestExecution":
+    def from_dict(data: dict[str, Any]) -> ManifestExecution:
         log_format = _required_str(data, "log_format")
         if log_format != "json":
             raise ValueError("execution.log_format must be 'json' for dagster-floe")
         orchestration_raw = data.get("orchestration")
         orchestration = (
-            ManifestOrchestration.from_dict(orchestration_raw)
-            if isinstance(orchestration_raw, dict)
-            else None
+            ManifestOrchestration.from_dict(orchestration_raw) if isinstance(orchestration_raw, dict) else None
         )
         return ManifestExecution(
             entrypoint=_required_str(data, "entrypoint"),
             base_args=_required_string_list(data, "base_args"),
             per_entity_args=_required_string_list(data, "per_entity_args"),
             log_format=log_format,
-            result_contract=ManifestExecutionResultContract.from_dict(
-                _required_object(data, "result_contract")
-            ),
+            result_contract=ManifestExecutionResultContract.from_dict(_required_object(data, "result_contract")),
             defaults=ManifestExecutionDefaults.from_dict(_required_object(data, "defaults")),
             orchestration=orchestration,
         )
@@ -173,7 +169,7 @@ class ManifestRunnerDefinition:
     env_from: list[dict[str, Any]] | None = None  # container envFrom, verbatim
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestRunnerDefinition":
+    def from_dict(data: dict[str, Any]) -> ManifestRunnerDefinition:
         env = _optional_string_map(data, "env")
         command = _optional_command(data, "command")
         args = _optional_string_list(data, "args")
@@ -222,7 +218,7 @@ class ManifestRunners:
     definitions: dict[str, ManifestRunnerDefinition]
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ManifestRunners":
+    def from_dict(data: dict[str, Any]) -> ManifestRunners:
         default = _required_str(data, "default")
         definitions_raw = _required_object(data, "definitions")
         definitions = {
@@ -256,7 +252,7 @@ class DagsterManifest:
     sources: dict[str, dict[str, Any]] | None = None  # D20 index, by source name
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "DagsterManifest":
+    def from_dict(data: dict[str, Any]) -> DagsterManifest:
         generated_at = data.get("generated_at_ts_ms")
         if not isinstance(generated_at, int) or generated_at < 0:
             raise ValueError("generated_at_ts_ms must be a non-negative integer")
@@ -327,7 +323,7 @@ def _boto3_read_text(uri: str) -> str | None:
         config=Config(**options.get("config_kwargs", {})),
         **options.get("client_kwargs", {}),
     )
-    bucket, _, key = uri[len("s3://"):].partition("/")
+    bucket, _, key = uri[len("s3://") :].partition("/")
     return client.get_object(Bucket=bucket, Key=key)["Body"].read().decode("utf-8")
 
 
@@ -338,10 +334,7 @@ def _read_remote_text(uri: str) -> str:
     try:
         import fsspec
     except ImportError as exc:
-        raise ImportError(
-            "reading remote manifest URIs requires fsspec; "
-            "install it with: pip install fsspec"
-        ) from exc
+        raise ImportError("reading remote manifest URIs requires fsspec; install it with: pip install fsspec") from exc
     with fsspec.open(uri, "r", encoding="utf-8", **_fsspec_storage_options(uri)) as f:
         return f.read()
 
@@ -377,9 +370,7 @@ def manifest_from_config(
     try:
         from floe import build_manifest
     except ImportError as exc:  # no `floe`, or the Rust `floe-python` that has no build_manifest
-        raise ImportError(
-            "config_path= needs the Floe Python core: pip install 'dagster-floe[floe]'"
-        ) from exc
+        raise ImportError("config_path= needs the Floe Python core: pip install 'dagster-floe[floe]'") from exc
     payload = build_manifest(config_path, profile_path, manifest_name=manifest_name)
     args = payload["execution"]["base_args"]
     at = args.index("--manifest")
@@ -403,7 +394,9 @@ def load_manifest_source(
             raise ValueError("manifest_name= needs config_path=; a manifest already carries its name")
         manifest = load_manifest(manifest_path)
         return manifest, resolve_config_uri(manifest_path, manifest.config_uri)
-    return parse_manifest(manifest_from_config(config_path, profile_path, manifest_name)), str(Path(config_path).resolve())
+    return parse_manifest(manifest_from_config(config_path, profile_path, manifest_name)), str(
+        Path(config_path).resolve()
+    )
 
 
 def resolve_config_uri(manifest_path: str | Path, config_uri: str) -> str:
@@ -481,9 +474,7 @@ def entity_table(manifest: DagsterManifest, entity: ManifestEntity) -> str | Non
     return ".".join(_ident(part) for part in (catalog, namespace, table))
 
 
-def resolve_entity_runner(
-    manifest: DagsterManifest, entity: ManifestEntity
-) -> ManifestRunnerDefinition:
+def resolve_entity_runner(manifest: DagsterManifest, entity: ManifestEntity) -> ManifestRunnerDefinition:
     runner_name = entity.runner or manifest.runners.default
     definition = manifest.runners.definitions.get(runner_name)
     if definition is None:
@@ -561,8 +552,7 @@ def _required_string_list(data: dict[str, Any], key: str) -> list[str]:
 def _required_string_map(data: dict[str, Any], key: str) -> dict[str, str]:
     value = data.get(key)
     if not isinstance(value, dict) or not all(
-        isinstance(item_key, str) and isinstance(item_value, str)
-        for item_key, item_value in value.items()
+        isinstance(item_key, str) and isinstance(item_value, str) for item_key, item_value in value.items()
     ):
         raise ValueError(f"{key} must be a map<string,string>")
     return value
@@ -573,8 +563,7 @@ def _optional_string_map(data: dict[str, Any], key: str) -> dict[str, str] | Non
     if value is None:
         return None
     if not isinstance(value, dict) or not all(
-        isinstance(item_key, str) and isinstance(item_value, str)
-        for item_key, item_value in value.items()
+        isinstance(item_key, str) and isinstance(item_value, str) for item_key, item_value in value.items()
     ):
         raise ValueError(f"{key} must be a map<string,string> when provided")
     return value
@@ -630,8 +619,6 @@ def _validate_manifest_payload(payload: dict[str, Any]) -> None:
 
 @lru_cache(maxsize=1)
 def _manifest_validator() -> Draft202012Validator:
-    schema_path = resources.files("floe_dagster").joinpath(
-        "schemas/floe.manifest.schema.json"
-    )
+    schema_path = resources.files("floe_dagster").joinpath("schemas/floe.manifest.schema.json")
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     return Draft202012Validator(schema)
