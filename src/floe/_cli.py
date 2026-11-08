@@ -32,6 +32,10 @@ from floe.storage.s3 import S3Client
 
 
 def _realpath(path: str) -> Path:
+    if path.startswith("s3://"):
+        raise FloeConfigError(
+            f"{path}: a config must be a local path; download it first"
+        )
     try:
         return Path(os.path.realpath(path, strict=True))
     except OSError as e:
