@@ -1,0 +1,15 @@
+extend = "../../pyproject.toml"
+extend-exclude = ["src/floe_dagster/assets.py", "src/floe_dagster/definitions.py", "src/floe_dagster/events.py", "src/floe_dagster/manifest.py"]  # ponytail: joined in the next PR of the stack
+line-length = 120  # the package was written at 120; the root's 88 would rewrite ~600 lines
+
+[lint.per-file-ignores]
+# ValueError is the manifest/log error contract callers catch; TypeError would change it.
+"src/floe_dagster/{assets,events,manifest}.py" = ["TRY004"]
+# Best-effort Kubernetes cleanup and status reads must never mask the run's own error.
+"src/floe_dagster/kubernetes_runner.py" = ["BLE001"]
+# The exit code is read from returncode, not raised.
+"src/floe_dagster/runner.py" = ["PLW1510"]
+# Build script run as `python setup.py`.
+"setup.py" = ["EXE001"]
+# Test doubles and fixtures: class-level recorders, dict(...) kwargs and joined log lines read better as written.
+"tests/**" = ["RUF012", "C408", "FLY002"]

@@ -155,10 +155,15 @@ def test_run_databricks_job_infra_failure_preserves_status_context(monkeypatch) 
 def test_run_databricks_job_renders_job_name_placeholders(monkeypatch) -> None:
     monkeypatch.setenv("DATABRICKS_TOKEN", "token")
 
-    client = FakeDatabricksClient(terminal=DatabricksRunResult(
-        run_id=456, state="TERMINATED", result_state="SUCCESS",
-        state_message="ok", run_page_url="https://example/run/456",
-    ))
+    client = FakeDatabricksClient(
+        terminal=DatabricksRunResult(
+            run_id=456,
+            state="TERMINATED",
+            result_state="SUCCESS",
+            state_message="ok",
+            run_page_url="https://example/run/456",
+        )
+    )
     run_databricks_job(
         ["floe", "run"],
         entity="sales.orders",
@@ -184,10 +189,15 @@ def test_auth_ref_takes_precedence_over_fallback(monkeypatch) -> None:
 
     def fake_cls(*, http_client, workspace_url, oauth_bearer_token):
         captured["token"] = oauth_bearer_token
-        return CapturingClient(terminal=DatabricksRunResult(
-            run_id=1, state="TERMINATED", result_state="SUCCESS",
-            state_message="ok", run_page_url=None,
-        ))
+        return CapturingClient(
+            terminal=DatabricksRunResult(
+                run_id=1,
+                state="TERMINATED",
+                result_state="SUCCESS",
+                state_message="ok",
+                run_page_url=None,
+            )
+        )
 
     monkeypatch.setattr(runner_mod, "DatabricksJobsClient", fake_cls)
     try:
@@ -224,10 +234,15 @@ def test_fallback_used_when_no_auth_ref(monkeypatch) -> None:
 
     def fake_cls(*, http_client, workspace_url, oauth_bearer_token):
         captured["token"] = oauth_bearer_token
-        return FakeDatabricksClient(terminal=DatabricksRunResult(
-            run_id=1, state="TERMINATED", result_state="SUCCESS",
-            state_message="ok", run_page_url=None,
-        ))
+        return FakeDatabricksClient(
+            terminal=DatabricksRunResult(
+                run_id=1,
+                state="TERMINATED",
+                result_state="SUCCESS",
+                state_message="ok",
+                run_page_url=None,
+            )
+        )
 
     monkeypatch.setattr(runner_mod, "DatabricksJobsClient", fake_cls)
     try:

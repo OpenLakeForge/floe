@@ -5,11 +5,10 @@ Primary auth model: service principal OAuth bearer token supplied by caller.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import time
+from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlencode
-
 
 # Bumped whenever floe materially changes the job-settings shape it produces.
 # Stored on the Databricks job as a tag so we can detect drift without comparing
@@ -28,8 +27,7 @@ class HttpClient(Protocol):
         headers: dict[str, str] | None = None,
         json_body: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -81,11 +79,7 @@ class DatabricksJobsClient:
             return int(created["job_id"])
 
         job_id = int(existing["job_id"])
-        current_marker = (
-            (existing.get("settings") or {})
-            .get("tags", {})
-            .get("floe_settings_version")
-        )
+        current_marker = (existing.get("settings") or {}).get("tags", {}).get("floe_settings_version")
         if current_marker != expected_marker:
             self._call(
                 "POST",

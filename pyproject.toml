@@ -40,8 +40,8 @@ conformance = ["pyarrow"]
 packages = ["src/floe"]
 
 [tool.ruff]
-src = ["src", "tests"]
-include = ["src/**/*.py", "tests/**/*.py", "conformance/**/*.py"]
+src = ["src", "tests", "orchestrators/dagster-floe/src"]
+include = ["src/**/*.py", "tests/**/*.py", "conformance/**/*.py", "orchestrators/dagster-floe/**/*.py"]
 
 [tool.pyright]
 include = ["src", "tests", "conformance"]

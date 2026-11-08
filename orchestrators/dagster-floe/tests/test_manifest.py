@@ -52,9 +52,7 @@ def test_manifest_accepts_the_d20_sources_index_and_project_metadata(tmp_path: P
     fixture = Path(__file__).parent / "fixtures" / "manifest.json"
     payload = json.loads(fixture.read_text(encoding="utf-8"))
     payload["metadata"] = {"project": "sales", "owner": "data", "tags": ["bronze"]}
-    payload["sources"] = [
-        {"name": "crm", "format": "csv", "uri": "s3://b/crm", "entities": ["sales.orders"]}
-    ]
+    payload["sources"] = [{"name": "crm", "format": "csv", "uri": "s3://b/crm", "entities": ["sales.orders"]}]
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(json.dumps(payload), encoding="utf-8")
     load_manifest(manifest_path)
@@ -254,9 +252,7 @@ def test_manifest_schema_accepts_databricks_runner_fields(tmp_path: Path):
                 "args": ["run", "-c", "dbfs:/floe/configs/prod.yml"],
                 "poll_interval_seconds": 20,
                 "timeout_seconds": 1800,
-                "auth": {
-                    "service_principal_oauth_ref": "env://DATABRICKS_TOKEN"
-                },
+                "auth": {"service_principal_oauth_ref": "env://DATABRICKS_TOKEN"},
                 "env_parameters": {"FLOE_ENV": "prod"},
             }
         },
@@ -347,8 +343,6 @@ def test_load_manifest_remote_uri_honors_endpoint_env(monkeypatch) -> None:
 # ManifestOrchestration parsing
 # ---------------------------------------------------------------------------
 
-from floe_dagster.manifest import ManifestOrchestration
-
 
 def _base_execution_dict(**kwargs):
     base = {
@@ -369,6 +363,7 @@ def _base_execution_dict(**kwargs):
 
 def test_manifest_orchestration_absent_when_not_in_execution():
     from floe_dagster.manifest import ManifestExecution
+
     data = _base_execution_dict()
     execution = ManifestExecution.from_dict(data)
     assert execution.orchestration is None
@@ -376,6 +371,7 @@ def test_manifest_orchestration_absent_when_not_in_execution():
 
 def test_manifest_orchestration_parsed_strategy_sequential():
     from floe_dagster.manifest import ManifestExecution
+
     data = _base_execution_dict(orchestration={"strategy": "sequential"})
     execution = ManifestExecution.from_dict(data)
     assert execution.orchestration is not None
@@ -385,6 +381,7 @@ def test_manifest_orchestration_parsed_strategy_sequential():
 
 def test_manifest_orchestration_parsed_max_concurrent():
     from floe_dagster.manifest import ManifestExecution
+
     data = _base_execution_dict(orchestration={"max_concurrent_entities": 2})
     execution = ManifestExecution.from_dict(data)
     assert execution.orchestration is not None
@@ -394,9 +391,8 @@ def test_manifest_orchestration_parsed_max_concurrent():
 
 def test_manifest_orchestration_parsed_both_fields():
     from floe_dagster.manifest import ManifestExecution
-    data = _base_execution_dict(
-        orchestration={"max_concurrent_entities": 1, "strategy": "sequential"}
-    )
+
+    data = _base_execution_dict(orchestration={"max_concurrent_entities": 1, "strategy": "sequential"})
     execution = ManifestExecution.from_dict(data)
     assert execution.orchestration is not None
     assert execution.orchestration.max_concurrent_entities == 1
@@ -405,6 +401,7 @@ def test_manifest_orchestration_parsed_both_fields():
 
 def test_manifest_orchestration_null_value_treated_as_absent():
     from floe_dagster.manifest import ManifestExecution
+
     data = _base_execution_dict(orchestration=None)
     execution = ManifestExecution.from_dict(data)
     assert execution.orchestration is None

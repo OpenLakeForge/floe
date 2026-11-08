@@ -13,10 +13,10 @@ floe = pytest.importorskip("floe")
 if not hasattr(floe, "run_manifest"):
     pytest.skip("needs the floe Python core", allow_module_level=True)
 
-from floe_dagster.assets import build_floe_asset_defs  # noqa: E402 -- after the skip
-from floe_dagster.events import parse_json_event_lines  # noqa: E402 -- after the skip
-from floe_dagster.manifest import load_manifest  # noqa: E402 -- after the skip
-from floe_dagster.runner import InProcessRunner, LocalRunner, RunResult  # noqa: E402 -- after the skip
+from floe_dagster.assets import build_floe_asset_defs
+from floe_dagster.events import parse_json_event_lines
+from floe_dagster.manifest import load_manifest
+from floe_dagster.runner import InProcessRunner, LocalRunner, RunResult
 
 EXAMPLE = Path(__file__).parents[3] / "example" / "standalone"
 FLOE = f"{sys.executable} -m floe"
@@ -53,7 +53,11 @@ def _materialize(cls: type[LocalRunner], work: Path, monkeypatch: pytest.MonkeyP
     finished = {k: v for k, v in events[-1].items() if k not in ("ts_ms", "schema", "level")}
     run = (result.exit_code, result.status, result.failure_reason, result.backend_metadata)
     metadata = {
-        str(m.asset_key): {k: str(v.value).replace(res.run_id, "<run>") for k, v in m.metadata.items() if not k.startswith("floe/timings/")}  # wall-clock
+        str(m.asset_key): {
+            k: str(v.value).replace(res.run_id, "<run>")
+            for k, v in m.metadata.items()
+            if not k.startswith("floe/timings/")
+        }  # wall-clock
         for m in res.asset_materializations_for_node("sales__orders")
     }
     finished = {k: str(v).replace(res.run_id, "<run>") for k, v in finished.items()}
@@ -72,7 +76,9 @@ def test_in_process_materialization_matches_the_local_runner(tmp_path, monkeypat
 def test_a_floe_error_is_a_failed_run_result(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(_example(tmp_path / "w"))
     execution = load_manifest("m.json").execution
-    kwargs = dict(config_uri="config.yml", run_id="r", entity="sales.orders", execution=execution, manifest_uri="nope.json")
+    kwargs = dict(
+        config_uri="config.yml", run_id="r", entity="sales.orders", execution=execution, manifest_uri="nope.json"
+    )
     local = LocalRunner(FLOE).run_floe_entity(**kwargs)
     result = InProcessRunner(FLOE).run_floe_entity(**kwargs)
     assert (result.exit_code, local.exit_code) == (1, 1)
@@ -86,8 +92,11 @@ def test_concurrent_runs_keep_their_own_events(tmp_path) -> None:
         work = _example(tmp_path / name)
         execution = load_manifest(str(work / "m.json")).execution
         results[name] = InProcessRunner("false").run_floe_entity(  # `false`: no subprocess fallback
-            config_uri=str(work / "config.yml"), run_id=name, entity="sales.orders",
-            execution=execution, manifest_uri=str(work / "m.json"),
+            config_uri=str(work / "config.yml"),
+            run_id=name,
+            entity="sales.orders",
+            execution=execution,
+            manifest_uri=str(work / "m.json"),
         )
 
     threads = [threading.Thread(target=run, args=(name,)) for name in ("a", "b")]
@@ -123,8 +132,11 @@ def test_an_in_process_run_posts_the_same_lineage_as_the_subprocess(tmp_path, mo
         work = _example(tmp_path / name, lineage)
         execution = load_manifest(str(work / "m.json")).execution
         result = cls(FLOE).run_floe_entity(
-            config_uri=str(work / "config.yml"), run_id="r", entity="sales.orders",
-            execution=execution, manifest_uri=str(work / "m.json"),
+            config_uri=str(work / "config.yml"),
+            run_id="r",
+            entity="sales.orders",
+            execution=execution,
+            manifest_uri=str(work / "m.json"),
         )
         assert result.exit_code == 0
         events = [
@@ -147,15 +159,24 @@ def test_an_execution_without_the_entity_selector_runs_what_the_cli_runs(tmp_pat
         work = tmp_path / name
         shutil.copytree(EXAMPLE, work)
         config = work / "config.yml"
-        config.write_text(config.read_text().replace("  - name: orders\n", "  - name: other\n    domain: sales\n    source: {format: csv, path: ./in/orders.csv, options: {header: true, separator: \",\"}}\n    sink: {accepted: {format: parquet, path: ./out/accepted/other}}\n    policy: {severity: warn}\n    schema: {columns: [{name: id, type: string}]}\n  - name: orders\n", 1))
+        config.write_text(
+            config.read_text().replace(
+                "  - name: orders\n",
+                '  - name: other\n    domain: sales\n    source: {format: csv, path: ./in/orders.csv, options: {header: true, separator: ","}}\n    sink: {accepted: {format: parquet, path: ./out/accepted/other}}\n    policy: {severity: warn}\n    schema: {columns: [{name: id, type: string}]}\n  - name: orders\n',
+                1,
+            )
+        )
         cmd = [sys.executable, "-m", "floe", "manifest", "generate", "-c", "config.yml", "-o", "m.json"]
         subprocess.run(cmd, cwd=work, check=True, capture_output=True)
         manifest = json.loads((work / "m.json").read_text())
         manifest["execution"]["per_entity_args"] = ["--quiet"]  # no `--entities`: the CLI runs every entity
         (work / "m.json").write_text(json.dumps(manifest))
         result = cls(FLOE).run_floe_entity(
-            config_uri=str(work / "config.yml"), run_id="r", entity="sales.orders",
-            execution=load_manifest(str(work / "m.json")).execution, manifest_uri=str(work / "m.json"),
+            config_uri=str(work / "config.yml"),
+            run_id="r",
+            entity="sales.orders",
+            execution=load_manifest(str(work / "m.json")).execution,
+            manifest_uri=str(work / "m.json"),
         )
         return [e["name"] for e in parse_json_event_lines(result.stdout) if e["event"] == "entity_started"]
 

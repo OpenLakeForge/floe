@@ -10,7 +10,7 @@ from floe_dagster.definitions import (
     build_job_run_config_from_manifest,
     resolve_execution_config,
 )
-from floe_dagster.runner import RunResult, Runner
+from floe_dagster.runner import Runner, RunResult
 
 
 class _NoopRunner(Runner):
@@ -91,9 +91,7 @@ def test_build_definitions_from_manifest_paths_rejects_duplicate_asset_keys() ->
 
 def test_build_definitions_rejects_source_key_collision(tmp_path) -> None:
     """Generated _source key must not collide with an existing entity key across manifests."""
-    base = json.loads(
-        (Path(__file__).parent / "fixtures" / "manifest_hr.json").read_text(encoding="utf-8")
-    )
+    base = json.loads((Path(__file__).parent / "fixtures" / "manifest_hr.json").read_text(encoding="utf-8"))
 
     # Manifest A: entity with key ["sales", "orders"] → generates source key ["sales", "orders_source"]
     manifest_a = dict(base)
@@ -213,12 +211,14 @@ def test_build_definitions_accepts_manifest_uri_kwarg() -> None:
 # Orchestration policy → Dagster job concurrency config
 # ---------------------------------------------------------------------------
 
+
 def _make_manifest_with_orchestration(tmp_path, orchestration_block: str | None) -> Path:
     """Write a minimal manifest fixture with an optional orchestration block."""
     orch_section = ""
     if orchestration_block is not None:
         orch_section = f",\n    {orchestration_block}"
-    payload = """{
+    payload = (
+        """{
   "generated_at_ts_ms": 0,
   "floe_version": "0.4.5",
   "spec_version": "0.8",
@@ -236,7 +236,9 @@ def _make_manifest_with_orchestration(tmp_path, orchestration_block: str | None)
       "summary_uri_field": "summary_uri",
       "exit_codes": {"0": "success_or_rejected", "1": "technical_failure"}
     },
-    "defaults": {"env": {}, "workdir": null}""" + orch_section + """
+    "defaults": {"env": {}, "workdir": null}"""
+        + orch_section
+        + """
   },
   "runners": {
     "default": "local",
@@ -268,6 +270,7 @@ def _make_manifest_with_orchestration(tmp_path, orchestration_block: str | None)
     }
   ]
 }"""
+    )
     path = tmp_path / "orch_test.manifest.json"
     path.write_text(payload, encoding="utf-8")
     return path
@@ -292,9 +295,7 @@ def test_definitions_job_config_strategy_sequential(tmp_path) -> None:
     assert job is not None
     # Job must carry a baked-in run_config with max_concurrent=1
     assert job.run_config is not None
-    assert (
-        job.run_config["execution"]["config"]["multiprocess"]["max_concurrent"] == 1
-    )
+    assert job.run_config["execution"]["config"]["multiprocess"]["max_concurrent"] == 1
 
 
 def test_definitions_job_config_max_concurrent_explicit(tmp_path) -> None:
@@ -304,9 +305,7 @@ def test_definitions_job_config_max_concurrent_explicit(tmp_path) -> None:
     job = defs.get_job_def("floe_mfv1_orch_test_job")
     assert job is not None
     assert job.run_config is not None
-    assert (
-        job.run_config["execution"]["config"]["multiprocess"]["max_concurrent"] == 3
-    )
+    assert job.run_config["execution"]["config"]["multiprocess"]["max_concurrent"] == 3
 
 
 def test_definitions_job_config_strategy_parallel_no_constraint(tmp_path) -> None:
@@ -327,14 +326,15 @@ def test_definitions_job_config_sequential_overrides_max_concurrent(tmp_path) ->
     defs = build_definitions(manifest_path=str(manifest_path), runner=_NoopRunner())
     job = defs.get_job_def("floe_mfv1_orch_test_job")
     assert job is not None
-    assert (
-        job.run_config["execution"]["config"]["multiprocess"]["max_concurrent"] == 1
-    ), "sequential strategy must cap concurrency at 1 regardless of max_concurrent_entities"
+    assert job.run_config["execution"]["config"]["multiprocess"]["max_concurrent"] == 1, (
+        "sequential strategy must cap concurrency at 1 regardless of max_concurrent_entities"
+    )
 
 
 # ---------------------------------------------------------------------------
 # resolve_execution_config – unit tests (no manifest file needed)
 # ---------------------------------------------------------------------------
+
 
 def _make_execution(orchestration):
     from floe_dagster.manifest import (
@@ -342,6 +342,7 @@ def _make_execution(orchestration):
         ManifestExecutionDefaults,
         ManifestExecutionResultContract,
     )
+
     return ManifestExecution(
         entrypoint="floe",
         base_args=[],
@@ -367,37 +368,36 @@ def test_resolve_execution_config_returns_none_when_no_orchestration() -> None:
 
 def test_resolve_execution_config_sequential_returns_max_concurrent_1() -> None:
     from floe_dagster.manifest import ManifestOrchestration
+
     execution = _make_execution(ManifestOrchestration(strategy="sequential", max_concurrent_entities=None))
-    assert resolve_execution_config(execution) == {
-        "execution": {"config": {"multiprocess": {"max_concurrent": 1}}}
-    }
+    assert resolve_execution_config(execution) == {"execution": {"config": {"multiprocess": {"max_concurrent": 1}}}}
 
 
 def test_resolve_execution_config_explicit_max_concurrent() -> None:
     from floe_dagster.manifest import ManifestOrchestration
+
     execution = _make_execution(ManifestOrchestration(strategy=None, max_concurrent_entities=4))
-    assert resolve_execution_config(execution) == {
-        "execution": {"config": {"multiprocess": {"max_concurrent": 4}}}
-    }
+    assert resolve_execution_config(execution) == {"execution": {"config": {"multiprocess": {"max_concurrent": 4}}}}
 
 
 def test_resolve_execution_config_parallel_no_constraint_returns_none() -> None:
     from floe_dagster.manifest import ManifestOrchestration
+
     execution = _make_execution(ManifestOrchestration(strategy="parallel", max_concurrent_entities=None))
     assert resolve_execution_config(execution) is None
 
 
 def test_resolve_execution_config_sequential_overrides_explicit_max_concurrent() -> None:
     from floe_dagster.manifest import ManifestOrchestration
+
     execution = _make_execution(ManifestOrchestration(strategy="sequential", max_concurrent_entities=5))
-    assert resolve_execution_config(execution) == {
-        "execution": {"config": {"multiprocess": {"max_concurrent": 1}}}
-    }
+    assert resolve_execution_config(execution) == {"execution": {"config": {"multiprocess": {"max_concurrent": 1}}}}
 
 
 # ---------------------------------------------------------------------------
 # build_job_run_config_from_manifest – integration tests (reads manifest file)
 # ---------------------------------------------------------------------------
+
 
 def test_build_job_run_config_from_manifest_no_orchestration(tmp_path) -> None:
     path = _make_manifest_with_orchestration(tmp_path, None)
@@ -427,8 +427,10 @@ def test_build_job_run_config_from_manifest_parallel_no_constraint(tmp_path) -> 
 # Public API export smoke test
 # ---------------------------------------------------------------------------
 
+
 def test_public_api_exports_new_helpers() -> None:
     import floe_dagster
+
     assert hasattr(floe_dagster, "build_job_run_config_from_manifest")
     assert hasattr(floe_dagster, "resolve_execution_config")
 

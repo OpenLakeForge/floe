@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import Any
 
 from dagster import materialize
+from test_asset_checks import _StaticRunner
 
 from floe_dagster.assets import build_floe_asset_defs
-from test_asset_checks import _StaticRunner
 
 MANIFEST = Path(__file__).parent / "fixtures" / "manifest.json"
 TIMINGS = {

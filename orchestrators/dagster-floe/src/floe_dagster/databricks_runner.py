@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from .databricks_client import DatabricksJobSpec, DatabricksJobsClient, DatabricksRunResult
+from .databricks_client import DatabricksJobsClient, DatabricksJobSpec, DatabricksRunResult
 from .k8s_status import STATUS_CANCELED, STATUS_FAILED, STATUS_SUCCEEDED, STATUS_TIMEOUT
 from .manifest import ManifestRunnerDefinition
 from .runner import RunResult
@@ -22,15 +22,9 @@ def run_databricks_job(
     existing_cluster_id = runner.existing_cluster_id
     config_uri = runner.config_uri
     python_file_uri = runner.python_file_uri
-    if (
-        not workspace_url
-        or not existing_cluster_id
-        or not config_uri
-        or not python_file_uri
-    ):
+    if not workspace_url or not existing_cluster_id or not config_uri or not python_file_uri:
         raise ValueError(
-            "databricks_job runner requires workspace_url, existing_cluster_id, "
-            "config_uri and python_file_uri"
+            "databricks_job runner requires workspace_url, existing_cluster_id, config_uri and python_file_uri"
         )
 
     auth_ref = _extract_oauth_ref(runner.auth)
@@ -47,9 +41,7 @@ def run_databricks_job(
         workspace_url=workspace_url,
         existing_cluster_id=existing_cluster_id,
         python_file_uri=python_file_uri,
-        job_name=_render_job_name(
-            runner.job_name or "floe-{domain}-{env}", domain=domain, env=env_name
-        ),
+        job_name=_render_job_name(runner.job_name or "floe-{domain}-{env}", domain=domain, env=env_name),
         parameters=list(cmd_args),
         poll_interval_seconds=runner.poll_interval_seconds or 10,
         timeout_seconds=runner.timeout_seconds or 3600,
@@ -162,8 +154,7 @@ def _resolve_oauth_token(auth_ref: str | None) -> str:
             if resolved:
                 return resolved
             raise ValueError(
-                f"databricks oauth token env var '{env_var}' "
-                f"(from auth.service_principal_oauth_ref) not found"
+                f"databricks oauth token env var '{env_var}' (from auth.service_principal_oauth_ref) not found"
             )
         raise ValueError(
             "databricks oauth reference is not directly resolvable by dagster-floe; "

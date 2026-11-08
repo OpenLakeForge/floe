@@ -50,9 +50,7 @@ def test_s3_report_is_read_with_boto3_without_fsspec(monkeypatch) -> None:
     _clear_aws_env(monkeypatch)
     calls: dict = {}
     _install_fake_boto3(monkeypatch, json.dumps({"entities": []}), calls)
-    result = _load_json_document(
-        "s3://my-bucket/floe/reports/run.json", "s3://my-bucket/config.yml", label="test"
-    )
+    result = _load_json_document("s3://my-bucket/floe/reports/run.json", "s3://my-bucket/config.yml", label="test")
     assert result == {"entities": []}
     assert calls["get_object"] == {"Bucket": "my-bucket", "Key": "floe/reports/run.json"}
     service, kwargs = calls["client"]

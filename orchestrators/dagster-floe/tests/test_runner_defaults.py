@@ -43,7 +43,7 @@ def test_local_runner_applies_execution_defaults(monkeypatch, tmp_path: Path) ->
 
     config_path = tmp_path / "cfg" / "config.yml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text("version: \"0.2\"\n", encoding="utf-8")
+    config_path.write_text('version: "0.2"\n', encoding="utf-8")
 
     runner = LocalRunner("floe")
     execution = _execution(env={"FLOE_TEST_FLAG": "1"}, workdir="../work")

@@ -47,15 +47,33 @@ def _summary(tmp_path: Path, statuses: dict[str, str]) -> str:
     return str(path)
 
 
-def _run(tmp_path: Path, statuses: dict[str, str], *, exit_code: int = 0, selection=None, events: list[dict] | None = None, **manifest_kw: Any):
+def _run(
+    tmp_path: Path,
+    statuses: dict[str, str],
+    *,
+    exit_code: int = 0,
+    selection=None,
+    events: list[dict] | None = None,
+    **manifest_kw: Any,
+):
     """Materialize with the Kubernetes client mocked; returns the result and the Job API mock."""
     manifest = _manifest(tmp_path, **manifest_kw)
     jobs_api, core_api = MagicMock(), MagicMock()
     ok = {"type": "Complete", "status": "True"}
     jobs_api.read_namespaced_job.return_value = {
-        "status": {"succeeded": int(exit_code == 0), "failed": int(exit_code != 0), "conditions": [ok] if exit_code == 0 else []}
+        "status": {
+            "succeeded": int(exit_code == 0),
+            "failed": int(exit_code != 0),
+            "conditions": [ok] if exit_code == 0 else [],
+        }
     }
-    finished = {"event": "run_finished", "run_id": "r1", "status": "success", "exit_code": exit_code, "summary_uri": _summary(tmp_path, statuses)}
+    finished = {
+        "event": "run_finished",
+        "run_id": "r1",
+        "status": "success",
+        "exit_code": exit_code,
+        "summary_uri": _summary(tmp_path, statuses),
+    }
     core_api.list_namespaced_pod.return_value.items = [{"metadata": {"name": "pod-1"}}]
     core_api.read_namespaced_pod_log.return_value = "\n".join(json.dumps(e) for e in [*(events or []), finished])
     with (
@@ -210,7 +228,9 @@ def test_each_output_keeps_its_own_entitys_source(tmp_path: Path) -> None:
 
 def test_a_checks_only_selection_still_runs_the_entity(tmp_path: Path) -> None:
     assets, _, _ = build_floe_asset_defs(manifest_path=str(_manifest(tmp_path)), runner=LocalRunner())
-    selection = AssetSelection.checks(*(k for k in assets[0].check_keys if k.asset_key == AssetKey(["sales", "orders"])))
+    selection = AssetSelection.checks(
+        *(k for k in assets[0].check_keys if k.asset_key == AssetKey(["sales", "orders"]))
+    )
     result, jobs_api = _run(tmp_path, {"orders": "success"}, selection=selection)
 
     assert result.success

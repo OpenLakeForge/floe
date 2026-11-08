@@ -45,6 +45,7 @@ jobs:
               - "src/floe/**"
               - "tests/**"
               - "conformance/**"
+              - "orchestrators/dagster-floe/**"
               - "pyproject.toml"
               - "uv.lock"
               - ".github/workflows/ci.yml"

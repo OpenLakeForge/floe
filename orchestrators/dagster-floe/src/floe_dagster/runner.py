@@ -151,20 +151,14 @@ class LocalRunner(Runner):
 
         if runner_definition is not None and runner_definition.runner_type != "local_process":
             raise NotImplementedError(
-                "unsupported runner type for dagster-floe LocalRunner: "
-                f"{runner_definition.runner_type!r}"
+                f"unsupported runner type for dagster-floe LocalRunner: {runner_definition.runner_type!r}"
             )
 
         if execution is not None:
             if execution.log_format != "json":
-                raise ValueError(
-                    "unsupported execution.log_format for LocalRunner: "
-                    f"{execution.log_format}"
-                )
+                raise ValueError(f"unsupported execution.log_format for LocalRunner: {execution.log_format}")
             if not execution.result_contract.run_finished_event:
-                raise ValueError(
-                    "execution.result_contract.run_finished_event must be true"
-                )
+                raise ValueError("execution.result_contract.run_finished_event must be true")
             args = [*self._floe_cmd]
             args.extend(
                 render_execution_args(
@@ -177,9 +171,7 @@ class LocalRunner(Runner):
             )
             if run_id and not _contains_run_id_placeholder(execution):
                 args.extend(["--run-id", run_id])
-            cwd = _resolve_workdir(
-                config_uri=config_uri, workdir=execution.defaults.workdir
-            )
+            cwd = _resolve_workdir(config_uri=config_uri, workdir=execution.defaults.workdir)
             env_overrides = execution.defaults.env
         else:
             args = [*self._floe_cmd, "run", "-c", config_uri, "--entities", entity]
@@ -257,6 +249,7 @@ class InProcessRunner(LocalRunner):
         job = {"DAGSTER_JOB_NAME": dagster_job_name} if dagster_job_name else {}
         # the env the subprocess gets, for the lineage parent run; restored on exit
         with _IN_PROCESS_LOCK, patch.dict(os.environ, job):
+
             def observe(event: dict[str, object]) -> None:
                 events.append(event)
                 if log is not None:  # #904: live, as `_log_floe_output` renders it after a subprocess

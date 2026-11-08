@@ -48,8 +48,6 @@ def test_localrunner_runs_example_entity_json_logs(tmp_path):
     _write(in_dir / "demo.csv", "id\n1\n2\n")
 
     runner = LocalRunner("floe")
-    result = runner.run_floe_entity(
-        config_uri=str(config_path), run_id=None, entity="demo", log_format="json"
-    )
+    result = runner.run_floe_entity(config_uri=str(config_path), run_id=None, entity="demo", log_format="json")
     events = parse_ndjson_events(result.stdout)
     assert last_run_finished(events)["event"] == "run_finished"

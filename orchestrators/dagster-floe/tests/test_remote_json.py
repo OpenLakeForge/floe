@@ -10,8 +10,8 @@ import pytest
 
 from floe_dagster.assets import _load_json_document, _read_json_text
 
-
 # ── local plain path ──────────────────────────────────────────────────────────
+
 
 def test_load_json_document_local_path(tmp_path: Path) -> None:
     payload = {"entities": [{"name": "orders"}]}
@@ -32,6 +32,7 @@ def test_load_json_document_local_relative_path(tmp_path: Path) -> None:
 
 # ── local:// URI ──────────────────────────────────────────────────────────────
 
+
 def test_load_json_document_local_uri(tmp_path: Path) -> None:
     payload = {"files": []}
     doc = tmp_path / "entity.json"
@@ -43,6 +44,7 @@ def test_load_json_document_local_uri(tmp_path: Path) -> None:
 
 # ── file:// URI ───────────────────────────────────────────────────────────────
 
+
 def test_load_json_document_file_uri(tmp_path: Path) -> None:
     payload = {"rows": 42}
     doc = tmp_path / "summary.json"
@@ -53,6 +55,7 @@ def test_load_json_document_file_uri(tmp_path: Path) -> None:
 
 
 # ── remote URIs via fsspec ────────────────────────────────────────────────────
+
 
 def _make_fsspec_mock(payload_text: str) -> MagicMock:
     mock_fsspec = MagicMock()
@@ -74,9 +77,7 @@ def test_load_json_document_s3_uri_calls_fsspec(monkeypatch) -> None:
             "s3://my-bucket/floe/config.yml",
             label="test",
         )
-    mock_fsspec.open.assert_called_once_with(
-        "s3://my-bucket/floe/reports/run.json", "r", encoding="utf-8"
-    )
+    mock_fsspec.open.assert_called_once_with("s3://my-bucket/floe/reports/run.json", "r", encoding="utf-8")
     assert result == payload
 
 
@@ -139,18 +140,19 @@ def test_load_json_document_abfs_uri_calls_fsspec() -> None:
 
 # ── missing fsspec → helpful ImportError ─────────────────────────────────────
 
+
 def test_load_json_document_remote_missing_fsspec_raises_import_error() -> None:
     original = sys.modules.pop("fsspec", None)
     try:
-        with patch.dict(sys.modules, {"fsspec": None}):
-            with pytest.raises(ImportError, match="pip install fsspec"):
-                _read_json_text("s3://bucket/report.json", "s3://bucket/config.yml")
+        with patch.dict(sys.modules, {"fsspec": None}), pytest.raises(ImportError, match="pip install fsspec"):
+            _read_json_text("s3://bucket/report.json", "s3://bucket/config.yml")
     finally:
         if original is not None:
             sys.modules["fsspec"] = original
 
 
 # ── non-dict JSON root raises ValueError ─────────────────────────────────────
+
 
 def test_load_json_document_non_dict_root_raises(tmp_path: Path) -> None:
     doc = tmp_path / "bad.json"

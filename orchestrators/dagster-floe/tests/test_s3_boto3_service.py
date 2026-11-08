@@ -15,8 +15,8 @@ import pytest
 
 boto3 = pytest.importorskip("boto3")
 
-from floe_dagster.assets import _read_json_text  # noqa: E402 -- after the importorskip
-from floe_dagster.manifest import load_manifest  # noqa: E402 -- after the importorskip
+from floe_dagster.assets import _read_json_text
+from floe_dagster.manifest import load_manifest
 
 ENDPOINT = os.environ.get("FLOE_S3_ENDPOINT")
 BUCKET = os.environ.get("FLOE_S3_BUCKET", "warehouse")
