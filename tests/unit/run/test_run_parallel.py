@@ -433,7 +433,11 @@ def test_a_failing_entity_leaves_a_failure_report(workers: int, tmp_path: Path, 
     assert doc["error"] == {"type": "FloeRunError", "code": None, "message": "b failed"}
     assert doc["entities"] == [
         {"name": "d.a", "state": "completed", "report_file": f"{run_dir}/d/a/run.json"},
-        {"name": "d.b", "state": "failed"},
+        {
+            "name": "d.b",
+            "state": "failed",
+            "sinks": {"rejected": "not_started", "accepted": "not_started"},
+        },
         {"name": "d.c", "state": "not_started"},
     ]
     assert (tmp_path / "report/d/run_r1/d/a/run.json").exists()

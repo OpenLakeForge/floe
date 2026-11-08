@@ -107,7 +107,7 @@ jobs:
         if: needs.changes.outputs.python_core == 'true'
       - run: uv sync --all-groups --all-extras --python ${{ matrix.python-version }}
         if: needs.changes.outputs.python_core == 'true'
-      - run: uv run --python ${{ matrix.python-version }} pytest
+      - run: uv run --python ${{ matrix.python-version }} pytest --cov=floe
         if: needs.changes.outputs.python_core == 'true'
 
   core-only:

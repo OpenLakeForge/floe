@@ -20,7 +20,6 @@ from floe.config.yaml import (
     load_yaml,
     merge_yaml,
     parse_yaml,
-    rust_debug,
     validate_known_keys,
     yaml_array,
     yaml_hash,
@@ -338,7 +337,7 @@ def _malformed(value: str) -> str | None:
         rest = rest[start + 2 :]
         end = rest.find("}")
         if end == -1:
-            return f"${{... (unclosed placeholder in: {rust_debug(value)})}}"[:120]
+            return f"${{... (unclosed placeholder in: {value!r})}}"[:120]
         if not rest[:end].strip():
             return "${} (empty placeholder)"
         rest = rest[end + 1 :]

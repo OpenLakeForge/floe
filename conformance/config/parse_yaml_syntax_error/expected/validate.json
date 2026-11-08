@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "while parsing a flow sequence, expected ',' or ']' at byte 35 line 3 column 1"
+  "error": "while parsing a flow sequence, expected ',' or ']', but got '<stream end>' at line 3 column 1"
 }

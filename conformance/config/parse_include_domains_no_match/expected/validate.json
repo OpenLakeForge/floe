@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "include.domains pattern \"nowhere/*/_domain.yml\" matched no file (includes resolve against local files only; a remote project cannot include)"
+  "error": "include.domains pattern 'nowhere/*/_domain.yml' matched no file (includes resolve against local files only; a remote project cannot include)"
 }

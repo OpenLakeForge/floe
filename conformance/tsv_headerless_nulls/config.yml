@@ -1,0 +1,28 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: people
+    domain: spike
+    source:
+      format: tsv
+      path: "./in"
+      options:
+        header: false
+        null_values: ["NA"]
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/people"
+      rejected:
+        format: csv
+        path: "./out/rejected/people"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - { name: column_1, type: int64, nullable: false }
+        - { name: column_2, type: string }
+        - { name: column_3, type: int64 }
+report:
+  path: "./report"

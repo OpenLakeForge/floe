@@ -11,7 +11,6 @@ from floe.config.yaml import (
     get_value,
     load_single_doc,
     opt_string,
-    rust_debug,
     validate_known_keys,
     yaml_array,
     yaml_hash,
@@ -75,7 +74,7 @@ def assemble_includes(
         matches = glob(os.path.join(glob_base(config_dir), pattern))
         if not matches:
             raise FloeConfigError(
-                f"include.domains pattern {rust_debug(pattern)} matched no file "
+                f"include.domains pattern {pattern!r} matched no file "
                 "(includes resolve against local files only; a remote project cannot include)"
             )
         for match in matches:
@@ -103,7 +102,7 @@ def assemble_includes(
                     entity["domain"] = name
                 elif declared != name:
                     raise FloeConfigError(
-                        f"{entity_file} has domain {rust_debug(declared)} but its _domain.yml names {rust_debug(name)}"
+                        f"{entity_file} has domain {declared!r} but its _domain.yml names {name!r}"
                     )
                 config_files.append(entity_file)
                 entities.append((entity, entity_file))
