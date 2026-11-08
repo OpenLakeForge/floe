@@ -228,9 +228,8 @@ class BuildJobSpecTests(unittest.TestCase):
 
         # Resources
         self.assertEqual(container["resources"]["requests"]["cpu"], "500m")
-        self.assertEqual(container["resources"]["limits"]["cpu"], "500m")
+        self.assertNotIn("limits", container["resources"])
         self.assertEqual(container["resources"]["requests"]["memory"], "1024Mi")
-        self.assertEqual(container["resources"]["limits"]["memory"], "1024Mi")
 
         # Env vars
         env = {e["name"]: e for e in container["env"]}

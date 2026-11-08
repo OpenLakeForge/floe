@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from dataclasses import replace
 from typing import Any
 
 from .k8s_status import (
@@ -95,18 +96,22 @@ def build_k8s_job_spec(
     if env_vars:
         container["env"] = env_vars
 
-    # Resource requests/limits derived from manifest resources block.
-    if runner.resources is not None:
-        resource_reqs: dict[str, Any] = {}
-        if runner.resources.cpu is not None:
-            resource_reqs.setdefault("requests", {})["cpu"] = runner.resources.cpu
-            resource_reqs.setdefault("limits", {})["cpu"] = runner.resources.cpu
-        if runner.resources.memory_mb is not None:
-            mem_str = f"{runner.resources.memory_mb}Mi"
-            resource_reqs.setdefault("requests", {})["memory"] = mem_str
-            resource_reqs.setdefault("limits", {})["memory"] = mem_str
-        if resource_reqs:
-            container["resources"] = resource_reqs
+    # Requests come from cpu/memory_mb, limits only from cpu_limit/memory_limit_mb.
+    res = runner.resources
+    if res is not None:
+        requests = {
+            **({"cpu": res.cpu} if res.cpu is not None else {}),
+            **({"memory": f"{res.memory_mb}Mi"} if res.memory_mb is not None else {}),
+        }
+        limits = {
+            **({"cpu": res.cpu_limit} if res.cpu_limit is not None else {}),
+            **({"memory": f"{res.memory_limit_mb}Mi"} if res.memory_limit_mb is not None else {}),
+        }
+        if requests or limits:
+            container["resources"] = {
+                **({"requests": requests} if requests else {}),
+                **({"limits": limits} if limits else {}),
+            }
 
     pod_spec: dict[str, Any] = {
         "containers": [container],
@@ -137,6 +142,14 @@ def build_k8s_job_spec(
         },
         "spec": job_spec,
     }
+
+
+def sized_for_domain(
+    runner: ManifestRunnerDefinition, domain: str | None
+) -> ManifestRunnerDefinition:
+    """`domain_resources[domain]` replaces `resources` wholesale; a domain not listed keeps them."""
+    sized = (runner.domain_resources or {}).get(domain or "")
+    return replace(runner, resources=sized) if sized is not None else runner
 
 
 def run_kubernetes_job(

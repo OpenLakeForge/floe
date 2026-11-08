@@ -84,6 +84,19 @@ class ManifestExecutionDefaults:
 
 
 @dataclass(frozen=True)
+class ManifestOrchestration:
+    max_concurrent_entities: int | None
+    strategy: str | None
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> ManifestOrchestration:
+        return ManifestOrchestration(
+            max_concurrent_entities=_optional_int(data, "max_concurrent_entities"),
+            strategy=_optional_str(data, "strategy"),
+        )
+
+
+@dataclass(frozen=True)
 class ManifestExecution:
     entrypoint: str
     base_args: list[str]
@@ -91,10 +104,17 @@ class ManifestExecution:
     log_format: str
     result_contract: ManifestExecutionResultContract
     defaults: ManifestExecutionDefaults
+    orchestration: ManifestOrchestration | None = None
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> ManifestExecution:
+        orchestration_raw = data.get("orchestration")
         return ManifestExecution(
+            orchestration=(
+                ManifestOrchestration.from_dict(orchestration_raw)
+                if isinstance(orchestration_raw, dict)
+                else None
+            ),
             entrypoint=_required_str(data, "entrypoint"),
             base_args=_required_string_list(data, "base_args"),
             per_entity_args=_required_string_list(data, "per_entity_args"),
@@ -110,6 +130,8 @@ class ManifestExecution:
 class ManifestRunnerResources:
     cpu: str | None
     memory_mb: int | None
+    cpu_limit: str | None = None
+    memory_limit_mb: int | None = None
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> ManifestRunnerResources:
@@ -119,6 +141,8 @@ class ManifestRunnerResources:
         return ManifestRunnerResources(
             cpu=_optional_str(data, "cpu"),
             memory_mb=memory_mb_raw,
+            cpu_limit=_optional_str(data, "cpu_limit"),
+            memory_limit_mb=_optional_int(data, "memory_limit_mb"),
         )
 
 
@@ -144,9 +168,22 @@ class ManifestRunnerDefinition:
     job_name: str | None = None
     auth: dict[str, str] | None = None
     env_parameters: dict[str, str] | None = None
+    job_scope: str | None = None  # "entity" (when unset) or "domain"
+    domain_resources: dict[str, ManifestRunnerResources] | None = (
+        None  # by domain, replaces `resources`
+    )
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> ManifestRunnerDefinition:
+        domain_resources_raw = data.get("domain_resources")
+        if domain_resources_raw is not None and not isinstance(domain_resources_raw, dict):
+            raise ValueError("runners.definitions.*.domain_resources must be object or null")
+        domain_resources = {
+            domain: ManifestRunnerResources.from_dict(value)
+            for domain, value in (domain_resources_raw or {}).items()
+            if isinstance(value, dict)
+        } or None
+
         resources_obj = data.get("resources")
         resources = None
         if resources_obj is not None:
@@ -216,6 +253,8 @@ class ManifestRunnerDefinition:
             job_name=_optional_str(data, "job_name"),
             auth=auth,
             env_parameters=env_parameters,
+            job_scope=_optional_str(data, "job_scope"),
+            domain_resources=domain_resources,
         )
 
 

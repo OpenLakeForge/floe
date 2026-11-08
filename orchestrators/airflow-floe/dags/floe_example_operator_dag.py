@@ -16,7 +16,7 @@ if str(SRC_DIR) not in sys.path:
 
 from airflow_floe.hooks import FloeManifestHook
 from airflow_floe.manifest_discovery import discover_manifest_dag_specs
-from airflow_floe.operators import FloeRunOperator
+from airflow_floe.operators import build_floe_tasks, orchestration_max_active_tasks
 
 FLOE_CMD = os.environ.get("FLOE_CMD", "floe")
 FLOE_MANIFEST_DIR = os.environ.get("FLOE_MANIFEST_DIR")
@@ -35,24 +35,18 @@ def _register_dag_for_manifest(*, dag_id: str, manifest_path: str):
         default_config_path=DEFAULT_CONFIG,
     )
     context = manifest_hook.get_context()
-    config_path = manifest_hook.get_config_path()
-    entity_assets = list(context.assets_by_entity.values())
+    max_tasks = orchestration_max_active_tasks(context)
 
     @dag(
         dag_id=dag_id,
         start_date=datetime(2026, 1, 1),
         schedule=None,
         catchup=False,
+        **({} if max_tasks is None else {"max_active_tasks": max_tasks}),
         tags=["floe", "example", "operator"],
     )
     def _floe_operator_dag() -> None:
-        FloeRunOperator(
-            task_id="run_floe",
-            floe_cmd=FLOE_CMD,
-            config_path=config_path,
-            manifest_context=context,
-            outlets=entity_assets,
-        )
+        build_floe_tasks(context, floe_cmd=FLOE_CMD)
 
     return _floe_operator_dag()
 

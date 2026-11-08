@@ -9,7 +9,7 @@ import threading
 from typing import Any
 
 from .databricks_runner import run_databricks_job
-from .kubernetes_runner import run_kubernetes_job
+from .kubernetes_runner import run_kubernetes_job, sized_for_domain
 from .manifest import ManifestExecution, ManifestRunnerDefinition
 from .runtime import (
     DagManifestContext,
@@ -219,11 +219,13 @@ class FloeRunOperator(BaseOperator):  # pyright: ignore[reportGeneralTypeIssues]
             self.entities if self.entities else list(self.manifest_context.entities_by_name.keys())
         )
         requested_runner_names = set()
+        domains = set()
         for entity_name in entity_names:
             entity = self.manifest_context.entities_by_name.get(entity_name)
             if entity is None:
                 continue
             requested_runner_names.add(entity.runner or runners.default)
+            domains.add(entity.domain)
 
         if not requested_runner_names:
             requested_runner_names.add(runners.default)
@@ -237,6 +239,8 @@ class FloeRunOperator(BaseOperator):  # pyright: ignore[reportGeneralTypeIssues]
         runner_definition = runners.definitions.get(runner_name)
         if runner_definition is None:
             raise ValueError(f"runner '{runner_name}' not found in manifest.runners.definitions")
+        if runner_definition.job_scope == "domain" and len(domains) == 1:
+            runner_definition = sized_for_domain(runner_definition, next(iter(domains)))
 
         return execution, runner_definition
 
@@ -273,6 +277,62 @@ class FloeRunOperator(BaseOperator):  # pyright: ignore[reportGeneralTypeIssues]
                 summary_entity=summary_entities.get(entity_name),
                 config_path=self.config_path,
             )
+
+
+def orchestration_max_active_tasks(context: DagManifestContext) -> int | None:
+    """DAG `max_active_tasks` for `execution.orchestration`; `None` leaves Airflow's default.
+
+    `sequential` is always one task at a time, whatever `max_concurrent_entities` says.
+    """
+    orchestration = context.manifest.execution.orchestration if context.manifest else None
+    if orchestration is None:
+        return None
+    if orchestration.strategy == "sequential":
+        return 1
+    return orchestration.max_concurrent_entities
+
+
+def plan_floe_tasks(context: DagManifestContext) -> list[tuple[str, list[str]]]:
+    """`(task_id, entities)` per task: one per entity, or one per (domain, runner) for `job_scope: domain`."""
+    manifest = context.manifest
+    if manifest is None:
+        return []
+    plan: dict[str, list[str]] = {}
+    for entity in manifest.entities:
+        runner_name = entity.runner or manifest.runners.default
+        runner = manifest.runners.definitions[runner_name]
+        if runner.runner_type == "kubernetes_job" and runner.job_scope == "domain":
+            task_id = f"floe_domain_{entity.domain or 'default'}_{runner_name}"
+        else:
+            task_id = f"floe_{entity.name}"
+        plan.setdefault(task_id, []).append(entity.name)
+    return list(plan.items())
+
+
+def build_floe_tasks(
+    context: DagManifestContext, *, floe_cmd: str | None = None
+) -> list[FloeRunOperator]:
+    """Create the planned `FloeRunOperator`s; call it inside a DAG definition.
+
+    Pass `max_active_tasks=orchestration_max_active_tasks(context)` to the DAG.
+    """
+    if (
+        context.manifest is None
+    ):  # manifest failed to load: the `FLOE_CONFIG` fallback runs everything
+        return [
+            FloeRunOperator(task_id="run_floe", config_path=context.config_path, floe_cmd=floe_cmd)
+        ]
+    return [
+        FloeRunOperator(
+            task_id=task_id,
+            entities=entities,
+            config_path=context.config_path,
+            floe_cmd=floe_cmd,
+            manifest_context=context,
+            outlets=[context.assets_by_entity[name] for name in entities],
+        )
+        for task_id, entities in plan_floe_tasks(context)
+    ]
 
 
 def _render_tokens(tokens: list[str], config_uri: str) -> list[str]:

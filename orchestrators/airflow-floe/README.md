@@ -48,6 +48,17 @@ The connector is driven entirely by environment variables. No code changes are n
 
 **Multi-manifest mode:** Each JSON file in `FLOE_MANIFEST_DIR` becomes a separate DAG. The DAG ID is derived from the manifest file name — for example `orders.manifest.json` → DAG `floe_orders`. Entity tasks within the DAG are generated from the manifest's `entities[]` list.
 
+## Manifest settings
+
+The example DAG calls `build_floe_tasks(context)` and passes `orchestration_max_active_tasks(context)` as the DAG's `max_active_tasks`. The settings follow dagster-floe.
+
+| Manifest setting | Airflow behaviour |
+| --- | --- |
+| `execution.orchestration` | `strategy: sequential` sets the DAG's `max_active_tasks` to 1 (whatever `max_concurrent_entities` says); otherwise `max_concurrent_entities` is the cap; unset leaves Airflow's default. `max_active_tasks` counts across the DAG's runs, and the order of tasks is not fixed. |
+| `runners.definitions.*.job_scope` | `domain` on a `kubernetes_job` runner makes one task (one Job) per domain and runner, running its entities one after another; otherwise one task per entity. |
+| `runners.definitions.*.domain_resources` | A domain-scoped task is sized from `domain_resources[<domain>]`, which replaces `resources` wholesale; a domain not listed keeps `resources`. |
+| `resources.cpu_limit`, `resources.memory_limit_mb` | The pod's limits. `cpu` and `memory_mb` are only the requests: a pod with no limit fields has no limits. |
+
 ## Quick usage
 
 1. Make sure `floe` is available in PATH (or set `FLOE_CMD`).
