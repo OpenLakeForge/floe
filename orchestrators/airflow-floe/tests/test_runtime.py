@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
 import tempfile
 import types
 import unittest
+from pathlib import Path
 
 
 def _install_airflow_stub() -> None:
@@ -30,14 +30,14 @@ def _install_airflow_stub() -> None:
 _install_airflow_stub()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from airflow_floe.runtime import (  # noqa: E402
+from airflow_floe.manifest import ManifestEntity
+from airflow_floe.runtime import (
     build_asset_event_extra,
     build_dag_manifest_context,
     build_dag_manifest_context_or_empty,
     load_run_summary,
     parse_run_finished,
 )
-from airflow_floe.manifest import ManifestEntity  # noqa: E402
 
 
 def _execution_and_runners(config_path: str) -> dict:
