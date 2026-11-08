@@ -336,7 +336,7 @@ def _read_remote_text(uri: str) -> str:
     except ImportError as exc:
         raise ImportError("reading remote manifest URIs requires fsspec; install it with: pip install fsspec") from exc
     with fsspec.open(uri, "r", encoding="utf-8", **_fsspec_storage_options(uri)) as f:
-        return f.read()
+        return f.read()  # pyright: ignore[reportAttributeAccessIssue] -- stub types a glob result
 
 
 def load_manifest(path: str | Path) -> DagsterManifest:
@@ -392,6 +392,7 @@ def load_manifest_source(
             raise ValueError("profile_path= needs config_path=; a manifest already carries its profile")
         if manifest_name is not None:
             raise ValueError("manifest_name= needs config_path=; a manifest already carries its name")
+        assert manifest_path is not None  # the check above leaves exactly one of the two set
         manifest = load_manifest(manifest_path)
         return manifest, resolve_config_uri(manifest_path, manifest.config_uri)
     return parse_manifest(manifest_from_config(config_path, profile_path, manifest_name)), str(

@@ -1,0 +1,7 @@
+{
+  // ponytail: basic mode on src only. Ceiling: strict reports 213 errors in src and 920 in tests (untyped
+  // dagster APIs, Any-heavy manifest dicts). Upgrade path: fix per file, then switch to "strict" and add "tests".
+  "include": ["src"],
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.11"
+}

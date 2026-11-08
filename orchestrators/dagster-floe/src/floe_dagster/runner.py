@@ -5,7 +5,7 @@ import os
 import shlex
 import subprocess
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from unittest.mock import patch
@@ -245,12 +245,12 @@ class InProcessRunner(LocalRunner):
             )  # fmt: skip
         import floe
 
-        events: list[dict[str, object]] = []
+        events: list[Mapping[str, object]] = []
         job = {"DAGSTER_JOB_NAME": dagster_job_name} if dagster_job_name else {}
         # the env the subprocess gets, for the lineage parent run; restored on exit
         with _IN_PROCESS_LOCK, patch.dict(os.environ, job):
 
-            def observe(event: dict[str, object]) -> None:
+            def observe(event: Mapping[str, object]) -> None:
                 events.append(event)
                 if log is not None:  # #904: live, as `_log_floe_output` renders it after a subprocess
                     log(render_log_event(event) or f"floe stdout | {json.dumps(event, ensure_ascii=False)}")

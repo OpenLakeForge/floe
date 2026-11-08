@@ -4,7 +4,7 @@ import os
 import re
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from dagster import AssetSelection, Definitions, define_asset_job
 
@@ -97,9 +97,11 @@ def build_definitions_from_manifest_dir(
     )
 
 
-_Source = dict[
-    str, "str | None"
-]  # load_manifest_source kwargs: manifest_path, config_path, profile_path, manifest_name
+class _Source(TypedDict, total=False):  # the load_manifest_source kwargs
+    manifest_path: str | None
+    config_path: str | None
+    profile_path: str | None
+    manifest_name: str | None
 
 
 def build_definitions_from_manifest_paths(
@@ -140,14 +142,14 @@ def _build_definitions(
         raise ValueError("manifest_uri override is only supported for a single manifest")
 
     runner_impl = runner or build_runner_from_env()
-    assets_defs: list[object] = []
+    assets_defs: list[Any] = []
     jobs = []
     seen_asset_keys: set[tuple[str, ...]] = set()
     seen_job_names: set[str] = set()
 
     for source in sources:
         manifest, _ = load_manifest_source(**source)
-        manifest_path = source.get("manifest_path") or source["config_path"]  # names the job
+        manifest_path = source.get("manifest_path") or source.get("config_path") or ""  # names the job
         selected_entities = None if entities is None else list(entities)
         manifest_assets, manifest_source_assets, manifest_entities = build_floe_asset_defs(
             **source,
