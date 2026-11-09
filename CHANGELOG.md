@@ -25,7 +25,6 @@ All notable changes to Floe are documented in this file.
 - `run.failure.json` is also written when every entity finished but the final `run.summary.json` could not be written (#1155): the entities stay `completed`, the original error is raised.
 - Each entity report has a `timings_ms` object (`list_ms`, `download_wait_ms`, `read_validate_ms`, `rejected_write_ms`, `accepted_write_ms`, `archive_ms`: cumulative wall-clock milliseconds, `null` for a phase that did not run), the `entity_finished` event carries it, and `run_finished` has `report_write_ms` (#1156).
 - The `run_started` event and `run.failure.json` carry `dagster_run_id` and `dagster_job_name` when `DAGSTER_RUN_ID` and `DAGSTER_JOB_NAME` are set, and the failure-report `log` event and a failed `entity_finished` carry `error_code` when the error has a typed `code`. Both are optional and absent otherwise (#1156).
-- dagster-floe adds the report's `timings_ms` (`floe/timings/<phase>_ms`), the rejected output's format and URI, and, for a failed run, the `run.failure.json` URI, error and per-entity states to asset metadata (#1157).
 
 ## v0.9.0
 
@@ -207,6 +206,21 @@ dagster-floe 0.5 or airflow-floe 0.3 with it.
 
 - **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
   dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
+
+## dagster-floe v0.6.0
+
+Use it with Floe 0.10.
+
+- **Accepts Floe 0.10 manifests.** `spec_version` `0.8`, `0.9` and `0.10` load; the `floe` extra now installs
+  `floe-python>=0.10,<0.11`. The manifest schema it validates against gains the optional `report_formatter` and per-entity
+  `description` and `tag_list`, and drops `width`, `trim` and `incremental_mode: row` (Floe 0.10 no longer accepts them),
+  so a 0.8 or 0.9 manifest that still carries them is now refused.
+- **Asset metadata carries the run's timings, rejected output and failure evidence (#1157).** The accepted asset adds the report's
+  `timings_ms` as `floe/timings/<phase>_ms`; both assets add `entity_report_uri`, and the rejected asset adds
+  `floe/rejected_format` and `floe/rejected_uri`. A failed step also reports `floe/failure_report_uri`, `floe/error_type`,
+  `floe/error_code` and `floe/entity_states` from `run.failure.json`, or `floe/failure_evidence: unavailable: <reason>`.
+  Older reports without these keys add nothing.
+- The package is now classified `Development Status :: 4 - Beta` on PyPI (it was Production/Stable) and is linted and type-checked in CI (#1186).
 
 ## dagster-floe v0.5.0
 
