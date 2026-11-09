@@ -174,7 +174,7 @@ resource fields. Select a name with `runner` on a domain or entity.
 execution:
   runner:
     type: kubernetes_job
-    image: registry.example/floe:0.9
+    image: registry.example/floe:0.10
     namespace: floe
     resources: {memory_mb: 512}
   runners:
