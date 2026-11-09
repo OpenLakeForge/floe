@@ -11,6 +11,8 @@ import pytest
 
 from floe.config.parse import parse_config
 from floe.run import run
+from floe.run.sources import list_source, resolve_source
+from floe.storage.inputs import input_hash
 
 CONFIG = """\
 version: "0.3"
@@ -72,3 +74,20 @@ def test_the_failure_file_holds_no_credential_from_the_environment(tmp_path: Pat
     fail_run(tmp_path)
     text = (tmp_path / "report/run_r1/run.failure.json").read_text()
     assert "s3cr3t-key-value" not in text and "AKIA-id-value" not in text
+
+
+def test_a_failed_entity_records_the_fingerprint_of_the_inputs_it_claimed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    monkeypatch.setattr(sys.modules["floe.run.entity"], "build_report", boom)
+    entry = fail_run(tmp_path)
+    config = parse_config(tmp_path / "config.yml", {})
+    entity = config.entities[0]
+    uri, client = resolve_source(entity, tmp_path, None)
+    listed = list_source(entity, tmp_path, None, uri, client)
+    assert entry["input_hash"] == input_hash(entity, listed.files)
+    assert "input_hash" not in entry["sinks"]
+
+
+def test_an_entity_that_failed_before_claiming_has_no_fingerprint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    monkeypatch.setattr(sys.modules["floe.run.incremental"].Incremental, "claim", boom)
+    entry = fail_run(tmp_path)
+    assert "input_hash" not in entry and "input_hash" not in entry["sinks"]

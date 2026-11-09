@@ -186,6 +186,7 @@ be, then re-raises the original error. It is additive: a successful run never wr
   A `failed` or `unknown` entity also has `sinks`: `{"rejected": ..., "accepted": ...}`, each `not_started` (no write began), `committed` (every write that began returned) or
   `unknown` (a write began and did not confirm, so it may or may not have landed). `committed` is never claimed without the sink returning. An Iceberg quarantine commit is `rejected`; an accepted
   `committed` means the rows are in the sink even though the entity's `run.json` was not written.
+  Once the entity has claimed inputs it also has `input_hash`, the fingerprint of the claimed input set (their URIs, sizes and mtimes): the same value as the Iceberg snapshot's `floe.input_hash`, so you can match the failure to the snapshot. It is absent when the entity failed before claiming any input.
 
 The run also emits a `log` event with `code: "run_failure_report"` whose message carries the file's URI, plus `error_code` when the error has a typed `code`.
 
