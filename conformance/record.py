@@ -41,6 +41,7 @@ VOLATILE_KEYS = {
     "ts_ms",
     "timings_ms",
     "report_write_ms",
+    "input_hash",  # #1155: hashes the absolute source path and mtime
 }
 # Recorded, but ignored on compare (G5 ruling on #594).
 WRITER_BYTES_KEYS = {"total_bytes_written", "avg_file_size_mb"}

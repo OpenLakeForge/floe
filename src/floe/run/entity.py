@@ -345,6 +345,10 @@ def _run_entity(
         # `archive` mode: the archive is the marker
         plan.to_archive += [f for f in pending if f.source_uri in skip]
         pending = [f for f in pending if f.source_uri not in skip]
+    if pending:
+        plan.sinks["input_hash"] = input_hash(
+            entity, pending
+        )  # #1155: `run.failure.json` names the claim
     # #545: the snapshot's fingerprint names only the files it holds in full, never an aborted batch
     complete: list[InputFile] = []
     skipped = len(files)

@@ -101,6 +101,12 @@ def build_summary(
     }
 
 
+def _claim(claim: Mapping[str, str]) -> dict[str, Any]:
+    """#1155: a failed entity's sink states, and the fingerprint of the inputs it claimed (the Iceberg snapshot's `floe.input_hash`) once it had any."""
+    sinks = {k: v for k, v in claim.items() if k != "input_hash"}
+    return {"sinks": sinks} | ({"input_hash": claim["input_hash"]} if "input_hash" in claim else {})  # fmt: skip
+
+
 def build_failure(
     version: str,
     err: BaseException,
@@ -140,11 +146,7 @@ def build_failure(
                 if state == "completed"
                 else {}
             )
-            | (
-                {"sinks": sinks[e.id]}
-                if sinks and state in ("failed", "unknown")
-                else {}
-            )
+            | (_claim(sinks[e.id]) if sinks and state in ("failed", "unknown") else {})
             for e, state in states
         ],
     }

@@ -23,7 +23,8 @@
       "sinks": {
         "rejected": "not_started",
         "accepted": "unknown"
-      }
+      },
+      "input_hash": "<volatile>"
     }
   ]
 }
