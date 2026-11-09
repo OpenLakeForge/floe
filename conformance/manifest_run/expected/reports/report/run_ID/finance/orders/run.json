@@ -1,5 +1,5 @@
 {
-  "spec_version": "0.9",
+  "spec_version": "0.10",
   "entity": {
     "name": "finance.orders"
   },
@@ -51,8 +51,8 @@
     "part_files": [
       "part-00000.parquet"
     ],
-    "total_bytes_written": 828,
-    "avg_file_size_mb": 0.000789642333984375,
+    "total_bytes_written": 904,
+    "avg_file_size_mb": 0.00086212158203125,
     "small_files_count": 1
   },
   "schema_evolution": {

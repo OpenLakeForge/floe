@@ -2,29 +2,52 @@
 
 All notable changes to Floe are documented in this file.
 
-## Unreleased
+## v0.10.0
+
+Floe 0.10 accepts configs with `version:` up to `"0.10"` and generates manifests with `spec_version: "0.10"`; use
+dagster-floe 0.6 or airflow-floe 0.4 with it.
+
+- **Breaking: Floe refuses config inputs it used to accept and ignore (#1009, #1059).** `floe validate` and `floe run` now fail with `is not supported (see CHANGELOG)` for: `schema.columns[].trim` and `width` (never applied; fixed-width input was dropped), `incremental_mode: row` (it behaved like `none`), the profile's `validation.strict` (parsed, never enforced; `validation` itself stays a valid empty block), and `sink.accepted.merge.compare_columns` with `write_mode: merge_scd1` (only `merge_scd2` uses it). `floe run --manifest` fails the same way on a manifest that carries `trim`, `width`, `incremental_mode: row` or `compare_columns` with `merge_scd1`, and `floe run --manifest ... -p` is a usage error (exit 2) instead of ignoring the profile. The manifest schema drops `width`, `trim` and `incremental_mode: row`. Remove the keys from your configs and profiles; none of them changed a run's output.
+
+- **Breaking: `boto3`, `pyiceberg`, `duckdb` and `fastexcel` are now the optional `s3`, `iceberg`, `merge` and `xlsx` extras (#1061).** `pip install floe-python` no longer installs them. Install `pip install 'floe-python[s3]'` for `s3` storages and `s3://` locations, `'floe-python[iceberg]'` for `sink.accepted.format: iceberg`, `sink.rejected.format: iceberg` and `floe maintain`, `'floe-python[merge]'` for `sink.write_mode: merge_scd1` and `merge_scd2` and `floe maintain --compact`, and `'floe-python[xlsx]'` for `source.format: xlsx`; without the extra `floe validate` and `floe run` fail with `needs the floe[<extra>] extra`. `floe-python[all]` installs every extra, and the Docker image and `dagster-floe[floe]` use it.
+
+- **Breaking: `floe run` refuses a Parquet `sink.accepted.path` equal to `sink.rejected.path`, whatever the rejected format (#1168).** A raw file copy from a file-level reject (`reject_file`, `abort`) lands in the rejected directory under its own name, and the accepted Parquet writer's overwrite replaced or deleted it when the name matched `part-*.parquet`. A config that shared the path now fails with `sink.accepted.path must differ from sink.rejected.path`; give the two sinks separate directories.
 
 - `run.failure.json` gives each `failed` or `unknown` entity that claimed inputs an `input_hash`, the fingerprint of the claimed input set (the Iceberg snapshot's `floe.input_hash`), so a reader can match the failure to a snapshot or part after the pod is gone (#1155). Absent when the entity failed before claiming.
+
 - `floe run --manifest` keeps the entity `metadata` (`data_product`, `domain`, `owner`, `description`, `tags`) in the run report and honours `report.formatter` (#1188, #1009). The manifest gains optional fields: a top-level `report_formatter` and, per entity, `description` and `tag_list` (the metadata `tags` list; the existing `tags` object still holds `data_product`, `domain` and `owner`). A manifest generated before this change still runs as before: no entity metadata and JSON `__floe_errors`; regenerate it to get both.
+
 - `floe validate`, `run`, `state` and `manifest generate` fail with `a config must be a local path; download it first` for `-c s3://...` instead of `No such file or directory` (#1009). Only `--manifest` and `-p` read `s3://`.
+
 - A `normalize_columns` source collision now names the declared columns, with their `source:` (#1009): `column source collision: order_id and order_ref (source order.id) -> order_id` instead of `order_id and order.id -> order_id`.
-- **Breaking: Floe refuses config inputs it used to accept and ignore (#1009, #1059).** `floe validate` and `floe run` now fail with `is not supported (see CHANGELOG)` for: `schema.columns[].trim` and `width` (never applied; fixed-width input was dropped), `incremental_mode: row` (it behaved like `none`), the profile's `validation.strict` (parsed, never enforced; `validation` itself stays a valid empty block), and `sink.accepted.merge.compare_columns` with `write_mode: merge_scd1` (only `merge_scd2` uses it). `floe run --manifest` fails the same way on a manifest that carries `trim`, `width`, `incremental_mode: row` or `compare_columns` with `merge_scd1`, and `floe run --manifest ... -p` is a usage error (exit 2) instead of ignoring the profile. The manifest schema drops `width`, `trim` and `incremental_mode: row`. Remove the keys from your configs and profiles; none of them changed a run's output.
+
 - Config errors quote values with Python `repr()` and YAML parse errors use PyYAML's message with `line L column C`, replacing the Rust-format text and byte offsets (#1059). Example: `duplicated key 'version' in mapping at line 2 column 10`. Tools that matched the old error text must be updated.
-- **Breaking: `boto3`, `pyiceberg`, `duckdb` and `fastexcel` are now the optional `s3`, `iceberg`, `merge` and `xlsx` extras (#1061).** `pip install floe-python` no longer installs them. Install `pip install 'floe-python[s3]'` for `s3` storages and `s3://` locations, `'floe-python[iceberg]'` for `sink.accepted.format: iceberg`, `sink.rejected.format: iceberg` and `floe maintain`, `'floe-python[merge]'` for `sink.write_mode: merge_scd1` and `merge_scd2` and `floe maintain --compact`, and `'floe-python[xlsx]'` for `source.format: xlsx`; without the extra `floe validate` and `floe run` fail with `needs the floe[<extra>] extra`. `floe-python[all]` installs every extra, and the Docker image and `dagster-floe[floe]` use it.
-- **Breaking: `floe run` refuses a Parquet `sink.accepted.path` equal to `sink.rejected.path`, whatever the rejected format (#1168).** A raw file copy from a file-level reject (`reject_file`, `abort`) lands in the rejected directory under its own name, and the accepted Parquet writer's overwrite replaced or deleted it when the name matched `part-*.parquet`. A config that shared the path now fails with `sink.accepted.path must differ from sink.rejected.path`; give the two sinks separate directories.
+
 - `sink.rejected.format: parquet` writes the rejected rows as `rows/part-*.parquet` under the rejected path (#1153, #1154): raw source values plus `__floe_row_index`, `__floe_errors`, `__floe_run_id` and `__floe_source_uri`. Rejected chunks are spilled to disk, not held in memory, and an append retry rewrites the same parts. In the report, `rejected_path` is that `rows` directory. Entities with a rejected sink may no longer declare columns named `__floe_*`, nor columns whose normalized output name starts with it. `floe run` refuses source files under `<rejected path>/rows`.
+
 - `sink.rejected.format: iceberg` writes the rejected rows to an Iceberg quarantine table through the same catalog binding as the accepted sink (#1158): the declared columns as strings plus `__floe_row_index`, `__floe_errors`, `__floe_run_id` and `__floe_source_uri`, appended in one commit per entity run. The table is at-least-once and append-only: a retry after a failed accepted commit appends a second copy, so dedupe on `(__floe_source_uri, __floe_row_index)` keeping the latest `__floe_run_id`. The accepted and rejected commits are not atomic together.
+
 - Named profile runners inherit from the default runner and can be selected per domain or entity (#1149).
+
 - **The rejected CSV holds the source values, not the cast ones (#1152).** The columns are unchanged, but a cell whose
   cast failed (`amount: not_a_number` for a decimal, a bad date) now holds the literal from the file instead of an empty
   cell. Which rows are rejected, `__floe_row_index`, `__floe_errors` and the run reports are unchanged. Typed inputs
   (Parquet, ORC, Avro) keep their native values. PII strategies are applied to the raw values, so a `hash` of a rejected
   value can differ from the hash of the same value in the accepted rows.
+
 - A run stopped by an input-listing or entity error writes a best-effort `run.failure.json` (error, per-entity state) before the error is raised, and emits a `log` event with its URI (#1155). For an entity that failed or was interrupted it records each sink's state (`sinks.rejected`, `sinks.accepted`: `not_started`, `committed` or `unknown`).
+
 - `run.failure.json` is also written when every entity finished but the final `run.summary.json` could not be written (#1155): the entities stay `completed`, the original error is raised.
+
 - Each entity report has a `timings_ms` object (`list_ms`, `download_wait_ms`, `read_validate_ms`, `rejected_write_ms`, `accepted_write_ms`, `archive_ms`: cumulative wall-clock milliseconds, `null` for a phase that did not run), the `entity_finished` event carries it, and `run_finished` has `report_write_ms` (#1156).
+
 - The `run_started` event and `run.failure.json` carry `dagster_run_id` and `dagster_job_name` when `DAGSTER_RUN_ID` and `DAGSTER_JOB_NAME` are set, and the failure-report `log` event and a failed `entity_finished` carry `error_code` when the error has a typed `code`. Both are optional and absent otherwise (#1156).
-- dagster-floe adds the report's `timings_ms` (`floe/timings/<phase>_ms`), the rejected output's format and URI, and, for a failed run, the `run.failure.json` URI, error and per-entity states to asset metadata (#1157).
+
+- A retry after a crash does not write a second copy of the dead run's rejected rows (#1201). A rejected CSV or Parquet part is named from the hash of its source file, not of the whole claimed batch, so a retry that claims more files overwrites the same parts. The Iceberg quarantine table stays at-least-once.
+
+- With `incremental_mode: file` and a unique key, accepted Parquet append parts are named from the batch input hash, and a retry overwrites the dead run's parts instead of seeding the unique keys from them (#1202). Before, the retry rejected its own rows as duplicates.
+
+- A failed claim renewal during a long run emits a `log` event with `code: heartbeat_failed` and `log_level: warn` (#1161). `run_error` wraps only I/O, value, DuckDB, Polars, botocore and PyIceberg errors; a programming error (`TypeError`, `KeyError`, ...) now propagates with its own type.
 
 ## v0.9.0
 

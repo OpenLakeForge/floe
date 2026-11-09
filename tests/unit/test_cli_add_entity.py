@@ -385,7 +385,7 @@ def test_add_entity_bootstraps_missing_config_file(floe: Run, tmp_path: Path) ->
         "Entity added: orders (format=csv, columns=2)",
     )
     assert config.read_text().startswith(
-        'version: "0.9"\n'
+        'version: "0.10"\n'
     )  # D21: Rust 0.7 writes "0.2"
     assert floe("validate", "-c", config)[0] == 0
 
@@ -617,7 +617,7 @@ def test_add_entity_sniffs_the_csv_separator(
         )
     )
     assert Path("cfg.yml").read_text() == (
-        'version: "0.9"\nentities:\n  - name: cust\n    source:\n      format: csv\n      path: cust.csv\n'
+        'version: "0.10"\nentities:\n  - name: cust\n    source:\n      format: csv\n      path: cust.csv\n'
         "      options:\n        separator: ;\n    sink:\n      accepted:\n        format: parquet\n"
         "        path: out/accepted/cust/\n      rejected:\n        format: csv\n        path: out/rejected/cust/\n"
         "    policy:\n      severity: reject\n    schema:\n      mismatch:\n        missing_columns: reject_file\n"
@@ -664,7 +664,7 @@ def test_add_entity_maps_parquet_types_as_rust_does(
     )
     assert code == 0
     assert out == (
-        '# add-entity dry run (no file written)\n# entity: emp\nversion: "0.9"\nentities:\n  - name: emp\n'
+        '# add-entity dry run (no file written)\n# entity: emp\nversion: "0.10"\nentities:\n  - name: emp\n'
         "    source:\n      format: parquet\n      path: emp.parquet\n    sink:\n      accepted:\n"
         "        format: parquet\n        path: out/accepted/emp/\n      rejected:\n        format: csv\n"
         "        path: out/rejected/emp/\n    policy:\n      severity: reject\n    schema:\n      mismatch:\n"
@@ -719,7 +719,7 @@ def json_columns(*cols: tuple[str, str, bool]) -> str:
 def json_entity(name: str, mode: str, notes: str, columns: str) -> str:
     return (
         f"# add-entity dry run (no file written)\n# entity: {name}\n{notes}"
-        f'version: "0.9"\nentities:\n  - name: {name}\n    source:\n      format: json\n'
+        f'version: "0.10"\nentities:\n  - name: {name}\n    source:\n      format: json\n'
         f"      path: {name}.json\n      options:\n        json_mode: {mode}\n    sink:\n"
         f"      accepted:\n        format: parquet\n        path: out/accepted/{name}/\n"
         f"      rejected:\n        format: csv\n        path: out/rejected/{name}/\n"
