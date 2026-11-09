@@ -4,11 +4,15 @@ on:
   pull_request:
     paths:
       - "orchestrators/airflow-floe/**"
+      - "orchestrators/dagster-floe/src/floe_dagster/databricks_client.py"
+      - "orchestrators/dagster-floe/src/floe_dagster/k8s_status.py"
       - ".github/workflows/airflow-floe.yml"
   push:
     branches: ["main"]
     paths:
       - "orchestrators/airflow-floe/**"
+      - "orchestrators/dagster-floe/src/floe_dagster/databricks_client.py"
+      - "orchestrators/dagster-floe/src/floe_dagster/k8s_status.py"
       - ".github/workflows/airflow-floe.yml"
   workflow_dispatch: {}
 

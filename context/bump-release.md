@@ -83,7 +83,7 @@ or when a Floe minor release changes what it must accept. Each gets its own PR
    connector's `manifest.py`, and update `dagster-floe`'s `floe` extra pin (`floe-python>=X.Y,<X.Y+1`)
    and its compatibility table in the README.
 3. If the manifest schema changed, edit the canonical `orchestrators/schemas/floe.manifest.schema.json`,
-   copy it into the connectors, and run `python scripts/check_orchestrator_drift.py`.
+   copy it into the connectors, and run the dagster-floe tests (`test_vendored_schema.py` checks the copy).
 4. Write the connector's `CHANGELOG.md` section (`## dagster-floe vX.Y.Z`).
 5. Run the connector's tests (`.github/workflows/dagster-floe.yml` / `airflow-floe.yml`).
 

@@ -57,8 +57,9 @@ The goal: **the smallest correct change, one concern per PR, nothing speculative
 - No new trait, Protocol or ABC, generic, builder, registry or config knob until three concrete
   uses exist. A new module is fine when it holds one self-contained concern.
 - Never hand-edit a vendored copy. Edit the canonical file (`orchestrators/schemas/`, or the
-  dagster copy of a shared module) and let `python scripts/check_orchestrator_drift.py` confirm
-  the copies match.
+  dagster copy of a shared module) and the connector tests confirm
+  the copies match (`orchestrators/airflow-floe/tests/test_vendored_copies.py`,
+  `orchestrators/dagster-floe/tests/test_vendored_schema.py`).
 - No `# noqa`, `# type: ignore` or `# pyright: ignore` without an inline reason.
 
 **Tests**
@@ -89,7 +90,6 @@ uv run ruff format --check
 uv run pyright                                          # strict
 uv run pytest
 uv run python conformance/check.py                      # golden suite
-python scripts/check_orchestrator_drift.py              # if orchestrators/ changed
 ```
 
 If `orchestrators/<connector>/` changed, also run that connector's tests as its workflow does

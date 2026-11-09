@@ -9,7 +9,7 @@ sync by hand and silently drifted (issue #446): this refreshes it from the
 canonical source on every build (`pip install -e .`, `pip install .`,
 `python -m build`), so a stale vendored copy can no longer reach a release.
 
-`scripts/check_orchestrator_drift.py` still checks the checked-in vendored
+`tests/test_vendored_schema.py` still checks the checked-in vendored
 copy against canonical in CI - that guards the source tree itself (e.g. for
 test runs against `src/` directly, which never invoke this file), while this
 guards what actually gets published.

@@ -1,7 +1,7 @@
 extend = "../../pyproject.toml"
 line-length = 100  # the package was written at ~100; the root's 88 would rewrite about twice as many lines
-# Byte-identical copies of the canonical dagster-floe modules (scripts/check_orchestrator_drift.py), which are formatted at 120.
-extend-exclude = ["src/airflow_floe/databricks_client.py", "src/airflow_floe/k8s_status.py"]  # ponytail: goes away when the shared code moves into one package (#1062 step 4)
+# Byte-identical copies of the canonical dagster-floe modules (tests/test_vendored_copies.py), which are formatted at 120.
+extend-exclude = ["src/airflow_floe/databricks_client.py", "src/airflow_floe/k8s_status.py"]  # ponytail: copies are kept by decision (#1062); the tests pin them to the canonical files
 
 [lint.per-file-ignores]
 # ValueError is the manifest error contract callers catch; TypeError would change it.

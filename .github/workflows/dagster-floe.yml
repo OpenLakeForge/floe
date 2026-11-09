@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "orchestrators/dagster-floe/**"
+      - "orchestrators/schemas/**"
       - "src/floe/**"
       - "pyproject.toml"
       - ".github/workflows/dagster-floe.yml"
@@ -11,6 +12,7 @@ on:
     branches: ["main"]
     paths:
       - "orchestrators/dagster-floe/**"
+      - "orchestrators/schemas/**"
       - "src/floe/**"
       - "pyproject.toml"
       - ".github/workflows/dagster-floe.yml"
