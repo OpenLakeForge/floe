@@ -153,7 +153,7 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
 
 ```jsonc
 {
-  "spec_version": "0.9",                 // Floe major.minor that generated it (D22)
+  "spec_version": "0.10",                // Floe major.minor that generated it (D22)
   "manifest_name": "sales.prod",         // optional stable logical name (--manifest-name)
   "manifest_id": "mfv1-a1b2c3d4...",    // FNV-1a hash of config URI + content
   "manifest_revision": "sha256:...",     // SHA-256 of canonical manifest content
@@ -301,7 +301,7 @@ floe manifest generate \
   --output s3://my-code-bucket/floe/sales/sales.manifest.json
 ```
 
-Floe 0.9 writes remote manifests to `s3://` only (GCS and ADLS storages are dropped, D1), in one
+Floe 0.10 writes remote manifests to `s3://` only (GCS and ADLS storages are dropped, D1), in one
 `PutObject` with the AWS default credential chain (`AWS_ENDPOINT_URL_S3` and
 `AWS_S3_FORCE_PATH_STYLE` for S3-compatible stores).
 

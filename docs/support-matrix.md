@@ -1,6 +1,6 @@
 # Floe Support Matrix (0.8)
 
-This matrix reflects **current behavior** of Floe 0.9 (not aspirational). Floe 0.9 supports
+This matrix reflects **current behavior** of Floe 0.10 (not aspirational). Floe 0.10 supports
 local and S3 storage. S3 inputs are downloaded to a temp directory and read locally; Parquet
 parts, rejected CSV and reports are built in memory, then uploaded; Iceberg tables are
 written through PyIceberg (and DuckDB for merges) directly to S3.

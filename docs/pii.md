@@ -71,7 +71,7 @@ entities:
 >       key: "${FLOE_PII_HMAC_KEY}"   # read from environment at run time
 > ```
 >
-> Floe 0.9 emits no warning for a keyless `hash`.
+> Floe 0.10 emits no warning for a keyless `hash`.
 >
 > A manifest never carries secrets: `floe manifest generate` keeps a `${ENV_VAR}` key reference
 > and refuses a literal `hash` key, so a manifest run hashes exactly like `floe run -c`.

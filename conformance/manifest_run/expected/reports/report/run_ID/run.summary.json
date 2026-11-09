@@ -1,8 +1,8 @@
 {
-  "spec_version": "0.9",
+  "spec_version": "0.10",
   "tool": {
     "name": "floe",
-    "version": "0.7.0"
+    "version": "0.10.0"
   },
   "run": {
     "run_id": "<volatile>",
@@ -14,7 +14,7 @@
   },
   "config": {
     "path": "manifest.json",
-    "version": "0.9"
+    "version": "0.10"
   },
   "report": {
     "path": "<ROOT>/report",
