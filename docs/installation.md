@@ -79,5 +79,5 @@ uv run floe --version
 ## Earlier releases
 
 Floe 0.7 and earlier were a Rust binary distributed through Homebrew, Scoop, crates.io and a
-`floe-duckdb` companion. Floe 0.9 publishes none of these. The Rust code is archived at
+`floe-duckdb` companion. Floe 0.10 publishes none of these. The Rust code is archived at
 [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
