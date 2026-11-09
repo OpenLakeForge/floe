@@ -223,13 +223,6 @@ dagster-floe 0.5 or airflow-floe 0.3 with it.
   instead of spilling. It now caps memory at 4GB and spills to a temporary directory (at most
   50GB, removed afterwards). Size pods at 6 GiB or more (see `docs/write_modes.md`).
 
-## Unreleased
-
-### airflow-floe
-
-- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
-  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
-
 ## dagster-floe v0.5.0
 
 - **Accepts Floe 0.9 manifests.** `spec_version` `0.8` and `0.9` load; the `floe` extra now installs
@@ -499,10 +492,20 @@ supported. Floe 0.7 and earlier manifests are rejected.
   path-style addressing, matching Floe core (#448). Without these variables behaviour is
   unchanged. Requires the existing `remote` extra.
 
+## airflow-floe v0.4.0
+
+Use it with Floe 0.10; it still loads 0.8 and 0.9 manifests.
+
+- **Accepts Floe 0.10 manifests.** `spec_version` `0.8`, `0.9` and `0.10` load.
+- **Honours `execution.orchestration`, `job_scope`, `domain_resources` and the resource limits like dagster-floe (#1009, #1200).** The example DAG gets one task per entity (one per domain with `job_scope: domain`, sized by `domain_resources`) and `max_active_tasks` from the orchestration block, through the new `plan_floe_tasks` and `build_floe_tasks` helpers; a DAG built on the old example must be updated to use them. **Breaking:** a `kubernetes_job` pod's limits now come only from `cpu_limit` and `memory_limit_mb`; they no longer copy `cpu` and `memory_mb`, so a manifest that relied on that has no limits until you set them.
+- airflow-floe is a supported connector (Beta) and is linted and type-checked in CI (#1191, #1192).
+
 ## airflow-floe v0.3.0
 
 - **Accepts Floe 0.9 manifests.** `spec_version` `0.8` and `0.9` load. Pod options a Floe 0.9 profile passes
   through on a `kubernetes_job` runner are ignored, as before.
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
+  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
 ## airflow-floe v0.2.0
 
