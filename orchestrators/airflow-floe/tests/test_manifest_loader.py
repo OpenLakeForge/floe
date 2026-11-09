@@ -116,6 +116,20 @@ class ManifestLoaderTests(unittest.TestCase):
 
             self.assertEqual(load_manifest(target).spec_version, "0.9")
 
+    def test_load_manifest_accepts_floe_0_10_and_refuses_0_11(self) -> None:
+        # "0.10" is the first two-digit minor: it must not be compared as a number or string.
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "manifest.json"
+            payload = self._manifest_payload()
+            payload["spec_version"] = "0.10"
+            target.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(load_manifest(target).spec_version, "0.10")
+
+            payload["spec_version"] = "0.11"
+            target.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, r"spec_version 0\.11 is not supported"):
+                load_manifest(target)
+
     def test_load_manifest_rejects_unsupported_spec_version(self) -> None:
         payload = self._manifest_payload()
         payload["spec_version"] = "0.7"
@@ -125,7 +139,8 @@ class ManifestLoaderTests(unittest.TestCase):
             target.write_text(json.dumps(payload), encoding="utf-8")
 
             with self.assertRaisesRegex(
-                ValueError, r"manifest spec_version 0\.7 is not supported \(supported: 0\.8, 0\.9\)"
+                ValueError,
+                r"manifest spec_version 0\.7 is not supported \(supported: 0\.8, 0\.9, 0\.10\)",
             ):
                 load_manifest(target)
 

@@ -5,7 +5,6 @@ All notable changes to Floe are documented in this file.
 ## Unreleased
 
 - `run.failure.json` gives each `failed` or `unknown` entity that claimed inputs an `input_hash`, the fingerprint of the claimed input set (the Iceberg snapshot's `floe.input_hash`), so a reader can match the failure to a snapshot or part after the pod is gone (#1155). Absent when the entity failed before claiming.
-- airflow-floe honours `execution.orchestration`, `job_scope`, `domain_resources` and the resource limits like dagster-floe (#1009): the example DAG gets one task per entity (one per domain with `job_scope: domain`) and `max_active_tasks` from the orchestration block. **Breaking:** a `kubernetes_job` pod's limits now come only from `cpu_limit` and `memory_limit_mb`; they no longer copy `cpu` and `memory_mb`, so a manifest that relied on that has no limits until you set them.
 - `floe run --manifest` keeps the entity `metadata` (`data_product`, `domain`, `owner`, `description`, `tags`) in the run report and honours `report.formatter` (#1188, #1009). The manifest gains optional fields: a top-level `report_formatter` and, per entity, `description` and `tag_list` (the metadata `tags` list; the existing `tags` object still holds `data_product`, `domain` and `owner`). A manifest generated before this change still runs as before: no entity metadata and JSON `__floe_errors`; regenerate it to get both.
 - `floe validate`, `run`, `state` and `manifest generate` fail with `a config must be a local path; download it first` for `-c s3://...` instead of `No such file or directory` (#1009). Only `--manifest` and `-p` read `s3://`.
 - A `normalize_columns` source collision now names the declared columns, with their `source:` (#1009): `column source collision: order_id and order_ref (source order.id) -> order_id` instead of `order_id and order.id -> order_id`.
@@ -476,6 +475,14 @@ supported. Floe 0.7 and earlier manifests are rejected.
   `AWS_ENDPOINT_URL`) as the endpoint and, when `AWS_S3_FORCE_PATH_STYLE` is `true`/`1`,
   path-style addressing, matching Floe core (#448). Without these variables behaviour is
   unchanged. Requires the existing `remote` extra.
+
+## airflow-floe v0.4.0
+
+Use it with Floe 0.10; it still loads 0.8 and 0.9 manifests.
+
+- **Accepts Floe 0.10 manifests.** `spec_version` `0.8`, `0.9` and `0.10` load.
+- **Honours `execution.orchestration`, `job_scope`, `domain_resources` and the resource limits like dagster-floe (#1009, #1200).** The example DAG gets one task per entity (one per domain with `job_scope: domain`, sized by `domain_resources`) and `max_active_tasks` from the orchestration block, through the new `plan_floe_tasks` and `build_floe_tasks` helpers; a DAG built on the old example must be updated to use them. **Breaking:** a `kubernetes_job` pod's limits now come only from `cpu_limit` and `memory_limit_mb`; they no longer copy `cpu` and `memory_mb`, so a manifest that relied on that has no limits until you set them.
+- airflow-floe is a supported connector (Beta) and is linted and type-checked in CI (#1191, #1192).
 
 ## airflow-floe v0.3.0
 
