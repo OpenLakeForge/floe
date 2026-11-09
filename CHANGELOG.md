@@ -200,13 +200,6 @@ dagster-floe 0.5 or airflow-floe 0.3 with it.
   instead of spilling. It now caps memory at 4GB and spills to a temporary directory (at most
   50GB, removed afterwards). Size pods at 6 GiB or more (see `docs/write_modes.md`).
 
-## Unreleased
-
-### airflow-floe
-
-- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
-  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
-
 ## dagster-floe v0.5.0
 
 - **Accepts Floe 0.9 manifests.** `spec_version` `0.8` and `0.9` load; the `floe` extra now installs
@@ -488,6 +481,8 @@ Use it with Floe 0.10; it still loads 0.8 and 0.9 manifests.
 
 - **Accepts Floe 0.9 manifests.** `spec_version` `0.8` and `0.9` load. Pod options a Floe 0.9 profile passes
   through on a `kubernetes_job` runner are ignored, as before.
+- **A `kubernetes_job` runner `args` override no longer drops the entity selection (#1031)**, as in
+  dagster-floe: `args` now prefix Floe's rendered arguments instead of replacing them.
 
 ## airflow-floe v0.2.0
 
