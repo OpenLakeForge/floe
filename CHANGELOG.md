@@ -2,6 +2,10 @@
 
 All notable changes to Floe are documented in this file.
 
+## Unreleased
+
+- dagster-floe logs a finished run's Floe output as one Dagster log message, a line per Floe event, instead of one message per line (#1210). Each message is an event-log write: a 25-entity domain step wrote about 100 fewer events.
+
 ## v0.10.0
 
 Floe 0.10 accepts configs with `version:` up to `"0.10"` and generates manifests with `spec_version: "0.10"`; use

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from dagster import AssetKey, AssetSelection, materialize
+from dagster import AssetKey, AssetSelection, DagsterInstance, materialize
 
 from floe_dagster.assets import build_floe_asset_defs
 from floe_dagster.definitions import build_definitions_from_manifest_paths
@@ -54,6 +54,7 @@ def _run(
     exit_code: int = 0,
     selection=None,
     events: list[dict] | None = None,
+    instance: DagsterInstance | None = None,
     **manifest_kw: Any,
 ):
     """Materialize with the Kubernetes client mocked; returns the result and the Job API mock."""
@@ -81,7 +82,7 @@ def _run(
         patch("floe_dagster.kubernetes_runner._make_core_client", return_value=core_api),
     ):
         assets, sources, _ = build_floe_asset_defs(manifest_path=str(manifest), runner=LocalRunner())
-        result = materialize([*assets, *sources], selection=selection, raise_on_error=False)
+        result = materialize([*assets, *sources], selection=selection, raise_on_error=False, instance=instance)
     return result, jobs_api
 
 
@@ -293,3 +294,23 @@ def test_source_key_fn_gives_each_domain_output_its_own_upstream(tmp_path: Path)
     for name in NAMES:
         assert domain_asset.asset_deps[AssetKey(["sales", name])] == {AssetKey(["crm", name])}
     assert sources == []
+
+
+def test_domain_scope_replays_the_floe_output_as_one_log_event(tmp_path: Path) -> None:
+    """#1210: every Dagster log record is an event-log write, so a finished run's lines go as one."""
+    base = {"schema": "floe.log.v1", "level": "info", "run_id": "r1", "ts_ms": 1}
+    events = [{**base, "event": "entity_started", "name": name} for name in NAMES]
+    instance = DagsterInstance.ephemeral()
+
+    result, _ = _run(tmp_path, dict.fromkeys(NAMES, "success"), events=events, instance=instance)
+
+    assert result.success
+    floe_logs = [
+        r.user_message
+        for r in instance.all_logs(result.run_id)
+        if r.dagster_event is None and "floe " in r.user_message
+    ]
+    assert len(floe_logs) == 1
+    lines = floe_logs[0].splitlines()
+    assert lines[: len(NAMES)] == [f"floe entity started run_id=r1 entity={name}" for name in NAMES]
+    assert lines[-1].startswith("floe run finished")

@@ -713,9 +713,11 @@ def _log_floe_stderr(context: Any, stderr: str) -> None:
 
 
 def _log_floe_output(context: Any, stdout: str, events: list[dict[str, Any]]) -> None:
+    """One Dagster log event for the whole run: each `context.log` call is an event-log write (#1210)."""
     rendered_by_raw = {
         json.dumps(event, sort_keys=True, separators=(",", ":")): render_log_event(event) for event in events
     }
+    lines: list[str] = []
     for line in stdout.splitlines():
         stripped = line.strip()
         if not stripped:
@@ -731,7 +733,9 @@ def _log_floe_output(context: Any, stdout: str, events: list[dict[str, Any]]) ->
                     json.dumps(event, sort_keys=True, separators=(",", ":")),
                     render_log_event(event),
                 )
-        context.log.info(rendered or f"floe stdout | {stripped}")
+        lines.append(rendered or f"floe stdout | {stripped}")
+    if lines:
+        context.log.info("\n".join(lines))
 
 
 def _load_summary_json(summary_uri: str, config_uri: str) -> dict[str, Any]:
