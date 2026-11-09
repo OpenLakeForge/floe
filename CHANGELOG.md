@@ -223,6 +223,21 @@ dagster-floe 0.5 or airflow-floe 0.3 with it.
   instead of spilling. It now caps memory at 4GB and spills to a temporary directory (at most
   50GB, removed afterwards). Size pods at 6 GiB or more (see `docs/write_modes.md`).
 
+## dagster-floe v0.6.0
+
+Use it with Floe 0.10.
+
+- **Accepts Floe 0.10 manifests.** `spec_version` `0.8`, `0.9` and `0.10` load; the `floe` extra now installs
+  `floe-python>=0.10,<0.11`. The manifest schema it validates against gains the optional `report_formatter` and per-entity
+  `description` and `tag_list`, and drops `width`, `trim` and `incremental_mode: row` (Floe 0.10 no longer accepts them),
+  so a 0.8 or 0.9 manifest that still carries them is now refused.
+- **Asset metadata carries the run's timings, rejected output and failure evidence (#1157).** The accepted asset adds the report's
+  `timings_ms` as `floe/timings/<phase>_ms`; both assets add `entity_report_uri`, and the rejected asset adds
+  `floe/rejected_format` and `floe/rejected_uri`. A failed step also reports `floe/failure_report_uri`, `floe/error_type`,
+  `floe/error_code` and `floe/entity_states` from `run.failure.json`, or `floe/failure_evidence: unavailable: <reason>`.
+  Older reports without these keys add nothing.
+- The package is now classified `Development Status :: 4 - Beta` on PyPI (it was Production/Stable) and is linted and type-checked in CI (#1186).
+
 ## dagster-floe v0.5.0
 
 - **Accepts Floe 0.9 manifests.** `spec_version` `0.8` and `0.9` load; the `floe` extra now installs
