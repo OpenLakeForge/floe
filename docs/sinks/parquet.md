@@ -1,4 +1,4 @@
-# Parquet Sink (Accepted Output)
+# Parquet sink
 
 Floe can write accepted output as Parquet files on local or S3 storage.
 

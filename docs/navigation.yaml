@@ -1,0 +1,45 @@
+# Published documentation: the Floe sidebar of openlakeforge.dev/floe/, in order.
+#
+# The website syncs this file and renders exactly the pages listed here, in
+# the same format as docs/navigation.yaml in the openlakeforge repository.
+# Paths are relative to the repository root. An item is a path, or a mapping
+# with `path` and optional `slug` and `title` overrides. Each page's title is
+# its first `# ` heading and its description is the paragraph under it.
+#
+# A Markdown file under docs/ that is not listed here is not published.
+sections:
+  - label: Get started
+    items:
+      - docs/README.md
+      - docs/get-started/introduction.md
+      - docs/get-started/installation.md
+      - docs/get-started/quickstart.md
+  - label: Concepts
+    items:
+      - docs/concepts/data-contracts.md
+      - docs/concepts/how-it-works.md
+      - docs/concepts/checks.md
+      - docs/concepts/write-modes.md
+      - docs/concepts/incremental.md
+  - label: Guides
+    items:
+      - docs/guides/projects.md
+      - docs/guides/profiles.md
+      - docs/guides/variables.md
+      - docs/guides/pii.md
+      - docs/guides/manifest.md
+      - docs/guides/python-api.md
+      - docs/guides/lineage.md
+  - label: Sinks and storage
+    items:
+      - docs/sinks/iceberg.md
+      - docs/sinks/parquet.md
+      - docs/sinks/options.md
+      - docs/storages/s3.md
+  - label: Reference
+    items:
+      - docs/reference/config.md
+      - docs/reference/cli.md
+      - docs/reference/report.md
+      - docs/reference/logging.md
+      - docs/reference/support-matrix.md

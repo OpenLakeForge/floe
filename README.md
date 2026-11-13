@@ -58,21 +58,23 @@ catalog, and ADLS and GCS storage. The Rust implementation that supported them
 
 | Capability | Start here |
 |---|---|
-| Contracts and full YAML reference | [docs/config.md](docs/config.md) |
-| Pipeline phases and execution details | [docs/how-it-works.md](docs/how-it-works.md) |
-| Checks: schema mismatch, cast, `not_null`, `unique` | [docs/checks.md](docs/checks.md) |
-| Supported inputs, outputs, storage, and catalogs | [docs/support-matrix.md](docs/support-matrix.md) |
-| Write modes: `overwrite`, `append`, `merge_scd1`, `merge_scd2` | [docs/write_modes.md](docs/write_modes.md) |
+| What Floe is for, and a five-minute first run | [docs/get-started/introduction.md](docs/get-started/introduction.md), [docs/get-started/quickstart.md](docs/get-started/quickstart.md) |
+| Data contracts: what a contract says and guarantees | [docs/concepts/data-contracts.md](docs/concepts/data-contracts.md) |
+| Contracts and full YAML reference | [docs/reference/config.md](docs/reference/config.md) |
+| Pipeline phases and execution details | [docs/concepts/how-it-works.md](docs/concepts/how-it-works.md) |
+| Checks: schema mismatch, cast, `not_null`, `unique` | [docs/concepts/checks.md](docs/concepts/checks.md) |
+| Supported inputs, outputs, storage, and catalogs | [docs/reference/support-matrix.md](docs/reference/support-matrix.md) |
+| Write modes: `overwrite`, `append`, `merge_scd1`, `merge_scd2` | [docs/concepts/write-modes.md](docs/concepts/write-modes.md) |
 | Parquet and Iceberg sinks | [docs/sinks/parquet.md](docs/sinks/parquet.md), [docs/sinks/iceberg.md](docs/sinks/iceberg.md) |
 | S3 storage | [docs/storages/s3.md](docs/storages/s3.md) |
-| Incremental file state | [docs/incremental.md](docs/incremental.md) |
-| Profiles and variables | [docs/profiles.md](docs/profiles.md), [docs/variables.md](docs/variables.md) |
-| PII masking | [docs/pii.md](docs/pii.md) |
-| Multi-file projects, named sources, and domain defaults | [docs/projects.md](docs/projects.md) |
-| Reports, logs, and OpenLineage | [docs/report.md](docs/report.md), [docs/logging.md](docs/logging.md), [docs/lineage.md](docs/lineage.md) |
-| Airflow and Dagster manifests | [docs/manifest.md](docs/manifest.md), [orchestrators/airflow-floe/README.md](orchestrators/airflow-floe/README.md), [orchestrators/dagster-floe/README.md](orchestrators/dagster-floe/README.md) |
-| Python API and notebooks | [docs/python-bindings.md](docs/python-bindings.md) |
-| Installation and CLI usage | [docs/installation.md](docs/installation.md), [docs/cli.md](docs/cli.md) |
+| Incremental file state | [docs/concepts/incremental.md](docs/concepts/incremental.md) |
+| Profiles and variables | [docs/guides/profiles.md](docs/guides/profiles.md), [docs/guides/variables.md](docs/guides/variables.md) |
+| PII masking | [docs/guides/pii.md](docs/guides/pii.md) |
+| Multi-file projects, named sources, and domain defaults | [docs/guides/projects.md](docs/guides/projects.md) |
+| Reports, logs, and OpenLineage | [docs/reference/report.md](docs/reference/report.md), [docs/reference/logging.md](docs/reference/logging.md), [docs/guides/lineage.md](docs/guides/lineage.md) |
+| Airflow and Dagster manifests | [docs/guides/manifest.md](docs/guides/manifest.md), [orchestrators/airflow-floe/README.md](orchestrators/airflow-floe/README.md), [orchestrators/dagster-floe/README.md](orchestrators/dagster-floe/README.md) |
+| Python API and notebooks | [docs/guides/python-api.md](docs/guides/python-api.md) |
+| Installation and CLI usage | [docs/get-started/installation.md](docs/get-started/installation.md), [docs/reference/cli.md](docs/reference/cli.md) |
 | AI agent skill for Floe contracts | [skills/building-floe-contracts/SKILL.md](skills/building-floe-contracts/SKILL.md) |
 
 ## Install
@@ -91,7 +93,7 @@ docker pull ghcr.io/openlakeforge/floe:latest
 docker run --rm -v "$PWD:/work" ghcr.io/openlakeforge/floe:latest run -c /work/config.yml
 ```
 
-→ [Full installation guide](docs/installation.md)
+→ [Full installation guide](docs/get-started/installation.md)
 
 ## Quick start
 
@@ -100,9 +102,10 @@ floe validate -c config.yml   # validate config and schema
 floe run      -c config.yml   # run the pipeline
 ```
 
-→ [Config reference](docs/config.md) · [Example config](example/config.yml)
+→ [Config reference](docs/reference/config.md) · [Example config](example/config.yml)
 
-For the full documentation entry point, see [docs/summary.md](docs/summary.md).
+The documentation starts at [docs/README.md](docs/README.md) and is published at
+[openlakeforge.dev/floe](https://openlakeforge.dev/floe/).
 
 ## License
 

@@ -1,4 +1,4 @@
-# How Floe Works
+# How Floe works
 
 Floe is a contract-first ingestion gate. For each entity, it validates raw files
 or extracted datasets before they enter the trusted layer, writes valid rows to
@@ -119,4 +119,4 @@ automatically.
 - `accepted_output`: entity-level accepted dataset summary (path + parts).
 - `results`: totals aggregated across files and checks.
 
-See `docs/report.md` for the report schema and `docs/checks.md` for rule details.
+See the [run report](../reference/report.md) for the report schema and [Checks](checks.md) for rule details.

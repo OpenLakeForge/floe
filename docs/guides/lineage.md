@@ -1,4 +1,4 @@
-# OpenLineage Integration
+# OpenLineage
 
 Floe can emit run and entity lifecycle events to any
 [OpenLineage](https://openlineage.io)-compatible HTTP endpoint (Marquez,

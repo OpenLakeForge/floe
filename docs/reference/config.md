@@ -1,4 +1,4 @@
-# Config Reference
+# Config reference
 
 This document describes the Floe YAML configuration format and the meaning of
 all supported options. See `example/config.yml` for a full working example.
@@ -109,7 +109,7 @@ entities:
       the Glue database that holds the tables; `{domain}` expands per entity to its
       `sink.accepted.iceberg.namespace` or `domain`), `create_database_if_missing` (optional, default
       `true`), `warehouse_storage` (must be an S3 storage) and `warehouse_prefix`. Glue supports
-      `overwrite` and `append`; merges need a REST catalog. See [Iceberg sink](sinks/iceberg.md).
+      `overwrite` and `append`; merges need a REST catalog. See [Iceberg sink](../sinks/iceberg.md).
 - `lineage` (optional)
   - Enables OpenLineage event emission for this run.
   - `url` (required): base URL of the OpenLineage-compatible endpoint (e.g. `http://marquez:5000`)
@@ -119,7 +119,7 @@ entities:
   - `api_key` (optional): Bearer token; supports `{{VAR}}` placeholder expansion
   - `timeout_secs` (optional, default `5`): HTTP request timeout in seconds
   - `producer` (optional): URI identifying this producer
-  - See `docs/lineage.md` for full event reference and lifecycle details.
+  - See [OpenLineage integration](../guides/lineage.md) for full event reference and lifecycle details.
 - `env` (optional)
   - Enables variable templating for string fields using `{{var}}` syntax.
   - `env.file` (optional) loads variables from a YAML file (path relative to the
@@ -273,7 +273,7 @@ preconditions, and delete the state object. Normal source listing permissions ar
 still needed for input discovery; state itself does not require listing except
 where the selected cloud provider or IAM policy requires it for object access.
 
-See [Incremental File Ingestion](incremental.md) for examples, CLI operations,
+See [Incremental File Ingestion](../concepts/incremental.md) for examples, CLI operations,
 state file shape, and CAS behavior.
 
 ### `source` (required)
@@ -409,7 +409,7 @@ state file shape, and CAS behavior.
   - Applies to both accepted and rejected outputs.
 - `accepted` (required)
   - `format`: `parquet` or `iceberg`.
-    - `iceberg`: Iceberg table in a REST catalog; `sink.accepted.iceberg` with a catalog is required (0.8). See [Iceberg sink](sinks/iceberg.md).
+    - `iceberg`: Iceberg table in a REST catalog; `sink.accepted.iceberg` with a catalog is required (0.8). See [Iceberg sink](../sinks/iceberg.md).
     - `delta` and `duckdb` were dropped in 0.8 (D1) and fail validation; the archived
       [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust) documents them for 0.7.
 - `path`: output directory for accepted records.
@@ -424,7 +424,7 @@ state file shape, and CAS behavior.
     - `max_size_per_file`: positive integer bytes (default: 256MB)
       - Parquet: split accepted parquet into parts at write time.
       - Iceberg: only sets the report's small-file threshold (half this value).
-    - Iceberg applies `compression` and `row_group_size` to `overwrite`/`append` data files only (not merges); see [Iceberg sink](sinks/iceberg.md).
+    - Iceberg applies `compression` and `row_group_size` to `overwrite`/`append` data files only (not merges); see [Iceberg sink](../sinks/iceberg.md).
     - Accepted rows are written once per entity, after every input file is read: Parquet
       parts in one pass, Iceberg in one catalog commit. Inputs are archived (when
       `sink.archive` is enabled) only after that write succeeds, so an input is never
@@ -560,7 +560,7 @@ pii:
   - `mask_pattern` (required for `strategy: mask`): literal output string with optional `{firstN}` / `{lastN}` tokens
   - `redact_value` (optional, `strategy: redact`): replacement string (default `[REDACTED]`)
 
-See `docs/pii.md` for full strategy reference and masking pattern syntax.
+See [PII masking](../guides/pii.md) for full strategy reference and masking pattern syntax.
 
 ### `policy` (required)
 
@@ -640,8 +640,8 @@ ignored):
 
 `time` is not supported in 0.8 (D10): `floe validate` rejects it.
 
-For more details about checks and severity behavior, see `docs/checks.md`.
-Execution order and pipeline phases are documented in `docs/how-it-works.md`.
+For more details about checks and severity behavior, see [Checks](../concepts/checks.md).
+Execution order and pipeline phases are documented in [How Floe works](../concepts/how-it-works.md).
 
 ## Templating & domains
 
@@ -688,8 +688,8 @@ and domain `defaults` are rejected in a `0.2` config.
 ### Splitting a single file
 
 Each step leaves a config that validates; run `floe validate -c config.yml`
-after each. The result matches [`example/project/`](../example/project/); see
-[Floe Projects](projects.md) for the full walkthrough.
+after each. The result matches [`example/project/`](../../example/project/); see
+[Floe Projects](../guides/projects.md) for the full walkthrough.
 
 1. Set `version: "0.3"` and apply the changes above.
 2. Move repeated input settings into a top-level `sources` list, and replace

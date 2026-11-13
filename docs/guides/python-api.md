@@ -137,7 +137,7 @@ The callback is **swappable between calls** — calling `set_observer` again rep
 | `run_finished` | `run_id`, `status`, `exit_code`, `files`, `rows`, `accepted`, `rejected`, `summary_uri`, `report_write_ms` |
 | `log` | `run_id`, `log_level`, `code`, `message`, `entity`, `input` |
 
-All events have an `event` key (string discriminator) and `ts_ms` (Unix timestamp in milliseconds). Each event type is exported as a TypedDict (`floe.RunStartedEvent`, …, `floe.LogEvent`; `floe.RunEvent` is their union), defined in [`src/floe/run/events.py`](../src/floe/run/events.py).
+All events have an `event` key (string discriminator) and `ts_ms` (Unix timestamp in milliseconds). Each event type is exported as a TypedDict (`floe.RunStartedEvent`, …, `floe.LogEvent`; `floe.RunEvent` is their union), defined in [`src/floe/run/events.py`](../../src/floe/run/events.py).
 
 ---
 
@@ -238,7 +238,7 @@ The observer is global to the process: runs in parallel threads share it.
 
 ## Developing Floe
 
-To work on the library itself, see [`CONTRIBUTING.md`](../CONTRIBUTING.md):
+To work on the library itself, see [`CONTRIBUTING.md`](../../CONTRIBUTING.md):
 
 ```bash
 git clone https://github.com/OpenLakeForge/floe

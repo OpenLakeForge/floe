@@ -1,4 +1,4 @@
-# Floe Support Matrix (0.8)
+# Support matrix
 
 This matrix reflects **current behavior** of Floe 0.10 (not aspirational). Floe 0.10 supports
 local and S3 storage. S3 inputs are downloaded to a temp directory and read locally; Parquet
@@ -81,7 +81,7 @@ Notes:
 - Storage paths resolve to canonical URIs: `s3://<bucket>/<prefix>/<path>`.
 - Prefix listing is stable and lexicographically sorted.
 - S3-compatible stores (MinIO, SeaweedFS, …) work through `AWS_ENDPOINT_URL_S3` /
-  `AWS_ENDPOINT_URL`; see [storages/s3.md](storages/s3.md).
+  `AWS_ENDPOINT_URL`; see [storages/s3.md](../storages/s3.md).
 
 ## Fault scenarios (Iceberg and S3)
 

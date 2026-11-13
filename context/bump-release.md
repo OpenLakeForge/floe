@@ -42,9 +42,9 @@ Branch `chore/bump-v<NEW_VERSION>` from `main`, then:
 3. Move the `## v<NEW_VERSION> (unreleased)` section of `CHANGELOG.md` to `## v<NEW_VERSION>`, or
    write it (one bullet per user-visible change; source: `git log <previous-tag>..HEAD`, read the
    commit bodies).
-4. Check that `docs/` covers every user-visible change (`docs/config.md`, `docs/cli.md`,
-   `docs/sinks/<format>.md`, `docs/pii.md`, `docs/lineage.md`, `docs/profiles.md`,
-   `docs/manifest.md`, `docs/support-matrix.md`).
+4. Check that `docs/` covers every user-visible change (`docs/reference/config.md`, `docs/reference/cli.md`,
+   `docs/sinks/<format>.md`, `docs/guides/pii.md`, `docs/guides/lineage.md`, `docs/guides/profiles.md`,
+   `docs/guides/manifest.md`, `docs/reference/support-matrix.md`).
 5. Run the checks in `AGENTS.md` §5. The golden suite ignores `tool.version`, so a patch bump needs no
    re-record. A minor bump changes what a few cases record: the D21 messages
    (`config/val1_version_d21_newer_minor`, whose config names the next minor, and

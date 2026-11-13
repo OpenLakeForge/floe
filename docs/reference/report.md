@@ -1,4 +1,4 @@
-# Floe Run Report
+# Run report
 
 This document describes the JSON run report emitted by `floe run`
 and the status/exit code rules.
@@ -151,7 +151,7 @@ Per-file status:
   - `active_claim`: another live run has claimed the file.
   - `already_committed` (0.8): an `append` to Iceberg retried a batch whose rows a dead run
     already committed (the snapshot's `floe.input_hash` matches), so the file is marked done
-    without being read or written again. See [Incremental](incremental.md#retries-of-an-append).
+    without being read or written again. See [Incremental](../concepts/incremental.md#retries-of-an-append).
 
 Run status:
 - `success`: All files succeeded.

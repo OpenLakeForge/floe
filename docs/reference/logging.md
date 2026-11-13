@@ -1,4 +1,4 @@
-# Logging (Orchestrator-safe)
+# Logging
 
 Floe can emit structured run events for orchestrators like Dagster/Airflow.
 

@@ -1,9 +1,9 @@
-# Technical Checks
+# Checks and severity
 
 This document describes the validation checks implemented in Floe, the supported
 column types for casting, and how `policy.severity` applies to each check.
 For the full execution order (file-level vs row-level vs entity-level), see
-`docs/how-it-works.md`.
+[How Floe works](how-it-works.md).
 
 ## Checks
 
@@ -46,7 +46,7 @@ Examples of accepted values are listed below.
   - `uint8`, `uint16`, `uint32`, `uint64`
 - `number` (float64):
   - `number`, `float64`, `float`, `double`
-- `decimal(p,s)` (exact; see `docs/config.md`)
+- `decimal(p,s)` (exact; see [Supported column types](../reference/config.md#supported-column-types))
 - `float32`: `float32`
 - `date`: `date`
 - `datetime`: `datetime`, `timestamp`

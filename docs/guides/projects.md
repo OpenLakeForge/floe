@@ -1,4 +1,4 @@
-# Floe Projects
+# Projects
 
 A Floe project is one config that describes the entities in a file ingestion
 project. Start with one YAML file. As the project grows, move repeated source
@@ -8,7 +8,7 @@ settings, and split domains and entities into separate files.
 ## Start with one config
 
 For a small project, keep the domain, source, entity, and sinks together. This
-is the runnable config from [`example/standalone/config.yml`](../example/standalone/config.yml):
+is the runnable config from [`example/standalone/config.yml`](../../example/standalone/config.yml):
 
 ```yaml
 version: "0.8"
@@ -60,7 +60,7 @@ floe run -c config.yml
 When multiple entities share an input pattern, declare a named source and refer
 to it from each entity. A domain can provide shared sinks and policy settings.
 The source and domain blocks below are from the runnable
-[`example/project/`](../example/project/) project; they can live inline in the
+[`example/project/`](../../example/project/) project; they can live inline in the
 root config before you split them into files.
 
 ```yaml
@@ -103,14 +103,14 @@ entities:
 The entity supplies its source reference and schema. Domain defaults fill in
 the sink and policy; values on the entity override defaults. Source paths can
 use `{{resource}}`, which resolves from the entity's `source.resource` (or its
-name when omitted). See [Config Reference](config.md#merge-rules) for the merge rules and
+name when omitted). See [Config Reference](../reference/config.md#merge-rules) for the merge rules and
 supported fields.
 
 ## Split a larger project into files
 
 When the config becomes harder to navigate, keep one project root and move
 source definitions, domain defaults, and entity definitions into files. The
-complete layout is in [`example/project/`](../example/project/):
+complete layout is in [`example/project/`](../../example/project/):
 
 ```text
 project/

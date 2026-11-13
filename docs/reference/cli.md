@@ -1,6 +1,6 @@
-# CLI Usage
+# CLI
 
-`pip install floe-python` installs the `floe` command (see [installation.md](installation.md)).
+`pip install floe-python` installs the `floe` command (see [installation.md](../get-started/installation.md)).
 `floe --help` and `floe <command> --help` list every flag; `floe --version` prints the version.
 
 ## Commands
@@ -39,7 +39,7 @@
   - `-p` applies an environment profile (variables, storages, catalogs, lineage) as `floe run -p` does, and records its `profile_uri` and `profile_checksum`. Its `execution` block sets `execution.orchestration` and, for a `kubernetes_job` or `databricks_job` runner, the `default` runner definition.
   - `-o -` writes manifest JSON to stdout; an `s3://` output is uploaded.
   - `--deterministic`, `--manifest-name`, `--default-domain`, `--manifest-path-mode` and
-    `--runtime` are described in [manifest.md](manifest.md).
+    `--runtime` are described in [manifest.md](../guides/manifest.md).
 
 - `floe add-entity -c <config> --input <path|file://...> [--format csv|json|parquet] [--name <entity>] [--domain <domain>] [--source <ref> --resource <name>]`
   - Infer a schema from an input file and add a new entity to the config.
@@ -57,13 +57,13 @@
   - Print the resolved incremental state URI for an entity and the current state JSON when present.
   - Shows processed-file and active-claim counts.
   - Helpful for confirming what Floe has already seen in `incremental_mode: file`.
-  - See [docs/incremental.md](incremental.md) for state file and CAS details.
+  - See [docs/incremental.md](../concepts/incremental.md) for state file and CAS details.
 
 - `floe state reset -c <config> --entity <name> --yes [-p <profile>]`
   - Remove the local or remote state object for an entity.
   - Requires `--yes` because the next incremental run may reprocess previously tracked files.
   - Remote resets use the same conditional delete support as remote incremental state.
-  - See [docs/incremental.md](incremental.md) for reset behavior and permissions.
+  - See [docs/incremental.md](../concepts/incremental.md) for reset behavior and permissions.
 
 - `floe maintain -c <config> [-p <profile>] [--entities <name[,name...]>] [--older-than-days <n>] [--retain-last <n>] [--orphan-delay-days <n>] [--dry-run] [--compact --experimental]`
   - Expire old snapshots of each selected entity's Iceberg accepted table, then remove its orphan files; entities with other sinks are skipped.

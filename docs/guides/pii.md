@@ -1,4 +1,4 @@
-# PII Masking
+# PII masking
 
 Floe supports column-level PII masking transforms applied to output rows
 before they are written. Transforms run after schema validation and data quality

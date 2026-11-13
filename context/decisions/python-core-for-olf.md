@@ -89,7 +89,7 @@ thresholds live in #594. The "one atomic catalog commit" and "byte metrics exclu
 |---|---|---|
 | G1 | #597 | Large entity → Iceberg under a fixed memory limit, one atomic catalog commit |
 | G2 | #597 | `kill -9` at any point, then rerun → exact row count, no duplicates |
-| G3 | #598 | SCD2 merge at scale, one atomic catalog commit, same semantics as `docs/write_modes.md` |
+| G3 | #598 | SCD2 merge at scale, one atomic catalog commit, same semantics as `docs/concepts/write-modes.md` |
 | G4 | #599 | Validation within 1.3× of Rust wall time and peak RSS, unique + PII enabled |
 | G5 | #599 | Identical run report and rejected rows on existing fixtures (writer byte metrics excluded) |
 | G6 | #600 | Exact unique check against large history with bounded memory |
@@ -148,7 +148,7 @@ target. Phase 2 benchmarks the largest OLF table before merge ships.
     finds its fingerprint in the table's snapshots skips the write and only promotes state.
     `floe.run_id` is kept for traceability only.
   - **Scope.** It covers claimed-but-unpromoted files only. The URI-based incremental contract
-    (`docs/incremental.md`) is unchanged: promoted URIs are still skipped, even if their content
+    (`docs/concepts/incremental.md`) is unchanged: promoted URIs are still skipped, even if their content
     changes.
   - **Retention.** The evidence must outlive any retry. Snapshot expiry, including
     `floe maintain`, must not drop a snapshot whose fingerprint isn't promoted yet; otherwise the

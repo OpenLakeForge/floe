@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- The documentation is restructured for readers new to Floe and for publication at openlakeforge.dev/floe: `docs/README.md` is the entry point (it replaces `docs/summary.md`), new Introduction, Quickstart and Data contracts pages, and the existing pages move into `get-started/`, `concepts/`, `guides/` and `reference/` (`write_modes.md` becomes `concepts/write-modes.md`, `python-bindings.md` becomes `guides/python-api.md`). `docs/navigation.yaml` orders the published pages.
 - dagster-floe logs a finished run's Floe output as one Dagster log message, a line per Floe event, instead of one message per line (#1210). Each message is an event-log write: a 25-entity domain step wrote about 100 fewer events.
 
 ## v0.10.1

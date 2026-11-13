@@ -1,4 +1,4 @@
-# Incremental File Ingestion
+# Incremental ingestion
 
 Floe's file incremental mode tracks source files that already passed through an
 entity. Later runs skip those files, process only new files, and keep enough
@@ -145,7 +145,7 @@ File incremental state uses schema `floe.state.file-ingest.v2`:
 The `files` map is durable history: source URIs that finished successfully. The
 `claims` map is temporary ownership: source URIs currently reserved by a run.
 
-With `source.partitioning` (see [config.md](config.md)), the state also holds
+With `source.partitioning` (see [config.md](../reference/config.md)), the state also holds
 `watermark`, the latest partition date ingested, and `pruned_before`: `files` keeps
 no entry dated before it, and a normal run never lists a date before it. Both are
 absent without partitioning, and a state file without them is read as having none.
@@ -229,6 +229,6 @@ requires it for object access.
 
 ## Related References
 
-- Full config reference: [config.md](config.md)
-- CLI reference: [cli.md](cli.md)
+- Full config reference: [config.md](../reference/config.md)
+- CLI reference: [cli.md](../reference/cli.md)
 - Pipeline details: [how-it-works.md](how-it-works.md)
