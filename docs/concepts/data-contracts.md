@@ -128,7 +128,7 @@ are flagged. [Checks and severity](checks.md) gives the exact rules.
 | --- | --- | --- | --- |
 | `warn` | Kept in the accepted output; errors reported | Accepted | `success_with_warnings`, exit `0` |
 | `reject` | Written to the rejected sink with their errors | Accepted | `rejected`, exit `0` |
-| `abort` | The whole file is rejected | Not written | `aborted`, exit `2` |
+| `abort` | The whole file is rejected, and the entity stops reading | Rows of the files read before it are written; that file and later ones are not | `aborted`, exit `2` |
 
 `reject` is the usual choice: good rows flow, bad rows wait in quarantine with
 their reason, and the run does not fail. Use `abort` when a partial file is
@@ -151,8 +151,10 @@ need a `sink.rejected`.
   [Write modes](write-modes.md).
 
 Accepted rows are written once per entity, after every input file is read:
-one pass of Parquet parts, or one Iceberg commit. On Iceberg an entity is
-therefore all or nothing: a run that fails half-way leaves the table as it was.
+one pass of Parquet parts, or one Iceberg commit. On Iceberg that commit is
+atomic: a run that fails on an error leaves the table as it was. A policy
+`abort` is not an error in that sense: the files read before the aborted one
+are still committed, so the table can change on a run that ends `aborted`.
 Parquet has no transactions, so a crash during the write can leave partial
 parts (see [Parquet sink](../sinks/parquet.md#parquet-is-not-transactional)).
 Either way, input files are archived only after the write succeeded.
