@@ -287,6 +287,22 @@ def test_add_entity_matches_domain_files_with_nonstandard_names(
     assert (domain_dir / "orders.yml").exists()
 
 
+def test_add_entity_refuses_a_domain_that_sets_an_entities_glob(
+    floe: Run, tmp_path: Path
+) -> None:
+    config, domain_dir = included_sales_project(tmp_path)
+    domain_file = domain_dir / "_domain.yml"
+    domain_file.write_text('name: sales\nentities: "contracts/*.yml"\n')
+    input = tmp_path / "orders.csv"
+    input.write_text("id\n1\n")
+    code, _, err = add(floe, config, input, "--domain", "sales")
+    assert (code, err) == (
+        1,
+        f"Error: domain file {domain_file} sets entities; add-entity writes only sibling entity files, so create this one by hand\n",
+    )
+    assert sorted(p.name for p in domain_dir.iterdir()) == ["_domain.yml"]
+
+
 def test_add_entity_output_keeps_writing_a_root_config_copy_for_included_domains(
     floe: Run, tmp_path: Path
 ) -> None:

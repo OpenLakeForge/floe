@@ -1,0 +1,15 @@
+name: customers
+domain: sales
+source:
+  format: csv
+  path: in/customers.csv
+sink:
+  accepted:
+    format: parquet
+    path: out/accepted/customers
+policy:
+  severity: warn
+schema:
+  columns:
+    - name: id
+      type: string

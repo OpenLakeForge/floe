@@ -16,6 +16,8 @@ properties:
     - 'null'
   defaults:
     $ref: '#/$defs/entity_defaults'
+  entities:
+    type: string
 title: Floe domains document
 $defs:
   entity_defaults:

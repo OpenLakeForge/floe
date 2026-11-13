@@ -30,6 +30,21 @@ def glob_base(directory: Path) -> str:
     return Pattern.escape(text)
 
 
+def _entity_files(domain: Hash, domain_file: Path) -> list[Path]:
+    """Its `entities` glob (#1213) if the domain file sets one, else its sibling `*.yml` files."""
+    directory = domain_file.parent
+    if "entities" not in domain:
+        files = [p for p in directory.iterdir() if p.suffix == ".yml"]
+    else:
+        pattern = yaml_string(domain.pop("entities"), "domains.entities")
+        files = [Path(m) for m in glob(os.path.join(glob_base(directory), pattern))]
+        if not files:
+            raise FloeConfigError(
+                f"domains.entities pattern {pattern!r} matched no file"
+            )
+    return sorted(p for p in files if p.resolve() != domain_file.resolve())
+
+
 def assemble_includes(
     doc: object, config_dir: Path, config_files: list[Path]
 ) -> IncludeOrigins:
@@ -80,17 +95,13 @@ def assemble_includes(
         for match in matches:
             domain_file = Path(match)
             with at_file(domain_file):
-                domain = load_single_doc(domain_file)
-                name = get_string(yaml_hash(domain, "domains"), "name", "domains")
+                domain = yaml_hash(load_single_doc(domain_file), "domains")
+                name = get_string(domain, "name", "domains")
+                entity_files = _entity_files(domain, domain_file)
             config_files.append(domain_file)
             domains.append((domain, domain_file))
             # D4: an entity's name comes from its YAML, never from its file name, so `con.yml` loads like any other
-            siblings = [
-                p
-                for p in domain_file.parent.iterdir()
-                if p != domain_file and p.suffix == ".yml"
-            ]
-            for entity_file in sorted(siblings):
+            for entity_file in entity_files:
                 with at_file(entity_file):
                     loaded = load_single_doc(entity_file)
                     if not isinstance(loaded, dict):

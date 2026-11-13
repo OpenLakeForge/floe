@@ -12,6 +12,8 @@ from floe.errors import FloeError
 
 ENTITY = "source: {format: csv, path: in}\nsink: {accepted: {format: parquet, path: out}}\npolicy: {severity: warn}\nschema: {columns: [{name: id, type: string}]}\n"
 ROOT = 'version: "0.3"\ninclude:\n  domains: ["domains/*/_domain.yml"]\n'
+CONTRACTS_ROOT = 'version: "0.3"\ninclude:\n  domains: ["silver/*/domain.yml"]\n'
+DOMAIN = 'name: sales\nentities: "contracts/*.yml"\n'
 
 
 def write(root: Path, name: str, text: str) -> None:
@@ -67,6 +69,40 @@ def test_d4_names_that_windows_reserves_are_plain_names(tmp_path: Path) -> None:
     write(tmp_path, "domains/sales/_domain.yml", "name: sales\n")
     write(tmp_path, "domains/sales/orders.yml", f"name: con\n{ENTITY}")
     assert [e.name for e in parse_config(tmp_path / "config.yml").entities] == ["con"]
+
+
+def test_domain_entities_glob_loads_entity_files_from_a_subdirectory(
+    tmp_path: Path,
+) -> None:
+    write(tmp_path, "config.yml", CONTRACTS_ROOT)
+    write(tmp_path, "silver/sales/domain.yml", DOMAIN)
+    write(tmp_path, "silver/sales/notes.yml", "not: an entity\n")
+    write(tmp_path, "silver/sales/contracts/b.yml", f"name: orders\n{ENTITY}")
+    write(tmp_path, "silver/sales/contracts/a.yml", f"name: customers\ndomain: sales\n{ENTITY}")  # fmt: skip
+    config = parse_config(tmp_path / "config.yml")
+    assert [d.name for d in config.domains] == ["sales"]
+    assert [e.id for e in config.entities] == ["sales.customers", "sales.orders"]
+    assert config.config_files == [
+        tmp_path / p
+        for p in (
+            "config.yml",
+            "silver/sales/domain.yml",
+            "silver/sales/contracts/a.yml",
+            "silver/sales/contracts/b.yml",
+        )
+    ]
+
+
+@pytest.mark.parametrize("pattern", ["*.yml", "**/*.yml", "./domain.yml"])
+def test_domain_entities_glob_never_loads_the_domain_file_itself(
+    tmp_path: Path, pattern: str
+) -> None:
+    write(tmp_path, "config.yml", CONTRACTS_ROOT)
+    write(tmp_path, "silver/sales/domain.yml", f"name: sales\nentities: {pattern!r}\n")  # fmt: skip
+    write(tmp_path, "silver/sales/orders.yml", f"name: orders\n{ENTITY}")
+    config = parse_config(tmp_path / "config.yml")
+    expected = [] if pattern == "./domain.yml" else ["sales.orders"]
+    assert [e.id for e in config.entities] == expected
 
 
 def test_included_sources(tmp_path: Path) -> None:
@@ -158,6 +194,31 @@ def test_included_sources(tmp_path: Path) -> None:
                 + ENTITY.split("policy")[0],
             },
             "<ROOT>/domains/s/e.yml: entities[0] (entity.name=e): policy.severity=loud is unsupported (allowed: warn, reject, abort)",
+        ),
+        (
+            {"config.yml": CONTRACTS_ROOT, "silver/s/domain.yml": DOMAIN},
+            "<ROOT>/silver/s/domain.yml: domains.entities pattern 'contracts/*.yml' matched no file",
+        ),
+        (
+            {
+                "config.yml": CONTRACTS_ROOT,
+                "silver/s/domain.yml": DOMAIN,
+                "silver/s/contracts/e.yml": "name: e\ndomain: f",
+            },
+            "<ROOT>/silver/s/contracts/e.yml has domain 'f' but its _domain.yml names 'sales'",
+        ),
+        (
+            {
+                "config.yml": CONTRACTS_ROOT,
+                "silver/s/domain.yml": "name: s\nentities: [a]",
+            },
+            "<ROOT>/silver/s/domain.yml: expected string at domains.entities",
+        ),
+        (
+            {
+                "config.yml": 'version: "0.3"\nentities: []\ndomains: [{name: s, entities: "*.yml"}]',
+            },
+            "unknown field domains.entities",
         ),
     ],
 )
