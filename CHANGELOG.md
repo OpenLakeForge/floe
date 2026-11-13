@@ -4,9 +4,11 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-- An included domain file may set `entities`, a glob relative to the domain file, to load its entity files from another folder (#1213): `entities: "contracts/*.yml"` lets `silver/<domain>/domain.yml` keep its entities in `silver/<domain>/contracts/`. Without the key the domain loads its sibling `*.yml` files as before. A glob that matches no file is an error, and the domain file is never loaded as one of its own entities. `schemas/domains.schema.yaml` accepts the key.
-
 - dagster-floe logs a finished run's Floe output as one Dagster log message, a line per Floe event, instead of one message per line (#1210). Each message is an event-log write: a 25-entity domain step wrote about 100 fewer events.
+
+## v0.10.1
+
+- An included domain file may set `entities`, a glob relative to the domain file, to load its entity files from another folder (#1213): `entities: "contracts/*.yml"` lets `silver/<domain>/domain.yml` keep its entities in `silver/<domain>/contracts/`. Without the key the domain loads its sibling `*.yml` files as before. A glob that matches no file is an error, and the domain file is never loaded as one of its own entities. `schemas/domains.schema.yaml` accepts the key.
 
 ## v0.10.0
 
