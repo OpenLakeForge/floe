@@ -19,7 +19,7 @@ Notes:
 
 - For Parquet, this controls write-time file splitting.
 - Parquet datasets get no compaction or maintenance from Floe; Iceberg tables get it from
-  `floe maintain` (see [CLI usage](../cli.md)).
+  `floe maintain` (see [CLI usage](../reference/cli.md)).
 
 Example:
 

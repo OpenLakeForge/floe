@@ -67,7 +67,7 @@ docker build -f Dockerfile.python -t floe .
 
 ## From a checkout
 
-For development (see [`CONTRIBUTING.md`](../CONTRIBUTING.md)):
+For development (see [`CONTRIBUTING.md`](../../CONTRIBUTING.md)):
 
 ```bash
 git clone https://github.com/OpenLakeForge/floe

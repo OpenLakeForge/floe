@@ -99,5 +99,5 @@ before considering a reset. `floe state reset`, `floe maintain`, and full refres
 state or delete data; do not perform them implicitly.
 
 For exact schema fields and write semantics, consult Floe's repository docs
-(`docs/config.md`, `docs/projects.md`, `docs/checks.md`,
-`docs/write_modes.md`) or the installed CLI's `--help`.
+(`docs/reference/config.md`, `docs/guides/projects.md`, `docs/concepts/checks.md`,
+`docs/concepts/write-modes.md`) or the installed CLI's `--help`.

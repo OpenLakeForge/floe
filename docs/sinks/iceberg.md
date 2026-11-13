@@ -1,4 +1,4 @@
-# Iceberg sink (accepted output)
+# Iceberg sink
 
 Floe writes Iceberg tables for `sink.accepted.format: iceberg` through an
 Iceberg REST catalog (e.g. Polaris).
@@ -91,7 +91,7 @@ entity it becomes `sink.accepted.iceberg.namespace`, else `entity.domain`, norma
 namespace (lowercase, `[a-z0-9_-]`), so the `sales` and `finance` domains write to `dev_sales_silver`
 and `dev_finance_silver`. An entity with neither a namespace nor a domain is a `floe validate`
 error. `{{VAR}}` placeholders are not applied to catalog definitions: to vary the prefix per stage,
-define the catalog in each stage's profile ([profile catalogs](../profiles.md#environment-catalog-overrides)
+define the catalog in each stage's profile ([profile catalogs](../guides/profiles.md#environment-catalog-overrides)
 replace the config's). Glue credentials come from the AWS credential chain, as for S3. Glue supports `overwrite` and `append`: `floe validate` rejects a
 merge write mode, and `floe maintain --compact` needs a REST catalog. `allow_takeover` is
 accepted and ignored: Floe 0.10 writes any Iceberg table in the database (D42).
@@ -150,7 +150,7 @@ Current scope:
 
 - Accepted sink only (`sink.accepted.format: iceberg`), through a REST or AWS Glue catalog
 - S3 storage
-- `sink.write_mode`: `overwrite`, `append`, `merge_scd1` and `merge_scd2`. See [write modes](../write_modes.md).
+- `sink.write_mode`: `overwrite`, `append`, `merge_scd1` and `merge_scd2`. See [write modes](../concepts/write-modes.md).
 - Each entity's write is one catalog commit. `overwrite` replaces every existing data file in
   that snapshot; `append` adds files; `merge_scd1` runs a DuckDB `MERGE INTO` (merge-on-read).
 - `append` snapshots carry `floe.run_id` and `floe.input_hash`, so a retry finds a batch a dead
@@ -177,7 +177,7 @@ Current scope:
 
 - `strategy: drop` in `pii` is rejected: the table enforces the full declared schema
 - Every commit rewrites the table metadata, which lists every retained snapshot: an `overwrite` of a table with 100 snapshots took about 230 ms of commit and write time against about 50 ms with 2 on a local catalog. Run `floe maintain` to expire snapshots on tables written often
-- Snapshot expiry and orphan file removal with `floe maintain` (see [CLI usage](../cli.md)); compaction is experimental (`--compact --experimental`)
+- Snapshot expiry and orphan file removal with `floe maintain` (see [CLI usage](../reference/cli.md)); compaction is experimental (`--compact --experimental`)
 
 ## Integration tests
 

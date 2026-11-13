@@ -18,7 +18,7 @@ This directory is a self-contained tutorial. You can run the full pipeline in un
 floe --version
 ```
 
-→ [Install floe](../docs/installation.md) if needed.
+→ [Install floe](../docs/get-started/installation.md) if needed.
 
 ---
 
@@ -220,7 +220,7 @@ The `profiles/` directory shows how to override config values per environment wi
 floe run -c config.yml --profile profiles/prod.yml
 ```
 
-→ [Profiles reference](../docs/profiles.md)
+→ [Profiles reference](../docs/guides/profiles.md)
 
 ---
 
@@ -228,10 +228,10 @@ floe run -c config.yml --profile profiles/prod.yml
 
 | Topic | Doc |
 |---|---|
-| Full config reference | [docs/config.md](../docs/config.md) |
-| All check types | [docs/checks.md](../docs/checks.md) |
+| Full config reference | [docs/reference/config.md](../docs/reference/config.md) |
+| All check types | [docs/concepts/checks.md](../docs/concepts/checks.md) |
 | Iceberg + REST catalog | [docs/sinks/iceberg.md](../docs/sinks/iceberg.md) |
 | S3 storage | [docs/storages/s3.md](../docs/storages/s3.md) |
-| Incremental ingestion | [docs/profiles.md](../docs/profiles.md) |
-| Run reports | [docs/report.md](../docs/report.md) |
-| CLI reference | [docs/cli.md](../docs/cli.md) |
+| Incremental ingestion | [docs/guides/profiles.md](../docs/guides/profiles.md) |
+| Run reports | [docs/reference/report.md](../docs/reference/report.md) |
+| CLI reference | [docs/reference/cli.md](../docs/reference/cli.md) |

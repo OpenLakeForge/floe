@@ -1,4 +1,4 @@
-# Environment Profiles
+# Environment profiles
 
 Environment Profiles let you define per-environment configuration values
 (variables, runner settings) in a standalone YAML file.
@@ -8,7 +8,7 @@ environment-specific values (the profile).
 
 ## Machine-readable schema
 
-A JSON-Schema-compatible YAML schema is provided at [`schemas/profile.schema.yaml`](../schemas/profile.schema.yaml).
+A JSON-Schema-compatible YAML schema is provided at [`schemas/profile.schema.yaml`](../../schemas/profile.schema.yaml).
 It covers every field defined in this document with types, `required` /
 `additionalProperties` constraints, and inline descriptions.
 
@@ -98,7 +98,7 @@ circular references both produce an immediate, actionable error before
 the run begins.
 
 For the full resolution rules and nested reference examples see
-**[`docs/variables.md`](variables.md)**.
+**[Variable resolution](variables.md)**.
 
 ---
 

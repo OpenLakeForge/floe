@@ -1,4 +1,4 @@
-# Variable Resolution
+# Variable resolution
 
 Floe supports a three-source variable system that lets you inject
 environment-specific values into config files without editing the config
@@ -132,4 +132,4 @@ env:
 
 ---
 
-See also: [`docs/profiles.md`](profiles.md) for the full profile schema.
+See also: [Environment profiles](profiles.md) for the full profile schema.

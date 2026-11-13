@@ -1,4 +1,4 @@
-# Write Modes
+# Write modes
 
 Floe resolves accepted/rejected write behavior from `sink.write_mode`.
 
@@ -47,7 +47,7 @@ Each entity's accepted rows land in one Iceberg catalog commit.
 - `--full-refresh` replaces the table with the inputs' rows in one commit (written as `overwrite`, with the
   merge-key checks above), so rows deleted at the source leave the table. `merge_scd2` rejects it.
 - Merge-on-read leaves position delete files; `floe maintain` expires old snapshots and removes
-  orphan files (see [CLI](cli.md)).
+  orphan files (see [CLI](../reference/cli.md)).
 
 ## `merge_scd2` semantics
 

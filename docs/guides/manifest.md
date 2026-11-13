@@ -1,4 +1,4 @@
-# Manifest Generation
+# Manifests for orchestrators
 
 ## Why manifests?
 
@@ -235,7 +235,7 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
 }
 ```
 
-The full JSON Schema for the manifest format is at [`orchestrators/schemas/floe.manifest.schema.json`](../orchestrators/schemas/floe.manifest.schema.json).
+The full JSON Schema for the manifest format is at [`orchestrators/schemas/floe.manifest.schema.json`](../../orchestrators/schemas/floe.manifest.schema.json).
 
 When an entity uses a named config source, its manifest `source` includes the source name in
 `ref` and the effective `resource` value (the entity name when `resource` is omitted). Inline
@@ -388,10 +388,10 @@ If the diff is non-empty, the committed manifest is stale. Commit manifests in t
 
 ## See also
 
-- [CLI reference — `floe manifest generate`](cli.md)
-- [Dagster connector](../orchestrators/dagster-floe/README.md)
-- [Airflow connector](../orchestrators/airflow-floe/README.md)
-- [Full manifest JSON Schema](../orchestrators/schemas/floe.manifest.schema.json)
+- [CLI reference — `floe manifest generate`](../reference/cli.md)
+- [Dagster connector](../../orchestrators/dagster-floe/README.md)
+- [Airflow connector](../../orchestrators/airflow-floe/README.md)
+- [Full manifest JSON Schema](../../orchestrators/schemas/floe.manifest.schema.json)
 
 ## Known limits of manifest runs in 0.8
 
