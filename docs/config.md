@@ -156,7 +156,12 @@ entities:
     domain. An entity file may omit `domain`; if set, it must match the domain
     file's `name`. Included domains and entities are appended after the inline
     `domains` and `entities`, so `entities` may be omitted.
-  - A pattern that matches no file is an error. Includes resolve against local
+  - A domain file may set `entities`, a glob relative to the domain file (e.g.
+    `entities: "contracts/*.yml"`). Its matches replace the sibling files as the
+    domain's entity files; the domain file itself is never loaded as an entity.
+    Only an included domain file may set it.
+  - A pattern that matches no file is an error, in `include.domains` and in a
+    domain file's `entities`. Includes resolve against local
     files only, so a remote (`s3://`, ...) config cannot use them.
 - `entities` (required)
   - Array of entity definitions (datasets). A single CLI run may process

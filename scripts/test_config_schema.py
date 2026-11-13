@@ -1331,6 +1331,8 @@ class ConfigSchemaTest(unittest.TestCase):
             },
         )
         self.assert_invalid(validator_for("domain_file"), {"incoming_dir": "in"})
+        self.assert_valid(validator_for("domain_file"), {"name": "sales", "entities": "contracts/*.yml"})
+        self.assert_invalid(validator_for("domain_file"), {"name": "sales", "entities": ["contracts/*.yml"]})
         self.assert_valid(
             validator_for("entity_file"),
             {"name": "orders", "source": {"path": "in.csv"}, "schema": {"columns": []}},

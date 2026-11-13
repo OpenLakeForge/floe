@@ -367,6 +367,9 @@ def _included_domain(
                 raise FloeConfigError(f"failed to parse domain file {file}: {e}") from e
             doc = docs[0] if docs else None
             if isinstance(doc, dict) and cast(Hash, doc).get("name") == domain:
+                # ponytail: a sibling would not load; writing into the glob's folder is the upgrade
+                if "entities" in doc:
+                    raise FloeConfigError(f"domain file {file} sets entities; add-entity writes only sibling entity files, so create this one by hand")  # fmt: skip
                 return os.path.dirname(file), cast(Hash, doc).get("defaults", {})
     return None
 

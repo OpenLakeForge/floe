@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "<ROOT>/silver/sales/domain.yml: domains.entities pattern 'contracts/*.yml' matched no file"
+}

@@ -194,6 +194,21 @@ schema:
       type: string
 ```
 
+To keep a domain's entity files in their own folder, set `entities` in the
+domain file to a glob relative to that file. Its matches replace the sibling
+files, and a glob that matches no file is an error:
+
+```text
+silver/sales/
+├── domain.yml          # name: sales
+│                       # entities: "contracts/*.yml"
+└── contracts/
+    ├── orders.yml
+    └── customers.yml
+```
+
+The root config then includes `"silver/*/domain.yml"` under `include.domains`.
+
 Paths in included files are still relative to the root `config.yml`. Included
 domains and entity files are loaded along with the root config, so one command
 validates or runs the whole project:
@@ -205,7 +220,8 @@ floe run -c config.yml
 ```
 
 To add an entity to an included domain, `floe add-entity` can infer its schema
-from a sample file and write the entity beside that domain's other entities.
+from a sample file and write the entity beside that domain's other entities
+(it refuses a domain that sets `entities`).
 Use a sample file that exists, and set the resource to the filename stem used
 by the named source:
 

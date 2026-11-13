@@ -61,8 +61,8 @@ report:
 
 For many datasets, use a root `config.yml` with `include.sources` pointing
 to `sources.yml` and `include.domains` matching
-`domains/*/_domain.yml`; put entity YAML beside each `_domain.yml`.
-Shared source paths may use `{{resource}}`; domain defaults can provide
+`domains/*/_domain.yml`; put entity YAML beside each `_domain.yml`, or set
+`entities: "contracts/*.yml"` in it to load them from a subfolder. Shared source paths may use `{{resource}}`; domain defaults can provide
 sinks and policy, but entity `schema.columns` are always specific.
 
 - `nullable: false` enforces not-null; `unique: true` checks distinct
