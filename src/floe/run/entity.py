@@ -121,7 +121,14 @@ def _archive(plan: Plan, file: InputFile) -> str | None:
     return uri.removeprefix("local://")
 
 
-def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batch: str) -> pl.LazyFrame | None:  # fmt: skip
+def _dead_parts(client: StorageClient, base: str, batches: list[str]) -> list[str]:
+    """#1198, #1203: the keyed parts of these input hashes, written by a run that died; its retry replaces or deletes them."""
+    parts = part_uris(client, base.rstrip("/"), "parquet")
+    dead = {keyed_part(b, i, "parquet") for b in batches for i in range(len(parts))}
+    return [u for u in parts if u.rpartition("/")[2] in dead]
+
+
+def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batches: list[str]) -> pl.LazyFrame | None:  # fmt: skip
     """Append mode: the key columns of the target's existing data, written once to local disk (#1057).
 
     Each chunk then joins its keys against this cache, so the target is read once per entity and
@@ -135,10 +142,10 @@ def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batch: 
         cache_table_keys(plan.table, plan.tracker.keys, plan.out_map, cache / "table.parquet")  # fmt: skip
     else:
         columns = sorted({plan.out_map.get(n, n) for k in plan.tracker.keys for n in k})  # the sink holds output names  # fmt: skip
+        # in file mode a dead run's parts are named by its input hash; its retry replaces or deletes them, so they seed nothing
         parts = part_uris(client, base.rstrip("/"), "parquet")
-        # #1198: in file mode a dead run's parts are named by its input hash, which its retry reuses and replaces, so they seed nothing
-        dead = {keyed_part(batch, i, "parquet") for i in range(len(parts))}
-        for i, uri in enumerate(u for u in parts if u.rpartition("/")[2] not in dead):
+        dead = set(_dead_parts(client, base, batches))
+        for i, uri in enumerate(u for u in parts if u not in dead):
             part = uri.removeprefix("local://")
             try:  # only the key columns are read
                 body = client.read(uri)
@@ -370,7 +377,7 @@ def _run_entity(
                 closing(localized_inputs(queue, downloader, Path(temp_dir))) as inputs,
             ):
                 if pending and sink.write_mode == "append" and plan.tracker.keys and (target is None or plan.table is not None):  # fmt: skip
-                    plan.history = _key_cache(plan, accepted_client, base, Path(temp_dir), input_hash(entity, pending))  # fmt: skip
+                    plan.history = _key_cache(plan, accepted_client, base, Path(temp_dir), [input_hash(entity, pending), *inc.dead_hashes(pending)])  # fmt: skip
                 for f in queue:
                     emit("file_started", entity=entity.name, input=f.source_uri)
                     timer = time.monotonic()
@@ -423,6 +430,12 @@ def _run_entity(
             plan.sinks["accepted"] = "unknown"
             if target is None:
                 write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options, input_hash(entity, pending) if plan.tracker.keys and entity.incremental_mode == "file" else None)  # fmt: skip
+                if sink.write_mode == "append" and plan.tracker.keys and entity.incremental_mode == "file":  # #1203: a larger retry holds the dead run's rows under another hash  # fmt: skip
+                    own = input_hash(
+                        entity, pending
+                    )  # the same hash was overwritten by the write above
+                    for uri in _dead_parts(accepted_client, base, [h for h in inc.dead_hashes(pending) if h != own]):  # fmt: skip
+                        accepted_client.delete(uri)
             else:
                 from floe.iceberg.sink import write_iceberg
 

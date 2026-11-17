@@ -174,6 +174,18 @@ class Incremental:
             self._hold(got.claimed, emit)
         return got.pending, reports
 
+    def dead_runs(self, pending: list[InputFile]) -> list[dict[str, Claim]]:
+        """The expired claims of each dead run that held some of `pending`, by run; none for new inputs or a reload after `floe state reset`."""
+        ours = {f.source_uri for f in pending}
+        runs: dict[str, dict[str, Claim]] = {}
+        for u, c in self.expired.items():
+            runs.setdefault(c.run_id, {})[u] = c
+        return [claims for claims in runs.values() if not ours.isdisjoint(claims)]
+
+    def dead_hashes(self, pending: list[InputFile]) -> list[str]:
+        """#1203: the input hash of each dead run's batch, re-derived from its claims (as `skip_committed` does)."""
+        return [input_hash(self.entity, [InputFile(u, "", "", c.size, c.mtime) for u, c in claims.items()]) for claims in self.dead_runs(pending)]  # fmt: skip
+
     def skip_committed(self, table: "Table | None", pending: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:  # fmt: skip
         """#545 retry guard (append): the reports of the pending inputs a dead run already committed, before any is read.
 
@@ -192,13 +204,8 @@ class Incremental:
             done = pending if find_committed(table, input_hash(e, pending)) else []
             return self._skipped(done, emit)
         ours = {f.source_uri for f in pending}
-        runs: dict[str, dict[str, Claim]] = {}
-        for u, c in self.expired.items():
-            runs.setdefault(c.run_id, {})[u] = c
         committed: set[str] = set()
-        for claims in runs.values():
-            if ours.isdisjoint(claims):
-                continue  # new inputs, or a reload after `floe state reset`
+        for claims in self.dead_runs(pending):
             since = min(datetime.fromisoformat(c.acquired_at) for c in claims.values())
             batch = [InputFile(u, "", "", c.size, c.mtime) for u, c in claims.items()]
             found = find_committed(table, input_hash(e, batch), since)
