@@ -29,7 +29,7 @@ The final line on stdout is always the `run_finished` event.
 - `file_started`: entity/input pair (`entity`, `input`, `ts_ms`)
 - `file_finished`: file outcome and counts (`status`, `rows`, `accepted`, `rejected`, `elapsed_ms`, `ts_ms`)
 - `schema_evolution_applied`: additive schema-evolution audit event (`entity`, `mode`, `added_columns`, `ts_ms`); emitted once per entity run in which `add_columns` adds columns to an Iceberg table
-- `entity_finished`: entity totals (`status`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `timings_ms`, `ts_ms`); `timings_ms` is the entity report's object (`list_ms`, `download_wait_ms`, `read_validate_ms`, `rejected_write_ms`, `accepted_write_ms`, `archive_ms`), or `null` for a failed entity; a failed entity also has `error_code` when the error carries a typed `code`
+- `entity_finished`: entity totals (`status`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `timings_ms`, `ts_ms`); `timings_ms` is the entity report's object (`list_ms`, `download_wait_ms`, `read_validate_ms`, `rejected_write_ms`, `accepted_write_ms`, `archive_ms`), or `null` for a failed entity; `report_uri` is the entity's `run.json` (the same string as `run_finished.entity_report_uris`); a failed entity has no `report_uri`, and has `error_code` when the error carries a typed `code`
 - `run_finished`: final run totals and exit code (`status`, `exit_code`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `summary_uri`, `report_write_ms`, `ts_ms`); `report_write_ms` is the time to write `run.summary.json`
 
 ### `timings_ms`

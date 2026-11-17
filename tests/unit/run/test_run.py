@@ -336,3 +336,27 @@ def test_failure_events_carry_error_code(
         run(path, root, observer=events.append)
     finished = next(e for e in events if e["event"] == "entity_finished")
     assert finished["status"] == "failed" and finished["error_code"] == "bad_row"
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_entity_finished_carries_the_report_uri_of_run_finished(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, workers: int
+) -> None:
+    """#1225: `entity_finished.report_uri` is `run_finished.entity_report_uris[name]`; a failed entity has none."""
+    path, root = setup(tmp_path, ["a", "b"])
+    events: list[dict[str, Any]] = []
+    run(path, root, observer=events.append, workers=workers)
+    uris = events[-1]["entity_report_uris"]
+    finished = [e for e in events if e["event"] == "entity_finished"]
+    assert len(finished) == 2
+    assert all(e["report_uri"] == uris[e["name"]] for e in finished)
+
+    def boom(*a: Any, **k: Any) -> Any:
+        raise FloeRunError("entity failed")
+
+    monkeypatch.setattr(sys.modules["floe.run"], "run_entity", boom)
+    events.clear()
+    with pytest.raises(FloeRunError):
+        run(path, root, observer=events.append, workers=workers)
+    failed = next(e for e in events if e["event"] == "entity_finished")
+    assert failed["status"] == "failed" and "report_uri" not in failed

@@ -133,7 +133,7 @@ The callback is **swappable between calls** — calling `set_observer` again rep
 | `file_started` | `run_id`, `entity`, `input`, `ts_ms` |
 | `file_finished` | `run_id`, `entity`, `input`, `status`, `rows`, `accepted`, `rejected`, `elapsed_ms` |
 | `schema_evolution_applied` | `run_id`, `entity`, `mode`, `added_columns` |
-| `entity_finished` | `run_id`, `name`, `status`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `timings_ms` |
+| `entity_finished` | `run_id`, `name`, `status`, `files`, `rows`, `accepted`, `rejected`, `warnings`, `errors`, `timings_ms`, `report_uri` (absent when the entity failed) |
 | `run_finished` | `run_id`, `status`, `exit_code`, `files`, `rows`, `accepted`, `rejected`, `summary_uri`, `report_write_ms` |
 | `log` | `run_id`, `log_level`, `code`, `message`, `entity`, `input` |
 
