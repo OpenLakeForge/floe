@@ -464,7 +464,7 @@ def _entity_events(
         ):
             yield check_result
 
-    if failed:
+    if failed and result is not None:
         metadata.update(_failure_evidence(context, result.stdout, config_uri))
         return Failure(description=f"floe run failed for entity {entity_name}", metadata=metadata)
 
