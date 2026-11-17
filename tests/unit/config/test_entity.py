@@ -167,6 +167,22 @@ def test_entity_errors(value: object, expected: str) -> None:
             "policy.severity=Warn is unsupported (allowed: warn, reject, abort)",
         ),
         ({"policy": {}}, "missing required field policy.severity"),
+        (
+            {"policy": {"severity": "reject", "max_rejection_rate": "x"}},
+            "expected number at policy.max_rejection_rate",
+        ),
+        (
+            {"policy": {"severity": "reject", "max_rejection_rate": True}},
+            "expected number at policy.max_rejection_rate",
+        ),
+        (
+            {"policy": {"severity": "reject", "max_rejection_rate": 1.5}},
+            "expected number between 0 and 1 at policy.max_rejection_rate",
+        ),
+        (
+            {"policy": {"severity": "warn", "max_rejection_rate": 0.1}},
+            "policy.max_rejection_rate requires policy.severity=reject (got warn)",
+        ),
         ({"policy": {"x": 1}}, "unknown field policy.x"),
         (
             {

@@ -177,7 +177,10 @@ def _entity(m: Json, named_local: bool) -> EntityConfig:
             "source": source,
             "sink": sink,
             "policy": {
-                "severity": _pick(m.get("policy_severity"), ("reject", "abort"), "warn")
+                "severity": _pick(
+                    m.get("policy_severity"), ("reject", "abort"), "warn"
+                ),
+                "max_rejection_rate": m.get("policy_max_rejection_rate"),
             },
             "schema": _schema(m["schema"]),
             "pii": _lenient(PiiConfig, m.get("pii")),

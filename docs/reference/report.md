@@ -171,6 +171,8 @@ lists every entity, and the run status and exit code stay `aborted` / `2`. A tec
 (storage, catalog, credentials, memory) still stops the run at that entity, with no summary
 (see `run.failure.json` below). Floe 0.7 stopped the run at the first aborted entity.
 
+An entity whose rejection rate exceeds `policy.max_rejection_rate` ends `aborted` the same way, after its accepted rows are committed. When the threshold is set, the `policy` block of its `run.json` also carries `max_rejection_rate`, `rejection_rate` (`rejected_total / rows_total`, `0.0` with no rows) and `max_rejection_rate_exceeded`; without a threshold these keys are absent.
+
 ### Run failure (`run.failure.json`)
 
 When listing the inputs, an entity or the final summary write raises (a bad credential, a missing bucket), the run stops and Floe writes `<run_dir>/run.failure.json` next to where the summary would

@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): policy.max_rejection_rate requires policy.severity=reject (got warn)"
+}

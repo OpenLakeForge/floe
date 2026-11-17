@@ -130,6 +130,11 @@ are flagged. [Checks and severity](checks.md) gives the exact rules.
 | `reject` | Written to the rejected sink with their errors | Accepted | `rejected`, exit `0` |
 | `abort` | The whole file is rejected, and the entity stops reading | Rows of the files read before it are written; that file and later ones are not | `aborted`, exit `2` |
 
+`policy.max_rejection_rate` (a fraction in `[0, 1]`, `reject` only) adds a ceiling: when the
+rejected rows exceed that share of the input rows, the entity ends `aborted` (exit `2`)
+instead of `rejected`. The accepted rows are still written. At the threshold, or with no
+input rows, nothing changes.
+
 `reject` is the usual choice: good rows flow, bad rows wait in quarantine with
 their reason, and the run does not fail. Use `abort` when a partial file is
 worse than no file, for example a ledger that must balance. Use `warn` to

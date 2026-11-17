@@ -31,6 +31,7 @@ class EntityStateConfig(_Model):
 
 class PolicyConfig(_Model):
     severity: PolicySeverity
+    max_rejection_rate: float | None = None
 
 
 class NormalizeColumnsConfig(_Model):

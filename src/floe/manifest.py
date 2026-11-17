@@ -219,6 +219,7 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
                 "archive": sink.archive and _Target(ctx, sink.archive).json(),
             },
             "runner": entity.runner,
+            **_put({}, policy_max_rejection_rate=entity.policy.max_rejection_rate),
             "policy_severity": entity.policy.severity,
             "write_mode": sink.write_mode,
             "incremental_mode": entity.incremental_mode,

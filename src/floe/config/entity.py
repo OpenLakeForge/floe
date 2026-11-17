@@ -107,16 +107,32 @@ def _state(value: object) -> EntityStateConfig:
     return EntityStateConfig(path=opt_string(h, "path", "entity.state"))
 
 
+def _rate(h: dict[object, object], key: str, ctx: str) -> float | None:
+    value = h.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise FloeConfigError(f"expected number at {ctx}.{key}")
+    if not 0 <= value <= 1:
+        raise FloeConfigError(f"expected number between 0 and 1 at {ctx}.{key}")
+    return float(value)
+
+
 def _policy(value: object) -> PolicyConfig:
     h = yaml_hash(value, "policy")
-    validate_known_keys(h, "policy", ("severity",))
+    validate_known_keys(h, "policy", ("severity", "max_rejection_rate"))
     severity = get_string(h, "severity", "policy")
     picked = _pick(severity, get_args(PolicySeverity))
     if picked is None:
         raise FloeConfigError(
             f"policy.severity={severity} is unsupported (allowed: warn, reject, abort)"
         )
-    return PolicyConfig(severity=picked)
+    rate = _rate(h, "max_rejection_rate", "policy")
+    if rate is not None and picked != "reject":
+        raise FloeConfigError(
+            f"policy.max_rejection_rate requires policy.severity=reject (got {picked})"
+        )
+    return PolicyConfig(severity=picked, max_rejection_rate=rate)
 
 
 def _normalize_columns(value: object) -> NormalizeColumnsConfig:

@@ -762,6 +762,22 @@ $defs:
         - warn
         - reject
         - abort
+      max_rejection_rate:
+        type:
+        - number
+        - 'null'
+        minimum: 0
+        maximum: 1
+    if:
+      required:
+      - max_rejection_rate
+      properties:
+        max_rejection_rate:
+          type: number
+    then:
+      properties:
+        severity:
+          const: reject
   schema_defaults:
     type: object
     additionalProperties: false

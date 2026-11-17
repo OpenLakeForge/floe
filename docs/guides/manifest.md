@@ -221,6 +221,8 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
       "source_format": "csv",
       "accepted_sink_uri": "./out/accepted/orders",
       "rejected_sink_uri": "./out/rejected/orders",
+      "policy_severity": "reject",
+      "policy_max_rejection_rate": 0.05,     // optional: omitted unless the contract sets policy.max_rejection_rate
       "tags": {"data_product": "sales-orders", "owner": "data-team"}, // entity metadata, when set
       "description": "Orders", "tag_list": ["core"],                  // entity metadata description and tags (if set)
       "schema": {

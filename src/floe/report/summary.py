@@ -50,6 +50,14 @@ def run_outcome(file_statuses: Sequence[str], warnings: int = 0) -> tuple[str, i
     return ("success_with_warnings" if warnings else "success"), 0
 
 
+def entity_outcome(report: dict[str, Any]) -> tuple[str, int]:
+    """`run_outcome` of one entity report; a rejection rate over `policy.max_rejection_rate` aborts it."""
+    statuses = [f["status"] for f in report["files"]]
+    if report["policy"].get("max_rejection_rate_exceeded"):
+        statuses.append("aborted")
+    return run_outcome(statuses, report["results"]["warnings_total"])
+
+
 def build_summary(
     version: str,
     reports: Sequence[tuple[str, dict[str, Any]]],
@@ -66,18 +74,16 @@ def build_summary(
     """`reports` are the entity `run.json` dicts in run order, each with its `id_path`; `domain` is the run's one domain (D37)."""
     run_path = run_dir(report_path, run_id, domain)
     totals = {k: sum(r["results"][k] for _, r in reports) for k in _TOTALS}
-    statuses = [f["status"] for _, r in reports for f in r["files"]]
-    status, exit_code = run_outcome(statuses, totals["warnings_total"])
+    outcomes = [entity_outcome(r) for _, r in reports]
+    status, exit_code = run_outcome([s for s, _ in outcomes], totals["warnings_total"])
     entities = [
         {
             "name": r["entity"]["name"],
-            "status": run_outcome(
-                [f["status"] for f in r["files"]], r["results"]["warnings_total"]
-            )[0],
+            "status": outcome[0],
             "results": r["results"],
             "report_file": f"{run_path}/{path}/run.json",
         }
-        for path, r in reports
+        for (path, r), outcome in zip(reports, outcomes, strict=True)
     ]
     return {
         "spec_version": version,
