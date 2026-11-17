@@ -342,3 +342,18 @@ def test_parquet_append_retry_with_new_inputs_does_not_reject_or_duplicate_the_d
         100,
     ]  # the dead run's parts are replaced, not kept beside the retry's
     assert p.rejected() == ["x"]  # only the row that was bad
+
+
+def test_parquet_append_retry_keeps_the_dead_runs_parts_when_one_of_its_inputs_is_gone(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = Pipeline(tmp_path, "parquet", "append")
+    config_file = tmp_path / "config.yml"
+    config_file.write_text(config_file.read_text().replace("    schema:\n", "    schema:\n      primary_key: [id]\n"))  # fmt: skip
+    (tmp_path / "in/a.csv").write_text("id,name\n1,a\n")
+    (tmp_path / "in/b.csv").write_text("id,name\n2,b\n")
+    with monkeypatch.context() as dying:
+        arm(dying, "parquet", "after_commit")
+        p.crash("dead")
+    (tmp_path / "in/b.csv").unlink()  # the dead run's only copy of row 2 is its part
+    p.expire_claims()
+    p.run("retry")
+    assert 2 in p.accepted(lake)

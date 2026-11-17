@@ -183,8 +183,9 @@ class Incremental:
         return [claims for claims in runs.values() if not ours.isdisjoint(claims)]
 
     def dead_hashes(self, pending: list[InputFile]) -> list[str]:
-        """#1203: the input hash of each dead run's batch, re-derived from its claims (as `skip_committed` does)."""
-        return [input_hash(self.entity, [InputFile(u, "", "", c.size, c.mtime) for u, c in claims.items()]) for claims in self.dead_runs(pending)]  # fmt: skip
+        """#1203: the input hash of each dead run's batch, re-derived from its claims (as `skip_committed` does); only a batch the retry replays whole, else its parts are the only copy of the rows that are gone."""
+        ours = {f.source_uri for f in pending}
+        return [input_hash(self.entity, [InputFile(u, "", "", c.size, c.mtime) for u, c in claims.items()]) for claims in self.dead_runs(pending) if ours >= claims.keys()]  # fmt: skip
 
     def skip_committed(self, table: "Table | None", pending: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:  # fmt: skip
         """#545 retry guard (append): the reports of the pending inputs a dead run already committed, before any is read.
