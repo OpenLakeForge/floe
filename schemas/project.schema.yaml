@@ -1068,8 +1068,6 @@ $defs:
         max_rejection_rate:
           type: number
     then:
-      required:
-      - severity
       properties:
         severity:
           const: reject
