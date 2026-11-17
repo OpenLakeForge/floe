@@ -170,13 +170,15 @@ def arm(monkeypatch: pytest.MonkeyPatch, sink: str, point: str) -> None:
     """Kill the next run at `point`; the process takes no cleanup with it."""
     for cleanup in ("release", "finish"):
         monkeypatch.setattr(Incremental, cleanup, dead(getattr(Incremental, cleanup)))
-    module, name = (sink_module, "write_iceberg") if sink == "iceberg" else (entity_module, "write_accepted")  # fmt: skip
+    module, names = (sink_module, ["write_iceberg"]) if sink == "iceberg" else (entity_module, ["write_accepted", "write_accepted_per_file"])  # fmt: skip
     if point == "partial_flush":
         partial_flush(monkeypatch, sink == "iceberg")
     elif point == "first_write":
-        monkeypatch.setattr(module, name, die)
+        for name in names:
+            monkeypatch.setattr(module, name, die)
     elif point == "after_commit":
-        monkeypatch.setattr(module, name, after(getattr(module, name)))
+        for name in names:
+            monkeypatch.setattr(module, name, after(getattr(module, name)))
     elif point == "before_promote":
         monkeypatch.setattr(incremental_module, "promote", die)
     elif point == "after_promote":
@@ -318,3 +320,69 @@ def test_parquet_append_with_a_primary_key_does_not_reject_the_dead_runs_rows_on
     p.run("retry")
     assert p.accepted(lake) == [1, 2, 100]  # no duplicate: the unique check holds
     assert p.rejected() == ["x"]  # but the retry also rejected 1 and 2
+
+
+def keyed_dead_run(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch, new: str = NEW, severity: str = "reject") -> Pipeline:  # fmt: skip
+    """A unique-key Parquet append entity: `old.csv` is committed, the run on `new.csv` dies after writing its parts, its claim expired."""
+    p = Pipeline(tmp_path, "parquet", "append")
+    config_file = tmp_path / "config.yml"
+    text = config_file.read_text().replace(
+        "    schema:\n", "    schema:\n      primary_key: [id]\n"
+    )
+    config_file.write_text(text.replace("severity: reject", f"severity: {severity}"))
+    (tmp_path / "in/old.csv").write_text(OLD)
+    p.run("seed")
+    (tmp_path / "in/new.csv").write_text(new)
+    with monkeypatch.context() as dying:
+        arm(dying, "parquet", "after_commit")
+        p.crash("dead")
+    p.expire_claims()
+    return p
+
+
+def test_unique_key_append_retry_with_a_larger_pending_set_replaces_the_dead_runs_parts(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed_dead_run(tmp_path, lake, monkeypatch)
+    (tmp_path / "in/zextra.csv").write_text(
+        "id,name\n7,q\n"
+    )  # arrives after the crash: a larger claim than the dead run's
+    p.run("retry")
+    assert p.accepted(lake) == [1, 2, 7, 100]  # each once
+    assert p.rejected() == ["x"]  # not 1 and 2 again
+
+
+def test_unique_key_append_retry_keeps_the_parts_of_an_input_removed_before_it(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed_dead_run(tmp_path, lake, monkeypatch)
+    (tmp_path / "in/new.csv").unlink()
+    (tmp_path / "in/zextra.csv").write_text("id,name\n7,q\n2,dup\n")
+    p.run("retry")
+    assert (
+        p.accepted(lake) == [1, 2, 7, 100]
+    )  # the dead run's committed rows stay, and still seed: the retry's 2 is the duplicate
+    assert p.rejected() == ["2", "x"]
+
+
+def test_unique_key_append_retry_keeps_the_parts_of_an_input_replaced_before_it(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed_dead_run(tmp_path, lake, monkeypatch)
+    (tmp_path / "in/new.csv").write_text(
+        "id,name\n1,a\n3,c\nzzz,bad\n"
+    )  # same URI, new size: not the dead run's input
+    p.run("retry")
+    assert p.accepted(lake) == [
+        1,
+        2,
+        3,
+        100,
+    ]  # the dead run's 1 and 2 stay; the retry's 1 is checked against them
+    assert p.rejected() == ["1", "x", "zzz"]
+
+
+def test_unique_key_append_retry_that_aborts_before_replaying_the_dead_batch_keeps_its_parts(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed_dead_run(
+        tmp_path, lake, monkeypatch, new="id,name\n1,a\n2,b\n", severity="abort"
+    )
+    (tmp_path / "in/aaa.csv").write_text(
+        "id,name\nx,bad\n"
+    )  # read first, aborts: new.csv is never replayed
+    p.run("retry")
+    assert p.accepted(lake) == [1, 2, 100]  # nothing deleted
+    assert "1" not in p.rejected() and "2" not in p.rejected()

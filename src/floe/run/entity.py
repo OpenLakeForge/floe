@@ -66,6 +66,7 @@ from floe.write.outputs import (
     keyed_part,
     part_uris,
     write_accepted,
+    write_accepted_per_file,
 )
 
 # #1156: the entity's cumulative wall-clock phases (`timings_ms` in run.json); a phase that did not run is null.
@@ -74,8 +75,8 @@ PHASES = ("list_ms", "download_wait_ms", "read_validate_ms", "rejected_write_ms"
 
 
 def _pulled(
-    frames: Iterator[pl.DataFrame], spent: dict[str, float]
-) -> Iterator[pl.DataFrame]:
+    frames: Iterator[tuple[str, pl.DataFrame]], spent: dict[str, float]
+) -> Iterator[tuple[str, pl.DataFrame]]:
     """`frames`, counting the time the sink waits for each chunk (reading and validating the next file) under `pulled`."""
     while True:
         with timed(spent, "pulled"):
@@ -122,7 +123,7 @@ def _archive(plan: Plan, file: InputFile) -> str | None:
     return uri.removeprefix("local://")
 
 
-def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batch: str) -> pl.LazyFrame | None:  # fmt: skip
+def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, pending: list[InputFile]) -> pl.LazyFrame | None:  # fmt: skip
     """Append mode: the key columns of the target's existing data, written once to local disk (#1057).
 
     Each chunk then joins its keys against this cache, so the target is read once per entity and
@@ -137,8 +138,16 @@ def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batch: 
     else:
         columns = sorted({plan.out_map.get(n, n) for k in plan.tracker.keys for n in k})  # the sink holds output names  # fmt: skip
         parts = part_uris(client, base.rstrip("/"), "parquet")
-        # #1198: in file mode a dead run's parts are named by its input hash, which its retry reuses and replaces, so they seed nothing
-        dead = {keyed_part(batch, i, "parquet") for i in range(len(parts))}
+        # #1198, #1203: in file mode a part is named by its input file (uri, size, mtime) and index; the parts this run regenerates seed nothing, any other stays
+        names = {u.rpartition("/")[2] for u in parts}
+        dead: set[str] = set()
+        for f in pending:
+            i = 0
+            while (
+                name := keyed_part(input_hash(plan.entity, [f]), i, "parquet")
+            ) in names:
+                dead.add(name)
+                i += 1
         for i, uri in enumerate(u for u in parts if u.rpartition("/")[2] not in dead):
             part = uri.removeprefix("local://")
             try:  # only the key columns are read
@@ -361,8 +370,8 @@ def _run_entity(
     # Not under abort: a duplicate aborts there anyway, and newer files committed ahead of a pending older one would let it merge stale rows later
     latest_first = merging and entity.policy.severity != "abort"
 
-    def accepted_frames() -> Generator[pl.DataFrame]:
-        """Files are read as the sink pulls (#1056); `files` and `complete` are final once it is exhausted."""
+    def accepted_frames() -> Generator[tuple[str, pl.DataFrame]]:
+        """Files are read as the sink pulls (#1056), each frame with its file's key (#1203); `files` and `complete` are final once it is exhausted."""
         try:
             queue = pending[::-1] if latest_first else pending
             # Rust `localize_input`: a remote input is read from a local copy; #1102: downloaded ahead, and closed before the temp dir goes
@@ -371,7 +380,7 @@ def _run_entity(
                 closing(localized_inputs(queue, downloader, Path(temp_dir))) as inputs,
             ):
                 if pending and sink.write_mode == "append" and plan.tracker.keys and (target is None or plan.table is not None):  # fmt: skip
-                    plan.history = _key_cache(plan, accepted_client, base, Path(temp_dir), input_hash(entity, pending))  # fmt: skip
+                    plan.history = _key_cache(plan, accepted_client, base, Path(temp_dir), pending)  # fmt: skip
                 for f in queue:
                     emit("file_started", entity=entity.name, input=f.source_uri)
                     timer = time.monotonic()
@@ -387,7 +396,8 @@ def _run_entity(
                          rows=report["row_count"], accepted=report["accepted_count"],
                          rejected=report["rejected_count"], elapsed_ms=int((time.monotonic() - timer) * 1000))  # fmt: skip
                     files.append(report)
-                    yield from kept
+                    key = input_hash(entity, [f])
+                    yield from ((key, df) for df in kept)
                     if report["status"] == "aborted":
                         break
                     complete.append(f)
@@ -415,15 +425,19 @@ def _run_entity(
                 cast_column(n, c.column_type)[0]
                 for n, c in zip(names, columns, strict=True)
             )
-            frames = chain(
-                [output(plan, empty) if first is None else first],
+            tagged = chain(
+                [("", output(plan, empty)) if first is None else first],
                 _pulled(stream, plan.spent),
             )
+            frames = (df for _, df in tagged)
             del first  # the sink holds the chunk it is on, not the first
             sink_started = time.monotonic()
             plan.sinks["accepted"] = "unknown"
             if target is None:
-                write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options, input_hash(entity, pending) if plan.tracker.keys and entity.incremental_mode == "file" else None)  # fmt: skip
+                if plan.tracker.keys and entity.incremental_mode == "file" and sink.write_mode == "append":  # fmt: skip
+                    write = write_accepted_per_file(tagged, accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
+                else:
+                    write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options)  # fmt: skip
             else:
                 from floe.iceberg.sink import write_iceberg
 

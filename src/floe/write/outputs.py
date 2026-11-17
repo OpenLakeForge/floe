@@ -7,6 +7,8 @@ import uuid
 from collections.abc import Callable, Generator, Iterable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
+from itertools import groupby
+from operator import itemgetter
 
 import polars as pl
 
@@ -63,7 +65,7 @@ def keyed_part(key: str, index: int, ext: str) -> str:
 
 
 @contextmanager
-def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str | None = None) -> Generator[Callable[[bytes], str]]:  # fmt: skip
+def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str | None = None) -> Generator[Callable[..., str]]:  # fmt: skip
     """Yield `put(body) -> name`. Every part is staged as `_staging-<id>-<name>` (invisible to `part_uris`).
 
     Only when all were written are they copied over `<name>` and the staged copies deleted (#1054).
@@ -71,14 +73,18 @@ def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str
     failed write leaves them untouched. Other modes name them `part-<uuid>` and keep the old parts;
     staging keeps a killed run from leaving visible parts for a retry to duplicate (#1056: parts are
     written while the input is still read). A failed write deletes the staged parts it wrote.
-    With a `key`, a non-overwrite part is named `part-<uuid5(key:index)>` so a retry replaces the same parts (#919).
+    With a `key`, a non-overwrite part is named `part-<uuid5(key:index)>` so a retry replaces the same parts (#919);
+    `put(body, key)` names it from that key instead, its index counting the parts of that key (#1203).
     """
     overwrite = mode == "overwrite"
     stage = f"_staging-{uuid.uuid4()}-"
     names: list[str] = []
+    counts: dict[str, int] = {}
 
-    def put(body: bytes) -> str:
-        name = f"part-{len(names):05}.{ext}" if overwrite else keyed_part(key, len(names), ext) if key else f"part-{uuid.uuid4()}.{ext}"  # fmt: skip
+    def put(body: bytes, part_key: str | None = None) -> str:
+        part_key = part_key or key or ""
+        index = counts[part_key] = counts.get(part_key, -1) + 1
+        name = f"part-{len(names):05}.{ext}" if overwrite else keyed_part(part_key, index, ext) if part_key else f"part-{uuid.uuid4()}.{ext}"  # fmt: skip
         names.append(name)  # before the write: a partial file needs cleanup too
         client.write(f"{base}/{stage}{name}", body)
         return name
@@ -127,12 +133,50 @@ def write_accepted(
     base: str,
     mode: WriteMode = "overwrite",
     options: SinkOptions | None = None,
-    key: str | None = None,
 ) -> AcceptedWrite:
-    """Write `frames` (at least one) as `part-*.parquet` files under `base`, each holding about `max_size_per_file`.
+    """Write `frames` (at least one) as `part-*.parquet` files under `base`, each holding about `max_size_per_file`."""
+    max_size = (options and options.max_size_per_file) or DEFAULT_MAX_SIZE_PER_FILE
+    return _write_parts(((None, c) for c in _part_frames(frames, max_size)), client, base, mode, options)  # fmt: skip
 
-    With a `key` (the run's input hash) an append part is named from it, so a retry replaces the dead run's parts (#1198).
+
+def write_accepted_per_file(
+    frames: Iterable[tuple[str, pl.DataFrame]],
+    client: StorageClient,
+    base: str,
+    mode: WriteMode,
+    options: SinkOptions | None = None,
+) -> AcceptedWrite:
+    """`write_accepted` for `(input key, frame)` pairs (at least one), the frames of a key together: a part holds the rows of one input.
+
+    An append part is named from its input key and index, so a retry that reads the same input replaces exactly its parts and
+    never touches another's (#1203).
+    # ponytail: if `max_size_per_file` changed since the dead run, its higher-index parts of a file survive next to the retry's; compact or clean by hand
     """
+    max_size = (options and options.max_size_per_file) or DEFAULT_MAX_SIZE_PER_FILE
+
+    def non_empty() -> Iterator[tuple[str, pl.DataFrame]]:
+        """A fully rejected input adds no empty part; only a run that accepted nothing keeps one."""
+        seen, empty = False, None
+        for item in frames:
+            if item[1].height:
+                seen = True
+                yield item
+            elif empty is None:
+                empty = item
+        if empty and not seen:
+            yield empty
+
+    parts = ((key, c) for key, group in groupby(non_empty(), itemgetter(0)) for c in _part_frames((df for _, df in group), max_size))  # fmt: skip
+    return _write_parts(parts, client, base, mode, options)
+
+
+def _write_parts(
+    parts: Iterable[tuple[str | None, pl.DataFrame]],
+    client: StorageClient,
+    base: str,
+    mode: WriteMode,
+    options: SinkOptions | None,
+) -> AcceptedWrite:
     base = base.rstrip("/")
     max_size = (options and options.max_size_per_file) or DEFAULT_MAX_SIZE_PER_FILE
     kwargs: dict[str, str | int] = {}
@@ -142,12 +186,12 @@ def write_accepted(
         kwargs["row_group_size"] = options.row_group_size
     files: list[str] = []
     sizes: list[int] = []
-    with _os_errors(), _parts(client, base, mode, "parquet", key) as put:
-        for chunk in _part_frames(frames, max_size):
+    with _os_errors(), _parts(client, base, mode, "parquet") as put:
+        for key, chunk in parts:
             # ponytail: a part is held in memory (≤ max_size_per_file) before the put; stream multipart uploads if that is too much
             body = io.BytesIO()
             chunk.write_parquet(body, **kwargs)  # pyright: ignore[reportArgumentType]  # ponytail: kwargs loses the compression Literal; validated by the config
-            files.append(put(body.getvalue()))
+            files.append(put(body.getvalue(), key))
             sizes.append(body.tell())
     total = sum(sizes)
     return AcceptedWrite(
