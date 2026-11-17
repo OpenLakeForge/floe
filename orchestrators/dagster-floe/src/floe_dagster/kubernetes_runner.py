@@ -169,14 +169,14 @@ def _follow_pod_events(
     )
     try:
         for line in response:
+            if time.monotonic() >= deadline:
+                break  # a chatty log must not outlive the Job's deadline: the poll then times it out
             try:
                 event = json.loads(line)
             except ValueError:
                 continue  # not a Floe event line
             if isinstance(event, dict):
                 yield event
-            if time.monotonic() >= deadline:
-                break  # a chatty log must not outlive the Job's deadline: the poll then times it out
     finally:
         response.close()
     followed.add(pod_name)

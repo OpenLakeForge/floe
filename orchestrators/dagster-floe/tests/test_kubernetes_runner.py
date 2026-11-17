@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import itertools
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -713,3 +714,17 @@ def test_follow_kubernetes_job_follows_the_replacement_pod_of_a_retry() -> None:
     with patch("time.sleep"):
         list(_until_return(gen, out))
     assert out[:2] == [{"event": "a"}, {"event": "b"}]
+
+
+def test_follow_kubernetes_job_stops_following_at_the_deadline_and_deletes_the_job() -> None:
+    jobs_api, core_api = _follow_apis([_job(active=1)] * 3, io.BytesIO(b"not json\n" * 5 + b'{"event": "late"}\n'))
+    gen = follow_kubernetes_job(
+        ["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api
+    )
+    out: list = []
+    clock = itertools.chain([0, 1, 1], itertools.repeat(100))  # the deadline passes while the log is consumed
+    with patch("time.sleep"), patch("time.monotonic", side_effect=clock):
+        list(_until_return(gen, out))
+    assert len(out) == 1  # no event, just the RunResult
+    assert out[0].status == STATUS_TIMEOUT
+    jobs_api.delete_namespaced_job.assert_called_once()
