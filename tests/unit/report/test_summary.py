@@ -15,6 +15,7 @@ from floe.config.parse import parse_config
 from floe.config.project import ProjectMetadata
 from floe.report.summary import (
     build_summary,
+    entity_outcome,
     id_path,
     run_dir,
     run_domain,
@@ -109,6 +110,7 @@ def _report(
     results = dict.fromkeys(keys, 0) | {"warnings_total": warnings}
     return name, {
         "entity": {"name": name},
+        "policy": {"severity": "reject"},
         "files": [{"status": file_status}],
         "results": results,
     }
@@ -177,3 +179,15 @@ def test_summary_config_metadata_and_overwrite(tmp_path: Path) -> None:
     write_reports(s, [], LocalClient())
     write_reports(s, [], LocalClient())  # Rust overwrites
     assert (tmp_path / "run_r" / "run.summary.json").read_text().startswith("{")
+
+
+@pytest.mark.parametrize(
+    ("exceeded", "outcome"),
+    [(True, ("aborted", 2)), (False, ("rejected", 0)), (None, ("rejected", 0))],
+)
+def test_entity_outcome_aborts_only_above_max_rejection_rate(
+    exceeded: bool | None, outcome: tuple[str, int]
+) -> None:
+    _, report = _report("a", "rejected")
+    report["policy"] = {} if exceeded is None else {"max_rejection_rate_exceeded": exceeded}  # fmt: skip
+    assert entity_outcome(report) == outcome

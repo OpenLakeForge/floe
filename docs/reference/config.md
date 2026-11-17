@@ -568,6 +568,8 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - `warn`: keep rows, log violations.
   - `reject`: reject rows with violations (first unique kept, duplicates rejected).
   - `abort`: abort the entire file on first violation.
+- `max_rejection_rate` (optional, `severity: reject` only)
+  - A number in `[0, 1]`: the largest fraction of input rows (`rejected_total / rows_total`) the entity may reject. Above it the entity ends `aborted` (exit `2`); at the threshold it stays `rejected`. The accepted rows are committed either way. `null` clears a domain default.
 
 ### `schema` (required)
 

@@ -932,3 +932,47 @@ def test_1166_a_parquet_rejected_sink_refuses_source_files_under_it(
     with pytest.raises(FloeConfigError, match="lies under sink.rejected.path"):
         run_entity(entity, tmp_path, "0.3")
     assert pl.read_parquet(source)["id"].to_list() == ["1", "bad"]
+
+
+def test_max_rejection_rate_above_the_threshold_aborts_and_commits_the_accepted_rows(
+    tmp_path: Path,
+) -> None:
+    rows = "id,name\n1,a\nx,b\ny,c\n4,d\n"
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text(rows)
+    (tmp_path / "config.yml").write_text(
+        CONFIG.format(severity="reject", mismatch="").replace(
+            "{severity: reject}", "{severity: reject, max_rejection_rate: 0.25}"
+        )
+    )
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    result = run_entity(entity, tmp_path, "0.3")
+    assert result.aborted
+    assert result.report["policy"] == {
+        "severity": "reject",
+        "max_rejection_rate": 0.25,
+        "rejection_rate": 0.5,
+        "max_rejection_rate_exceeded": True,
+    }
+    assert accepted(tmp_path)["id"].to_list() == [1, 4]
+
+
+@pytest.mark.parametrize(
+    ("rows", "rate", "exceeded"),
+    [("id,name\n1,a\nx,b\n3,c\n4,d\n", 0.25, False), ("id,name\n", 0.0, False)],
+)
+def test_max_rejection_rate_at_the_threshold_or_with_no_rows_does_not_abort(
+    tmp_path: Path, rows: str, rate: float, exceeded: bool
+) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "orders.csv").write_text(rows)
+    (tmp_path / "config.yml").write_text(
+        CONFIG.format(severity="reject", mismatch="").replace(
+            "{severity: reject}", "{severity: reject, max_rejection_rate: 0.25}"
+        )
+    )
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    result = run_entity(entity, tmp_path, "0.3")
+    assert not result.aborted
+    assert result.report["policy"]["rejection_rate"] == rate
+    assert result.report["policy"]["max_rejection_rate_exceeded"] is exceeded

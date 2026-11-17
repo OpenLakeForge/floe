@@ -33,6 +33,7 @@ from floe.config.types import EntityConfig, with_partition_columns
 from floe.errors import FloeConfigError, FloeRunError
 from floe.extras import require
 from floe.report.entity import build_report
+from floe.report.summary import entity_outcome
 from floe.run.events import NO_EVENTS, Emitter
 from floe.run.file import (
     Plan,
@@ -474,4 +475,4 @@ def _run_entity(
         added_columns=added,
     )
     report["timings_ms"] = {k: int(plan.spent[k] * 1000) if k in plan.spent else None for k in PHASES}  # fmt: skip
-    return EntityRun(report, any(f["status"] == "aborted" for f in files))
+    return EntityRun(report, entity_outcome(report)[0] == "aborted")

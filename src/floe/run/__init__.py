@@ -19,10 +19,10 @@ from floe.report.summary import (
     build_failure,
     build_summary,
     dagster_parent,
+    entity_outcome,
     id_path,
     run_dir,
     run_domain,
-    run_outcome,
     write_entity_report,
     write_reports,
 )
@@ -107,7 +107,7 @@ def _finished(
     totals = {k: results.get(k if k == "files_skipped" else f"{k}_total", 0) for k in keys}  # fmt: skip
     status = "failed"
     if report:
-        status = run_outcome([f["status"] for f in report["files"]], totals["warnings"])[0]  # fmt: skip
+        status = entity_outcome(report)[0]
     emit("entity_finished", name=name, status=status, **totals, timings_ms=report["timings_ms"] if report else None, **_error_code(err))  # fmt: skip
 
 

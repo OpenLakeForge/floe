@@ -637,3 +637,14 @@ def test_1009_a_profile_with_a_manifest_is_a_usage_error(
         floe(monkeypatch, "run", "--manifest", str(path), "-p", str(tmp_path / "p.yml"))
     assert exit_.value.code == 2
     assert "-p/--profile: not allowed with argument --manifest" in capsys.readouterr().err  # fmt: skip
+
+
+def test_a_manifest_run_enforces_max_rejection_rate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = copy_case("max_rejection_rate", tmp_path / "w")
+    monkeypatch.chdir(work)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    assert load_manifest("m.json")[1][0].policy.max_rejection_rate == 0.25
+    assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 2
+    assert list((work / "out/accepted/orders").glob("*.parquet"))

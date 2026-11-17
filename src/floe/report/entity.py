@@ -142,6 +142,15 @@ def _unique_report(severity: str, r: UniqueResult) -> dict[str, Any]:
     return out  # fmt: skip
 
 
+def _rate_report(limit: float | None, totals: dict[str, int]) -> dict[str, Any]:
+    if limit is None:
+        return {}
+    rate = (
+        totals["rejected_total"] / totals["rows_total"] if totals["rows_total"] else 0.0
+    )
+    return {"max_rejection_rate": limit, "rejection_rate": rate, "max_rejection_rate_exceeded": rate > limit}  # fmt: skip
+
+
 def build_report(
     entity: EntityConfig,
     version: str,
@@ -218,7 +227,7 @@ def build_report(
             },
         },
         "sink": sink_echo,
-        "policy": {"severity": severity},
+        "policy": {"severity": severity} | _rate_report(entity.policy.max_rejection_rate, totals),
         "accepted_output": {
             "path": accepted_uri,
             "table_root_uri": table_root_uri or accepted_uri,
