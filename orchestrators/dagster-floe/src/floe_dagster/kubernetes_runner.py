@@ -94,7 +94,7 @@ def follow_kubernetes_job(
     status = STATUS_SUBMITTED
     last_job: Any = None
     reached_final_state = False
-    followed = False
+    followed: set[str] = set()  # pods whose log ended cleanly; a retry's replacement pod is followed in turn
 
     try:
         while True:
@@ -106,12 +106,11 @@ def follow_kubernetes_job(
             if time.monotonic() >= deadline:
                 status = STATUS_TIMEOUT
                 break
-            if follow and status == STATUS_RUNNING and not followed:
+            if follow and status == STATUS_RUNNING:
                 # a failed follow (pod still Pending, dropped connection) is retried from the start at the next poll
                 try:
-                    yield from _follow_pod_events(core_api, job_name, namespace, deadline - time.monotonic())
-                    followed = True
-                    continue
+                    if (yield from _follow_pod_events(core_api, job_name, namespace, deadline, followed)):
+                        continue
                 except Exception:
                     _log.debug("could not follow the log of %s/%s", namespace, job_name, exc_info=True)
             time.sleep(poll_interval)
@@ -152,17 +151,21 @@ def follow_kubernetes_job(
 
 
 def _follow_pod_events(
-    core_api: Any, job_name: str, namespace: str, seconds: float
-) -> Generator[dict[str, Any], None, None]:
+    core_api: Any, job_name: str, namespace: str, deadline: float, followed: set[str]
+) -> Generator[dict[str, Any], None, bool]:
+    """Yield the events of the Job's latest pod unless already followed; True once its log ended cleanly."""
     pod = _outcome_pod(core_api, job_name, namespace)
     if pod is None:
         raise RuntimeError("no pod to follow yet")
+    pod_name = _read(_read(pod, "metadata", {}), "name", "")
+    if pod_name in followed:
+        return False
     response = core_api.read_namespaced_pod_log(
-        name=_read(_read(pod, "metadata", {}), "name", ""),
+        name=pod_name,
         namespace=namespace,
         follow=True,
         _preload_content=False,
-        _request_timeout=max(seconds, 1),
+        _request_timeout=max(deadline - time.monotonic(), 1),
     )
     try:
         for line in response:
@@ -172,8 +175,12 @@ def _follow_pod_events(
                 continue  # not a Floe event line
             if isinstance(event, dict):
                 yield event
+            if time.monotonic() >= deadline:
+                break  # a chatty log must not outlive the Job's deadline: the poll then times it out
     finally:
         response.close()
+    followed.add(pod_name)
+    return True
 
 
 def _delete_job(jobs_api: Any, job_name: str, namespace: str) -> None:

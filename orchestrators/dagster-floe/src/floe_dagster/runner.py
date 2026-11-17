@@ -8,13 +8,11 @@ import threading
 from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 from unittest.mock import patch
 
 from .events import render_log_event
 from .manifest import ManifestExecution, ManifestRunnerDefinition, render_execution_args
-
-_T = TypeVar("_T")
 
 
 @dataclass(frozen=True)
@@ -28,7 +26,7 @@ class RunResult:
     logged: bool = False  # #904: each event already went to the `log` callback, as it happened
 
 
-def drain(gen: Generator[Any, None, _T]) -> _T:
+def drain(gen: Generator[Any, None, RunResult]) -> RunResult:
     """Run a generator to its end and return its `return` value."""
     while True:
         try:

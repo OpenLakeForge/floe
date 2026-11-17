@@ -690,3 +690,26 @@ def test_closing_follow_kubernetes_job_early_deletes_the_job() -> None:
     name = jobs_api.create_namespaced_job.call_args.kwargs["body"]["metadata"]["name"]
     jobs_api.delete_namespaced_job.assert_called_once_with(name, "data", propagation_policy="Background")
     assert response.closed
+
+
+def test_follow_kubernetes_job_follows_the_replacement_pod_of_a_retry() -> None:
+    jobs_api, core_api = MagicMock(), MagicMock()
+    jobs_api.read_namespaced_job.side_effect = [_job(active=1), _job(active=1), _complete()]
+    pods = [MagicMock(), MagicMock()]
+    pods[0].metadata.name, pods[1].metadata.name = "attempt-1", "attempt-2"
+    core_api.list_namespaced_pod.side_effect = [MagicMock(items=[pods[0]]), MagicMock(items=[pods[1]])] + [
+        MagicMock(items=[pods[1]])
+    ] * 3
+    logs = {"attempt-1": b'{"event": "a"}\n', "attempt-2": b'{"event": "b"}\n'}
+
+    def pod_log(name, **kwargs):
+        return io.BytesIO(logs[name]) if kwargs.get("follow") else "end-read log"
+
+    core_api.read_namespaced_pod_log.side_effect = pod_log
+    out: list = []
+    gen = follow_kubernetes_job(
+        ["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api
+    )
+    with patch("time.sleep"):
+        list(_until_return(gen, out))
+    assert out[:2] == [{"event": "a"}, {"event": "b"}]
