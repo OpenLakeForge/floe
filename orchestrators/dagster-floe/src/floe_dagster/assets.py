@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
@@ -393,7 +394,7 @@ def _entity_events(
     entity: ManifestEntity,
     config_uri: str,
     finished: FloeRunFinished,
-    result: RunResult,
+    result: RunResult | None,
     summary: dict[str, Any] | None,
     failed: bool,
     out_prefix: str = "",
@@ -402,7 +403,10 @@ def _entity_events(
     check_status: str | None = None,
     selected_checks: set[AssetCheckKey] | None = None,
 ):
-    """Yield one entity's checks and outputs from a finished run; return its `Failure` (not raised)."""
+    """Yield one entity's checks and outputs from a finished run; return its `Failure` (not raised).
+
+    Without a `result` (#1227: streamed at its `entity_finished`) the run-level keys are left out.
+    """
     accepted_key = list(entity.asset_key)
     entity_name = entity.name
     summary_uri = finished.summary_uri
@@ -424,9 +428,10 @@ def _entity_events(
 
     metadata: dict[str, Any] = {
         "run_id": finished.run_id,
-        "status": finished.status,
-        "exit_code": finished.exit_code,
     }
+    if result is not None:
+        metadata["status"] = finished.status
+        metadata["exit_code"] = finished.exit_code
     if summary_uri:
         metadata["summary_uri"] = summary_uri
 
@@ -435,12 +440,13 @@ def _entity_events(
         metadata["entity_report_uri"] = entity_report_uri
     metadata.update(_timing_metadata(entity_report_json))
     metadata.update(policy_metadata((entity_report_json or {}).get("policy")))
-    if result.failure_reason:
-        metadata["failure_reason"] = result.failure_reason
-    if result.status:
-        metadata["backend_status"] = result.status
-    if result.backend_metadata:
-        metadata["backend_metadata"] = result.backend_metadata
+    if result is not None:
+        if result.failure_reason:
+            metadata["failure_reason"] = result.failure_reason
+        if result.status:
+            metadata["backend_status"] = result.status
+        if result.backend_metadata:
+            metadata["backend_metadata"] = result.backend_metadata
 
     check_results = build_asset_check_results(
         asset_key=accepted_key,
@@ -458,7 +464,7 @@ def _entity_events(
         ):
             yield check_result
 
-    if failed:
+    if failed and result is not None:
         metadata.update(_failure_evidence(context, result.stdout, config_uri))
         return Failure(description=f"floe run failed for entity {entity_name}", metadata=metadata)
 
@@ -472,9 +478,10 @@ def _entity_events(
         rejected_metadata: dict[str, Any] = {
             "run_id": finished.run_id,
             "rejected": MetadataValue.int(rejected_count),
-            "status": finished.status,
             "rejection_rate": MetadataValue.float(rejection_rate),
         }
+        if result is not None:
+            rejected_metadata["status"] = finished.status
         if entity.rejected_sink_uri:
             rejected_metadata["dagster/uri"] = MetadataValue.url(entity.rejected_sink_uri)
         if entity_report_uri:
@@ -641,7 +648,9 @@ def _make_domain_multi_asset(
                 "{entity_name}",
             ]
         )
-        result = runner.run_floe_entities(
+        by_name = {entity.name: entity for entity in chosen}
+        streamed: set[str] = set()
+        stream = runner.stream_floe_entities(
             config_uri=config_uri,
             manifest_uri=manifest_uri or manifest_path,
             run_id=floe_run_id,
@@ -654,6 +663,30 @@ def _make_domain_multi_asset(
             dagster_run_id=run_id,
             dagster_job_name=dagster_job_name,
         )
+        with contextlib.closing(stream):
+            try:
+                while True:
+                    event = next(stream)
+                    entity = by_name.get(str(event.get("name")))
+                    # a failed or aborted entity keeps the end path (failure evidence); an older Floe has no report_uri
+                    if (
+                        event.get("event") == "entity_finished"
+                        and event.get("report_uri")
+                        and event.get("status") not in _ENTITY_FAILED
+                        and entity is not None
+                        and entity.name not in streamed
+                    ):
+                        streamed.add(entity.name)
+                        yield from _streamed_entity_events(
+                            context,
+                            entity=entity,
+                            event=event,
+                            config_uri=config_uri,
+                            selected=selected,
+                            selected_checks=selected_checks,
+                        )
+            except StopIteration as stop:
+                result = stop.value
         finished = _parse_finished(context, result, execution, run_id)
         summary = _load_run_summary(context, finished, config_uri)
         run_failed = (
@@ -665,6 +698,8 @@ def _make_domain_multi_asset(
         policy_meta: dict[str, Any] = {}
         not_run: list[str] = []
         for entity in chosen:
+            if entity.name in streamed:
+                continue  # first yield wins: a re-followed log or a Job retry replays events
             status = None
             if summary is None:
                 failed = run_failed
@@ -708,6 +743,45 @@ def _make_domain_multi_asset(
             )
 
     return _domain_asset
+
+
+def _streamed_entity_events(
+    context: Any,
+    *,
+    entity: ManifestEntity,
+    event: dict[str, Any],
+    config_uri: str,
+    selected: Any,
+    selected_checks: set[AssetCheckKey],
+):
+    """Yield one entity's checks and outputs from its `entity_finished` event, while the Job still runs (#1227)."""
+    totals = ("files", "rows", "accepted", "rejected", "warnings", "errors")
+    summary = {
+        "entities": [
+            {
+                "name": entity.name,
+                "status": event["status"],
+                "report_file": event["report_uri"],
+                "results": {f"{key}_total": event.get(key) for key in totals},
+            }
+        ]
+    }
+    yield from _entity_events(
+        context,
+        entity=entity,
+        config_uri=config_uri,
+        finished=FloeRunFinished(
+            run_id=str(event.get("run_id")), status=event["status"], exit_code=0, summary_uri=None
+        ),
+        result=None,
+        summary=summary,
+        failed=False,
+        out_prefix=f"{_op_name(entity)}__",
+        accepted_selected=AssetKey(entity.asset_key) in selected,
+        rejected_selected=AssetKey(_rejected_key(entity)) in selected,
+        check_status=event["status"],
+        selected_checks=selected_checks,
+    )
 
 
 def _log_floe_stderr(context: Any, stderr: str) -> None:

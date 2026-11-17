@@ -52,6 +52,12 @@ pip install "dagster-floe[floe]"   # also installs floe-python>=0.10,<0.11 for t
 | 0.3.0 | 0.8 | `0.8` |
 | 0.2.x | 0.7 and earlier | see 0.2.x docs |
 
+With a `kubernetes_job` runner and `job_scope: domain`, an entity's checks and outputs are written as soon as Floe
+reports that entity finished, while the Job still runs, so the Dagster event writes overlap the run. This needs a Floe
+image newer than 0.10.1 (its `entity_finished` carries `report_uri`); an older image reports every entity at run end.
+A streamed output does not carry the run-level metadata (`summary_uri`, `status`, `exit_code`, `backend_*`), and a
+failed or aborted entity is reported at run end as before.
+
 With the `kubernetes_job` runner, a run that has a profile (config mode, `profile_path=`) reads the profile in the
 run pod and hands its text to the Job as the `FLOE_PROFILE_CONTENT` env var, with `-p env:FLOE_PROFILE_CONTENT`
 in place of the pod-local path. `${VAR}` references stay unexpanded: the Job expands them. The Job image needs

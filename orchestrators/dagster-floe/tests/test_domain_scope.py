@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import itertools
 import json
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -51,6 +53,41 @@ def _summary(tmp_path: Path, statuses: dict[str, str], reports: dict[str, dict[s
     return str(path)
 
 
+class _Followed:
+    """The streamed pod-log response: iterates lines, has `close()`."""
+
+    def __init__(self, events: Iterator[dict]) -> None:
+        self._lines = (json.dumps(event).encode() + b"\n" for event in events)
+
+    def __iter__(self) -> Iterator[bytes]:
+        return self._lines
+
+    def close(self) -> None:
+        pass
+
+
+def _entity_finished(tmp_path: Path, name: str, status: str = "success", *, report: bool = True) -> dict:
+    event: dict[str, Any] = {
+        "event": "entity_finished",
+        "run_id": "r1",
+        "name": name,
+        "status": status,
+        "files": 1,
+        "rows": 10,
+        "accepted": 10,
+        "rejected": 0,
+        "warnings": 0,
+        "errors": 0,
+    }
+    if report:
+        path = tmp_path / f"{name}.run.json"
+        path.write_text(
+            json.dumps({"timings_ms": {"list_ms": 3}, "policy": {"max_rejection_rate": 0.25}}), encoding="utf-8"
+        )
+        event["report_uri"] = str(path)
+    return event
+
+
 def _run(
     tmp_path: Path,
     statuses: dict[str, str],
@@ -60,19 +97,23 @@ def _run(
     events: list[dict] | None = None,
     instance: DagsterInstance | None = None,
     reports: dict[str, dict[str, Any]] | None = None,
+    follow: Callable[[], Iterator[dict]] | None = None,
     **manifest_kw: Any,
 ):
     """Materialize with the Kubernetes client mocked; returns the result and the Job API mock."""
     manifest = _manifest(tmp_path, **manifest_kw)
     jobs_api, core_api = MagicMock(), MagicMock()
     ok = {"type": "Complete", "status": "True"}
-    jobs_api.read_namespaced_job.return_value = {
+    final = {
         "status": {
             "succeeded": int(exit_code == 0),
             "failed": int(exit_code != 0),
             "conditions": [ok] if exit_code == 0 else [],
         }
     }
+    jobs_api.read_namespaced_job.return_value = final
+    if follow is not None:  # the Job is running when first read: the log is followed, then it is final
+        jobs_api.read_namespaced_job.side_effect = itertools.chain([{"status": {"active": 1}}], itertools.repeat(final))
     finished = {
         "event": "run_finished",
         "run_id": "r1",
@@ -81,7 +122,12 @@ def _run(
         "summary_uri": _summary(tmp_path, statuses, reports),
     }
     core_api.list_namespaced_pod.return_value.items = [{"metadata": {"name": "pod-1"}}]
-    core_api.read_namespaced_pod_log.return_value = "\n".join(json.dumps(e) for e in [*(events or []), finished])
+    end_read = "\n".join(json.dumps(e) for e in [*(events or []), finished])
+
+    def pod_log(**kwargs):
+        return _Followed(follow()) if kwargs.get("follow") and follow else end_read
+
+    core_api.read_namespaced_pod_log.side_effect = pod_log
     with (
         patch("floe_dagster.kubernetes_runner._make_batch_client", return_value=jobs_api),
         patch("floe_dagster.kubernetes_runner._make_core_client", return_value=core_api),
@@ -330,3 +376,69 @@ def test_domain_scope_failure_carries_the_rejection_threshold_of_the_aborted_ent
     meta = event.event_specific_data.user_failure_data.metadata
     assert meta["returns/floe/max_rejection_rate"].value == 0.25
     assert meta["returns/floe/max_rejection_rate_exceeded"].value is True
+
+
+def _materializations(result, key: str) -> list:
+    return [e for e in result.get_asset_materialization_events() if e.asset_key.to_user_string() == key]
+
+
+def test_domain_scope_yields_an_entity_before_the_next_entity_finished_is_read(tmp_path: Path) -> None:
+    instance = DagsterInstance.ephemeral()
+    seen: dict[str, Any] = {}
+
+    def follow():
+        yield _entity_finished(tmp_path, "orders")
+        seen["orders"] = instance.get_latest_materialization_event(AssetKey(["sales", "orders"]))
+        yield _entity_finished(tmp_path, "returns")
+        seen["returns"] = instance.get_latest_materialization_event(AssetKey(["sales", "returns"]))
+        yield _entity_finished(tmp_path, "refunds")
+
+    result, _ = _run(tmp_path, dict.fromkeys(NAMES, "success"), instance=instance, follow=follow)
+
+    assert result.success
+    assert seen["orders"] is not None  # stored before `returns`' line was read
+    assert seen["returns"] is not None
+    for name in NAMES:
+        assert len(_materializations(result, f"sales/{name}")) == 1
+    assert len(result.get_asset_check_evaluations()) == 5 * len(NAMES)
+    meta = _materializations(result, "sales/orders")[0].materialization.metadata
+    assert meta["floe/timings/list_ms"].value == 3
+    assert meta["rows"].value == 10
+    assert meta["floe/max_rejection_rate"].value == 0.25  # entity-level policy metadata (#1221) is streamed too
+    assert not {"status", "exit_code", "summary_uri", "backend_metadata"} & set(meta)
+
+
+def test_domain_scope_streamed_entities_are_not_yielded_again_at_run_end(tmp_path: Path) -> None:
+    def follow():  # a re-followed log replays the first line
+        yield _entity_finished(tmp_path, "orders")
+        yield _entity_finished(tmp_path, "orders")
+
+    result, _ = _run(tmp_path, dict.fromkeys(NAMES, "success"), follow=follow)
+
+    assert result.success
+    assert _materialized(result) == {"sales/orders", "sales/returns", "sales/refunds"}
+    assert len(_materializations(result, "sales/orders")) == 1
+
+
+def test_domain_scope_an_entity_finished_without_a_report_uri_is_yielded_at_run_end(tmp_path: Path) -> None:
+    def follow():  # an older Floe
+        yield _entity_finished(tmp_path, "orders", report=False)
+
+    result, _ = _run(tmp_path, dict.fromkeys(NAMES, "success"), follow=follow)
+
+    assert result.success
+    [orders] = _materializations(result, "sales/orders")
+    assert {"status", "exit_code", "summary_uri"} <= set(orders.materialization.metadata)
+
+
+def test_domain_scope_a_failure_after_a_streamed_entity_keeps_it_and_reports_the_rest(tmp_path: Path) -> None:
+    def follow():
+        yield _entity_finished(tmp_path, "orders")
+        yield _entity_finished(tmp_path, "returns", "aborted", report=False)
+
+    result, _ = _run(tmp_path, {"orders": "success", "returns": "aborted"}, exit_code=2, follow=follow)
+
+    assert not result.success
+    assert _materialized(result) == {"sales/orders"}
+    [failure] = [e for e in result.all_events if e.event_type_value == "STEP_FAILURE"]
+    assert "entities returns; not run: refunds" in failure.event_specific_data.error.message
