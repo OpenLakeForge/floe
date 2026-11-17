@@ -121,6 +121,7 @@ def _build_summary_fallback_results(ctx: FloeCheckContext) -> list[AssetCheckRes
                 passed = False
                 severity = AssetCheckSeverity.WARN
             description = "Floe file status check derived from summary only (entity report unavailable)."
+            metadata.update(policy_metadata(ctx.policy))
         elif run_failed:
             passed = False
             description = "Floe run status indicates failure/abort; detailed entity report unavailable."

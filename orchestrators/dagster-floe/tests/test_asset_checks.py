@@ -304,3 +304,15 @@ def test_file_status_check_carries_the_rejection_threshold() -> None:
     plain = file_status({"files": files, "policy": {"severity": "reject"}})
     assert not [k for k in plain.metadata or {} if k.startswith("floe/max_rejection") or k == "floe/rejection_rate"]
     assert "rate" not in (plain.description or "")
+
+
+def test_empty_file_report_keeps_the_rejection_threshold_on_the_file_status_check() -> None:
+    policy = {"max_rejection_rate": 0.25, "rejection_rate": 0.0, "max_rejection_rate_exceeded": False}
+    checks = build_asset_check_results(
+        asset_key=["sales", "orders"],
+        entity_name="orders",
+        finished=FloeRunFinished(run_id="run-5", status="success", exit_code=0, summary_uri=None),
+        entity_report={"files": [], "policy": policy},
+    )
+    check = next(c for c in checks if c.check_name == "floe_file_status")
+    assert _meta_value((check.metadata or {})["floe/max_rejection_rate"]) == 0.25
