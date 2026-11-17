@@ -124,6 +124,25 @@ added by a restart, one added by a retry with a new file, and the rejected count
 are in the nightly log, not measured locally (no Docker). Times are one machine's, and noisy: the tests assert
 counts and a 600 MiB RSS ceiling, not runtimes.
 
+## Rejected Parquet sink memory (1M rejected rows)
+
+`scripts/bench_rejected_rss.py` runs one entity with `sink.rejected.format: parquet` over CSV files of 50,000 rows
+each, every row failing the `int64` cast of `id`, and prints the run's peak RSS (`ru_maxrss`, child process). More
+rows means more files and chunks, not bigger ones. Measured on WSL2 (16 logical CPUs, 15 GiB RAM, local disk),
+Python 3.15, Polars 2.0:
+
+| Rejected rows | Files | Peak RSS |
+|---|---|---|
+| 50,000 | 1 | 186 MiB |
+| 100,000 | 2 | 208-214 MiB |
+| 250,000 | 5 | 253 MiB |
+| 500,000 | 10 | 284 MiB |
+| 1,000,000 | 20 | 304-317 MiB |
+
+Peak RSS is not proportional to the rejected rows: 10x the rows costs about +100 MiB (+45%), and each doubling adds
+about 30 MiB. The Python heap is flat (`tracemalloc` peak 11.6 MiB at 250k and at 1M rows), so the growth is native
+allocator memory, tracked in #1224. Times are one machine's and noisy (about 10 MiB between repeats).
+
 ## Config keys (storage)
 
 ```yaml
