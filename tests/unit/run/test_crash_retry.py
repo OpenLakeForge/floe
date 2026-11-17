@@ -386,3 +386,12 @@ def test_unique_key_append_retry_that_aborts_before_replaying_the_dead_batch_kee
     p.run("retry")
     assert p.accepted(lake) == [1, 2, 100]  # nothing deleted
     assert "1" not in p.rejected() and "2" not in p.rejected()
+
+
+def test_unique_key_append_retry_replaces_a_dead_part_whose_rows_an_earlier_input_now_takes(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed_dead_run(tmp_path, lake, monkeypatch, new="id,name\n1,a\n")
+    (tmp_path / "in/aaa.csv").write_text(
+        "id,name\n1,other\n"
+    )  # sorts first and takes key 1; new.csv is then fully rejected
+    p.run("retry")
+    assert p.accepted(lake) == [1, 100]  # key 1 once, not once per input

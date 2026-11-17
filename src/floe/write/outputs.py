@@ -154,19 +154,8 @@ def write_accepted_per_file(
     """
     max_size = (options and options.max_size_per_file) or DEFAULT_MAX_SIZE_PER_FILE
 
-    def non_empty() -> Iterator[tuple[str, pl.DataFrame]]:
-        """A fully rejected input adds no empty part; only a run that accepted nothing keeps one."""
-        seen, empty = False, None
-        for item in frames:
-            if item[1].height:
-                seen = True
-                yield item
-            elif empty is None:
-                empty = item
-        if empty and not seen:
-            yield empty
-
-    parts = ((key, c) for key, group in groupby(non_empty(), itemgetter(0)) for c in _part_frames((df for _, df in group), max_size))  # fmt: skip
+    # an input whose rows were all rejected still gets its (empty) part: a dead run's part for it is replaced, not left to duplicate rows another input took
+    parts = ((key, c) for key, group in groupby(frames, itemgetter(0)) for c in _part_frames((df for _, df in group), max_size))  # fmt: skip
     return _write_parts(parts, client, base, mode, options)
 
 
