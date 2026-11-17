@@ -5,13 +5,16 @@ import os
 import shlex
 import subprocess
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, TypeVar
 from unittest.mock import patch
 
 from .events import render_log_event
 from .manifest import ManifestExecution, ManifestRunnerDefinition, render_execution_args
+
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True)
@@ -25,7 +28,42 @@ class RunResult:
     logged: bool = False  # #904: each event already went to the `log` callback, as it happened
 
 
+def drain(gen: Generator[Any, None, _T]) -> _T:
+    """Run a generator to its end and return its `return` value."""
+    while True:
+        try:
+            next(gen)
+        except StopIteration as stop:
+            return stop.value
+
+
 class Runner:
+    def stream_floe_entities(
+        self,
+        config_uri: str,
+        run_id: str | None,
+        domain: str,
+        entities: list[str],
+        execution: ManifestExecution,
+        runner_definition: ManifestRunnerDefinition,
+        manifest_uri: str | None = None,
+        dagster_run_id: str | None = None,
+        dagster_job_name: str | None = None,
+    ) -> Generator[dict[str, Any], None, RunResult]:
+        """`run_floe_entities` that may also yield each Floe event while the run is in progress (default: none)."""
+        yield from ()
+        return self.run_floe_entities(
+            config_uri,
+            run_id,
+            domain,
+            entities,
+            execution,
+            runner_definition,
+            manifest_uri,
+            dagster_run_id,
+            dagster_job_name,
+        )
+
     def run_floe_entities(
         self,
         config_uri: str,
@@ -74,6 +112,32 @@ class LocalRunner(Runner):
         dagster_run_id: str | None = None,
         dagster_job_name: str | None = None,
     ) -> RunResult:
+        return drain(
+            self.stream_floe_entities(
+                config_uri,
+                run_id,
+                domain,
+                entities,
+                execution,
+                runner_definition,
+                manifest_uri,
+                dagster_run_id,
+                dagster_job_name,
+            )
+        )
+
+    def stream_floe_entities(
+        self,
+        config_uri: str,
+        run_id: str | None,
+        domain: str,
+        entities: list[str],
+        execution: ManifestExecution,
+        runner_definition: ManifestRunnerDefinition,
+        manifest_uri: str | None = None,
+        dagster_run_id: str | None = None,
+        dagster_job_name: str | None = None,
+    ) -> Generator[dict[str, Any], None, RunResult]:
         if runner_definition.runner_type != "kubernetes_job":
             raise NotImplementedError("job_scope: domain needs a kubernetes_job runner")
         # `--entities {entity_name}` takes a comma list, so the entity token renders them all
@@ -87,14 +151,16 @@ class LocalRunner(Runner):
                 manifest_uri=manifest_uri,
             ),
         ]
-        from .kubernetes_runner import run_kubernetes_job, sized_for_domain
+        from .kubernetes_runner import follow_kubernetes_job, sized_for_domain
 
-        return run_kubernetes_job(
-            args,
-            entity=domain,
-            runner=sized_for_domain(runner_definition, domain),
-            dagster_run_id=dagster_run_id,
-            dagster_job_name=dagster_job_name,
+        return (
+            yield from follow_kubernetes_job(
+                args,
+                entity=domain,
+                runner=sized_for_domain(runner_definition, domain),
+                dagster_run_id=dagster_run_id,
+                dagster_job_name=dagster_job_name,
+            )
         )
 
     def run_floe_entity(

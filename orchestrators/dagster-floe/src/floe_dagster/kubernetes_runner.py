@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
 import uuid
+from collections.abc import Generator
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -11,7 +13,7 @@ from typing import Any
 from .k8s_status import (
     STATUS_CANCELED,
     STATUS_FAILED,
-    STATUS_RUNNING,  # noqa: F401 -- re-exported, imported from here by the tests
+    STATUS_RUNNING,
     STATUS_SUBMITTED,
     STATUS_SUCCEEDED,
     STATUS_TIMEOUT,
@@ -19,7 +21,7 @@ from .k8s_status import (
     map_k8s_job_status,
 )
 from .manifest import ManifestRunnerDefinition
-from .runner import RunResult
+from .runner import RunResult, drain
 
 _log = logging.getLogger(__name__)
 
@@ -40,6 +42,35 @@ def run_kubernetes_job(
     dagster_run_id: str | None = None,
     dagster_job_name: str | None = None,
 ) -> RunResult:
+    return drain(
+        follow_kubernetes_job(
+            cmd_args,
+            entity=entity,
+            runner=runner,
+            jobs_api=jobs_api,
+            core_api=core_api,
+            dagster_run_id=dagster_run_id,
+            dagster_job_name=dagster_job_name,
+            follow=False,
+        )
+    )
+
+
+def follow_kubernetes_job(
+    cmd_args: list[str],
+    *,
+    entity: str,
+    runner: ManifestRunnerDefinition,
+    jobs_api: Any = None,
+    core_api: Any = None,
+    dagster_run_id: str | None = None,
+    dagster_job_name: str | None = None,
+    follow: bool = True,
+) -> Generator[dict[str, Any], None, RunResult]:
+    """`run_kubernetes_job` that also yields each Floe JSON event of the pod log while the Job runs.
+
+    The follow is only an early hand-off: `RunResult.stdout` is still the log read once the Job is final.
+    """
     namespace = runner.namespace
     if not namespace:
         raise ValueError("kubernetes_job runner requires a non-empty 'namespace' field")
@@ -63,6 +94,7 @@ def run_kubernetes_job(
     status = STATUS_SUBMITTED
     last_job: Any = None
     reached_final_state = False
+    followed = False
 
     try:
         while True:
@@ -74,6 +106,14 @@ def run_kubernetes_job(
             if time.monotonic() >= deadline:
                 status = STATUS_TIMEOUT
                 break
+            if follow and status == STATUS_RUNNING and not followed:
+                # a failed follow (pod still Pending, dropped connection) is retried from the start at the next poll
+                try:
+                    yield from _follow_pod_events(core_api, job_name, namespace, deadline - time.monotonic())
+                    followed = True
+                    continue
+                except Exception:
+                    _log.debug("could not follow the log of %s/%s", namespace, job_name, exc_info=True)
             time.sleep(poll_interval)
         # before any deletion: with background propagation the pod would be gone
         stdout = _collect_job_logs(core_api, job_name, namespace)
@@ -109,6 +149,31 @@ def run_kubernetes_job(
         failure_reason=failure_reason,
         backend_metadata=backend_metadata,
     )
+
+
+def _follow_pod_events(
+    core_api: Any, job_name: str, namespace: str, seconds: float
+) -> Generator[dict[str, Any], None, None]:
+    pod = _outcome_pod(core_api, job_name, namespace)
+    if pod is None:
+        raise RuntimeError("no pod to follow yet")
+    response = core_api.read_namespaced_pod_log(
+        name=_read(_read(pod, "metadata", {}), "name", ""),
+        namespace=namespace,
+        follow=True,
+        _preload_content=False,
+        _request_timeout=max(seconds, 1),
+    )
+    try:
+        for line in response:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue  # not a Floe event line
+            if isinstance(event, dict):
+                yield event
+    finally:
+        response.close()
 
 
 def _delete_job(jobs_api: Any, job_name: str, namespace: str) -> None:

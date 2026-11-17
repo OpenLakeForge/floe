@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,7 @@ from floe_dagster.kubernetes_runner import (
     STATUS_SUCCEEDED,
     STATUS_TIMEOUT,
     build_k8s_job_spec,
+    follow_kubernetes_job,
     map_k8s_job_status,
     run_kubernetes_job,
     sized_for_domain,
@@ -610,3 +612,81 @@ def test_a_run_without_a_profile_is_unchanged() -> None:
     ]["containers"][0]
     assert container["args"] == ["run", "-c", "cfg.yml"]
     assert container["env"] == [{"name": "LOG_LEVEL", "value": "INFO"}]
+
+
+def _follow_apis(job_states: list[dict], follow_response):
+    jobs_api, core_api = MagicMock(), MagicMock()
+    jobs_api.read_namespaced_job.side_effect = job_states
+    pod = MagicMock()
+    pod.metadata.name = "pod-1"
+    core_api.list_namespaced_pod.return_value = MagicMock(items=[pod])
+
+    def pod_log(**kwargs):
+        if kwargs.get("follow"):
+            if isinstance(follow_response, Exception):
+                raise follow_response
+            return follow_response
+        return "end-read log"
+
+    core_api.read_namespaced_pod_log.side_effect = pod_log
+    return jobs_api, core_api
+
+
+def _complete() -> dict:
+    return _job(succeeded=1, conditions=[{"type": "Complete", "status": "True"}])
+
+
+def test_follow_kubernetes_job_yields_events_before_the_job_completes() -> None:
+    jobs_api, core_api = _follow_apis(
+        [_job(active=1), _complete()], io.BytesIO(b'{"event": "a"}\nnot json\n{"event": "b"}\n')
+    )
+    gen = follow_kubernetes_job(
+        ["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api
+    )
+    events = []
+    for event in _until_return(gen, events):
+        assert jobs_api.read_namespaced_job.call_count == 1  # the Complete read has not happened yet
+    result = events.pop()
+    assert events == [{"event": "a"}, {"event": "b"}]
+    assert result.status == STATUS_SUCCEEDED
+    assert result.stdout == "end-read log"
+    assert core_api.read_namespaced_pod_log.call_args_list[0].kwargs["follow"] is True
+
+
+def _until_return(gen, sink: list):
+    """Iterate `gen`, appending each event to `sink`, then its return value."""
+    while True:
+        try:
+            event = next(gen)
+        except StopIteration as stop:
+            sink.append(stop.value)
+            return
+        sink.append(event)
+        yield event
+
+
+def test_follow_kubernetes_job_falls_back_to_the_log_read_at_the_end_when_the_follow_fails() -> None:
+    jobs_api, core_api = _follow_apis([_job(active=1), _job(active=1), _complete()], RuntimeError("pod Pending"))
+    gen = follow_kubernetes_job(
+        ["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api
+    )
+    out: list = []
+    with patch("time.sleep") as sleep:
+        list(_until_return(gen, out))
+    assert len(out) == 1  # no event, just the RunResult
+    assert out[0].status == STATUS_SUCCEEDED
+    assert out[0].stdout == "end-read log"
+    assert sleep.call_count == 2  # a failed follow is retried at the next poll
+
+
+def test_closing_follow_kubernetes_job_early_deletes_the_job() -> None:
+    response = io.BytesIO(b'{"event": "a"}\n{"event": "b"}\n')
+    jobs_api, core_api = _follow_apis([_job(active=1)], response)
+    gen = follow_kubernetes_job(
+        ["floe", "run"], entity="orders", runner=_runner(), jobs_api=jobs_api, core_api=core_api
+    )
+    assert next(gen) == {"event": "a"}
+    gen.close()
+    name = jobs_api.create_namespaced_job.call_args.kwargs["body"]["metadata"]["name"]
+    jobs_api.delete_namespaced_job.assert_called_once_with(name, "data", propagation_policy="Background")
+    assert response.closed
