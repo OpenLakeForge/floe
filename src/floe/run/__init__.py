@@ -100,15 +100,16 @@ def _finished(
     name: str,
     report: dict[str, Any] | None,
     err: FloeError | None = None,
+    report_uri: str | None = None,
 ) -> None:
-    """`entity_finished`; a failed entity (no report) counts zeros and carries the error's `error_code` when known."""
+    """`entity_finished`; a failed entity (no report) counts zeros and carries the error's `error_code` when known, and has no `report_uri`."""
     keys = ("files", "files_skipped", "rows", "accepted", "rejected", "warnings", "errors")  # fmt: skip
     results: dict[str, int] = report["results"] if report else {}
     totals = {k: results.get(k if k == "files_skipped" else f"{k}_total", 0) for k in keys}  # fmt: skip
     status = "failed"
     if report:
         status = entity_outcome(report)[0]
-    emit("entity_finished", name=name, status=status, **totals, timings_ms=report["timings_ms"] if report else None, **_error_code(err))  # fmt: skip
+    emit("entity_finished", name=name, status=status, **totals, timings_ms=report["timings_ms"] if report else None, **_error_code(err), **({"report_uri": report_uri} if report_uri else {}))  # fmt: skip
 
 
 def run(
@@ -199,7 +200,7 @@ def run(
             report["timings_ms"]["list_ms"] = listing_ms[e.id]
         write_entity_report(run_path, id_path(e), report, client)
         states[e.id] = "completed"
-        _finished(emit, e.id, report)
+        _finished(emit, e.id, report, report_uri=f"{run_path}/{id_path(e)}/run.json")
         return report
 
     emit("run_started", config=config, report_base=report_path, **dagster_parent())
