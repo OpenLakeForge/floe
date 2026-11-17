@@ -35,10 +35,14 @@ def _manifest(tmp_path: Path, *, job_scope: str | None = "domain", split_runner:
     return path
 
 
-def _summary(tmp_path: Path, statuses: dict[str, str]) -> str:
+def _summary(tmp_path: Path, statuses: dict[str, str], reports: dict[str, dict[str, Any]] | None = None) -> str:
+    files: dict[str, str | None] = dict.fromkeys(statuses)
+    for name, report in (reports or {}).items():
+        files[name] = str(tmp_path / f"{name}.json")
+        Path(files[name]).write_text(json.dumps(report), encoding="utf-8")
     summary = {
         "entities": [
-            {"name": n, "status": s, "results": {"rows_total": 10, "accepted_total": 10}, "report_file": None}
+            {"name": n, "status": s, "results": {"rows_total": 10, "accepted_total": 10}, "report_file": files[n]}
             for n, s in statuses.items()
         ]
     }
@@ -55,6 +59,7 @@ def _run(
     selection=None,
     events: list[dict] | None = None,
     instance: DagsterInstance | None = None,
+    reports: dict[str, dict[str, Any]] | None = None,
     **manifest_kw: Any,
 ):
     """Materialize with the Kubernetes client mocked; returns the result and the Job API mock."""
@@ -73,7 +78,7 @@ def _run(
         "run_id": "r1",
         "status": "success",
         "exit_code": exit_code,
-        "summary_uri": _summary(tmp_path, statuses),
+        "summary_uri": _summary(tmp_path, statuses, reports),
     }
     core_api.list_namespaced_pod.return_value.items = [{"metadata": {"name": "pod-1"}}]
     core_api.read_namespaced_pod_log.return_value = "\n".join(json.dumps(e) for e in [*(events or []), finished])
@@ -314,3 +319,14 @@ def test_domain_scope_replays_the_floe_output_as_one_log_event(tmp_path: Path) -
     lines = floe_logs[0].splitlines()
     assert lines[: len(NAMES)] == [f"floe entity started run_id=r1 entity={name}" for name in NAMES]
     assert lines[-1].startswith("floe run finished")
+
+
+def test_domain_scope_failure_carries_the_rejection_threshold_of_the_aborted_entity(tmp_path: Path) -> None:
+    policy = {"max_rejection_rate": 0.25, "rejection_rate": 0.5, "max_rejection_rate_exceeded": True}
+    statuses = {"orders": "success", "returns": "aborted", "refunds": "success"}
+    result, _ = _run(tmp_path, statuses, exit_code=2, reports={"returns": {"files": [], "policy": policy}})
+
+    [event] = [e for e in result.all_events if e.event_type_value == "STEP_FAILURE"]
+    meta = event.event_specific_data.user_failure_data.metadata
+    assert meta["returns/floe/max_rejection_rate"].value == 0.25
+    assert meta["returns/floe/max_rejection_rate_exceeded"].value is True

@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from dagster import AssetCheckResult, AssetCheckSeverity, AssetCheckSpec
+from dagster import AssetCheckResult, AssetCheckSeverity, AssetCheckSpec, MetadataValue
 
 from .events import FloeRunFinished
 
@@ -28,6 +28,14 @@ _FAIL_FILE_STATUSES = {"rejected", "failed", "aborted", "error"}
 _WARN_FILE_STATUSES = {"warning", "warn"}
 
 
+def policy_metadata(policy: object) -> dict[str, Any]:
+    """`floe/<key>` for the rejection-threshold keys of a report's `policy` block (#1221); absent keys add nothing."""
+    if not isinstance(policy, Mapping):
+        return {}
+    wrap = {"max_rejection_rate": MetadataValue.float, "rejection_rate": MetadataValue.float, "max_rejection_rate_exceeded": MetadataValue.bool}  # fmt: skip
+    return {f"floe/{k}": w(policy[k]) for k, w in wrap.items() if isinstance(policy.get(k), (bool, int, float))}  # fmt: skip
+
+
 @dataclass(frozen=True)
 class FloeCheckContext:
     asset_key: Sequence[str]
@@ -38,6 +46,7 @@ class FloeCheckContext:
     entity_report_uri: str | None
     entity_status: str | None
     entity_stats: Mapping[str, Any]
+    policy: object = None
 
 
 def build_asset_check_specs(asset_key: Sequence[str]) -> list[AssetCheckSpec]:
@@ -64,6 +73,7 @@ def build_asset_check_results(
         entity_report_uri=entity_report_uri,
         entity_status=_as_str(stats.get("entity_status")),
         entity_stats=stats,
+        policy=entity_report.get("policy") if isinstance(entity_report, Mapping) else None,
     )
     report_files = _as_list(entity_report.get("files")) if isinstance(entity_report, Mapping) else []
     if not report_files:
@@ -111,6 +121,7 @@ def _build_summary_fallback_results(ctx: FloeCheckContext) -> list[AssetCheckRes
                 passed = False
                 severity = AssetCheckSeverity.WARN
             description = "Floe file status check derived from summary only (entity report unavailable)."
+            metadata.update(policy_metadata(ctx.policy))
         elif run_failed:
             passed = False
             description = "Floe run status indicates failure/abort; detailed entity report unavailable."
@@ -247,10 +258,13 @@ def _make_file_status_check_result(
     metadata["file_status_counts"] = dict(counts)
     metadata["failed_files"] = failed_file_count
     metadata["warn_files"] = warn_file_count
+    metadata.update(policy_metadata(ctx.policy))
 
     description = "Floe file-level statuses from entity report."
     if ctx.run_status in _TERMINAL_RUN_STATUSES:
         description = f"Floe run status is {ctx.run_status}; treating file status check as failed."
+    if isinstance(ctx.policy, Mapping) and ctx.policy.get("max_rejection_rate_exceeded") is True:
+        description += f" Rejection rate {ctx.policy.get('rejection_rate')} exceeds max_rejection_rate {ctx.policy.get('max_rejection_rate')}."  # fmt: skip
 
     return AssetCheckResult(
         asset_key=list(ctx.asset_key),

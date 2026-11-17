@@ -21,7 +21,7 @@ from dagster import (
     multi_asset,
 )
 
-from .asset_checks import build_asset_check_results, build_asset_check_specs
+from .asset_checks import build_asset_check_results, build_asset_check_specs, policy_metadata
 from .events import FloeRunFinished, last_run_finished, parse_json_event_lines, parse_run_finished, render_log_event
 from .k8s_status import STATUS_SUCCEEDED
 from .manifest import (
@@ -434,6 +434,7 @@ def _entity_events(
     if entity_report_uri:
         metadata["entity_report_uri"] = entity_report_uri
     metadata.update(_timing_metadata(entity_report_json))
+    metadata.update(policy_metadata((entity_report_json or {}).get("policy")))
     if result.failure_reason:
         metadata["failure_reason"] = result.failure_reason
     if result.status:
@@ -661,6 +662,7 @@ def _make_domain_multi_asset(
             or ((result.status is not None) and (result.status != STATUS_SUCCEEDED))
         )
         failures: list[str] = []
+        policy_meta: dict[str, Any] = {}
         not_run: list[str] = []
         for entity in chosen:
             status = None
@@ -688,6 +690,8 @@ def _make_domain_multi_asset(
             )
             if failure is not None:
                 failures.append(entity.name)
+                # the aggregate Failure below keeps each failed entity's rejection threshold (#1221)
+                policy_meta.update({f"{entity.name}/{k}": v for k, v in (failure.metadata or {}).items() if "rejection_rate" in k})  # fmt: skip
         # entity outcomes are kept, but a failed backend (or any non-zero run) still fails the step
         if failures or not_run or run_failed:
             if not_run:
@@ -698,6 +702,7 @@ def _make_domain_multi_asset(
                 metadata={
                     "failed_entities": failures,
                     "not_run_entities": not_run,
+                    **policy_meta,
                     **_failure_evidence(context, result.stdout, config_uri),
                 },
             )

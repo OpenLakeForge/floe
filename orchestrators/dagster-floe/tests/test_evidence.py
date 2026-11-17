@@ -140,3 +140,24 @@ def test_failed_run_with_an_unreadable_failure_report_keeps_the_failure(tmp_path
     meta = _failure_metadata(result)
     assert meta["floe/failure_report_uri"] == str(missing)
     assert meta["floe/failure_evidence"].startswith("unavailable:")
+
+
+def test_aborted_entity_failure_carries_the_rejection_threshold(tmp_path: Path) -> None:
+    policy = {"severity": "reject", "max_rejection_rate": 0.25, "rejection_rate": 0.5, "max_rejection_rate_exceeded": True}  # fmt: skip
+    result = _run(tmp_path, [], exit_code=2, report={"files": [], "policy": policy})
+
+    assert not result.success
+    meta = _failure_metadata(result)
+    assert meta["floe/max_rejection_rate"] == 0.25
+    assert meta["floe/rejection_rate"] == 0.5
+    assert meta["floe/max_rejection_rate_exceeded"] is True
+
+
+def test_accepted_output_carries_the_rejection_threshold_only_when_reported(tmp_path: Path) -> None:
+    policy = {"max_rejection_rate": 0.5, "rejection_rate": 0.25, "max_rejection_rate_exceeded": False}
+    out = _outputs(_run(tmp_path, [], exit_code=0, report={"files": [], "policy": policy}))
+    assert out["accepted"]["floe/max_rejection_rate"] == 0.5
+    assert out["accepted"]["floe/max_rejection_rate_exceeded"] is False
+
+    out = _outputs(_run(tmp_path, [], exit_code=0, report={"files": [], "policy": {"severity": "reject"}}))
+    assert not [k for k in out["accepted"] if "rejection_rate" in k]
