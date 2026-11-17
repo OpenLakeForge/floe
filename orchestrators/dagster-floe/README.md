@@ -35,13 +35,14 @@ Prereqs:
 
 ```bash
 pip install dagster-floe
-pip install "dagster-floe[floe]"   # also installs floe-python>=0.10,<0.11 for the in-process runner
+pip install "dagster-floe[floe]"   # also installs floe-python>=0.10.2,<0.11 for the in-process runner
 ```
 
 ## Supported Floe versions
 
 | dagster-floe | Floe | Manifest `spec_version` |
 | --- | --- | --- |
+| 0.6.1 | 0.8.3 or newer (the `floe` extra installs 0.10.2; per-entity streaming and the rejection threshold need 0.10.2) | `0.8`, `0.9`, `0.10` |
 | 0.6.0 | 0.8.3 or newer (the `floe` extra installs 0.10) | `0.8`, `0.9`, `0.10` |
 | 0.5.0 | 0.8.3 or newer (the `floe` extra installs 0.9) | `0.8`, `0.9` |
 | 0.4.3 | 0.8.3 or newer (the `floe/full_refresh` run tag on a `merge_scd1` entity needs 0.8.6) | `0.8` |
@@ -54,7 +55,7 @@ pip install "dagster-floe[floe]"   # also installs floe-python>=0.10,<0.11 for t
 
 With a `kubernetes_job` runner and `job_scope: domain`, an entity's checks and outputs are written as soon as Floe
 reports that entity finished, while the Job still runs, so the Dagster event writes overlap the run. This needs a Floe
-image newer than 0.10.1 (its `entity_finished` carries `report_uri`); an older image reports every entity at run end.
+image 0.10.2 or newer (its `entity_finished` carries `report_uri`); an older image reports every entity at run end.
 A streamed output does not carry the run-level metadata (`summary_uri`, `status`, `exit_code`, `backend_*`), and a
 failed or aborted entity is reported at run end as before.
 

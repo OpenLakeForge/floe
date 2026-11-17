@@ -4,10 +4,6 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-- dagster-floe: a `job_scope: domain` step yields each entity's checks and outputs as that entity's `entity_finished` arrives, while the Job still runs, instead of after the whole run (#1227). It needs a Floe image whose `entity_finished` carries `report_uri` (#1225); an older image reports at run end as before. Streamed outputs leave out the run-level metadata (`summary_uri`, `status`, `exit_code`, `backend_*`, `failure_reason`); a failed or aborted entity is still reported at run end.
-- dagster-floe surfaces the rejection threshold (#1221): when an entity report's `policy` block carries `max_rejection_rate`, `rejection_rate` and `max_rejection_rate_exceeded`, they appear as `floe/max_rejection_rate`, `floe/rejection_rate` and `floe/max_rejection_rate_exceeded` metadata on the accepted asset, on the Failure of an aborted entity and on the `floe_file_status` check, whose description names the threshold and the rate when it was exceeded.
-- dagster-floe logs a finished run's Floe output as one Dagster log message, a line per Floe event, instead of one message per line (#1210). Each message is an event-log write: a 25-entity domain step wrote about 100 fewer events.
-
 ## v0.10.2
 
 - `policy.max_rejection_rate` (a number in `[0, 1]`, `severity: reject` only) aborts an entity whose rejected rows exceed that share of its input rows (#1220). The accepted rows are committed, the entity ends `aborted` (exit `2`) and its `run.json` `policy` block records the threshold, the observed `rejection_rate` and `max_rejection_rate_exceeded`. It can be set per domain and per entity, and travels in the manifest as the optional `policy_max_rejection_rate`.
@@ -238,6 +234,14 @@ dagster-floe 0.5 or airflow-floe 0.3 with it.
   DuckDB defaulted to 80% of the host's RAM, so a large merge in a Kubernetes pod was OOM-killed
   instead of spilling. It now caps memory at 4GB and spills to a temporary directory (at most
   50GB, removed afterwards). Size pods at 6 GiB or more (see `docs/write_modes.md`).
+
+## dagster-floe v0.6.1
+
+Use it with Floe 0.10.2 for per-entity streaming and the rejection threshold; older Floe 0.10 images keep today's end-of-run reporting.
+
+- A `job_scope: domain` step yields each entity's checks and outputs as that entity's `entity_finished` arrives, while the Job still runs, instead of after the whole run (#1227). It needs a Floe image whose `entity_finished` carries `report_uri` (#1225); an older image reports at run end as before. Streamed outputs leave out the run-level metadata (`summary_uri`, `status`, `exit_code`, `backend_*`, `failure_reason`); a failed or aborted entity is still reported at run end.
+- Surfaces the rejection threshold (#1221): when an entity report's `policy` block carries `max_rejection_rate`, `rejection_rate` and `max_rejection_rate_exceeded`, they appear as `floe/max_rejection_rate`, `floe/rejection_rate` and `floe/max_rejection_rate_exceeded` metadata on the accepted asset, on the Failure of an aborted entity and on the `floe_file_status` check, whose description names the threshold and the rate when it was exceeded.
+- Logs a finished run's Floe output as one Dagster log message, a line per Floe event, instead of one message per line (#1210). Each message is an event-log write: a 25-entity domain step wrote about 100 fewer events.
 
 ## dagster-floe v0.6.0
 
