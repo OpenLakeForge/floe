@@ -21,7 +21,7 @@ from dagster import (
     multi_asset,
 )
 
-from .asset_checks import build_asset_check_results, build_asset_check_specs
+from .asset_checks import build_asset_check_results, build_asset_check_specs, policy_metadata
 from .events import FloeRunFinished, last_run_finished, parse_json_event_lines, parse_run_finished, render_log_event
 from .k8s_status import STATUS_SUCCEEDED
 from .manifest import (
@@ -434,6 +434,7 @@ def _entity_events(
     if entity_report_uri:
         metadata["entity_report_uri"] = entity_report_uri
     metadata.update(_timing_metadata(entity_report_json))
+    metadata.update(policy_metadata((entity_report_json or {}).get("policy")))
     if result.failure_reason:
         metadata["failure_reason"] = result.failure_reason
     if result.status:
