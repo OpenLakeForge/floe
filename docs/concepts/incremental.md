@@ -198,6 +198,12 @@ Snapshot expiry must keep at least 7 days and 10 snapshots. If the snapshots sin
 run's claim were expired, Floe can't tell whether that run committed: the run fails and
 asks for `floe state reset`.
 
+A Parquet `append` has no snapshots to check. In `file` mode with a unique key, a retry of
+the same pending files replaces the dead run's parts (#1198). If new files arrived before the
+retry, the dead run's parts stay in place and count as existing keys, so the retry rejects
+those rows as duplicates: they appear in the rejected output, never twice in the accepted
+output (known limitation, #1203). Retry before new files land to avoid it.
+
 ## CAS And Concurrent Runs
 
 Remote state uses compare-and-swap (CAS) writes so two runners cannot silently
