@@ -4,7 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-- `airflow-floe` renders `{manifest_uri}` in a manifest's `execution` args (#1285), so a manifest from `floe manifest generate` runs: the local runner gets the manifest path the DAG was built from, `kubernetes_job` and `databricks_job` need a remote manifest URI. A token still unrendered raises a `ValueError` naming it.
+- `airflow-floe` renders `{manifest_uri}` in a manifest's `execution` args (#1285), so a manifest from `floe manifest generate` runs: the local runner gets the manifest path the DAG was built from, `kubernetes_job` and `databricks_job` need a remote manifest URI. `{run_id}` renders to the DAG run id plus the task id, limited to `[A-Za-z0-9_.-]`. Any other token still unrendered raises a `ValueError` naming it.
 - An emptied incremental state and `floe state reset` now leave an empty `state.json` on storage instead of deleting it (#1271); an empty state reads as no state, and `StorageClient` no longer has `delete_conditional`.
 
 ## v0.10.4

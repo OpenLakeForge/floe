@@ -52,6 +52,7 @@ class FloeRunHook:
         *,
         execution: ManifestExecution | None = None,
         manifest_uri: str | None = None,
+        run_id: str | None = None,
     ) -> list[str]:
         if execution is None:
             cmd = self.floe_cmd or "floe"
@@ -62,11 +63,11 @@ class FloeRunHook:
 
         command = self.floe_cmd or execution.entrypoint
         args = [*_split_cmd(command)]
-        args.extend(_render_tokens(execution.base_args, config_path, manifest_uri))
+        args.extend(_render_tokens(execution.base_args, config_path, manifest_uri, run_id))
         if entities:
             args.extend(
                 _render_entity_tokens(
-                    execution.per_entity_args, config_path, entities, manifest_uri
+                    execution.per_entity_args, config_path, entities, manifest_uri, run_id
                 )
             )
         return args
@@ -79,6 +80,7 @@ class FloeRunHook:
         execution: ManifestExecution | None = None,
         runner_definition: ManifestRunnerDefinition | None = None,
         manifest_uri: str | None = None,
+        run_id: str | None = None,
         log_stdout: Any | None = None,
         log_stderr: Any | None = None,
     ) -> dict[str, Any]:
@@ -88,6 +90,7 @@ class FloeRunHook:
                 entities=entities,
                 execution=execution,
                 manifest_uri=_remote_manifest_uri(manifest_uri),
+                run_id=run_id,
             )
             return run_kubernetes_job(
                 args,
@@ -101,6 +104,7 @@ class FloeRunHook:
                 entities=entities,
                 execution=execution,
                 manifest_uri=_remote_manifest_uri(manifest_uri),
+                run_id=run_id,
             )
             return run_databricks_job(
                 cmd_args=args,
@@ -120,7 +124,11 @@ class FloeRunHook:
             )
 
         args = self.build_args(
-            config_path, entities=entities, execution=execution, manifest_uri=manifest_uri
+            config_path,
+            entities=entities,
+            execution=execution,
+            manifest_uri=manifest_uri,
+            run_id=run_id,
         )
         process = subprocess.Popen(
             args,
@@ -222,6 +230,9 @@ class FloeRunOperator(BaseOperator):  # pyright: ignore[reportGeneralTypeIssues]
             manifest_uri=(
                 self.manifest_context.manifest_path if self.manifest_context is not None else None
             ),
+            run_id=_floe_run_id(
+                context, getattr(self, "task_id", "")
+            ),  # the no-Airflow stub has no task_id
             log_stdout=log_stdout,
             log_stderr=log_stderr,
         )
@@ -365,6 +376,14 @@ def _remote_manifest_uri(manifest_uri: str | None) -> str | None:
     return None
 
 
+def _floe_run_id(context: dict[str, Any] | None, task_id: str) -> str | None:
+    """`<dag run id>_<task id>` (like dagster-floe's `<run id>_<op>`), limited to `[A-Za-z0-9_.-]`."""
+    dag_run_id = context.get("run_id") if isinstance(context, dict) else None
+    if not dag_run_id:
+        return None
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", f"{dag_run_id}_{task_id}")
+
+
 def _render(token: str, values: dict[str, str | None]) -> str:
     for name, value in values.items():
         if value is not None:
@@ -379,16 +398,24 @@ def _render(token: str, values: dict[str, str | None]) -> str:
 
 
 def _render_tokens(
-    tokens: list[str], config_uri: str, manifest_uri: str | None = None
+    tokens: list[str],
+    config_uri: str,
+    manifest_uri: str | None = None,
+    run_id: str | None = None,
 ) -> list[str]:
-    values = {"config_uri": config_uri, "manifest_uri": manifest_uri}
+    values = {"config_uri": config_uri, "manifest_uri": manifest_uri, "run_id": run_id}
     return [_render(token, values) for token in tokens]
 
 
 def _render_entity_tokens(
-    tokens: list[str], config_uri: str, entities: list[str], manifest_uri: str | None = None
+    tokens: list[str],
+    config_uri: str,
+    entities: list[str],
+    manifest_uri: str | None = None,
+    run_id: str | None = None,
 ) -> list[str]:
     values = {
+        "run_id": run_id,
         "config_uri": config_uri,
         "manifest_uri": manifest_uri,
         "entity_name": ",".join(entities),
