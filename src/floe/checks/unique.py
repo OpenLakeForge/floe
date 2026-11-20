@@ -39,16 +39,14 @@ class UniqueResult:
 
 def resolve_unique_keys(
     unique_keys: Sequence[Sequence[str]] | None,
-    unique_columns: Sequence[str],
     primary_key: Sequence[str] | None,
 ) -> list[list[str]]:
-    """Resolve the unique keys: `unique_keys`, else the `unique: true` columns, then the primary key.
+    """Resolve the unique keys: `unique_keys`, then the primary key.
 
     Names are trimmed; empty and repeated keys are dropped.
     """
-    keys = unique_keys if unique_keys is not None else [[c] for c in unique_columns]
     resolved: list[list[str]] = []
-    for key in [*keys, *([primary_key] if primary_key else [])]:
+    for key in [*(unique_keys or []), *([primary_key] if primary_key else [])]:
         names = [c.strip() for c in key]
         if names and names not in resolved:
             resolved.append(names)

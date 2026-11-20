@@ -250,6 +250,10 @@ def test_entity_errors(value: object, expected: str) -> None:
             {"schema": {"columns": [{"name": "id", "type": "string", "trim": True}]}},
             "schema.columns[0]: schema.columns.trim is not supported (see CHANGELOG)",
         ),
+        (  # #1259: replaced by schema.unique_keys
+            {"schema": {"columns": [{"name": "id", "type": "string", "unique": True}]}},
+            "schema.columns[0]: schema.columns.unique is not supported (see CHANGELOG); use schema.unique_keys",
+        ),
         (
             {"incremental_mode": " Row "},
             "incremental_mode=row is not supported (see CHANGELOG)",

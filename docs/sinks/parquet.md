@@ -50,9 +50,9 @@ Available options:
 ## Peak memory on large inputs
 
 Floe holds no rows beyond the current input chunk and part, for the accepted and the Parquet
-rejected sink alike. The one exception is an entity with `primary_key`, `unique_keys` or
-`columns[].unique`: it keeps every distinct key it has seen in memory for the whole run, to find
-duplicates across chunks and files, and the settings below do not reclaim that memory.
+rejected sink alike. The one exception is an entity with `primary_key` or `unique_keys`: it keeps
+every distinct key it has seen in memory for the whole run, to find duplicates across chunks and
+files, and the settings below do not reclaim that memory.
 
 Even without unique keys, the process's peak RSS still grows with the input size. Two effects of
 Polars cause most of it, neither a leak:

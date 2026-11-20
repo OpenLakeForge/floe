@@ -39,4 +39,4 @@ def read_orc(path: Path, columns: Collection[str] = ()) -> Iterator[OrcChunk]:
         if done == 0:
             yield OrcChunk(0, pl.DataFrame(orc.read(columns=picked)))
     except (pl.exceptions.PolarsError, pa.ArrowException, OSError) as err:
-        raise FloeIoError(f"orc read failed: {err}") from err
+        raise FloeIoError(f"orc read failed: {err}", code="io_read_error") from err

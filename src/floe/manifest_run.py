@@ -107,13 +107,18 @@ def _sink(t: Json, write_mode: str, named_local: bool) -> Json:
 
 
 def _schema(s: Json) -> Json:
-    keys = ("source", "nullable", "unique")
+    keys = ("source", "nullable")
     for c in s["columns"]:
         for key in ("width", "trim"):
             if c.get(key) is not None:
                 raise FloeConfigError(
                     f"schema.columns.{key} {NOT_SUPPORTED}", code="config_not_supported"
                 )
+        if c.get("unique") is not None:
+            raise FloeConfigError(
+                f"schema.columns.unique {NOT_SUPPORTED}; use schema.unique_keys",
+                code="config_not_supported",
+            )
     return {
         "columns": [
             {"name": c["name"], "column_type": c["column_type"]}

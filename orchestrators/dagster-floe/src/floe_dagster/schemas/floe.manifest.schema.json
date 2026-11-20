@@ -965,12 +965,6 @@
                         "boolean",
                         "null"
                       ]
-                    },
-                    "unique": {
-                      "type": [
-                        "boolean",
-                        "null"
-                      ]
                     }
                   }
                 }
