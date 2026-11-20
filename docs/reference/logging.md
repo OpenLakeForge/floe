@@ -51,6 +51,7 @@ Cumulative wall-clock milliseconds per phase of one entity, summed over its file
 ### `--log-format text`
 
 - Prints the same lifecycle events as plain text lines.
+- A failure line (`log`, `entity_finished`) adds `error_code=<code>` when the error carries a typed code; see [Error codes](errors.md).
 - Also prints the human end-of-run summary.
 
 ## Examples

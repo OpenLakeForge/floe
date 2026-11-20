@@ -10,7 +10,7 @@ import polars as pl
 import pytest
 
 from floe.config.parse import parse_config
-from floe.errors import FloeConfigError, FloeRunError
+from floe.errors import ErrorCode, FloeConfigError, FloeRunError
 from floe.run import run
 
 ENTITY = """\
@@ -275,7 +275,7 @@ def test_timings_ms_has_null_rejected_write_and_archive_times_for_clean_input_an
     assert isinstance(timings["archive_ms"], int)
 
 
-def _fail_listing(monkeypatch: pytest.MonkeyPatch, **kw: str) -> None:
+def _fail_listing(monkeypatch: pytest.MonkeyPatch, **kw: ErrorCode) -> None:
     def boom(*a: Any, **k: Any) -> Any:
         raise FloeRunError("listing failed", **kw)
 
@@ -312,12 +312,12 @@ def test_failure_events_carry_error_code(
 ) -> None:
     """#1156: `error_code` on the failure-report log and the failed `entity_finished`, only when the error has a code."""
     path, root = setup(tmp_path, ["a"])
-    _fail_listing(monkeypatch, code="storage_denied")
+    _fail_listing(monkeypatch, code="run_invalid_setup")
     events: list[dict[str, Any]] = []
     with pytest.raises(FloeRunError):
         run(path, root, observer=events.append)
     assert events[-1]["code"] == "run_failure_report"
-    assert events[-1]["error_code"] == "storage_denied"
+    assert events[-1]["error_code"] == "run_invalid_setup"
 
     _fail_listing(monkeypatch)
     events.clear()
@@ -328,14 +328,16 @@ def test_failure_events_carry_error_code(
     monkeypatch.undo()
 
     def boom(*a: Any, **k: Any) -> Any:
-        raise FloeRunError("entity failed", code="bad_row")
+        raise FloeRunError("entity failed", code="run_invalid_input")
 
     monkeypatch.setattr(sys.modules["floe.run"], "run_entity", boom)
     events.clear()
     with pytest.raises(FloeRunError):
         run(path, root, observer=events.append)
     finished = next(e for e in events if e["event"] == "entity_finished")
-    assert finished["status"] == "failed" and finished["error_code"] == "bad_row"
+    assert (
+        finished["status"] == "failed" and finished["error_code"] == "run_invalid_input"
+    )
 
 
 @pytest.mark.parametrize("workers", [1, 2])
