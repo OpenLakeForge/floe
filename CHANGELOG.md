@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- **Breaking: `schema.columns[].unique` is removed (#1259).** `floe validate` and `floe run` fail with `is not supported (see CHANGELOG); use schema.unique_keys` on a column carrying `unique`, true or false, and `floe run --manifest` fails the same way on a manifest that carries it; regenerate such a manifest with `floe manifest generate`. Replace each `unique: true` column `c` with an entry `[c]` in `schema.unique_keys`. The manifest schema and the config schemas drop `unique`.
 - `floe add-entity` no longer writes `unique: false` on each generated column (#1259); the flag was a no-op default.
 - `airflow-floe` renders `{manifest_uri}` in a manifest's `execution` args (#1285), so a manifest from `floe manifest generate` runs: the local runner gets the manifest path the DAG was built from, `kubernetes_job` and `databricks_job` need a remote manifest URI. `{run_id}` renders to the DAG run id plus the task id, limited to `[A-Za-z0-9_.-]`. Any other token still unrendered raises a `ValueError` naming it.
 - An emptied incremental state and `floe state reset` now leave an empty `state.json` on storage instead of deleting it (#1271); an empty state reads as no state, and `StorageClient` no longer has `delete_conditional`.

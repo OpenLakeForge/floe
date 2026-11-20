@@ -30,11 +30,11 @@ entities:
     policy:
       severity: "reject"
     schema:
+      unique_keys: [["employee_id"]]
       columns:
         - name: "employee_id"
           type: "string"
           nullable: false
-          unique: true
         - name: "start_date"
           type: "date"
           nullable: false
@@ -60,11 +60,11 @@ entities:
     policy:
       severity: "reject"
     schema:
+      unique_keys: [["order_id"]]
       columns:
         - name: "order_id"
           type: "string"
           nullable: false
-          unique: true
         - name: "created_at"
           type: "datetime"
           nullable: false
@@ -90,11 +90,11 @@ entities:
     policy:
       severity: "reject"
     schema:
+      unique_keys: [["invoice_id"]]
       columns:
         - name: "invoice_id"
           type: "string"
           nullable: false
-          unique: true
         - name: "order_id"
           type: "string"
           nullable: false

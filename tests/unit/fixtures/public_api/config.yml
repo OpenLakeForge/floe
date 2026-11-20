@@ -31,11 +31,11 @@ entities:
     policy:
       severity: "reject"
     schema:
+      unique_keys: [["customer_id"]]
       columns:
         - name: "customer_id"
           type: "string"
           nullable: false
-          unique: true
         - name: "email"
           type: "string"
           nullable: true
