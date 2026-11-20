@@ -115,7 +115,7 @@ def _local_files(
         if not files:
             raise no_match(
                 os.path.dirname(pattern), os.path.basename(pattern)
-            )  # as written: Rust keeps a leading `./`
+            )  # as written, a leading `./` is kept
         return files, "directory"
     base = normalize_local_path(config_dir / raw)
     if base.is_file():
@@ -307,6 +307,6 @@ def localize_input(
 
 
 def input_hash(entity: EntityConfig, files: Sequence[InputFile]) -> str:
-    """`floe.input_hash`: the entity and its claimed files with size and mtime (ADR "Retry guard"; Rust has none)."""
+    """`floe.input_hash`: the entity and its claimed files with size and mtime (ADR "Retry guard")."""
     claimed = sorted([f.source_uri, f.source_size, f.source_mtime] for f in files)
     return hashlib.sha256(json.dumps([entity.id, claimed]).encode()).hexdigest()
