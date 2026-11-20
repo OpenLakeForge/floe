@@ -49,7 +49,7 @@ PARQUET_COMPRESSIONS = ("snappy", "gzip", "zstd", "uncompressed")
 PARTITION_TRANSFORMS = ("identity", "year", "month", "day", "hour", "bucket")  # D12
 PARTITION_TOKENS = ("yyyy", "MM", "dd", "HH", "batch")  # D28
 PARTITION_TOKEN = re.compile(r"\{([^{}]*)\}")
-# D2 (#619): Iceberg accepts the merge modes, alongside Delta (D1) and DuckDB (D1).
+# D2 (#619): Iceberg accepts the merge modes; Parquet does not.
 SINK_WRITE_MODES: dict[str, tuple[WriteMode, ...]] = {
     "parquet": ("overwrite", "append"),
     "iceberg": ("overwrite", "append", "merge_scd1", "merge_scd2"),

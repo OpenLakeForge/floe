@@ -55,7 +55,7 @@ _T = TypeVar("_T", bound=str)
 _R = TypeVar("_R")
 _M = TypeVar("_M", bound=BaseModel)
 _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
-# Trim strips Unicode White_Space only; `str.strip()` also strips U+001C to U+001F
+# Trimming strips Unicode White_Space only; `str.strip()` would also strip U+001C to U+001F
 WHITE_SPACE = "\t\n\v\f\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
 
 
