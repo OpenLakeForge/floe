@@ -30,7 +30,7 @@ def read_avro(
         # the checks hold at once. Switch to a streaming reader if Avro files outgrow memory.
         df = pl.read_avro(path)
     except (pl.exceptions.PolarsError, OSError) as err:
-        raise FloeIoError(f"avro read failed: {err}") from err
+        raise FloeIoError(f"avro read failed: {err}", code="io_read_error") from err
     picked = [name for name in df.columns if name in columns]
     if picked:
         df = df.select(picked)

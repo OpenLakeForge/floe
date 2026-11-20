@@ -120,6 +120,7 @@ def _cell(
             raise FloeIoError(
                 f"non-scalar value for selector {source} at {where}",
                 rule="json_selector_non_scalar",
+                code="io_read_error",
             )
         return _compact(row)
     if isinstance(row, bool):
@@ -170,24 +171,32 @@ def json_records(path: Path, mode: str) -> Iterator[tuple[str, Any]]:
                         value = json_loads(line)
                     except ValueError as err:  # includes UnicodeDecodeError
                         raise FloeIoError(
-                            f"json parse error at line {number}: {err}"
+                            f"json parse error at line {number}: {err}",
+                            code="io_read_error",
                         ) from err
                     if not _is(value, dict):
-                        raise FloeIoError(f"expected json object at line {number}")
+                        raise FloeIoError(
+                            f"expected json object at line {number}",
+                            code="io_read_error",
+                        )
                     yield f"line {number}", value
             return
         # ponytail: array mode parses the whole file in memory; stream if arrays outgrow it
         try:
             array: Any = json_loads(path.read_text(encoding="utf-8"))
         except ValueError as err:
-            raise FloeIoError(f"json parse error: {err}") from err
+            raise FloeIoError(f"json parse error: {err}", code="io_read_error") from err
     except OSError as err:
-        raise FloeIoError(f"failed to read json at {path}: {err}") from err
+        raise FloeIoError(
+            f"failed to read json at {path}: {err}", code="io_read_error"
+        ) from err
     if not _is(array, list):
-        raise FloeIoError("expected json array at root")
+        raise FloeIoError("expected json array at root", code="io_read_error")
     for index, value in enumerate(array):
         if not _is(value, dict):
-            raise FloeIoError(f"expected json object at index {index}")
+            raise FloeIoError(
+                f"expected json object at index {index}", code="io_read_error"
+            )
         yield f"index {index}", value
 
 
@@ -209,13 +218,16 @@ def read_json(
     mode = options.json_mode or "array"
     if mode not in ("array", "ndjson"):
         raise FloeIoError(
-            f"unsupported source.options.json_mode={mode} (allowed: array, ndjson)"
+            f"unsupported source.options.json_mode={mode} (allowed: array, ndjson)",
+            code="io_invalid_option",
         )
     names = [c.source if c.source is not None else c.name for c in columns]
     if len(set(names)) != len(names):
         dup = next(n for n in names if names.count(n) > 1)
         raise FloeIoError(
-            f"duplicate json selector source: {dup}", rule="json_selector_invalid"
+            f"duplicate json selector source: {dup}",
+            rule="json_selector_invalid",
+            code="io_invalid_option",
         )
     plans: list[Selector] = []
     for name in names:
@@ -223,7 +235,9 @@ def read_json(
             plans.append(parse_selector(name))
         except ValueError as err:
             raise FloeIoError(
-                f"invalid selector {name}: {err}", rule="json_selector_invalid"
+                f"invalid selector {name}: {err}",
+                rule="json_selector_invalid",
+                code="io_invalid_option",
             ) from err
 
     def frame(rows: list[list[str | None]]) -> pl.DataFrame:

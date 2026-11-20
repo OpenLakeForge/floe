@@ -66,12 +66,15 @@ def _scan_args(options: SourceOptions) -> _Args:
     separator = ";" if options.separator is None else options.separator
     if len(separator.encode()) != 1:
         raise FloeConfigError(
-            f"separator must be a single byte, got {json.dumps(separator, ensure_ascii=False)}"
+            f"separator must be a single byte, got {json.dumps(separator, ensure_ascii=False)}",
+            code="config_invalid_value",
         )
     raw = "utf8" if options.encoding is None else options.encoding
     encoding = _ENCODINGS.get(raw.lower().replace("-", "").replace("_", ""))
     if encoding is None:
-        raise FloeConfigError(f"unsupported encoding: {raw}")
+        raise FloeConfigError(
+            f"unsupported encoding: {raw}", code="config_invalid_value"
+        )
     return _Args(
         separator, encoding, options.null_values or None, options.header is not False
     )
@@ -86,7 +89,9 @@ def _columns(path: Path, args: _Args, declared: Sequence[str]) -> list[str]:
     except (pl.exceptions.PolarsError, OSError) as err:
         # The message keeps the error kind: `no data: empty CSV`
         kind = "no data: " if isinstance(err, pl.exceptions.NoDataError) else ""
-        raise FloeIoError(f"csv header read failed: {kind}{err}") from err
+        raise FloeIoError(
+            f"csv header read failed: {kind}{err}", code="io_read_error"
+        ) from err
     names = list(declared[:width])
     return names + [f"extra_column_{i + 1}" for i in range(len(declared), width)]
 
@@ -122,7 +127,7 @@ def read_csv(
             done += df.height
     except pl.exceptions.ComputeError as err:
         if RAGGED_MESSAGE not in str(err):
-            raise FloeIoError(f"csv read failed: {err}") from err
+            raise FloeIoError(f"csv read failed: {err}", code="io_read_error") from err
         # ponytail: the ragged-row pass reads the file again in Python's csv module, only for files
         # that have such rows; a Polars option to flag them would replace it.
         counts = _field_counts(path, args, done + int(args.has_header))
@@ -134,9 +139,11 @@ def read_csv(
                 yield CsvChunk(done, df, pl.Series(mask, dtype=pl.Boolean))
                 done += df.height
         except pl.exceptions.PolarsError as ragged_err:
-            raise FloeIoError(f"csv read failed: {ragged_err}") from ragged_err
+            raise FloeIoError(
+                f"csv read failed: {ragged_err}", code="io_read_error"
+            ) from ragged_err
     except pl.exceptions.PolarsError as err:
-        raise FloeIoError(f"csv read failed: {err}") from err
+        raise FloeIoError(f"csv read failed: {err}", code="io_read_error") from err
     if done == 0:
         empty = pl.DataFrame(schema=dict.fromkeys(names, pl.String))
         yield CsvChunk(0, empty, pl.Series([], dtype=pl.Boolean))
