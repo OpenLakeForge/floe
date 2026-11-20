@@ -79,7 +79,7 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
     out = tmp / "out"
     files: list[dict[str, Any]] = []
     accepted: list[pl.DataFrame] = []
-    for i, path in enumerate(paths):
+    for path in paths:
         df = normalize_columns(read(entity, path), strategy)
         # the XML probe (top-level child names) is not ported: the case's are name, addr, price
         inputs = (
@@ -120,7 +120,7 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
         accepted.append(good)
         rejected_path = None
         if bad.height:
-            mode = "overwrite" if i == 0 else "append"
+            mode = "append"
             written = write_rejected(
                 bad, LocalClient(), f"local://{out}/rejected/{entity.name}", mode
             )

@@ -896,7 +896,8 @@ def test_1166_raw_copies_and_row_parts_do_not_overwrite_each_other(tmp_path: Pat
     files = {Path(f["input_file"]).name: f["output"]["rejected_path"] for f in run_entity(entity, tmp_path, "0.3").report["files"]}  # fmt: skip
     rejected = tmp_path / "out" / "rejected"
     assert pl.read_parquet(rejected / "part-00000.parquet")["id"].to_list() == [1]
-    assert pl.read_parquet(rejected / "rows" / "part-00000.parquet")["id"].to_list() == ["x"]  # fmt: skip
+    [row_part] = (rejected / "rows").glob("part-*.parquet")
+    assert pl.read_parquet(row_part)["id"].to_list() == ["x"]
     assert files == {"part-00000.parquet": str(rejected / "part-00000.parquet"), "z.parquet": str(rejected / "rows")}  # fmt: skip
 
 

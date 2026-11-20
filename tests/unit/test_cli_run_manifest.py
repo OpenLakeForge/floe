@@ -25,6 +25,9 @@ VOLATILE = {
     "spec_version",
     "version",
 }
+PART_NAME = re.compile(
+    r"part-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)  # a keyed part, named from the file's size and mtime
 ARCHIVE_NAME = re.compile(
     r"__run-.+?__src-[0-9a-f]{16}"
 )  # hashes the absolute source URI
@@ -42,7 +45,7 @@ def _mask(value: Any, root: str) -> Any:
     if isinstance(value, list):
         return [_mask(v, root) for v in cast(list[Any], value)]
     if isinstance(value, str):
-        return ARCHIVE_NAME.sub("__run-<id>", value.replace(root, "<ROOT>"))
+        return PART_NAME.sub("part-<uuid>", ARCHIVE_NAME.sub("__run-<id>", value.replace(root, "<ROOT>")))  # fmt: skip
     return value
 
 
@@ -163,7 +166,10 @@ def test_events_and_output_match_the_config_run(
         timing = re.compile(
             r'((?:ts_ms|elapsed_ms|report_write_ms)(?:":|=))\d+|("timings_ms":)\{[^}]*\}'
         )
-        return code, timing.sub(r"\1\2T", out), timing.sub(r"\1\2T", err)
+        out, err = (
+            PART_NAME.sub("part-<uuid>", timing.sub(r"\1\2T", x)) for x in (out, err)
+        )
+        return code, out, err
 
     by_config = copy_case(case, tmp_path / "c")
     expected = console(by_config, "-c", "config.yml")

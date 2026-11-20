@@ -77,7 +77,7 @@ def test_casts_case_matches_rust_rejected_rows() -> None:
         ("day", "date"), ("ts", "datetime"), ("small", "int32"), ("note", "string"),
     ]  # fmt: skip
     rejected, expected = check_case(
-        "casts", "casts.csv", "casts/part-00000.csv", columns, ["id", "qty"]
+        "casts", "casts.csv", "casts/part-UUID.csv", columns, ["id", "qty"]
     )
     assert expected.height == 18
     assert_same_errors(rejected, expected)
@@ -88,7 +88,7 @@ def test_not_null_case_matches_rust_rejected_rows() -> None:
     rejected, expected = check_case(
         "example/standalone",
         "orders.csv",
-        "orders/part-00000.csv",
+        "orders/part-UUID.csv",
         [("id", "string"), ("item", "string")],
         ["id"],
     )
@@ -104,7 +104,7 @@ def test_primary_key_case_matches_rust_rejected_rows() -> None:
     rejected, expected = check_case(
         "mismatch",
         "customers.csv",
-        "customers/part-00000.csv",
+        "customers/part-UUID.csv",
         columns,
         ["tenant", "code"],
         separator=";",
@@ -121,7 +121,7 @@ def test_unique_pii_case_matches_rust_rejected_rows() -> None:
     rejected, expected = check_case(
         "unique_pii",
         "a.csv",
-        "orders/part-00000.csv",
+        "orders/part-UUID.csv",
         columns,
         ["customer_id", "amount"],
     )

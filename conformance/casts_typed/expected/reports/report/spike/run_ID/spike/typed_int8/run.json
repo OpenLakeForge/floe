@@ -51,8 +51,8 @@
     "part_files": [
       "part-00000.parquet"
     ],
-    "total_bytes_written": 934,
-    "avg_file_size_mb": 0.0008907318115234375,
+    "total_bytes_written": 1006,
+    "avg_file_size_mb": 0.0009593963623046875,
     "small_files_count": 1
   },
   "schema_evolution": {
@@ -86,7 +86,7 @@
       },
       "output": {
         "accepted_path": "local://<ROOT>/out/accepted/typed_int8",
-        "rejected_path": "<ROOT>/out/rejected/typed_int8/part-00000.csv",
+        "rejected_path": "<ROOT>/out/rejected/typed_int8/part-<uuid>.csv",
         "errors_path": null,
         "archived_path": null
       },
