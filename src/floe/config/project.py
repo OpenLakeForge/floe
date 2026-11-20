@@ -128,7 +128,8 @@ def config_version(raw: str) -> tuple[int, int]:
     version = (int(match[1]), int(match[2])) if match else (2**64, 0)
     if max(version) >= 2**64:
         raise FloeConfigError(
-            f'root.version={raw} is invalid; expected numeric major.minor format like "0.1"'
+            f'root.version={raw} is invalid; expected numeric major.minor format like "0.1"',
+            code="config_version",
         )
     return version
 
@@ -156,11 +157,15 @@ def parse_domain(item: object, version: str) -> DomainConfig:
     defaults = None
     if "defaults" in hash:
         if config_version(version) < V0_3:
-            raise FloeConfigError('domains.defaults requires root.version >= "0.3"')
+            raise FloeConfigError(
+                'domains.defaults requires root.version >= "0.3"', code="config_version"
+            )
         defaults = yaml_hash(hash["defaults"], "domains.defaults")
     incoming_dir = opt_string(hash, "incoming_dir", "domains")
     if incoming_dir is None and config_version(version) < V0_3:
-        raise FloeConfigError("missing required field domains.incoming_dir")
+        raise FloeConfigError(
+            "missing required field domains.incoming_dir", code="config_missing_key"
+        )
     return DomainConfig(
         name=name,
         incoming_dir=incoming_dir,
@@ -176,7 +181,9 @@ def parse_sources(value: object, version: str, origin: Path | None) -> dict[str,
 
 def _parse_sources(value: object, version: str) -> dict[str, Hash]:
     if config_version(version) < V0_3:
-        raise FloeConfigError('root.sources requires root.version >= "0.3"')
+        raise FloeConfigError(
+            'root.sources requires root.version >= "0.3"', code="config_version"
+        )
     sources: dict[str, Hash] = {}
     for item in yaml_array(value, "sources"):
         hash = dict(yaml_hash(item, "sources"))
@@ -184,7 +191,9 @@ def _parse_sources(value: object, version: str) -> dict[str, Hash]:
         name = get_string(hash, "name", "sources")
         del hash["name"]
         if name in sources:
-            raise FloeConfigError(f"duplicate source name {name}")
+            raise FloeConfigError(
+                f"duplicate source name {name}", code="config_duplicate"
+            )
         sources[name] = hash
     return sources
 
@@ -201,7 +210,8 @@ def resolve_source_ref(
     if name not in sources:
         available = ", ".join(sources)
         raise FloeConfigError(
-            f"source.ref={name} is not a declared source (available: {available})"
+            f"source.ref={name} is not a declared source (available: {available})",
+            code="config_unknown_reference",
         )
     if "resource" in overlay:
         resource = yaml_string(overlay.pop("resource"), "source.resource")
@@ -292,7 +302,10 @@ def _entity_error(
             if origin
             else f"inherits from {inherits}"
         )
-    return FloeConfigError(f"{prefix}: {who}: {error}" if prefix else f"{who}: {error}")
+    return FloeConfigError(
+        f"{prefix}: {who}: {error}" if prefix else f"{who}: {error}",
+        code="config_invalid_value",
+    )
 
 
 def parse_report(value: object) -> ReportConfig:
@@ -346,7 +359,8 @@ def parse_root(doc: object, origins: IncludeOrigins) -> RootConfig:
         )
     if "storages" in root and "filesystems" in root:
         raise FloeConfigError(
-            "root.storages and root.filesystems are mutually exclusive"
+            "root.storages and root.filesystems are mutually exclusive",
+            code="config_conflict",
         )
     key = "storages" if "storages" in root else "filesystems"
     storages = parse_storages(root[key]) if key in root else None
@@ -403,7 +417,8 @@ def validate_domains(config: RootConfig) -> None:
         if qualified and bad and domain.name not in used:
             raise FloeConfigError(
                 f"domain.name={domain.name} must be non-empty without '.', '/' or '\\' "
-                'when root.version >= "0.3"'
+                'when root.version >= "0.3"',
+                code="config_invalid_value",
             )
         defaults = domain.defaults or {}
         schema = defaults.get("schema")
@@ -413,4 +428,7 @@ def validate_domains(config: RootConfig) -> None:
                 f"schema.{k}" for k in ("columns", "primary_key") if k in schema
             ]
         if forbidden:
-            raise FloeConfigError(f"unknown field domains.defaults.{forbidden[0]}")
+            raise FloeConfigError(
+                f"unknown field domains.defaults.{forbidden[0]}",
+                code="config_unknown_key",
+            )

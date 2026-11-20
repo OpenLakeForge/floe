@@ -82,3 +82,22 @@ def test_1237_profile_report_keys(tmp_path: Path, report: str, message: str) -> 
     (tmp_path / "profile.yml").write_text(PROFILE + report)
     with pytest.raises(FloeConfigError, match=message):
         parse_profile(tmp_path / "profile.yml")
+
+
+@pytest.mark.parametrize(
+    ("body", "code"),
+    [
+        ("validation: {strict: true}\n", "config_not_supported"),
+        (
+            "storages: {definitions: [{name: a, type: ftp}], default: a}\n",
+            "config_invalid_value",
+        ),
+        ("storages: {definitions: []}\n", "config_invalid_value"),
+    ],
+)
+def test_profile_errors_carry_a_code(tmp_path: Path, body: str, code: str) -> None:
+    path = tmp_path / "profile.yml"
+    path.write_text(PROFILE + body)
+    with pytest.raises(FloeConfigError) as err:
+        parse_profile(path)
+    assert err.value.code == code

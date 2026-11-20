@@ -38,7 +38,8 @@ def _fill_entity(
     if entity.domain is not None:
         if entity.domain not in domains:
             raise FloeConfigError(
-                f"entity.name={entity.name} references unknown domain {entity.domain}"
+                f"entity.name={entity.name} references unknown domain {entity.domain}",
+                code="config_unknown_reference",
             )
         context.pop("domain.incoming_dir", None)
         if (incoming_dir := domains[entity.domain]) is not None:
@@ -92,7 +93,9 @@ def _apply_templates(
         )
         domains.append(domain.model_copy(update={"resolved_incoming_dir": resolved}))
         if domain.name in lookup:
-            raise FloeConfigError(f"duplicate domain name {domain.name}")
+            raise FloeConfigError(
+                f"duplicate domain name {domain.name}", code="config_duplicate"
+            )
         lookup[domain.name] = resolved
 
     report = _fill(config.report, ("path",), variables, "report.")

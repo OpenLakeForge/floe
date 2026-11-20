@@ -71,7 +71,9 @@ def _items(value: object, context: str) -> tuple[Hash, list[object]]:
     hash = yaml_hash(value, context)
     validate_known_keys(hash, context, ("default", "definitions"))
     if "definitions" not in hash:
-        raise FloeConfigError(f"missing required field {context}.definitions")
+        raise FloeConfigError(
+            f"missing required field {context}.definitions", code="config_missing_key"
+        )
     return hash, yaml_array(hash["definitions"], f"{context}.definitions")
 
 
@@ -152,7 +154,8 @@ def _catalog(value: object, ctx: str) -> CatalogDefinition:
         )
     if catalog_type != "rest":
         raise FloeConfigError(
-            f"{ctx} name={name} has unsupported type={catalog_type} (supported: glue, rest)"
+            f"{ctx} name={name} has unsupported type={catalog_type} (supported: glue, rest)",
+            code="config_invalid_value",
         )
     uri = get_string(hash, "uri", ctx)
     credential = opt_string(hash, "credential", ctx)
@@ -177,7 +180,9 @@ def parse_storages(value: object, context: str = "storages") -> StoragesConfig:
         except _Unsupported:
             raise
         except FloeConfigError as e:
-            raise FloeConfigError(f"{context}.definitions[{index}]: {e}") from e
+            raise FloeConfigError(
+                f"{context}.definitions[{index}]: {e}", code="config_invalid_value"
+            ) from e
     return StoragesConfig(
         default=opt_string(hash, "default", context), definitions=definitions
     )
@@ -192,7 +197,9 @@ def parse_catalogs(value: object, context: str = "catalogs") -> CatalogsConfig:
         except _Unsupported:
             raise
         except FloeConfigError as e:
-            raise FloeConfigError(f"{context}.definitions[{index}]: {e}") from e
+            raise FloeConfigError(
+                f"{context}.definitions[{index}]: {e}", code="config_invalid_value"
+            ) from e
     return CatalogsConfig(
         default=opt_string(hash, "default", context), definitions=definitions
     )
