@@ -4,7 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-- Archived files on S3 now carry a `.floe/source_mtime/` sidecar object holding the source modification time (#1271), instead of the copy's `floe-source-mtime` object metadata; a full refresh reads the sidecar first, then the legacy metadata of older archives; local archives have no sidecar and order by the copy's own mtime. `StorageClient.copy` no longer takes `source_mtime`.
+- A partitioned S3 archive now keeps the source modification time in one `.floe/source_mtime/<run_id>.json` index per run and entity (#1271), instead of the copy's `floe-source-mtime` object metadata; a full refresh reads the indexes first, then the legacy metadata of older archives. Local archives have no index and order by the copy's own mtime. `StorageClient.copy` no longer takes `source_mtime`.
 - An emptied incremental state and `floe state reset` now leave an empty `state.json` on storage instead of deleting it (#1271); an empty state reads as no state, and `StorageClient` no longer has `delete_conditional`.
 
 ## v0.10.4

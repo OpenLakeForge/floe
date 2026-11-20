@@ -46,7 +46,11 @@ from floe.run.file import (
 )
 from floe.run.incremental import Incremental, skipped_report
 from floe.run.sources import archive_location, list_source, resolve_source
-from floe.storage.archive import archive_input_file
+from floe.storage.archive import (
+    archive_input_file,
+    archive_relative,
+    write_source_mtime_index,
+)
 from floe.storage.inputs import (
     InputFile,
     ResolvedInputs,
@@ -106,6 +110,20 @@ def _refuse_overlap(
             raise FloeConfigError(f"{who} source file {f.source_uri} lies under {what} {sink}; the sink would overwrite or re-read it")  # fmt: skip
 
 
+def _subdir(plan: Plan, file: InputFile) -> str:
+    return file.source_uri.removeprefix(f"{plan.root}/").rpartition("/")[0] if plan.root else ""  # fmt: skip
+
+
+def _write_mtime_index(plan: Plan) -> None:
+    """#1271: a full refresh of a partitioned archive orders a day's batches by these (see `write_source_mtime_index`)."""
+    if plan.archive is None or plan.entity.source.partitioning is None:
+        return
+    base, client = plan.archive
+    name = plan.entity.name
+    mtimes = {archive_relative(name, _subdir(plan, f), f, plan.run_id).removeprefix(f"{name}/"): f.source_mtime for f in plan.to_archive if f.source_mtime and not f.source_uri.startswith(f"{base}/")}  # fmt: skip
+    write_source_mtime_index(client, base, name, plan.run_id, mtimes)
+
+
 def _archive(plan: Plan, file: InputFile) -> str | None:
     """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>` (Rust `archive_input`).
 
@@ -117,8 +135,7 @@ def _archive(plan: Plan, file: InputFile) -> str | None:
     if file.source_uri.startswith(f"{base}/"):
         return None  # D24: an archived input stays put
     # Rust: copy, then delete the source; the report shows a local target as a path
-    sub = file.source_uri.removeprefix(f"{plan.root}/").rpartition("/")[0] if plan.root else ""  # fmt: skip
-    uri = archive_input_file(client, plan.run_id, plan.entity.name, lambda rel: f"{base}/{rel}", file, sub)  # fmt: skip
+    uri = archive_input_file(client, plan.run_id, plan.entity.name, lambda rel: f"{base}/{rel}", file, _subdir(plan, file))  # fmt: skip
     return uri.removeprefix("local://")
 
 
@@ -454,6 +471,7 @@ def _run_entity(
     # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source (Rust archives before)
     by_uri = {r["input_file"]: r for r in files}
     order = {f.source_uri: i for i, f in enumerate(inputs.files)}
+    _write_mtime_index(plan)
     # #1090: oldest first, so a partial archive leaves the newest batch pending, never only an older one
     for f in sorted(plan.to_archive, key=lambda f: order[f.source_uri]) if latest_first else plan.to_archive:  # fmt: skip
         with timed(plan.spent, "archive_ms") if plan.archive else nullcontext():

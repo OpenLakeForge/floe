@@ -36,7 +36,7 @@ class MemS3:
         self.mtimes: dict[str, str] = {}
         self.meta: dict[
             str, str | None
-        ] = {}  # the legacy (#939) `floe-source-mtime` of a copy made before the sidecar
+        ] = {}  # the legacy (#939) `floe-source-mtime` of a copy made before the run index
 
     def resolve_uri(self, path: str) -> str:
         return f"s3://b/{path.lstrip('/')}"
@@ -51,6 +51,7 @@ class MemS3:
         return dest
 
     def write(self, uri: str, body: bytes) -> None:
+        assert len(parse_s3_uri(uri)[1].encode()) <= 1024  # S3's key limit
         self.objects[uri], self.mtimes[uri] = body, self.now
 
     def copy(self, src_uri: str, dst_uri: str) -> None:
@@ -197,7 +198,7 @@ ARCHIVE = SINKS.replace("    domain: d\n", "    domain: d\n    incremental_mode:
 def test_archive_copies_then_deletes_the_s3_input(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
     s3.write("s3://b/in/a.csv", b"id\n1\n")
     go(tmp_path, ARCHIVE)
-    [archived] = [u for u in parts(s3, "s3://b/archive/") if "/.floe/" not in u]
+    [archived] = parts(s3, "s3://b/archive/")
     assert archived.startswith("s3://b/archive/orders/a__run-r1__src-")
     assert "s3://b/in/a.csv" not in s3.objects
     report = json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
@@ -354,7 +355,7 @@ def test_d29_the_s3_archive_keeps_the_partition_path_for_a_full_refresh(tmp_path
 
 
 def test_939_a_full_refresh_replays_same_second_s3_archive_copies_in_load_order(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
-    """D28 loads batch `ff00` (older) before `a1b2`; their archive copies share one second, so only the kept source time orders them (#1271: from the sidecar)."""
+    """D28 loads batch `ff00` (older) before `a1b2`; their archive copies share one second, so only the kept source time orders them (#1271: from the run index)."""
     config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
     config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64, unique: true}\n        - {name: v, type: string}\n")  # fmt: skip
     s3.now = "2026-10-24T10:00:00Z"
@@ -371,17 +372,14 @@ def test_939_a_full_refresh_replays_same_second_s3_archive_copies_in_load_order(
     assert accepted() == ["old"]  # the first row of a key wins
     full_refresh(tmp_path, config)
     assert accepted() == ["old"]
-    sidecars = {
-        u: b
-        for u, b in s3.objects.items()
-        if "/archive/orders/.floe/source_mtime/2026/10/24/" in u
-    }
-    assert sorted(sidecars.values()) == [b"2026-10-24T10:00:00Z", b"2026-10-24T11:00:00Z"]  # fmt: skip
+    [index] = [u for u in s3.objects if "/archive/orders/.floe/source_mtime/" in u]
+    assert index == "s3://b/archive/orders/.floe/source_mtime/r1.json"
+    assert sorted(json.loads(s3.objects[index]).values()) == ["2026-10-24T10:00:00Z", "2026-10-24T11:00:00Z"]  # fmt: skip
     assert not any(u in s3.meta for u in s3.objects)  # the copies carry no metadata
 
 
 def test_1271_a_full_refresh_orders_a_legacy_archive_by_its_copy_metadata(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
-    """An archive written before the sidecar has the source mtime in the copy's metadata only."""
+    """An archive written before the run index has the source mtime in the copy's metadata only."""
     config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
     config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64, unique: true}\n        - {name: v, type: string}\n")  # fmt: skip
     s3.now = "2026-10-24T10:00:00Z"
@@ -390,9 +388,29 @@ def test_1271_a_full_refresh_orders_a_legacy_archive_by_its_copy_metadata(tmp_pa
     s3.write("s3://b/in/2026/10/24/a1b2/y.csv", b"id,v\n1,new\n")
     s3.now = "2026-10-24T12:00:00Z"
     go(tmp_path, config)
-    for uri in [u for u in s3.objects if "/archive/orders/.floe/source_mtime/" in u]:
-        legacy = uri.replace(".floe/source_mtime/", "")
-        s3.meta[legacy] = s3.objects.pop(uri).decode()
+    index = "s3://b/archive/orders/.floe/source_mtime/r1.json"
+    for rel, mtime in json.loads(s3.objects.pop(index)).items():
+        s3.meta[f"s3://b/archive/orders/{rel}"] = mtime
+    full_refresh(tmp_path, config)
+    [part] = parts(s3, "s3://b/out/accepted/")
+    assert pl.read_parquet(io.BytesIO(s3.objects[part]))["v"].to_list() == ["old"]
+
+
+def test_1271_the_run_index_key_stays_within_s3s_limit_for_an_archived_key_near_it(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    """A per-file sidecar key (the archived key plus 19 bytes) would pass 1024 bytes; `MemS3.write` rejects a longer key."""
+    config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
+    config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64, unique: true}\n        - {name: v, type: string}\n")  # fmt: skip
+    batch = "b" * 745
+    s3.now = "2026-10-24T10:00:00Z"
+    s3.write(f"s3://b/in/2026/10/24/{batch}/{'x' * 200}.csv", b"id,v\n1,old\n")
+    s3.now = "2026-10-24T11:00:00Z"
+    s3.write(f"s3://b/in/2026/10/24/{batch}c/{'y' * 200}.csv", b"id,v\n1,new\n")
+    s3.now = "2026-10-24T12:00:00Z"
+    go(tmp_path, config)
+    longest = max(
+        len(parse_s3_uri(u)[1]) for u in s3.objects if "/archive/orders/20" in u
+    )
+    assert 1006 <= longest <= 1024
     full_refresh(tmp_path, config)
     [part] = parts(s3, "s3://b/out/accepted/")
     assert pl.read_parquet(io.BytesIO(s3.objects[part]))["v"].to_list() == ["old"]

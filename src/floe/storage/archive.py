@@ -1,30 +1,50 @@
 """Input archiving, ported from `io/storage/ops/archive.rs`."""
 
+import json
 from collections.abc import Callable
 
 from floe.errors import FloeError, FloeRunError
 from floe.storage.inputs import InputFile
 from floe.storage.local import LocalClient
-from floe.storage.paths import archive_relative_path_for_run
+from floe.storage.paths import archive_relative_path_for_run, parse_s3_uri
 from floe.storage.types import StorageClient
 
-_SIDECAR = ".floe/source_mtime"
+_INDEX = ".floe/source_mtime"
 
 
-def archived_source_mtime(
-    client: StorageClient, entity_uri: str, uri: str
-) -> str | None:
-    """#1271: the source mtime of an archived file, for D28 order: its `<entity_uri>/.floe/source_mtime/<path>` sidecar,
-    else the object metadata of archives written before the sidecar (#939); None when neither exists.
+def archive_relative(
+    entity_name: str, subdir: str, input_file: InputFile, run_id: str
+) -> str:
+    """`<entity>/[<subdir>/]<stem>__run-…__src-….<ext>`; `subdir` (D29): the partition sub-path kept after the entity folder."""
+    return archive_relative_path_for_run(
+        f"{entity_name}/{subdir}" if subdir else entity_name, input_file.source_name, run_id, input_file.source_uri
+    )  # fmt: skip
 
-    Not on local storage: a local copy's nanosecond mtime already follows the load order, and a lock file for
-    a sidecar named like a ~255-byte archived file would exceed the file name limit."""
+
+def write_source_mtime_index(client: StorageClient, base: str, entity_name: str, run_id: str, mtimes: dict[str, str]) -> None:  # fmt: skip
+    """#1271: before a run's archive copies, one `<base>/<entity>/.floe/source_mtime/<run_id>.json` maps each file's archived
+    path under `<entity>/` to its source mtime (the copy keeps only its own, to the second on S3), for the D28 order.
+
+    One object per run, not a sidecar per file: its key is bounded by base, entity and run id, so it is never longer than the
+    archived keys it describes (they hold the run id too); a per-file key could pass S3's 1024 bytes. Not on local storage: a
+    local copy's nanosecond mtime already follows the load order. A failed copy leaves an extra entry, harmless; a retry is a new run."""
+    if mtimes and not isinstance(client, LocalClient):
+        client.write(
+            f"{base}/{entity_name}/{_INDEX}/{run_id}.json", json.dumps(mtimes).encode()
+        )
+
+
+def read_source_mtime_index(client: StorageClient, entity_uri: str) -> dict[str, str]:
+    """The merged run indexes of `<entity_uri>/` (archived path under the entity to source mtime); empty on local storage."""
     if isinstance(client, LocalClient):
-        return None
-    stored = client.read(
-        f"{entity_uri}/{_SIDECAR}/{uri.removeprefix(f'{entity_uri}/')}"
-    )
-    return stored.body.decode() if stored else client.source_mtime(uri)
+        return {}
+    prefix = f"{parse_s3_uri(entity_uri)[1]}/{_INDEX}/"
+    merged: dict[str, str] = {}
+    for ref in client.list(prefix):
+        stored = client.read(ref.uri) if ref.key.endswith(".json") else None
+        if stored:
+            merged.update(json.loads(stored.body))
+    return merged
 
 
 def archive_input_file(
@@ -36,14 +56,8 @@ def archive_input_file(
     subdir: str = "",
 ) -> str:
     """`subdir` (D29): the partition sub-path kept between the entity folder and the file name."""
-    relative = archive_relative_path_for_run(
-        f"{entity_name}/{subdir}" if subdir else entity_name, input_file.source_name, run_id, input_file.source_uri
-    )  # fmt: skip
+    relative = archive_relative(entity_name, subdir, input_file, run_id)
     dest_uri = join_relative(relative)
-    if (
-        input_file.source_mtime and not isinstance(client, LocalClient)
-    ):  # first: an archived file then always has its sidecar; a retry overwrites a stray one
-        client.write(join_relative(f"{entity_name}/{_SIDECAR}/{relative.removeprefix(f'{entity_name}/')}"), input_file.source_mtime.encode())  # fmt: skip
     client.copy(input_file.source_uri, dest_uri)
     try:
         client.delete(input_file.source_uri)
