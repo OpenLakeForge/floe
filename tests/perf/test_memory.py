@@ -19,7 +19,7 @@ pytestmark = [
 ]
 
 ROWS = 4_000_000
-# ponytail: a fixed ceiling, ~1.7x the measured 720 MiB peak (RSS grows with rows on the Parquet sink: 308 MiB at 1M, 1022 MiB at 8M); revisit when it is bounded
+# ponytail: a fixed ceiling, ~1.7x the measured 720 MiB peak (RSS grows with rows in Polars' CSV read, not the sink: 308 MiB at 1M, 1022 MiB at 8M, #1199); revisit if Polars bounds it
 MAX_RSS_MIB = 1200
 
 CONFIG = """\
