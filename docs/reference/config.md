@@ -667,36 +667,13 @@ If an entity sets `domain: "<name>"`, the following is also available:
 
 Unresolved placeholders (or unknown domains) are configuration errors.
 
-## Migrating from 0.2 to 0.3
-
-A `0.2` config keeps working unchanged: nothing needs to move, and the
-features below stay off until you set `version: "0.3"`. `sources`, `include`
-and domain `defaults` are rejected in a `0.2` config.
-
-### What changes with `version: "0.3"`
-
-- Entities with a `domain` get the qualified id `<domain>.<name>` (see
-  [Entity identity](#entity-identity)); entities without one keep their bare `name`.
-- `name` and `domain` must be non-empty and must not contain `.`, `/` or `\`.
-  Rename a dotted entity (for example `sales.orders` → `orders` with
-  `domain: sales`) before bumping the version.
-- Report paths move from `run_<run_id>/<name>/run.json` to
-  `run_<run_id>/<domain>/<name>/run.json`.
-- The default incremental state dir moves from `.floe/state/<name>/` to
-  `.floe/state/<domain>/<name>/` under the source root. For an entity with
-  `incremental_mode: file` and no `state.path`, move the existing state
-  directory there before the first `0.3` run, or Floe treats every file as new.
-- Manifest `entities[].name` becomes the qualified id. Regenerate manifests
-  (`floe manifest generate`) and update orchestrator entity selections.
-- `domains[].incoming_dir` becomes optional.
-
-### Splitting a single file
+## Splitting a single file
 
 Each step leaves a config that validates; run `floe validate -c config.yml`
 after each. The result matches [`example/project/`](../../example/project/); see
 [Floe Projects](../guides/projects.md) for the full walkthrough.
 
-1. Set `version: "0.3"` and apply the changes above.
+1. Set `version: "0.3"`.
 2. Move repeated input settings into a top-level `sources` list, and replace
    each entity's `source` with `{ ref: <source>, resource: <resource> }`.
    Use `{{resource}}` in the source `path` where entities differ.

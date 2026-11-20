@@ -17,11 +17,12 @@ For the full execution order (file-level vs row-level vs entity-level), see
 
 ### unique (dataset-level)
 
-- **Trigger**: `schema.columns[].unique: true`
+- **Trigger**: `schema.unique_keys` (each entry is one single- or multi-column key) and/or `schema.primary_key` (enforced as one more composite key).
 - **Logic**: the first occurrence is accepted; any later duplicate values are flagged.
 - **Notes**:
   - Null values are ignored (they do not count as duplicates).
-  - Applies independently per column, across all input files in the entity.
+  - Applies independently per key, across all input files in the entity.
+  - The legacy `schema.columns[].unique: true` is still accepted, but is ignored when `schema.unique_keys` is set.
 
 ### cast_error (type mismatch)
 
@@ -50,7 +51,6 @@ Examples of accepted values are listed below.
 - `float32`: `float32`
 - `date`: `date`
 - `datetime`: `datetime`, `timestamp`
-- `time`: `time`
 
 ## Severity behavior
 

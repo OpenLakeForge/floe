@@ -35,7 +35,7 @@ It is designed for data platform teams who need reliable, auditable file ingesti
 |---|---|
 | Input | CSV · TSV · JSON · Parquet · ORC · Avro · XLSX · XML |
 | Accepted output | Parquet · Apache Iceberg |
-| Rejected output | CSV |
+| Rejected output | CSV · Parquet · Apache Iceberg (quarantine table) |
 
 ## Supported storage
 
