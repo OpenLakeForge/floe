@@ -181,7 +181,7 @@ def parse_storages(value: object, context: str = "storages") -> StoragesConfig:
             raise
         except FloeConfigError as e:
             raise FloeConfigError(
-                f"{context}.definitions[{index}]: {e}", code="config_invalid_value"
+                f"{context}.definitions[{index}]: {e}", code=e.code
             ) from e
     return StoragesConfig(
         default=opt_string(hash, "default", context), definitions=definitions
@@ -198,7 +198,7 @@ def parse_catalogs(value: object, context: str = "catalogs") -> CatalogsConfig:
             raise
         except FloeConfigError as e:
             raise FloeConfigError(
-                f"{context}.definitions[{index}]: {e}", code="config_invalid_value"
+                f"{context}.definitions[{index}]: {e}", code=e.code
             ) from e
     return CatalogsConfig(
         default=opt_string(hash, "default", context), definitions=definitions

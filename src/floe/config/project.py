@@ -116,7 +116,7 @@ def at_file(path: Path | None) -> Generator[None]:
         if path is None:
             raise
         raise (FloeIoError if isinstance(e, FloeIoError) else FloeConfigError)(
-            f"{path}: {e}"
+            f"{path}: {e}", code=e.code
         ) from e
 
 
@@ -304,7 +304,7 @@ def _entity_error(
         )
     return FloeConfigError(
         f"{prefix}: {who}: {error}" if prefix else f"{who}: {error}",
-        code="config_invalid_value",
+        code=error.code,
     )
 
 
