@@ -131,6 +131,15 @@ def test_d3_ragged_row_rejects_only_that_row(tmp_path: Path) -> None:
     assert RAGGED_MESSAGE == "found more fields than defined in 'Schema'"
 
 
+def test_d3_headless_ragged_row_in_probe_window(tmp_path: Path) -> None:
+    # The headless width probe reads ~64 KiB: a ragged row there is still rejected alone (#1242).
+    path = write(tmp_path, b"a,b\nc,d,e\nf,g\n")
+    [chunk] = read_csv(path, opts(header=False, separator=","), ["x", "y"])
+    assert chunk.df.columns == ["x", "y"]
+    assert chunk.df.rows() == [("a", "b"), ("c", "d"), ("f", "g")]
+    assert chunk.ragged.to_list() == [False, True, False]
+
+
 def test_ragged_pass_wraps_polars_errors(tmp_path: Path) -> None:
     # A Polars error in the ragged-row re-read is a typed read failure, as in the first pass.
     # The ragged row sits past the ~64 KiB the headless width probe reads.

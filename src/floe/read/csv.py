@@ -79,10 +79,10 @@ def _scan_args(options: SourceOptions) -> _Args:
 
 def _columns(path: Path, args: _Args, declared: Sequence[str]) -> list[str]:
     try:
-        probe = args.scan(path, n_rows=0 if args.has_header else 1)
         if args.has_header:  # the schema is the header: no plan to run
-            return probe.collect_schema().names()
-        width = probe.collect().width
+            return args.scan(path, n_rows=0).collect_schema().names()
+        # `n_rows=1` still parses ~64 KiB: truncate, so a ragged row there is left to D3 (#1242)
+        width = args.scan(path, n_rows=1, ragged_from=0).collect().width
     except (pl.exceptions.PolarsError, OSError) as err:
         # Rust's polars prints the error kind: `no data: empty CSV`
         kind = "no data: " if isinstance(err, pl.exceptions.NoDataError) else ""
