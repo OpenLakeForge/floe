@@ -55,24 +55,29 @@ rejected sink alike. The one exception is an entity with `primary_key`, `unique_
 duplicates across chunks and files, and the settings below do not reclaim that memory.
 
 Even without unique keys, the process's peak RSS still grows with the input size. Two effects of
-Polars cause it, neither a leak:
+Polars cause most of it, neither a leak:
 
-- Polars memory-maps a CSV input while it reads it. That file-backed memory counts in RSS, and the
-  operating system reclaims it under memory pressure.
+- Polars reads a CSV input ahead of the rows Floe has consumed: up to two 32 MiB chunks per worker
+  thread (256 MiB on 4 cores, 1 GiB on 16), so a file smaller than that is read in whole. Polars 2.0
+  memory-mapped the file instead; that file-backed memory also counted in RSS.
 - Polars' allocator (jemalloc) keeps freed buffers resident for a while, one cache per worker
   thread, so the more cores, the larger the retained memory.
 
-Two environment variables lower the peak at some cost in speed:
+These environment variables lower the peak at some cost in speed:
 
 | Variable | Effect | Cost |
 |---|---|---|
 | `_RJEM_MALLOC_CONF=dirty_decay_ms:0,muzzy_decay_ms:0` | jemalloc returns freed memory at once | a slower run |
-| `POLARS_MAX_THREADS=<n>` | fewer worker threads, so fewer per-thread caches | slower reads and checks on big inputs |
+| `POLARS_MAX_THREADS=<n>` | fewer worker threads, so fewer per-thread caches and less read-ahead | slower reads and checks on big inputs |
+| `POLARS_CSV_CHUNK_SIZE=<bytes>` | smaller CSV read-ahead chunks (default 32 MiB) | slower CSV reads |
+| `POLARS_CSV_CHUNK_PREFETCH_LIMIT=<n>` | at most `n` CSV chunks read ahead (default twice the worker threads) | slower CSV reads |
 
-Both are read once, when Polars is first imported. Set them in the environment that starts the
-process (the container, the Kubernetes Job, the shell); setting them from Python after `import
-polars` or `import floe` has no effect, and so does setting them in a Dagster or Airflow worker that
-imported Polars already.
+`_RJEM_MALLOC_CONF` and `POLARS_MAX_THREADS` are read once, when Polars is first imported or used.
+Set them in the environment that starts the process (the container, the Kubernetes Job, the shell);
+setting them from Python after `import polars` or `import floe` has no effect, and so does setting
+them in a Dagster or Airflow worker that imported Polars already. The two `POLARS_CSV_*` variables
+are read each time a CSV scan starts; they are Polars internals rather than a documented API, so
+check them again after a Polars upgrade.
 
 ## Limitations
 
