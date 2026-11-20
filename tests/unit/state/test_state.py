@@ -395,12 +395,13 @@ def test_promote_reloads_after_conflict(tmp_path: Path) -> None:
     assert list(state.files) == ["a"]
 
 
-def test_release_of_the_only_claim_deletes_the_state(tmp_path: Path) -> None:
+def test_release_of_the_only_claim_empties_the_state(tmp_path: Path) -> None:
     uri, client = str(tmp_path / "state.json"), LocalClient()
     outcome = claim_inputs(client, uri, "sales", "run-a", [_input("a")])
     assert outcome.claimed is not None
     release(client, uri, "run-a", outcome.claimed)
-    assert not Path(uri).exists()
+    assert Path(uri).exists()
+    assert read_state(client, uri, "sales") is None
 
 
 def test_full_refresh_claims_all_and_promote_keeps_only_this_run(
@@ -421,13 +422,14 @@ def test_full_refresh_claims_all_and_promote_keeps_only_this_run(
     assert (list(stored.files), stored.claims) == (["a"], {})
 
 
-def test_full_refresh_with_no_inputs_deletes_the_state(tmp_path: Path) -> None:
+def test_full_refresh_with_no_inputs_empties_the_state(tmp_path: Path) -> None:
     uri, client = str(tmp_path / "state.json"), LocalClient()
     first = claim_inputs(client, uri, "sales", "run-a", [_input("a")])
     assert first.claimed is not None
     promote(client, uri, "run-a", first.claimed)
     promote(client, uri, "run-b", claim_all(client, uri, "sales", "run-b", [])[0], True)
-    assert not Path(uri).exists()
+    assert Path(uri).exists()
+    assert read_state(client, uri, "sales") is None
 
 
 def test_claim_all_fails_after_retries(tmp_path: Path) -> None:
@@ -438,18 +440,18 @@ def test_claim_all_fails_after_retries(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "body",
     [
-        dump_state(EntityState("sales", None, {}, {})),
+        dump_state(EntityState("sales", None, {"a": FileState("t", 1, None)}, {})),
         b"{not valid json",
         b'{"schema":"wrong.schema","entity":"other","updated_at":null,"files":{}}',
     ],
 )
-def test_reset_removes_existing_malformed_or_mismatched_state(
+def test_reset_empties_existing_malformed_or_mismatched_state(
     tmp_path: Path, body: bytes
 ) -> None:
     uri, client = str(tmp_path / "state.json"), LocalClient()
     client.write_conditional(uri, None, body)
     assert reset(client, uri, "sales") is True
-    assert not Path(uri).exists()
+    assert read_state(client, uri, "sales") is None
     assert reset(client, uri, "sales") is False
 
 
@@ -457,8 +459,10 @@ def test_reset_raises_when_state_changes_meanwhile(tmp_path: Path) -> None:
     uri = str(tmp_path / "state.json")
 
     class Racing(LocalClient):
-        def delete_conditional(self, uri: str, expected_version: str | None) -> bool:
-            return False
+        def write_conditional(
+            self, uri: str, expected_version: str | None, body: bytes
+        ) -> str | None:
+            return None
 
     LocalClient().write_conditional(uri, None, b"{}")
     with pytest.raises(FloeConfigError) as err:
@@ -466,21 +470,48 @@ def test_reset_raises_when_state_changes_meanwhile(tmp_path: Path) -> None:
     assert str(err.value) == f"entity.name=sales remote state changed while resetting: {uri}"  # fmt: skip
 
 
-def test_reset_deletes_s3_state_with_its_etag(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reset_empties_s3_state_with_its_etag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
     client = S3Client("b", "us-east-1")
     key = {"Bucket": "b", "Key": "s/state.json"}
+    empty = dump_state(EntityState("sales", None, {}, {}))
     with Stubber(client._client) as stub:  # pyright: ignore[reportPrivateUsage]
         body = StreamingBody(io.BytesIO(b"{not valid json"), 15)
         stub.add_response("get_object", {"ETag": '"e1"', "Body": body}, key)  # pyright: ignore[reportUnknownMemberType]
-        stub.add_response("delete_object", {}, key | {"IfMatch": '"e1"'})  # pyright: ignore[reportUnknownMemberType]
-        stub.add_client_error(
-            "get_object", "NoSuchKey", http_status_code=404, expected_params=key
+        stub.add_response(
+            "put_object", {"ETag": '"e2"'}, key | {"Body": empty, "IfMatch": '"e1"'}
         )  # pyright: ignore[reportUnknownMemberType]
+        body = StreamingBody(io.BytesIO(empty), len(empty))
+        stub.add_response("get_object", {"ETag": '"e2"', "Body": body}, key)  # pyright: ignore[reportUnknownMemberType]
         assert reset(client, "s3://b/s/state.json", "sales") is True
         assert reset(client, "s3://b/s/state.json", "sales") is False
         stub.assert_no_pending_responses()
+
+
+class NoDelete(LocalClient):
+    def delete_conditional(self, uri: str, expected_version: str | None) -> bool:
+        raise AssertionError(
+            "the state is emptied with a conditional put, never deleted"
+        )
+
+
+def test_1271_release_and_reset_empty_the_state_without_deleting(
+    tmp_path: Path,
+) -> None:
+    uri, client = str(tmp_path / "state.json"), NoDelete()
+    first = claim_inputs(client, uri, "sales", "run-a", [_input("a")])
+    assert first.claimed is not None
+    release(client, uri, "run-a", first.claimed)
+    assert Path(uri).exists()
+    assert read_state(client, uri, "sales") is None
+    assert reset(client, uri, "sales") is False
+    again = claim_inputs(client, uri, "sales", "run-b", [_input("a")])
+    assert again.claimed is not None
+    promote(client, uri, "run-b", again.claimed)
+    assert reset(client, uri, "sales") is True
+    assert read_state(client, uri, "sales") is None
+    assert reset(client, uri, "sales") is False
 
 
 def test_949_pruned_before_round_trips_and_an_older_state_has_none() -> None:

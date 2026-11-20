@@ -83,7 +83,7 @@ def test_failed_run_releases_its_claims(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr(entity_module, "run_file", boom)
     with pytest.raises(FloeRunError):
         go(entity, tmp_path, "r1")
-    assert not (tmp_path / "in/.floe/state/d/orders/state.json").exists()
+    assert (state(tmp_path)["files"], state(tmp_path)["claims"]) == ({}, {})
     monkeypatch.undo()
     assert go(entity, tmp_path, "r2").report["results"]["files_skipped"] == 0
 
@@ -115,7 +115,7 @@ def test_aborted_run_releases_its_claims(tmp_path: Path) -> None:
     entity = setup(tmp_path, severity="abort")
     (tmp_path / "in/orders.csv").write_text("id\nx\n")
     assert go(entity, tmp_path, "r1").aborted
-    assert not (tmp_path / "in/.floe/state/d/orders/state.json").exists()
+    assert (state(tmp_path)["files"], state(tmp_path)["claims"]) == ({}, {})
     assert go(entity, tmp_path, "r2").report["results"]["files_skipped"] == 0
 
 
@@ -140,7 +140,7 @@ def test_an_abort_promotes_the_files_written_before_it(
         assert state(tmp_path)["files"].keys() == set(promoted)
         assert state(tmp_path)["claims"] == {}
     else:
-        assert not (tmp_path / "in/.floe/state/d/orders/state.json").exists()
+        assert (state(tmp_path)["files"], state(tmp_path)["claims"]) == ({}, {})
     (tmp_path / "in/b.csv").write_text("id\n3\n")
     rerun = go(entity, tmp_path, "r2").report
     skipped = ["already_ingested"] if promoted else [None]

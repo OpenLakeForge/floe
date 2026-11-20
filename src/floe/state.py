@@ -115,9 +115,15 @@ def parse_state(entity: str, body: bytes) -> EntityState:
     return state
 
 
+def _is_empty(state: EntityState) -> bool:
+    return not (state.files or state.claims or state.watermark or state.pruned_before)
+
+
 def read_state(client: StorageClient, uri: str, entity: str) -> EntityState | None:
+    """None for a missing or an empty state (an emptied one is written, never deleted: no conditional delete on obstore)."""
     stored = client.read(uri)
-    return None if stored is None else parse_state(entity, stored.body)
+    state = None if stored is None else parse_state(entity, stored.body)
+    return None if state is None or _is_empty(state) else state
 
 
 def _load(client: StorageClient, uri: str, entity: str) -> Loaded:
@@ -250,12 +256,7 @@ def _mutate(
             else _load(client, uri, entity)
         )
         mutate(loaded.state, ours)
-        state = loaded.state
-        if state.files or state.claims or state.watermark or state.pruned_before:
-            done = _persist(client, uri, loaded) is not None
-        else:  # Rust deletes an emptied state
-            done = client.delete_conditional(uri, loaded.version)
-        if done:
+        if _persist(client, uri, loaded) is not None:  # an emptied state is written too
             return
     raise FloeConfigError(
         f"entity.name={entity} incremental state update conflicted after {CAS_RETRIES} retries"
@@ -326,11 +327,17 @@ def renew(client: StorageClient, uri: str, run_id: str, claimed: Loaded) -> None
 
 
 def reset(client: StorageClient, uri: str, entity: str) -> bool:
-    """Delete the state file, even a malformed one; False when there is none (Rust `reset_entity_state`)."""
+    """Empty the state file, even a malformed one; False when there is none or it is empty (Rust `reset_entity_state`)."""
     stored = client.read(uri)
     if stored is None:
         return False
-    if not client.delete_conditional(uri, stored.version):
+    try:
+        if _is_empty(parse_state(entity, stored.body)):
+            return False
+    except FloeConfigError:
+        pass  # malformed or another entity's: reset it anyway
+    empty = dump_state(EntityState(entity, None, {}, {}))
+    if client.write_conditional(uri, stored.version, empty) is None:
         raise FloeConfigError(
             f"entity.name={entity} remote state changed while resetting: {uri}"
         )

@@ -72,13 +72,6 @@ class MemS3:
         self.objects[uri] = body
         return hashlib.md5(body).hexdigest()
 
-    def delete_conditional(self, uri: str, expected_version: str | None) -> bool:
-        current = self.read(uri)
-        if (current and current.version) != expected_version:
-            return False
-        self.objects.pop(uri, None)
-        return True
-
 
 CONFIG = """\
 version: "0.3"
