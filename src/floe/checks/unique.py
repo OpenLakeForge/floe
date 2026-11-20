@@ -1,4 +1,4 @@
-"""Unique keys within a file and across the files of one run (Rust: `checks/unique.rs`)."""
+"""Unique keys within a file and across the files of one run."""
 # pyarrow ships no type stubs, so strict pyright cannot see its types.
 # pyright: reportMissingTypeStubs=false, reportUnknownMemberType=false
 # pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false
@@ -29,7 +29,7 @@ class UniqueSample:
 
 @dataclass(frozen=True)
 class UniqueResult:
-    """Rust's `UniqueConstraintResult`; every duplicate is a batch duplicate (no target history)."""
+    """Result of a unique check; every duplicate is a batch duplicate (no target history)."""
 
     columns: list[str]
     duplicates_count: int
@@ -42,7 +42,7 @@ def resolve_unique_keys(
     unique_columns: Sequence[str],
     primary_key: Sequence[str] | None,
 ) -> list[list[str]]:
-    """Rust's `resolve_schema_unique_keys`: `unique_keys`, else the `unique: true` columns, then the primary key.
+    """Resolve the unique keys: `unique_keys`, else the `unique: true` columns, then the primary key.
 
     Names are trimmed; empty and repeated keys are dropped.
     """
@@ -56,12 +56,12 @@ def resolve_unique_keys(
 
 
 def _float_bits(s: pl.Series) -> pl.Series:
-    """Rust's `to_bits()`: Polars cannot reinterpret a float, so view the Arrow buffer."""
+    """Reinterpret a float as its bits: Polars cannot, so view the Arrow buffer."""
     return pl.Series(s.cast(pl.Float64).to_arrow().view(pa.uint64()))
 
 
 def _text(value: object) -> str:
-    """Rust's `to_string` of a key value."""
+    """Text form of a key value."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, float):
@@ -148,7 +148,7 @@ class UniqueTracker:
         keys = pl.DataFrame(
             [df[n].alias(k) for n, k in zip(c.columns, c.ids, strict=True)]
         )
-        # Rust compares `to_bits()`: -0.0 differs from 0.0, NaN payloads differ; key on the bits too
+        # Float keys compare by bits: -0.0 differs from 0.0, NaN payloads differ; key on the bits too
         return keys.with_columns(
             pl.col(k).map_batches(_float_bits, return_dtype=pl.UInt64).alias(k + _BITS)
             for k in c.ids
@@ -216,7 +216,7 @@ def seed_from_history(
 ) -> None:
     """Seed `tracker` with the keys of `history` that `batch` also holds; `stored` maps runtime to history names.
 
-    A history key the batch lacks is never hit, so the flags are Rust's while memory follows the
+    A history key the batch lacks is never hit, so the flags match a full-history comparison while memory follows the
     batch: `history` is streamed, key columns only. The join matches -0.0 to 0.0 and NaN to any
     NaN; the tracker then compares float bits, so those extra keys are never hit.
     A key with a column `history` lacks (`add_columns` adds it on write) is skipped: historical

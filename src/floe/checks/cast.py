@@ -1,4 +1,4 @@
-"""String to typed casts and cast-mismatch errors (Rust: `checks/cast.rs`, `io/format.rs`)."""
+"""String to typed casts and cast-mismatch errors."""
 
 import json
 import re
@@ -110,12 +110,12 @@ def cast_column(
     flags it, except in `cast_mode: coerce` and for string columns.
 
     `dtype` is the input column's dtype. Parquet, ORC and Avro keep native types (D15): anything
-    but `pl.String` is cast natively, as Rust's `cast_df_to_schema` does. That is Polars'
+    but `pl.String` is cast natively. That is Polars'
     non-strict cast, so overflow, a float outside the integer range or NaN, and a date that does
     not fit become null (a `cast_error`), while 2.5 into an int truncates to 2 and an int into a
     bool is `!= 0`. A pair Polars cannot cast (date or datetime into bool, a list) raises, and
-    aborts the run as in Rust. D17: unlike Rust, a float with a fraction into an integer type is a
-    `cast_error` in strict mode (2.0 is accepted); in coerce mode it truncates as in Rust.
+    aborts the run. D17: a float with a fraction into an integer type is a
+    `cast_error` in strict mode (2.0 is accepted); in coerce mode it truncates.
     Timezone-aware datetimes lose the zone and keep their UTC value.
     """
     raw = pl.col(name)
@@ -123,7 +123,7 @@ def cast_column(
     kind = column_type.lower().replace("-", "").replace("_", "")
     if kind in ("string", "str", "text"):
         text = raw.cast(pl.String) if native else raw
-        if native and dtype.is_float():  # Rust writes 1e20, Polars 1e+20
+        if native and dtype.is_float():  # the text form is 1e20, Polars writes 1e+20
             text = text.str.replace("e+", "e", literal=True)
         return text, pl.lit(False).alias(f"_e_cast_{name}")
     fractional = None

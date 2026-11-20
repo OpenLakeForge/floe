@@ -1,4 +1,4 @@
-"""OpenLineage observer for `floe run` over plain HTTP (Rust: `lineage/mod.rs`). Lineage failures never fail the run."""
+"""OpenLineage observer for `floe run` over plain HTTP. Lineage failures never fail the run."""
 
 import json
 import os
@@ -149,7 +149,7 @@ class OpenLineageObserver:
             self._post(event_type(event["status"]), ts, run_id, job)
 
     def fail_run(self) -> None:
-        """A run that raised: `START` if it never started, then `FAIL` (Rust: the CLI failure path)."""
+        """A run that raised: `START` if it never started, then `FAIL`."""
         ts = time.time_ns() // 1_000_000
         if self.run_uuid is None:
             self({"event": "run_started", "ts_ms": ts})
@@ -236,7 +236,7 @@ def run_with_lineage(
     full_refresh: bool,
     config_uri: str | None = None,
 ) -> RunOutcome:
-    """`run`, posting OpenLineage events when the config has a `lineage` block (Rust: the CLI run path)."""
+    """`run`, posting OpenLineage events when the config has a `lineage` block."""
     lineage = OpenLineageObserver(root.lineage, observed, job) if root.lineage else None
 
     def observe(event: dict[str, Any]) -> None:
