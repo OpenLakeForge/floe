@@ -65,7 +65,7 @@ def _list(location: str, storage: StorageDefinition | None) -> list[tuple[str, f
             (r.uri, datetime.fromisoformat(r.last_modified).timestamp() if r.last_modified else None,r.size or 0)
             for r in client.list(f"{key.strip('/')}/" if key.strip("/") else "")  # a bucket root lists every key
         ]  # fmt: skip
-    # ponytail: LocalClient.list is flat and has no mtime (a Rust port), so a local warehouse is walked here
+    # ponytail: LocalClient.list is flat and has no mtime, so a local warehouse is walked here
     files = (p for p in Path(_key(location)).rglob("*") if p.is_file())
     return [(f"file://{p}", (st := p.stat()).st_mtime, st.st_size) for p in files]
 

@@ -1,4 +1,4 @@
-"""The public `floe` API, matching `crates/floe-python/python/floe/_floe.pyi` (Rust: `floe-python/src/`)."""
+"""The public `floe` API."""
 
 import json
 from collections.abc import Callable
@@ -58,7 +58,8 @@ _observer: Callable[[RunEvent], None] | None = None
 
 
 def _debug(value: str) -> str:
-    return json.dumps(value, ensure_ascii=False)  # Rust `{:?}` quoting
+    # debug-style quoting, kept for message compatibility
+    return json.dumps(value, ensure_ascii=False)
 
 
 @dataclass(frozen=True, repr=False)
@@ -134,7 +135,7 @@ class RunOutcome:
 def _profile(
     path: str | None, variables: dict[str, str] | None
 ) -> ProfileConfig | None:
-    """Rust `load_optional_profile`: `profile_vars` extend the profile's, or stand alone."""
+    """`profile_vars` extend the profile's, or stand alone."""
     if path is None:
         return None if variables is None else ProfileConfig("", {}, variables, None, None, None)  # fmt: skip
     try:
@@ -173,7 +174,7 @@ def run(
     profile_path: str | None = None,
 ) -> RunOutcome:
     profile = _profile(profile_path, profile_vars)
-    if profile:  # Rust `run_with_runtime`: profile vars resolved against the config's env vars first
+    if profile:  # profile vars resolved against the config's env vars first
         profile = replace(profile, variables=resolve_vars(profile.variables, {}, _env_vars(Path(config_path).absolute())))  # fmt: skip
     path, root = _load(config_path, profile)
     validate_runners(root, profile)
