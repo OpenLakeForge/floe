@@ -1,4 +1,4 @@
-"""ORC reader: native column types, one chunk per stripe (Rust: `io/read/orc.rs`)."""
+"""ORC reader: native column types, one chunk per stripe."""
 # pyarrow ships no type stubs, so strict pyright cannot see its types.
 # pyright: reportMissingTypeStubs=false, reportUnknownMemberType=false
 # pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false
@@ -26,7 +26,7 @@ def read_orc(path: Path, columns: Collection[str] = ()) -> Iterator[OrcChunk]:
     """Yield one chunk per stripe; always at least one (maybe empty).
 
     Columns keep their native types (casting them is #758, D15). `columns` projects to the
-    declared columns that exist in the file; none of them present reads everything, as Rust.
+    declared columns that exist in the file; none of them present reads everything.
     """
     try:
         orc = paorc.ORCFile(path)

@@ -1,4 +1,4 @@
-"""Avro reader: native column types, in chunks (Rust: `io/read/avro.rs`)."""
+"""Avro reader: native column types, in chunks."""
 
 from collections.abc import Collection, Iterator
 from dataclasses import dataclass
