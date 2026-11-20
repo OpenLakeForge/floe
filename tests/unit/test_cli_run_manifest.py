@@ -654,3 +654,20 @@ def test_a_manifest_run_enforces_max_rejection_rate(
     assert load_manifest("m.json")[1][0].policy.max_rejection_rate == 0.25
     assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 2
     assert list((work / "out/accepted/orders").glob("*.parquet"))
+
+
+def test_manifest_errors_carry_codes(tmp_path: Path) -> None:
+    from floe.errors import FloeConfigError, FloeIoError
+    from floe.manifest_run import load_manifest
+
+    bad = tmp_path / "m.json"
+    bad.write_text("{}")
+    with pytest.raises(FloeConfigError) as e:
+        load_manifest(bad)
+    assert e.value.code == "config_invalid_value"
+    with pytest.raises(FloeConfigError) as e:
+        load_manifest("gs://b/m.json")
+    assert e.value.code == "config_not_supported"
+    with pytest.raises(FloeIoError) as io:
+        load_manifest(tmp_path / "gone.json")
+    assert io.value.code == "io_read_error"
