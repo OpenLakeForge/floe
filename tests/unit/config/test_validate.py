@@ -570,3 +570,24 @@ def test_compare_columns_is_refused_for_merge_scd1(tmp_path: Path) -> None:
     sink = "{write_mode: merge_scd1, accepted: {format: iceberg, path: out, iceberg: {}, merge: {compare_columns: [amt]}}}"  # fmt: skip
     with pytest.raises(FloeConfigError, match=r"entity.name=orders sink.accepted.merge.compare_columns with sink.write_mode=merge_scd1 is not supported \(see CHANGELOG\)"):  # fmt: skip
         check(tmp_path, f"{{{COLS}, primary_key: [id]}}", sink=sink, catalogs=CATALOG)
+
+
+@pytest.mark.parametrize(
+    ("schema", "code"),
+    [
+        (f"{{{COLS}, primary_key: [zz]}}", "config_unknown_reference"),
+        (f"{{{COLS}, primary_key: [id, id]}}", "config_duplicate"),
+        (f"{{{COLS}, primary_key: []}}", "config_invalid_value"),
+        (f"{{{COLS}, schema_evolution: {{mode: add_columns}}}}", "config_conflict"),
+    ],
+)
+def test_validation_errors_carry_a_code(tmp_path: Path, schema: str, code: str) -> None:
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, schema)
+    assert err.value.code == code
+
+
+def test_a_too_new_version_has_the_version_code(tmp_path: Path) -> None:
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", version="99.0")
+    assert err.value.code == "config_version"
