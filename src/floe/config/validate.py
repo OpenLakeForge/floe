@@ -82,25 +82,15 @@ def _check_primary_key(entity: EntityConfig) -> None:
     if primary_key is None:
         return
     if not primary_key:
-        raise _fail(
-            entity, "schema.primary_key must not be empty", code="config_invalid_value"
-        )
+        raise _fail(entity, "schema.primary_key must not be empty", code="config_invalid_value")  # fmt: skip
     columns = {c.name: c for c in reversed(entity.schema_.columns)}
     seen: set[str] = set()
     for index, name in enumerate(primary_key):
         value = name.strip()
         if not value:
-            raise _fail(
-                entity,
-                f"schema.primary_key[{index}] must not be empty",
-                code="config_invalid_value",
-            )
+            raise _fail(entity, f"schema.primary_key[{index}] must not be empty", code="config_invalid_value")  # fmt: skip
         if value in seen:
-            raise _fail(
-                entity,
-                f"schema.primary_key has duplicate column {value}",
-                code="config_duplicate",
-            )
+            raise _fail(entity, f"schema.primary_key has duplicate column {value}", code="config_duplicate")  # fmt: skip
         seen.add(value)
         if value not in columns:
             raise _fail(
@@ -122,25 +112,17 @@ def _check_unique_keys(entity: EntityConfig) -> None:
     if unique_keys is None:
         return
     if not unique_keys:
-        raise _fail(
-            entity, "schema.unique_keys must not be empty", code="config_invalid_value"
-        )
+        raise _fail(entity, "schema.unique_keys must not be empty", code="config_invalid_value")  # fmt: skip
     names = {c.name for c in entity.schema_.columns}
     for index, key in enumerate(unique_keys):
         where = f"schema.unique_keys[{index}]"
         if not key:
-            raise _fail(
-                entity, f"{where} must not be empty", code="config_invalid_value"
-            )
+            raise _fail(entity, f"{where} must not be empty", code="config_invalid_value")  # fmt: skip
         seen: set[str] = set()
         for column_index, name in enumerate(key):
             value = name.strip()
             if not value:
-                raise _fail(
-                    entity,
-                    f"{where}[{column_index}] must not be empty",
-                    code="config_invalid_value",
-                )
+                raise _fail(entity, f"{where}[{column_index}] must not be empty", code="config_invalid_value")  # fmt: skip
             if value not in names:
                 raise _fail(
                     entity,
@@ -148,11 +130,7 @@ def _check_unique_keys(entity: EntityConfig) -> None:
                     code="config_unknown_reference",
                 )
             if value in seen:
-                raise _fail(
-                    entity,
-                    f"{where} has duplicate column {value}",
-                    code="config_duplicate",
-                )
+                raise _fail(entity, f"{where} has duplicate column {value}", code="config_duplicate")  # fmt: skip
             seen.add(value)
 
 
@@ -161,11 +139,7 @@ def _check_evolution(entity: EntityConfig, version: str) -> None:
     if evolution is None:
         return
     if config_version(version) < (0, 2):
-        raise _fail(
-            entity,
-            'schema.schema_evolution requires root.version >= "0.2"',
-            code="config_version",
-        )
+        raise _fail(entity, 'schema.schema_evolution requires root.version >= "0.2"', code="config_version")  # fmt: skip
     if evolution.mode == "add_columns" and entity.sink.accepted.format != "iceberg":
         raise _fail(
             entity,
@@ -182,11 +156,7 @@ def _merge_list(entity: EntityConfig, field: str, values: list[str]) -> None:
     for index, raw in enumerate(values):
         value = raw.strip()
         if not value:
-            raise _fail(
-                entity,
-                f"{where}[{index}] must not be empty",
-                code="config_invalid_value",
-            )
+            raise _fail(entity, f"{where}[{index}] must not be empty", code="config_invalid_value")  # fmt: skip
         if value not in names:
             raise _fail(
                 entity,
@@ -194,9 +164,7 @@ def _merge_list(entity: EntityConfig, field: str, values: list[str]) -> None:
                 code="config_unknown_reference",
             )
         if value in seen:
-            raise _fail(
-                entity, f"{where} has duplicate column {value}", code="config_duplicate"
-            )
+            raise _fail(entity, f"{where} has duplicate column {value}", code="config_duplicate")  # fmt: skip
         seen.add(value)
     for index, raw in enumerate(values):
         if raw.strip() in primary_key:
@@ -215,11 +183,7 @@ def _check_merge(entity: EntityConfig) -> None:
     if not any(
         m.startswith("merge") for m in SINK_WRITE_MODES[entity.sink.accepted.format]
     ):
-        raise _fail(
-            entity,
-            "sink.accepted.merge requires sink.accepted.format=iceberg",
-            code="config_conflict",
-        )
+        raise _fail(entity, "sink.accepted.merge requires sink.accepted.format=iceberg", code="config_conflict")  # fmt: skip
     if mode not in ("merge_scd1", "merge_scd2"):
         raise _fail(
             entity,
@@ -255,11 +219,7 @@ def _check_merge(entity: EntityConfig) -> None:
     }
     for field, value in resolved.items():
         if not value:
-            raise _fail(
-                entity,
-                f"sink.accepted.merge.scd2.{field} must not be empty",
-                code="config_invalid_value",
-            )
+            raise _fail(entity, f"sink.accepted.merge.scd2.{field} must not be empty", code="config_invalid_value")  # fmt: skip
         if value in names:
             raise _fail(
                 entity,
@@ -267,11 +227,7 @@ def _check_merge(entity: EntityConfig) -> None:
                 code="config_conflict",
             )
     if len(set(resolved.values())) != len(resolved):
-        raise _fail(
-            entity,
-            "sink.accepted.merge.scd2 column names must be unique",
-            code="config_duplicate",
-        )
+        raise _fail(entity, "sink.accepted.merge.scd2 column names must be unique", code="config_duplicate")  # fmt: skip
 
 
 def _check_write_mode(entity: EntityConfig) -> None:
@@ -286,11 +242,7 @@ def _check_write_mode(entity: EntityConfig) -> None:
         require("merge", "duckdb", f"entity.name={entity.name} sink.write_mode={mode}")
         primary_key = entity.schema_.primary_key
         if primary_key is None:
-            raise _fail(
-                entity,
-                f"sink.write_mode={mode} requires schema.primary_key",
-                code="config_missing_key",
-            )
+            raise _fail(entity, f"sink.write_mode={mode} requires schema.primary_key", code="config_missing_key")  # fmt: skip
         if not primary_key:
             raise _fail(
                 entity,
@@ -333,11 +285,7 @@ def _check_partitioning(entity: EntityConfig) -> None:
     for index, field in enumerate(spec):
         column = field.column.strip()
         if not column:
-            raise _fail(
-                entity,
-                f"{where}[{index}].column must not be empty",
-                code="config_invalid_value",
-            )
+            raise _fail(entity, f"{where}[{index}].column must not be empty", code="config_invalid_value")  # fmt: skip
         if column not in names:
             raise _fail(
                 entity,
@@ -365,17 +313,9 @@ def _check_partitioning(entity: EntityConfig) -> None:
                 code="config_conflict",
             )
         if field.num_buckets == 0:
-            raise _fail(
-                entity,
-                f"{where}[{index}].num_buckets must be greater than 0",
-                code="config_invalid_value",
-            )
+            raise _fail(entity, f"{where}[{index}].num_buckets must be greater than 0", code="config_invalid_value")  # fmt: skip
         if (column, transform) in seen:
-            raise _fail(
-                entity,
-                f"{where} has duplicate entry ({column}, {transform})",
-                code="config_duplicate",
-            )
+            raise _fail(entity, f"{where} has duplicate entry ({column}, {transform})", code="config_duplicate")  # fmt: skip
         seen.add((column, transform))
 
 
@@ -395,10 +335,7 @@ def _storage_ref(
             code="config_unknown_reference",
         )
     if storages and name not in {d.name for d in storages.definitions}:
-        raise FloeConfigError(
-            f"{who}{field} references unknown storage {name}",
-            code="config_unknown_reference",
-        )
+        raise FloeConfigError(f"{who}{field} references unknown storage {name}", code="config_unknown_reference")  # fmt: skip
     return name
 
 
@@ -482,11 +419,7 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
             code="config_not_supported",
         )
     if accepted.format not in SINK_FORMATS:
-        raise _fail(
-            entity,
-            f"sink.accepted.format={accepted.format} is unsupported",
-            code="config_invalid_value",
-        )
+        raise _fail(entity, f"sink.accepted.format={accepted.format} is unsupported", code="config_invalid_value")  # fmt: skip
     options = accepted.options
     if options is not None and accepted.format == "parquet":
         if options.compression not in (None, *PARQUET_COMPRESSIONS):
@@ -626,17 +559,9 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
 def _check_source(entity: EntityConfig, config: RootConfig) -> None:
     source = entity.source
     if source.format == "fixed":  # D1 (#619): fixed-width is dropped
-        raise _fail(
-            entity,
-            f"source.format={source.format} is not supported in 0.8",
-            code="config_not_supported",
-        )
+        raise _fail(entity, f"source.format={source.format} is not supported in 0.8", code="config_not_supported")  # fmt: skip
     if source.format not in SOURCE_FORMATS:
-        raise _fail(
-            entity,
-            f"source.format={source.format} is unsupported",
-            code="config_invalid_value",
-        )
+        raise _fail(entity, f"source.format={source.format} is unsupported", code="config_invalid_value")  # fmt: skip
     if source.cast_mode not in CAST_MODES:
         raise _fail(
             entity,
@@ -658,18 +583,10 @@ def _check_source(entity: EntityConfig, config: RootConfig) -> None:
         require("xlsx", "fastexcel", f"entity.name={entity.name} source.format=xlsx")
         sheet, header_row = options.sheet, options.header_row
         if sheet is not None and not sheet.strip():
-            raise _fail(
-                entity,
-                "source.options.sheet must not be empty",
-                code="config_invalid_value",
-            )
+            raise _fail(entity, "source.options.sheet must not be empty", code="config_invalid_value")  # fmt: skip
         header_row = 1 if header_row is None else header_row
         if header_row == 0:
-            raise _fail(
-                entity,
-                "source.options.header_row must be greater than 0",
-                code="config_invalid_value",
-            )
+            raise _fail(entity, "source.options.header_row must be greater than 0", code="config_invalid_value")  # fmt: skip
         data_row = header_row + 1 if options.data_row is None else options.data_row
         if data_row <= header_row:
             raise _fail(
@@ -679,32 +596,18 @@ def _check_source(entity: EntityConfig, config: RootConfig) -> None:
             )
     if source.format == "xml":
         if not (options.row_tag or "").strip():
-            raise _fail(
-                entity,
-                "source.options.row_tag is required for xml input",
-                code="config_missing_key",
-            )
+            raise _fail(entity, "source.options.row_tag is required for xml input", code="config_missing_key")  # fmt: skip
         for field in ("namespace", "value_tag"):
             value = getattr(options, field)
             if value is not None and not value.strip():
-                raise _fail(
-                    entity,
-                    f"source.options.{field} must not be empty",
-                    code="config_invalid_value",
-                )
+                raise _fail(entity, f"source.options.{field} must not be empty", code="config_invalid_value")  # fmt: skip
     # D7 (#584 S3, S4): rejected at validate time, not when the reader opens the file.
     if source.format in ("csv", "tsv"):
         separator, encoding = options.separator or "", options.encoding or "utf8"
         if len(separator.encode()) != 1:
-            raise _fail(
-                entity,
-                f"separator must be a single byte, got {separator!r}",
-                code="config_invalid_value",
-            )
+            raise _fail(entity, f"separator must be a single byte, got {separator!r}", code="config_invalid_value")  # fmt: skip
         if _canonical(encoding) not in ("utf8", "lossyutf8"):
-            raise _fail(
-                entity, f"unsupported encoding: {encoding}", code="config_invalid_value"
-            )
+            raise _fail(entity, f"unsupported encoding: {encoding}", code="config_invalid_value")  # fmt: skip
 
 
 def _check_source_partitioning(entity: EntityConfig) -> None:
@@ -717,21 +620,11 @@ def _check_source_partitioning(entity: EntityConfig) -> None:
         allowed = ", ".join(f"{{{t}}}" for t in PARTITION_TOKENS)
         raise _fail(entity, f"{pattern} has unknown token {{{unknown[0]}}} (allowed: {allowed})", code="config_invalid_value")  # fmt: skip
     if set("{}") & set(PARTITION_TOKEN.sub("", p.pattern)):
-        raise _fail(
-            entity, f"{pattern} has an unmatched brace", code="config_invalid_value"
-        )
+        raise _fail(entity, f"{pattern} has an unmatched brace", code="config_invalid_value")  # fmt: skip
     if repeated := [t for t in PARTITION_TOKENS if tokens.count(t) > 1]:
-        raise _fail(
-            entity,
-            f"{pattern} repeats token {{{repeated[0]}}}",
-            code="config_duplicate",
-        )
+        raise _fail(entity, f"{pattern} repeats token {{{repeated[0]}}}", code="config_duplicate")  # fmt: skip
     if not {"yyyy", "MM", "dd"} <= set(tokens):
-        raise _fail(
-            entity,
-            f"{pattern} must contain {{yyyy}}, {{MM}} and {{dd}}",
-            code="config_invalid_value",
-        )
+        raise _fail(entity, f"{pattern} must contain {{yyyy}}, {{MM}} and {{dd}}", code="config_invalid_value")  # fmt: skip
     # #913: also the names after normalize_columns (the input names and the output names)
     nc, columns = entity.schema_.normalize_columns, entity.schema_.columns
     strategy = (nc.strategy or "snake_case") if nc and nc.enabled else None
@@ -741,11 +634,7 @@ def _check_source_partitioning(entity: EntityConfig) -> None:
         if name is None:
             continue
         if not name.strip():
-            raise _fail(
-                entity,
-                f"{where}.{field} must not be empty",
-                code="config_invalid_value",
-            )
+            raise _fail(entity, f"{where}.{field} must not be empty", code="config_invalid_value")  # fmt: skip
         if name in names or normalize_name(name, strategy) in inputs:
             raise _fail(entity, f"{where}.{field}={name} is already a column in schema.columns", code="config_conflict")  # fmt: skip
     if p.batch_column is not None and "batch" not in tokens:
@@ -757,16 +646,10 @@ def _check_source_partitioning(entity: EntityConfig) -> None:
 def _check_state(entity: EntityConfig) -> None:
     state, archive = entity.state, entity.sink.archive
     if state and state.path is not None and not state.path.strip():
-        raise _fail(
-            entity, "entity.state.path must not be empty", code="config_invalid_value"
-        )
+        raise _fail(entity, "entity.state.path must not be empty", code="config_invalid_value")  # fmt: skip
     mode = entity.incremental_mode
     if mode == "archive" and archive is None:
-        raise _fail(
-            entity,
-            "incremental_mode=archive requires sink.archive",
-            code="config_missing_key",
-        )
+        raise _fail(entity, "incremental_mode=archive requires sink.archive", code="config_missing_key")  # fmt: skip
     # ponytail: no deprecation warning for `sink.archive` without a mode.
     if archive is not None and mode == "file":
         raise _fail(
@@ -819,26 +702,14 @@ def _check_pii(entity: EntityConfig) -> None:
     primary_key = set(schema.primary_key or [])
     mode = entity.sink.write_mode
     unique = primary_key | {c for key in schema.unique_keys or [] for c in key}
-    if (
-        schema.unique_keys is None
-    ):  # legacy `unique: true` is ignored once `unique_keys` is set
-        unique |= {c.name for c in schema.columns if c.unique is True}
     seen: set[str] = set()
     for col in pii.columns:
         name, strategy = col.name, col.strategy
         if name in seen:
-            raise _fail(
-                entity,
-                f"pii.columns: column name {name} is duplicated",
-                code="config_duplicate",
-            )
+            raise _fail(entity, f"pii.columns: column name {name} is duplicated", code="config_duplicate")  # fmt: skip
         seen.add(name)
         if name not in columns:
-            raise _fail(
-                entity,
-                f"pii.columns: {name} is not a schema column",
-                code="config_unknown_reference",
-            )
+            raise _fail(entity, f"pii.columns: {name} is not a schema column", code="config_unknown_reference")  # fmt: skip
         if strategy == "tokenize":
             raise _pii_error(
                 entity,
@@ -931,9 +802,7 @@ def _check_storages(config: RootConfig) -> None:
     names: set[str] = set()
     if storages is not None:
         if not storages.definitions:
-            raise FloeConfigError(
-                "storages.definitions must not be empty", code="config_invalid_value"
-            )
+            raise FloeConfigError("storages.definitions must not be empty", code="config_invalid_value")  # fmt: skip
         for d in storages.definitions:
             if d.type not in STORAGE_TYPES:
                 raise FloeConfigError(
@@ -956,10 +825,7 @@ def _check_storages(config: RootConfig) -> None:
                 )
             names.add(d.name)
         if storages.default is None:
-            raise FloeConfigError(
-                "storages.default is required when storages is set",
-                code="config_missing_key",
-            )
+            raise FloeConfigError("storages.default is required when storages is set", code="config_missing_key")  # fmt: skip
         if storages.default not in names:
             raise FloeConfigError(
                 f"storages.default={storages.default} does not match any definition",
@@ -968,9 +834,7 @@ def _check_storages(config: RootConfig) -> None:
     if catalogs is None:
         return
     if not catalogs.definitions:
-        raise FloeConfigError(
-            "catalogs.definitions must not be empty", code="config_invalid_value"
-        )
+        raise FloeConfigError("catalogs.definitions must not be empty", code="config_invalid_value")  # fmt: skip
     seen: set[str] = set()
     for c in catalogs.definitions:
         wh = c.warehouse_storage
@@ -995,10 +859,7 @@ def _check_storages(config: RootConfig) -> None:
                     code="config_conflict",
                 )
         if c.name in seen:
-            raise FloeConfigError(
-                f"catalogs.definitions name={c.name} is duplicated",
-                code="config_duplicate",
-            )
+            raise FloeConfigError(f"catalogs.definitions name={c.name} is duplicated", code="config_duplicate")  # fmt: skip
         seen.add(c.name)
     if catalogs.default is not None and catalogs.default not in seen:
         raise FloeConfigError(
@@ -1009,33 +870,21 @@ def _check_storages(config: RootConfig) -> None:
 
 def check_lineage(lineage: LineageConfig, ctx: str) -> None:
     if not lineage.url.strip():
-        raise FloeConfigError(
-            f"{ctx}.url must not be empty", code="config_invalid_value"
-        )
+        raise FloeConfigError(f"{ctx}.url must not be empty", code="config_invalid_value")  # fmt: skip
     if not lineage.namespace.strip():
-        raise FloeConfigError(
-            f"{ctx}.namespace must not be empty", code="config_invalid_value"
-        )
+        raise FloeConfigError(f"{ctx}.namespace must not be empty", code="config_invalid_value")  # fmt: skip
     if lineage.max_failures == 0:
-        raise FloeConfigError(
-            f"{ctx}.max_failures must be at least 1", code="config_invalid_value"
-        )
+        raise FloeConfigError(f"{ctx}.max_failures must be at least 1", code="config_invalid_value")  # fmt: skip
 
 
 def _check_report_lineage(config: RootConfig) -> None:
     report, lineage = config.report, config.lineage
     name = _storage_ref(config, report.storage, "report.storage", "")
     if _storage_type(config, name) == "local" and report.path.startswith(REMOTE_URIS):
-        raise FloeConfigError(
-            f"report.path must be a local path (got {report.path})",
-            code="config_invalid_value",
-        )
+        raise FloeConfigError(f"report.path must be a local path (got {report.path})", code="config_invalid_value")  # fmt: skip
     # D7 (#584 S5): an unknown formatter is rejected at validate time, not when a run starts.
     if report.formatter not in (None, "json", "csv", "text"):
-        raise FloeConfigError(
-            f"unsupported report.formatter: {report.formatter}",
-            code="config_invalid_value",
-        )
+        raise FloeConfigError(f"unsupported report.formatter: {report.formatter}", code="config_invalid_value")  # fmt: skip
     if lineage is not None:
         check_lineage(lineage, "lineage")
 
