@@ -62,7 +62,7 @@
 - `floe state reset -c <config> --entity <name> --yes [-p <profile>]`
   - Remove the local or remote state object for an entity.
   - Requires `--yes` because the next incremental run may reprocess previously tracked files.
-  - Remote resets use the same conditional delete support as remote incremental state.
+  - Remote resets write the empty state conditionally (version or ETag), as remote incremental state does.
   - See [docs/incremental.md](../concepts/incremental.md) for reset behavior and permissions.
 
 - `floe maintain -c <config> [-p <profile>] [--entities <name[,name...]>] [--older-than-days <n>] [--retain-last <n>] [--orphan-delay-days <n>] [--dry-run] [--compact --experimental]`
