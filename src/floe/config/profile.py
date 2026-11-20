@@ -4,7 +4,7 @@ import math
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PureWindowsPath
 from typing import cast
 
 from floe.config.project import LineageConfig, ReportConfig, RootConfig, parse_lineage
@@ -471,7 +471,9 @@ def _report_under(report: ReportConfig, fixed: ProfileReport) -> ReportConfig:
         raise FloeConfigError(
             f"report.storage={report.storage} differs from the profile's report.storage={fixed.storage}"
         )
-    if "://" in report.path or report.path.startswith(("/", "\\")) or ".." in PurePosixPath(report.path).parts:  # fmt: skip
+    # Windows path rules split on `/` and `\` and see drives, so they also cover POSIX paths
+    path = PureWindowsPath(report.path)
+    if "://" in report.path or path.anchor or ".." in path.parts:
         raise FloeConfigError(
             f"report.path must be a relative path under the profile's report prefix (got {report.path})"
         )
