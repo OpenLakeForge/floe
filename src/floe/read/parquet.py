@@ -1,4 +1,4 @@
-"""Parquet reader: native column types, in bounded chunks (Rust: `io/read/parquet.rs`)."""
+"""Parquet reader: native column types, in bounded chunks."""
 
 from collections.abc import Collection, Iterator
 from dataclasses import dataclass
@@ -23,7 +23,7 @@ def read_parquet(
     """Yield the file in chunks of at most `chunk_rows` rows; always at least one (maybe empty).
 
     Columns keep their native types (casting them is #758, D15). `columns` projects to the
-    declared columns that exist in the file; none of them present reads everything, as Rust.
+    declared columns that exist in the file; none of them present reads everything.
     """
     try:
         lf = pl.scan_parquet(path)

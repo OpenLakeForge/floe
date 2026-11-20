@@ -1,4 +1,4 @@
-"""Schema mismatch: missing/extra columns and their policies (Rust: `checks/mismatch.rs`)."""
+"""Schema mismatch: missing/extra columns and their policies."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -146,7 +146,7 @@ def json_input_columns(path: Path, mode: str = "array") -> list[str] | None:
     """Sorted top-level keys of every record, read exactly as `read_json` reads them.
 
     D40: the union over all records, so a key only a later record carries is still an input
-    column (Rust 0.7 probed the first object only). `None` for a file without records (D41), which
+    column (not just the first object). `None` for a file without records (D41), which
     differs from records that carry no keys (`[]`): those are still checked for missing columns.
     """
     return json_probe(path, mode, 0)[0]

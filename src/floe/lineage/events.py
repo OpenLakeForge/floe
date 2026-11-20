@@ -1,4 +1,4 @@
-"""OpenLineage `RunEvent` bodies, built as Rust builds them (Rust: `lineage/mod.rs`)."""
+"""OpenLineage `RunEvent` bodies."""
 
 import os
 from collections.abc import Sequence
@@ -40,7 +40,7 @@ def event_type(status: str) -> str:
 
 
 def iso(ms: int) -> str:
-    """RFC 3339 in UTC with trailing fractional zeros trimmed, as Rust's `time` crate prints it."""
+    """RFC 3339 in UTC with trailing fractional zeros trimmed."""
     base = datetime.fromtimestamp(ms // 1000, UTC).strftime("%Y-%m-%dT%H:%M:%S")
     frac = f"{ms % 1000:03d}".rstrip("0")
     return f"{base}.{frac}Z" if frac else f"{base}Z"

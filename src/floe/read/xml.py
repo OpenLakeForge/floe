@@ -1,4 +1,4 @@
-"""XML reader: every selected column as a raw string, streamed in bounded chunks (Rust: `io/read/xml.rs`)."""
+"""XML reader: every selected column as a raw string, streamed in bounded chunks."""
 
 import re
 from collections.abc import Callable, Iterator, Sequence
@@ -100,7 +100,8 @@ class _Rows:
         self.builder = ET.TreeBuilder()
         self.evaluate, self.row_tag, self.namespace = evaluate, row_tag, namespace
         self.rows: list[list[str | None]] = []
-        self.depth = 0  # ponytail: row_tag elements nested in a row are content, not rows (Rust yields both)
+        # ponytail: row_tag elements nested in a row are content, not rows
+        self.depth = 0
 
     def start(self, tag: str, attrib: dict[str, str]) -> ET.Element:
         self.depth += self.depth > 0
@@ -205,7 +206,7 @@ def _in_namespace(tag: str, namespace: str | None) -> bool:
 
 
 def xml_columns(path: Path, options: SourceOptions) -> list[str]:
-    """Sorted child element names of the first row: the probe Rust's `read_input_columns` runs."""
+    """Sorted child element names of the first row: the column probe."""
     row_tag, namespace, _ = _options(options)
     try:
         row = None  # the first matching element in document order, read once it closes

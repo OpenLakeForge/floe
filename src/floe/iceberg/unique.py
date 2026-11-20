@@ -1,4 +1,4 @@
-"""Unique keys already in an Iceberg table, for append (Rust `seed_unique_tracker_for_append`)."""
+"""Unique keys already in an Iceberg table, for append."""
 
 import os
 from collections.abc import Mapping, Sequence

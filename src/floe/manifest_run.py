@@ -1,7 +1,7 @@
-"""Rebuild the `RootConfig` a run needs from a manifest (Rust: `manifest/reconstruct.rs`).
+"""Rebuild the `RootConfig` a run needs from a manifest.
 
-The manifest was validated and resolved when it was generated: nothing is re-validated here. As in
-Rust, a malformed option block is dropped and an unknown enum value falls back to its default.
+The manifest was validated and resolved when it was generated: nothing is re-validated here. A
+malformed option block is dropped and an unknown enum value falls back to its default.
 """
 
 import json
@@ -49,7 +49,7 @@ _WRITE_MODES = ("overwrite", "append", "merge_scd1", "merge_scd2")
 
 
 def _omitted_as_none(model: type[BaseModel], value: object) -> object:
-    """Rust's `Option`: an omitted nullable field is `None`, in nested blocks too."""
+    """An omitted nullable field is `None`, in nested blocks too."""
     if not isinstance(value, dict):
         return value
     filled = dict(cast(Json, value))
@@ -80,7 +80,7 @@ def _pick(value: str | None, allowed: tuple[str, ...], default: str) -> str:
 
 
 def _storage(name: str, named_local: bool) -> str | None:
-    """`local` is the implicit storage, unless a definition is named so (Rust drops it either way)."""
+    """`local` is the implicit storage, unless a definition is named so."""
     return None if name == "local" and not named_local else name
 
 
@@ -191,7 +191,7 @@ def _entity(m: Json, named_local: bool) -> EntityConfig:
 def _section(
     model: type[_M], m: Json, name: str, shape: Callable[[Json], Json] | None = None
 ) -> _M | None:
-    """An embedded block, back in config shape; a malformed one is an error, as in Rust."""
+    """An embedded block, back in config shape; a malformed one is an error."""
     value = m.get(name)
     try:
         if value is not None and shape:
@@ -210,7 +210,7 @@ def _catalog_def(d: Json) -> Json:
 
 
 def _report(base: str, formatter: str | None, storages: StoragesConfig | None) -> tuple[ReportConfig, StoragesConfig | None]:  # fmt: skip
-    """Rust `RunContext::from_config`: an `s3://` base uses the storage on its bucket, else a synthetic one."""
+    """An `s3://` base uses the storage on its bucket, else a synthetic one."""
     if not base.startswith("s3://"):
         local = storages and next((d.name for d in storages.definitions if d.type == "local"), None)  # fmt: skip
         return ReportConfig(path=base.removeprefix("local://"), formatter=formatter, storage=local), storages  # fmt: skip
@@ -234,7 +234,7 @@ def _cloud(target: _M, uri: str | None) -> _M:
 
 
 def _lineage_entity(entity: EntityConfig, m: Json) -> EntityConfig:
-    """Rust `lineage_inputs_from_manifest_json`."""
+    """The lineage inputs recorded in the manifest."""
     sink, sinks = entity.sink, m["sinks"]
     accepted: SinkTarget = _cloud(sink.accepted, sinks["accepted"].get("uri"))
     rejected = sink.rejected and _cloud(sink.rejected, sinks["rejected"].get("uri"))
@@ -267,7 +267,7 @@ def shown(location: str) -> str:
 
 
 def _replay_base(location: str, m: Json) -> Path:
-    """Rust `manifest_replay_config_base`: a remote manifest resolves local paths under its work root.
+    """A remote manifest resolves local paths under its work root.
 
     A local one resolves them beside `config_uri`, where `manifest generate` resolved them (#1008).
     """

@@ -1,4 +1,4 @@
-"""CSV reader: every column as a raw string, in bounded chunks (Rust: `io/read/csv.rs`)."""
+"""CSV reader: every column as a raw string, in bounded chunks."""
 
 import csv
 import json
@@ -84,7 +84,7 @@ def _columns(path: Path, args: _Args, declared: Sequence[str]) -> list[str]:
         # `n_rows=1` still parses ~64 KiB: truncate, so a ragged row there is left to D3 (#1242)
         width = args.scan(path, n_rows=1, ragged_from=0).collect().width
     except (pl.exceptions.PolarsError, OSError) as err:
-        # Rust's polars prints the error kind: `no data: empty CSV`
+        # The message keeps the error kind: `no data: empty CSV`
         kind = "no data: " if isinstance(err, pl.exceptions.NoDataError) else ""
         raise FloeIoError(f"csv header read failed: {kind}{err}") from err
     names = list(declared[:width])
@@ -109,7 +109,7 @@ def read_csv(
 ) -> Iterator[CsvChunk]:
     """Yield the file in chunks of at most `chunk_rows` rows; always at least one (maybe empty).
 
-    `declared` names the headless columns, as Rust. Nulls follow `null_values` and Polars: an
+    `declared` names the headless columns. Nulls follow `null_values` and Polars: an
     unquoted empty field is always null.
     """
     args = _scan_args(options)

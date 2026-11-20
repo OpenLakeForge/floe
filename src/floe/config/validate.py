@@ -42,14 +42,14 @@ STORAGE_TYPES = ("local", "s3", "adls", "gcs")
 NORMALIZE_STRATEGIES = ("snake_case", "lower", "camel_case", "none")
 MISMATCH_MISSING = ("reject_file", "fill_nulls")
 MISMATCH_EXTRA = ("reject_file", "ignore")
-# D10 (#619): Rust 0.7 also lists `time`; it is not supported in 0.8.
+# D10 (#619): `time` is not supported.
 COLUMN_TYPES = ("string", "number", "boolean", "datetime", "date")
 SINK_FORMATS = ("parquet", "iceberg")
 PARQUET_COMPRESSIONS = ("snappy", "gzip", "zstd", "uncompressed")
 PARTITION_TRANSFORMS = ("identity", "year", "month", "day", "hour", "bucket")  # D12
 PARTITION_TOKENS = ("yyyy", "MM", "dd", "HH", "batch")  # D28
 PARTITION_TOKEN = re.compile(r"\{([^{}]*)\}")
-# D2 (#619): Iceberg accepts the merge modes; Rust 0.7 allows them for Delta (D1) and DuckDB (D1) only.
+# D2 (#619): Iceberg accepts the merge modes; Parquet does not.
 SINK_WRITE_MODES: dict[str, tuple[WriteMode, ...]] = {
     "parquet": ("overwrite", "append"),
     "iceberg": ("overwrite", "append", "merge_scd1", "merge_scd2"),
@@ -69,7 +69,7 @@ _TYPE_NAMES = {
 
 
 def _canonical(value: str) -> str:
-    # D7 (#584 S1, S2): no trim, unlike Rust's `normalize_value`; the run-time paths never trimmed.
+    # D7 (#584 S1, S2): no trim; the run-time paths never trimmed.
     return value.lower().replace("-", "").replace("_", "")
 
 
@@ -104,7 +104,7 @@ def _check_primary_key(entity: EntityConfig) -> None:
 
 
 def _check_unique_keys(entity: EntityConfig) -> None:
-    # ponytail: Rust's override and dedup warnings are not ported; they are not errors.
+    # ponytail: override and dedup warnings are not emitted; they are not errors.
     unique_keys = entity.schema_.unique_keys
     if unique_keys is None:
         return
@@ -401,7 +401,7 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
                 raise _fail(
                     entity, f"sink.accepted.options.{field} must be greater than 0"
                 )
-    # D39 (#1007): abort writes the failing file to sink.rejected too; Rust 0.7 only failed at run time
+    # D39 (#1007): abort writes the failing file to sink.rejected too
     if entity.policy.severity in ("reject", "abort") and sink.rejected is None:
         raise _fail(entity, f"sink.rejected is required when policy.severity={entity.policy.severity}")  # fmt: skip
     if sink.rejected is not None and sink.rejected.format not in ("csv", "parquet", "iceberg"):  # fmt: skip
@@ -549,7 +549,7 @@ def _check_source(entity: EntityConfig, config: RootConfig) -> None:
             value = getattr(options, field)
             if value is not None and not value.strip():
                 raise _fail(entity, f"source.options.{field} must not be empty")
-    # D7 (#584 S3, S4): Rust 0.7 only rejects these when the reader opens the file.
+    # D7 (#584 S3, S4): rejected at validate time, not when the reader opens the file.
     if source.format in ("csv", "tsv"):
         separator, encoding = options.separator or "", options.encoding or "utf8"
         if len(separator.encode()) != 1:
@@ -598,7 +598,7 @@ def _check_state(entity: EntityConfig) -> None:
     mode = entity.incremental_mode
     if mode == "archive" and archive is None:
         raise _fail(entity, "incremental_mode=archive requires sink.archive")
-    # ponytail: Rust's deprecation warning for `sink.archive` without a mode is not ported.
+    # ponytail: no deprecation warning for `sink.archive` without a mode.
     if archive is not None and mode == "file":
         raise _fail(
             entity,
@@ -700,7 +700,7 @@ def _check_pii(entity: EntityConfig) -> None:
                 ".strategy=hash cannot be applied to a unique-key column: uniqueness checks "
                 "record raw values in the run report before masking, leaking unmasked PII",
             )
-        # ponytail: Rust's warning for an unkeyed `hash` is not ported.
+        # ponytail: no warning for an unkeyed `hash`.
         fmt = entity.sink.accepted.format
         rejected = entity.sink.rejected
         refused = f"format={fmt}" if fmt in ("iceberg", "delta") else "sink.rejected.format=iceberg" if rejected and rejected.format == "iceberg" else None  # fmt: skip
@@ -800,7 +800,7 @@ def _check_report_lineage(config: RootConfig) -> None:
     name = _storage_ref(config, report.storage, "report.storage", "")
     if _storage_type(config, name) == "local" and report.path.startswith(REMOTE_URIS):
         raise FloeConfigError(f"report.path must be a local path (got {report.path})")
-    # D7 (#584 S5): Rust 0.7 only rejects an unknown formatter when a run starts.
+    # D7 (#584 S5): an unknown formatter is rejected at validate time, not when a run starts.
     if report.formatter not in (None, "json", "csv", "text"):
         raise FloeConfigError(f"unsupported report.formatter: {report.formatter}")
     if lineage is not None:
@@ -851,8 +851,8 @@ def validate_entities(config: RootConfig) -> None:
                 f"(entities[{ids[entity.id]}] and entities[{index}])"
             )
         ids[entity.id] = index
-    # D26 (#844): Rust 0.7's catalog-less Iceberg tables are dropped; checked last so
-    # configs Rust rejects keep its message. `_check_iceberg` resolved the catalog.
+    # D26 (#844): catalog-less Iceberg tables are dropped; checked last so
+    # configs rejected earlier keep their message. `_check_iceberg` resolved the catalog.
     for entity in config.entities:
         if entity.sink.accepted.format == "iceberg" and entity.sink.accepted.iceberg is None:  # fmt: skip
             raise _fail(
@@ -862,6 +862,6 @@ def validate_entities(config: RootConfig) -> None:
 
 
 def validate_config(config: RootConfig) -> None:
-    """Rust `config::validate_config`."""
+    """Validate the whole config."""
     validate_domains(config)
     validate_entities(config)

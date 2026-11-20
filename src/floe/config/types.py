@@ -1,4 +1,4 @@
-"""Config models, ported from `crates/floe-core/src/config/types.rs` (entity-level fields)."""
+"""Config models (entity-level fields)."""
 
 from typing import Literal
 
@@ -126,7 +126,7 @@ class IcebergSinkOptions(_Model):
 
 
 def catalog_ident(value: str) -> str:
-    """Rust `normalize_catalog_ident`."""
+    """Normalize a catalog identifier."""
     out = "".join(c.lower() if c.isascii() and (c.isalnum() or c in "_-") else "_" for c in value)  # fmt: skip
     return out.strip("_") or "default"
 

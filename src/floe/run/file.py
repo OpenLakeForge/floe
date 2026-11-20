@@ -111,7 +111,7 @@ def _chunks(entity: EntityConfig, path: Path, names: list[str], head: list[tuple
 
 
 def _read_rule(fmt: str, error: FloeIoError) -> str:
-    """Rust's `FileReadError.rule`: the reader's own, else its format's parse-error rule."""
+    """The reader's own, else its format's parse-error rule."""
     return error.rule or {"xml": "xml_parse_error", "json": "json_parse_error"}.get(fmt, f"{fmt}_read_error")  # fmt: skip
 
 
@@ -157,7 +157,7 @@ def _rejected(plan: "Plan", severity: str) -> tuple[str, StorageClient]:
 
 
 def _put(plan: "Plan", severity: str, name: str, body: bytes) -> str:
-    """Write `<rejected>/<name>`; the report shows a local target as a path, as Rust."""
+    """Write `<rejected>/<name>`; the report shows a local target as a path."""
     base, client = _rejected(plan, severity)
     uri = f"{base.rstrip('/')}/{name}"
     with sink_write(plan, "rejected", "rejected_write_ms"):
@@ -171,7 +171,7 @@ def _copy_raw(plan: "Plan", source: Path, severity: str, name: str) -> str:
 
 
 def _error_report(plan: "Plan", stem: str, rows: list[tuple[int, str]]) -> str:
-    """`<stem>_reject_errors.json`, Rust's `write_error_report`."""
+    """`<stem>_reject_errors.json`."""
     items = ",".join(f'{{"row_index":{i},"errors":{e}}}' for i, e in rows)
     return _put(plan, plan.entity.policy.severity, f"{stem}_reject_errors.json", f"[{items}]".encode())  # fmt: skip
 
@@ -197,8 +197,8 @@ class Plan:
     )  # seconds per phase, see PHASES
     prechecked: set[str] = field(
         default_factory=set[str]
-    )  # files the precheck settles (unreadable header, rejected or aborted mismatch); Rust settles them before it reads any file
-    archive: tuple[str, StorageClient] | None = None  # Rust `archive_enabled()`
+    )  # files the precheck settles (unreadable header, rejected or aborted mismatch); they are settled before any file is read
+    archive: tuple[str, StorageClient] | None = None
     to_archive: list[InputFile] = field(default_factory=list[InputFile])  # fmt: skip  # moved after the sink commit (#914)
     run_id: str = ""
     rejected: tuple[str, StorageClient] | None = None  # `sink.rejected` URI and client
@@ -209,7 +209,7 @@ class Plan:
         None  # the target's key columns, cached on local disk (append, #1057)
     )
     merge_key: str | None = (
-        None  # the merge key's unique check; its duplicates are rejected even under warn (Rust `enforce_reject`)
+        None  # the merge key's unique check; its duplicates are rejected even under warn
     )
     derived: dict[str, list[pl.Expr]] = field(default_factory=dict[str, list[pl.Expr]])  # D28: by input URI  # fmt: skip
     root: str | None = None  # D29: the source root, when `source.partitioning` is set
@@ -283,7 +283,7 @@ def _typed(
     if unwritable := [] if _parquet_rejected(plan) else [n for n in plan.names if not (df.schema[n].is_numeric() or df.schema[n].base_type() in _CSV_TYPES)]:  # fmt: skip
         df = df.with_columns(typed[n] for n in unwritable)
     if entity.policy.severity == "abort" and any(c.mask.any() for c in cast_checks):
-        return typed, df, cast_checks  # fmt: skip  # Rust: abort-mode cast errors skip not_null and unique
+        return typed, df, cast_checks  # fmt: skip  # abort-mode cast errors skip not_null and unique
     required = [not_null_check(typed, n) for n in plan.required]
     if plan.history is not None:
         seed_from_history(plan.tracker, plan.history, typed, plan.out_map)
@@ -323,7 +323,7 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
     keys = plan.tracker.snapshot()
 
     def failed(err: FloeIoError, mismatch: MismatchOutcome | None) -> tuple[dict[str, Any], Iterable[pl.DataFrame]]:  # fmt: skip
-        # Rust skips the raw copy under PII: the file cannot be masked
+        # the raw copy is skipped under PII: the file cannot be masked
         plan.tracker.restore(keys)  # the unreadable file leaves no keys behind
         # a file removed after listing has nothing to copy: the read error alone is reported
         keep = entity.pii is None and entity.sink.rejected is not None and path.exists()
@@ -343,7 +343,7 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
             first = [next(chunks)]
             probe = list(first[0][1].columns)
     except FloeIoError as err:
-        plan.prechecked.add(uri)  # Rust `run_precheck` settles an unreadable header too
+        plan.prechecked.add(uri)  # an unreadable header is settled too
         return failed(err, None)
     mismatch = plan_mismatch(entity, declared, probe)
     # D28: the derived columns are declared (through partitioning), not input columns

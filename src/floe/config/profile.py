@@ -60,7 +60,7 @@ class ProfileConfig:
     catalogs: CatalogsConfig | None
     storages: StoragesConfig | None
     lineage: LineageConfig | None
-    orchestration: dict[str, object] | None = None  # its set fields only, as Rust
+    orchestration: dict[str, object] | None = None  # its set fields only
     runners: dict[str, dict[str, object]] | None = None
     report: ProfileReport | None = None
 
@@ -133,7 +133,7 @@ def _resources(
     memory_limit = _u64(resources, "memory_limit_mb", where)
     if memory_limit == 0:  # the schemas require >= 1
         raise FloeConfigError(f"{where}.memory_limit_mb: must be >= 1")
-    limits = {  # the limits are Python-only: carried only when set, so Rust manifests stay identical
+    limits = {  # the limits are Python-only: carried only when set, so manifests without limits stay identical
         "cpu_limit": _string(resources, "cpu_limit", where),
         "memory_limit_mb": memory_limit,
     }
@@ -179,7 +179,7 @@ def _auth(hash: Hash, key: str, ctx: str) -> dict[str, str | None] | None:
     return {"service_principal_oauth_ref": ref}
 
 
-# Rust reads the runner fields in this order, so the first malformed one is the one reported.
+# The runner fields are read in this order, so the first malformed one is the one reported.
 _RUNNER_FIELDS: tuple[tuple[str, Reader], ...] = (
     ("command", _command),
     ("args", _strings),
@@ -387,7 +387,7 @@ def _check_storages(storages: StoragesConfig) -> None:
         raise FloeConfigError(f"{ctx}.definitions must not be empty")
     seen: set[str] = set()
     for d in storages.definitions:
-        # ponytail: Rust's adls/gcs requirements are unreachable here; both types are rejected at parse (D1)
+        # ponytail: adls/gcs requirements are unreachable here; both types are rejected at parse (D1)
         if not d.name.strip():
             raise FloeConfigError(f"{ctx}.definitions.name must not be empty")
         if d.name in seen:

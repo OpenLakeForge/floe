@@ -1,4 +1,4 @@
-"""Accepted Parquet and rejected CSV writers (Rust: `io/write/{parquet,csv,parts}.rs`); `base` is a `local://` or `s3://` URI."""
+"""Accepted Parquet and rejected CSV writers; `base` is a `local://` or `s3://` URI."""
 
 import io
 import math
@@ -23,13 +23,13 @@ _PART = re.compile(r"part-.+")
 
 @contextmanager
 def _os_errors() -> Generator[None]:
-    """An `OSError` while writing becomes a bare `FloeError`: Rust surfaces a raw `io::Error` here, which logs with code `error`."""
+    """An `OSError` while writing becomes a bare `FloeError`, which logs with code `error`."""
     try:
         yield
     except (
         OSError,
         FloeStorageError,
-    ) as e:  # the storage client wraps the OSError; Rust prints the bare io::Error
+    ) as e:  # the storage client wraps the OSError
         os = e if isinstance(e, OSError) else e.__cause__
         if not isinstance(os, OSError):
             raise
@@ -38,7 +38,7 @@ def _os_errors() -> Generator[None]:
 
 @dataclass(frozen=True)
 class AcceptedWrite:
-    """Rust's accepted write output; the byte metrics are recorded, not compared (G5)."""
+    """The accepted write output; the byte metrics are recorded, not compared (G5)."""
 
     files_written: int
     part_files: list[str]
@@ -162,7 +162,7 @@ def write_accepted(
 def write_rejected(df: pl.DataFrame, client: StorageClient, base: str, mode: WriteMode = "overwrite", key: str | None = None) -> str:  # fmt: skip
     """Write the rejected frame from `split_rows` as one CSV part under `base`; returns its URI.
 
-    With a `key` (the run's input hash and the file) a non-overwrite part is named from it, so a retry rewrites the same part (S6, #919); Rust has no retry guard.
+    With a `key` (the run's input hash and the file) a non-overwrite part is named from it, so a retry rewrites the same part (S6, #919).
     """
     with _os_errors():
         base = base.rstrip("/")

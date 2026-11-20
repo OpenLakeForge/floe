@@ -1,4 +1,4 @@
-"""`floe run` output: run events as log lines and the run summary (Rust: `crates/floe-cli/src/logging.rs`, `output.rs`)."""
+"""`floe run` output: run events as log lines and the run summary."""
 
 import json
 import threading
@@ -90,9 +90,9 @@ class Console:
                 print(fmt(event), flush=True)
 
     def failed(self, err: FloeError, config: str | None) -> None:
-        """Rust's `emit_failed_run_events`, after a `run_started` for `config` when the run never started.
+        """Failed-run events, after a `run_started` for `config` when the run never started.
 
-        No `config` means it could not be resolved: Rust sees a bare `std::io::Error` there, so the code is `error`.
+        No `config` means it could not be resolved: the error is a bare I/O error, so the code is `error`.
         """
         base = {"run_id": self.run_id}
         ts = {"ts_ms": time.time_ns() // 1_000_000}
@@ -159,7 +159,7 @@ def run_output(
     mode: str,
     timings: dict[str, dict[str, int]],
 ) -> str:
-    """Rust's `format_run_output`; `mode` is `default`, `quiet` or `verbose`."""
+    """The run output; `mode` is `default`, `quiet` or `verbose`."""
     run_dir = outcome.run_dir  # a URI on remote storage: join with `/`, never `Path`
     head = [f"run id: {outcome.run_id}", f"report base: {outcome.report_base_path}"]
     if outcome.dry_run is not None:

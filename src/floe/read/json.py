@@ -1,4 +1,4 @@
-"""JSON reader: every selected column as a raw string (Rust: `io/read/json.rs`, `json_selector.rs`)."""
+"""JSON reader: every selected column as a raw string."""
 
 import json
 import math
@@ -164,7 +164,7 @@ def json_records(path: Path, mode: str) -> Iterator[tuple[str, Any]]:
             with path.open("rb") as handle:
                 for number, raw in enumerate(handle, 1):
                     try:
-                        line = raw.decode("utf-8").strip(WHITE_SPACE)  # Rust str::trim
+                        line = raw.decode("utf-8").strip(WHITE_SPACE)
                         if not line:
                             continue
                         value = json_loads(line)
@@ -176,7 +176,7 @@ def json_records(path: Path, mode: str) -> Iterator[tuple[str, Any]]:
                         raise FloeIoError(f"expected json object at line {number}")
                     yield f"line {number}", value
             return
-        # ponytail: array mode parses the whole file in memory, as Rust; stream if arrays outgrow it
+        # ponytail: array mode parses the whole file in memory; stream if arrays outgrow it
         try:
             array: Any = json_loads(path.read_text(encoding="utf-8"))
         except ValueError as err:

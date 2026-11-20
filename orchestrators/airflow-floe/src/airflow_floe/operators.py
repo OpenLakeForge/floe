@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import io
+import re
 import shlex
 import subprocess
 import threading
 from typing import Any
+from urllib.parse import urlparse
 
 from .databricks_runner import run_databricks_job
 from .kubernetes_runner import run_kubernetes_job, sized_for_domain
@@ -37,6 +39,26 @@ def _split_cmd(command: str) -> list[str]:
     return parts
 
 
+# `backend_status` of a finished remote job: Kubernetes `succeeded`, Databricks `result_state`.
+_BACKEND_SUCCEEDED = {"succeeded", "SUCCESS"}
+
+
+def _raise_if_remote_run_failed(payload: dict[str, Any]) -> None:
+    """Fail the task like the local runner (non-zero exit), plus the backend's own verdict."""
+    exit_code = payload.get("exit_code")
+    if (
+        payload.get("backend_status") in _BACKEND_SUCCEEDED
+        and exit_code in (None, 0)
+        and payload.get("status") not in ("failed", "aborted")
+    ):
+        return
+    raise RuntimeError(
+        f"floe remote run {payload.get('backend_run_id')} failed: "
+        f"status={payload.get('status')} backend_status={payload.get('backend_status')} "
+        f"exit_code={exit_code} failure_reason={payload.get('failure_reason')}"
+    )
+
+
 class FloeRunHook:
     """Execute `floe run` and return normalized Airflow run payload."""
 
@@ -49,6 +71,8 @@ class FloeRunHook:
         entities: list[str] | None = None,
         *,
         execution: ManifestExecution | None = None,
+        manifest_uri: str | None = None,
+        run_id: str | None = None,
     ) -> list[str]:
         if execution is None:
             cmd = self.floe_cmd or "floe"
@@ -59,9 +83,13 @@ class FloeRunHook:
 
         command = self.floe_cmd or execution.entrypoint
         args = [*_split_cmd(command)]
-        args.extend(_render_tokens(execution.base_args, config_path))
+        args.extend(_render_tokens(execution.base_args, config_path, manifest_uri, run_id))
         if entities:
-            args.extend(_render_entity_tokens(execution.per_entity_args, config_path, entities))
+            args.extend(
+                _render_entity_tokens(
+                    execution.per_entity_args, config_path, entities, manifest_uri, run_id
+                )
+            )
         return args
 
     def run(
@@ -71,11 +99,19 @@ class FloeRunHook:
         *,
         execution: ManifestExecution | None = None,
         runner_definition: ManifestRunnerDefinition | None = None,
+        manifest_uri: str | None = None,
+        run_id: str | None = None,
         log_stdout: Any | None = None,
         log_stderr: Any | None = None,
     ) -> dict[str, Any]:
         if runner_definition is not None and runner_definition.runner_type == "kubernetes_job":
-            args = self.build_args(config_path, entities=entities, execution=execution)
+            args = self.build_args(
+                config_path,
+                entities=entities,
+                execution=execution,
+                manifest_uri=_remote_manifest_uri(manifest_uri),
+                run_id=run_id,
+            )
             return run_kubernetes_job(
                 args,
                 config_path,
@@ -83,7 +119,13 @@ class FloeRunHook:
                 runner=runner_definition,
             )
         if runner_definition is not None and runner_definition.runner_type == "databricks_job":
-            args = self.build_args(config_path, entities=entities, execution=execution)
+            args = self.build_args(
+                config_path,
+                entities=entities,
+                execution=execution,
+                manifest_uri=_remote_manifest_uri(manifest_uri),
+                run_id=run_id,
+            )
             return run_databricks_job(
                 cmd_args=args,
                 runner=runner_definition,
@@ -101,7 +143,13 @@ class FloeRunHook:
                 f"{execution.log_format}. Expected 'json'."
             )
 
-        args = self.build_args(config_path, entities=entities, execution=execution)
+        args = self.build_args(
+            config_path,
+            entities=entities,
+            execution=execution,
+            manifest_uri=manifest_uri,
+            run_id=run_id,
+        )
         process = subprocess.Popen(
             args,
             text=True,
@@ -199,9 +247,17 @@ class FloeRunOperator(BaseOperator):  # pyright: ignore[reportGeneralTypeIssues]
             entities=self.entities,
             execution=execution,
             runner_definition=runner_definition,
+            manifest_uri=(
+                self.manifest_context.manifest_path if self.manifest_context is not None else None
+            ),
+            run_id=_floe_run_id(
+                context, getattr(self, "task_id", "")
+            ),  # the no-Airflow stub has no task_id
             log_stdout=log_stdout,
             log_stderr=log_stderr,
         )
+        if runner_definition is not None and runner_definition.runner_type != "local_process":
+            _raise_if_remote_run_failed(payload)
         self._emit_asset_events(payload, context)
         return payload
 
@@ -335,16 +391,58 @@ def build_floe_tasks(
     ]
 
 
-def _render_tokens(tokens: list[str], config_uri: str) -> list[str]:
-    return [token.replace("{config_uri}", config_uri) for token in tokens]
+def _remote_manifest_uri(manifest_uri: str | None) -> str | None:
+    """The manifest URI a remote job can read; `None` for a local path of the Airflow worker."""
+    if manifest_uri is not None and urlparse(manifest_uri).scheme not in ("", "local", "file"):
+        return manifest_uri
+    return None
 
 
-def _render_entity_tokens(tokens: list[str], config_uri: str, entities: list[str]) -> list[str]:
-    joined_entities = ",".join(entities)
-    return [
-        token.replace("{config_uri}", config_uri).replace("{entity_name}", joined_entities)
-        for token in tokens
-    ]
+def _floe_run_id(context: dict[str, Any] | None, task_id: str) -> str | None:
+    """`<dag run id>_<task id>` (like dagster-floe's `<run id>_<op>`), limited to `[A-Za-z0-9_.-]`."""
+    dag_run_id = context.get("run_id") if isinstance(context, dict) else None
+    if not dag_run_id:
+        return None
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", f"{dag_run_id}_{task_id}")
+
+
+def _render(token: str, values: dict[str, str | None]) -> str:
+    for name, value in values.items():
+        if value is not None:
+            token = token.replace(f"{{{name}}}", value)
+    unrendered = re.search(r"\{[^{}]*\}", token)
+    if unrendered:
+        raise ValueError(
+            f"unrendered token {unrendered.group()} in manifest execution args: {token!r} "
+            "(for kubernetes_job/databricks_job, {manifest_uri} needs a remote manifest URI)"
+        )
+    return token
+
+
+def _render_tokens(
+    tokens: list[str],
+    config_uri: str,
+    manifest_uri: str | None = None,
+    run_id: str | None = None,
+) -> list[str]:
+    values = {"config_uri": config_uri, "manifest_uri": manifest_uri, "run_id": run_id}
+    return [_render(token, values) for token in tokens]
+
+
+def _render_entity_tokens(
+    tokens: list[str],
+    config_uri: str,
+    entities: list[str],
+    manifest_uri: str | None = None,
+    run_id: str | None = None,
+) -> list[str]:
+    values = {
+        "run_id": run_id,
+        "config_uri": config_uri,
+        "manifest_uri": manifest_uri,
+        "entity_name": ",".join(entities),
+    }
+    return [_render(token, values) for token in tokens]
 
 
 def _capture_and_log_process_output(

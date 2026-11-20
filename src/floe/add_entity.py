@@ -1,4 +1,4 @@
-"""`floe add-entity`, ported from `crates/floe-core/src/add_entity.rs`: infer an entity from a sample file."""
+"""`floe add-entity`: infer an entity from a sample file."""
 
 import io
 import json
@@ -77,7 +77,7 @@ def _local_path(input: str) -> str:
 
 
 def _sniff_separator(path: str) -> str:
-    """Rust `sniff_delimiter`: the candidate most consistent over the first non-blank lines."""
+    """The candidate most consistent over the first non-blank lines."""
     lines: list[str] = []
     try:
         with open(path, "rb") as f:
@@ -101,7 +101,7 @@ def _sniff_separator(path: str) -> str:
 
 
 def _floe_type(dtype: pl.DataType) -> str:
-    # D27b (#619): a `time` column becomes `string`; Rust writes `time`, which 0.8 rejects (D10)
+    # D27b (#619): a `time` column becomes `string` (D10)
     for kind, name in ((pl.Boolean, "boolean"), (pl.Date, "date"), (pl.Datetime, "datetime")):  # fmt: skip
         if dtype == kind:
             return name
@@ -109,7 +109,7 @@ def _floe_type(dtype: pl.DataType) -> str:
 
 
 def _json_sample(path: str) -> tuple[str, list[dict[str, object]]]:
-    """Rust's JSON sampling: the `json_mode` and the first 200 top-level objects."""
+    """The `json_mode` and the first 200 top-level objects."""
     try:
         text = Path(path).read_bytes().decode()
     except OSError as e:
@@ -202,7 +202,7 @@ def _columns(fmt: str, path: str) -> tuple[Hash | None, list[Hash], list[str]]:
         except pl.exceptions.PolarsError as e:
             raise FloeIoError(f"failed to read parquet schema at {path}: {e}") from e
         nullable, options = dict.fromkeys(schema, True), None
-    elif fmt == "json":  # D27a (#619): Polars types the values; Rust walks them by hand
+    elif fmt == "json":  # D27a (#619): Polars types the values
         mode, rows = _json_sample(path)
         if not rows:
             raise FloeConfigError(f"no json objects found in {path}")
@@ -235,13 +235,13 @@ def infer_entity(
     input: str, fmt: str | None, name: str | None, domain: str | None,
     source_ref: str | None, resource: str | None,
 ) -> tuple[Hash, str, list[str]]:  # fmt: skip
-    """The entity generated for a sample file, its format and notes (Rust `infer_entity_from_input`)."""
+    """The entity generated for a sample file, its format and notes."""
     name = _entity_name(input) if name is None else name
     if not name.strip():
         raise FloeConfigError("entity name must not be empty")
     path = _local_path(input)
     if fmt is None:
-        # `.csv` alone has no extension, as in Rust
+        # `.csv` alone has no extension
         fmt = os.path.splitext(path)[1][1:].lower()
         if fmt not in ("csv", "json", "parquet"):
             raise FloeConfigError(
@@ -335,7 +335,7 @@ def _val(inline: bool, value: object, level: int) -> str:
 
 
 def _render(doc: object) -> str:
-    """yaml-rust2 `YamlEmitter::dump` without the `---` line, as Rust's `render_yaml`."""
+    """yaml-rust2 `YamlEmitter::dump` without the `---` line."""
     return _node(doc, -1) + "\n"
 
 
@@ -405,7 +405,7 @@ def _validate(config: Path, extra_entity: Hash | None = None) -> None:
 
 
 def _validate_text(text: str, target: str) -> None:
-    """Validate `text` as a config placed next to `target` (Rust `validate_generated_config`)."""
+    """Validate `text` as a config placed next to `target`."""
     try:
         fd, tmp = tempfile.mkstemp(prefix=".tmp", dir=os.path.dirname(target) or ".")
     except OSError:
@@ -469,12 +469,12 @@ def add_entity(
         if _matches_domain_include(config, docs[0], output):
             raise FloeConfigError(f"entity file {output} would also match an include.domains pattern and load as a domain; use --output or a different name")  # fmt: skip
         if isinstance(defaults, dict):
-            # Rust first drops `name`, `schema.columns` and `primary_key` from the defaults; D7 rejects those
+            # first drop `name`, `schema.columns` and `primary_key` from the defaults; D7 rejects those
             _strip_defaults(entity, cast(Hash, defaults))
             entity.pop("domain", None)
         rendered = _render(entity)
         try:
-            # the reloaded bytes, as Rust: a name like `0o123` is written bare and reloads as an integer
+            # the reloaded bytes: a name like `0o123` is written bare and reloads as an integer
             [reloaded] = parse_yaml(rendered)
             _validate(Path(config), {**cast(Hash, reloaded), "domain": domain})
         except FloeError as e:

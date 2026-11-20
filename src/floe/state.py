@@ -214,7 +214,7 @@ def claim_inputs(
 def claim_all(
     client: StorageClient, uri: str, entity: str, run_id: str, inputs: list[InputFile]
 ) -> tuple[Loaded, dict[str, Claim]]:
-    """Full refresh: claim every input, dropping other claims (Rust `claim_all_entity_inputs`).
+    """Full refresh: claim every input, dropping other claims.
 
     Also the claims it replaced, by URI, for `release` to restore if the refresh fails (#949).
     """
@@ -272,7 +272,7 @@ def promote(
     only: set[str] | None = None,
     advance: Callable[[EntityState, list[str]], None] | None = None,
 ) -> None:
-    """A full refresh replaces `files` with this run's (Rust `promote_full_refresh_claimed_entity_state`); `only` limits the URIs.
+    """A full refresh replaces `files` with this run's; `only` limits the URIs.
 
     `advance` (D30) gets the promoted URIs, in the same state write.
     """
@@ -327,7 +327,7 @@ def renew(client: StorageClient, uri: str, run_id: str, claimed: Loaded) -> None
 
 
 def reset(client: StorageClient, uri: str, entity: str) -> bool:
-    """Empty the state file, even a malformed one; False when there is none or it is empty (Rust `reset_entity_state`)."""
+    """Empty the state file, even a malformed one; False when there is none or it is empty."""
     stored = client.read(uri)
     if stored is None:
         return False

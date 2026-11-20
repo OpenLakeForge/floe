@@ -33,8 +33,8 @@ _install_airflow_stub()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from airflow_floe.hooks import FloeManifestHook
-from airflow_floe.manifest import ManifestExecution
-from airflow_floe.operators import FloeRunHook, FloeRunOperator
+from airflow_floe.manifest import ManifestExecution, ManifestRunnerDefinition
+from airflow_floe.operators import FloeRunHook, FloeRunOperator, _floe_run_id
 from airflow_floe.runtime import build_dag_manifest_context
 
 
@@ -164,6 +164,52 @@ class HookAndOperatorTests(unittest.TestCase):
                 "orders,customer",
             ],
         )
+
+    def _generated_execution(self) -> ManifestExecution:
+        data = _execution_and_runners("/tmp/config.yml")["execution"]
+        data["base_args"] = ["run", "--manifest", "{manifest_uri}", "--log-format", "json"]
+        return ManifestExecution.from_dict(data)
+
+    def test_build_args_renders_manifest_uri(self) -> None:
+        args = FloeRunHook().build_args(
+            "/tmp/config.yml",
+            entities=["orders"],
+            execution=self._generated_execution(),
+            manifest_uri="/dags/manifest.json",
+        )
+        self.assertIn("/dags/manifest.json", args)
+        self.assertFalse(any("{" in arg for arg in args))
+
+    def test_operator_renders_run_id_from_airflow_context(self) -> None:
+        execution = ManifestExecution.from_dict(
+            {
+                **_execution_and_runners("/tmp/c.yml")["execution"],
+                "base_args": ["run", "--run-id", "{run_id}"],
+            }
+        )
+        hook = FloeRunHook()
+        run_id = _floe_run_id({"run_id": "manual__2026-11-20T10:00:00+00:00"}, "floe_orders")
+        self.assertEqual(run_id, "manual__2026-11-20T10_00_00_00_00_floe_orders")
+        args = hook.build_args("/tmp/c.yml", execution=execution, run_id=run_id)
+        self.assertEqual(args[-1], run_id)
+        with self.assertRaisesRegex(ValueError, r"\{run_id\}"):
+            hook.build_args("/tmp/c.yml", execution=execution, run_id=_floe_run_id(None, "t"))
+
+    def test_build_args_unrendered_token_raises(self) -> None:
+        with self.assertRaisesRegex(ValueError, r"\{manifest_uri\}"):
+            FloeRunHook().build_args(
+                "/tmp/config.yml", execution=self._generated_execution(), manifest_uri=None
+            )
+
+    def test_remote_runner_rejects_local_manifest_path(self) -> None:
+        runner = ManifestRunnerDefinition.from_dict({"type": "kubernetes_job"})
+        with self.assertRaisesRegex(ValueError, r"\{manifest_uri\}"):
+            FloeRunHook().run(
+                "/tmp/config.yml",
+                execution=self._generated_execution(),
+                runner_definition=runner,
+                manifest_uri="/dags/manifest.json",
+            )
 
     def test_run_hook_run_returns_normalized_payload(self) -> None:
         hook = FloeRunHook(floe_cmd="floe")
@@ -454,6 +500,96 @@ class ManifestRoutingTests(unittest.TestCase):
             with self.assertRaises(NotImplementedError) as cm:
                 operator.execute({})
             self.assertIn("docker", str(cm.exception).lower())
+
+    def _remote_operator(self, tmp: str, runner_type: str) -> FloeRunOperator:
+        base = Path(tmp)
+        config_path = base / "config.yml"
+        config_path.write_text("version: v1\n", encoding="utf-8")
+        manifest_path = self._write_manifest_with_runner_type(base, config_path, runner_type)
+        return FloeRunOperator(
+            task_id="run_floe",
+            config_path=str(config_path),
+            floe_cmd="floe",
+            manifest_context=build_dag_manifest_context(str(manifest_path)),
+        )
+
+    def test_kubernetes_job_not_succeeded_fails_task(self) -> None:
+        for backend_status in ("failed", "timeout", "canceled"):
+            with self.subTest(backend_status=backend_status), tempfile.TemporaryDirectory() as tmp:
+                operator = self._remote_operator(tmp, "kubernetes_job")
+                payload = {
+                    "status": backend_status,
+                    "exit_code": None,
+                    "backend_type": "kubernetes",
+                    "backend_run_id": "floe-orders-1",
+                    "backend_status": backend_status,
+                    "failure_reason": "pod OOMKilled",
+                }
+                with (
+                    patch("airflow_floe.operators.run_kubernetes_job", return_value=payload),
+                    self.assertRaises(RuntimeError) as cm,
+                ):
+                    operator.execute({})
+                self.assertIn("pod OOMKilled", str(cm.exception))
+                self.assertIn("floe-orders-1", str(cm.exception))
+
+    def test_kubernetes_job_floe_run_failed_fails_task(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = self._remote_operator(tmp, "kubernetes_job")
+            payload = {
+                "status": "aborted",
+                "exit_code": 1,
+                "backend_run_id": "floe-orders-1",
+                "backend_status": "succeeded",
+            }
+            with (
+                patch("airflow_floe.operators.run_kubernetes_job", return_value=payload),
+                self.assertRaises(RuntimeError),
+            ):
+                operator.execute({})
+
+    def test_kubernetes_job_succeeded_returns_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = self._remote_operator(tmp, "kubernetes_job")
+            payload = {
+                "status": "success",
+                "exit_code": 0,
+                "backend_run_id": "floe-orders-1",
+                "backend_status": "succeeded",
+            }
+            with patch("airflow_floe.operators.run_kubernetes_job", return_value=payload):
+                self.assertEqual(operator.execute({}), payload)
+
+    def test_databricks_job_failed_fails_task(self) -> None:
+        for status, backend_status in (("failed", "FAILED"), ("timeout", None)):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                operator = self._remote_operator(tmp, "databricks_job")
+                payload = {
+                    "status": status,
+                    "exit_code": 1,
+                    "backend_run_id": 42,
+                    "backend_status": backend_status,
+                    "failure_reason": "cluster terminated",
+                }
+                with (
+                    patch("airflow_floe.operators.run_databricks_job", return_value=payload),
+                    self.assertRaises(RuntimeError) as cm,
+                ):
+                    operator.execute({})
+                self.assertIn("cluster terminated", str(cm.exception))
+                self.assertIn("42", str(cm.exception))
+
+    def test_databricks_job_succeeded_returns_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = self._remote_operator(tmp, "databricks_job")
+            payload = {
+                "status": "success",
+                "exit_code": 0,
+                "backend_run_id": 42,
+                "backend_status": "SUCCESS",
+            }
+            with patch("airflow_floe.operators.run_databricks_job", return_value=payload):
+                self.assertEqual(operator.execute({}), payload)
 
     def test_profile_path_not_in_template_fields(self) -> None:
         """profile_path must NOT be in FloeRunOperator.template_fields."""

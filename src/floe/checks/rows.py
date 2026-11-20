@@ -1,4 +1,4 @@
-"""not_null, row error columns and the accept/reject split (Rust: `checks/not_null.rs`, `checks/mod.rs`)."""
+"""not_null, row error columns and the accept/reject split."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -29,7 +29,7 @@ _WRAP: dict[Formatter, tuple[str, str, str]] = {
 class RowCheck:
     """One check over the rows: `mask` is true where the row violates it.
 
-    Pass the checks in Rust's error order: not_null (required columns), cast_error (declared
+    Pass the checks in the error order: not_null (required columns), cast_error (declared
     non-string columns), then unique.
     """
 
@@ -45,7 +45,7 @@ def not_null_check(df: pl.DataFrame, column: str) -> RowCheck:
 
 
 def error_entry(rule: str, column: str, message: str, source: str | None = None) -> str:
-    """Rust's `RowError::to_json_with_source`."""
+    """One row error as JSON, with its source column when given."""
     src = "" if source is None else f'"source":"{json_escape(source)}",'
     return (
         f'{{"rule":"{json_escape(rule)}","column":"{json_escape(column)}",{src}'
@@ -61,7 +61,7 @@ def _csv_escape(value: str) -> str:
 def _entry(
     formatter: Formatter, check: RowCheck, sources: Mapping[str, str] | None
 ) -> str:
-    """What one violated check adds to a row's errors, per Rust `RowErrorFormatter`."""
+    """What one violated check adds to a row's errors."""
     source = sources.get(check.column) if sources else None
     rule, column, message = check.rule, check.column, check.message
     if formatter == "json":
@@ -85,7 +85,7 @@ def error_column(
 ) -> pl.Series:
     """`__floe_errors`: the formatted errors of each row, null for rows that pass every check.
 
-    `sources` maps a runtime column name to its source name (Rust's `source_column_map`).
+    `sources` maps a runtime column name to its source name.
     """
     if not checks:
         return pl.Series(ERRORS, [None] * height, dtype=pl.String)

@@ -1,4 +1,4 @@
-"""Column-name normalization (Rust: `checks/normalize.rs`). ASCII only, as Rust."""
+"""Column-name normalization. ASCII only."""
 
 from collections.abc import Sequence
 from string import ascii_lowercase, ascii_uppercase
