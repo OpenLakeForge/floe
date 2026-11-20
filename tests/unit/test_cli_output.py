@@ -9,6 +9,7 @@ import pytest
 
 from floe._cli import main
 from floe._cli_output import Console, event_json, run_output
+from floe.errors import FloeConfigError
 from floe.run import RunOutcome
 
 REPO = Path(__file__).resolve().parents[2]
@@ -233,3 +234,16 @@ def test_console_keeps_the_timings_of_interleaved_entities_apart() -> None:
             {"event": "file_finished", "entity": entity, "input": name, "elapsed_ms": 5}
         )
     assert console.timings == {"a": {"x.csv": 5, "z.csv": 5}, "b": {"y.csv": 5}}
+
+
+def test_text_logs_print_the_typed_error_code_only_when_there_is_one(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    console = Console("text", "r1")
+    console.failed(FloeConfigError("bad", code="config_invalid_value"), "c.yml")
+    console.failed(FloeConfigError("bad"), "c.yml")
+    logs = [x for x in capsys.readouterr().out.splitlines() if x.startswith("log ")]
+    assert logs == [
+        "log level=error code=config_error error_code=config_invalid_value bad",
+        "log level=error code=config_error bad",
+    ]
