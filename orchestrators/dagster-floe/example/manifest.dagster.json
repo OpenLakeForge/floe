@@ -109,8 +109,7 @@
           {
             "name": "employee_id",
             "column_type": "string",
-            "nullable": false,
-            "unique": true
+            "nullable": false
           },
           {
             "name": "start_date",
@@ -124,7 +123,11 @@
           }
         ],
         "primary_key": [],
-        "unique_keys": []
+        "unique_keys": [
+          [
+            "employee_id"
+          ]
+        ]
       }
     },
     {
@@ -177,8 +180,7 @@
           {
             "name": "order_id",
             "column_type": "string",
-            "nullable": false,
-            "unique": true
+            "nullable": false
           },
           {
             "name": "created_at",
@@ -192,7 +194,11 @@
           }
         ],
         "primary_key": [],
-        "unique_keys": []
+        "unique_keys": [
+          [
+            "order_id"
+          ]
+        ]
       }
     },
     {
@@ -245,8 +251,7 @@
           {
             "name": "invoice_id",
             "column_type": "string",
-            "nullable": false,
-            "unique": true
+            "nullable": false
           },
           {
             "name": "order_id",
@@ -260,7 +265,11 @@
           }
         ],
         "primary_key": [],
-        "unique_keys": []
+        "unique_keys": [
+          [
+            "invoice_id"
+          ]
+        ]
       }
     }
   ]

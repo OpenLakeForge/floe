@@ -53,26 +53,23 @@ entities:
         enabled: true
         strategy: "snake_case"     # snake_case | lower | none
 
+      unique_keys: [["customer_id"], ["email"]]
       columns:
         - name: "customer_id"
           type: "string"
           nullable: false
-          unique: true
 
         - name: "email"
           type: "string"
           nullable: true
-          unique: true
 
         - name: "country_code"
           type: "string"
           nullable: true
-          unique: false
 
         - name: "created_at"
           type: "datetime"
           nullable: true
-          unique: false
 
   - name: "orders"
 
@@ -109,63 +106,54 @@ entities:
         enabled: true
         strategy: "snake_case"     # snake_case | lower | none
 
+      unique_keys: [["order_id"]]
       columns:
         - name: "order_id"
           source: "order.id"
           type: "string"
           nullable: false
-          unique: true
 
         - name: "customer_id"
           source: "customer.id"
           type: "string"
           nullable: false
-          unique: false
 
         - name: "order_total"
           source: "totals.amount"
           type: "number"
           nullable: false
-          unique: false
 
         - name: "currency"
           source: "totals.currency"
           type: "string"
           nullable: true
-          unique: false
 
         - name: "created_at"
           source: "timestamps.created_at"
           type: "datetime"
           nullable: true
-          unique: false
 
         - name: "order_date"
           source: "timestamps.order_date"
           type: "date"
           nullable: true
-          unique: false
 
         - name: "is_expedited"
           source: "shipping.expedited"
           type: "boolean"
           nullable: true
-          unique: false
 
         - name: "first_item_sku"
           source: "items[0].sku"
           type: "string"
           nullable: true
-          unique: false
 
         - name: "first_item_qty"
           source: "items[0].quantity"
           type: "number"
           nullable: true
-          unique: false
 
         - name: "first_tag"
           source: "tags[0]"
           type: "string"
           nullable: true
-          unique: false

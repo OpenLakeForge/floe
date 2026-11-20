@@ -28,11 +28,11 @@ entities:
     policy:
       severity: "reject"
     schema:
+      unique_keys: [["employee_id"]]
       columns:
         - name: "employee_id"
           type: "string"
           nullable: false
-          unique: true
         - name: "start_date"
           type: "date"
           nullable: false
