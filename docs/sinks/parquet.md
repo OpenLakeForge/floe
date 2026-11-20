@@ -47,6 +47,29 @@ Available options:
 - `row_group_size`: rows per row group (positive integer)
 - `max_size_per_file`: part size threshold in bytes (default: 268435456 / 256 MB)
 
+## Peak memory on large inputs
+
+Floe holds no rows beyond the current input chunk and part, for the accepted and the Parquet
+rejected sink alike, yet the process's peak RSS still grows with the input size. Two effects of
+Polars cause it, neither a leak:
+
+- Polars memory-maps a CSV input while it reads it. That file-backed memory counts in RSS, and the
+  operating system reclaims it under memory pressure.
+- Polars' allocator (jemalloc) keeps freed buffers resident for a while, one cache per worker
+  thread, so the more cores, the larger the retained memory.
+
+Two environment variables lower the peak at some cost in speed:
+
+| Variable | Effect | Cost |
+|---|---|---|
+| `_RJEM_MALLOC_CONF=dirty_decay_ms:0,muzzy_decay_ms:0` | jemalloc returns freed memory at once | a slower run |
+| `POLARS_MAX_THREADS=<n>` | fewer worker threads, so fewer per-thread caches | slower reads and checks on big inputs |
+
+Both are read once, when Polars is first imported. Set them in the environment that starts the
+process (the container, the Kubernetes Job, the shell); setting them from Python after `import
+polars` or `import floe` has no effect, and so does setting them in a Dagster or Airflow worker that
+imported Polars already.
+
 ## Limitations
 
 ### Parquet is not transactional
