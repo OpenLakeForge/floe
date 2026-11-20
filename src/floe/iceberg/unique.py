@@ -1,5 +1,6 @@
 """Unique keys already in an Iceberg table, for append (Rust `seed_unique_tracker_for_append`)."""
 
+import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -22,6 +23,9 @@ def cache_table_keys(
     names = {n for k in keys if present.issuperset(ns := [stored.get(c, c) for c in k]) for n in ns}  # fmt: skip
     if not names:
         return False
+    # #1272: Polars >= 2.1 warns on every scan unless told how to plan it; Floe ships no
+    # `polars_iceberg` plugin, so PyIceberg planning (as before 2.1) is chosen. A user's value wins.
+    os.environ.setdefault("POLARS_ICEBERG_PLANNER", "pyiceberg")
     with run_error("iceberg unique seed scan failed"):
         pl.scan_iceberg(table).select(cs.by_name(sorted(names))).sink_parquet(path)
     return True
