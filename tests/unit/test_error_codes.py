@@ -48,12 +48,6 @@ ALLOWLIST = {
     "run/file.py",
     "run/incremental.py",
     "state.py",
-    "storage/archive.py",
-    "storage/inputs.py",
-    "storage/local.py",
-    "storage/partitioning.py",
-    "storage/paths.py",
-    "storage/resolve.py",
     "storage/s3.py",
     "write/outputs.py",
 }

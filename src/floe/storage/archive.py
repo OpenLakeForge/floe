@@ -73,6 +73,7 @@ def archive_input_file(
         client.delete(input_file.source_uri)
     except FloeError as e:
         raise FloeRunError(
-            f"entity.name={entity_name} archive delete failed for {input_file.source_uri}: {e}"
+            f"entity.name={entity_name} archive delete failed for {input_file.source_uri}: {e}",
+            code="run_invalid_setup",
         ) from e
     return dest_uri

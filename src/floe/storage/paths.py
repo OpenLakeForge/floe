@@ -7,10 +7,14 @@ from floe.errors import FloeConfigError
 
 def parse_s3_uri(uri: str) -> tuple[str, str]:
     if not uri.startswith("s3://"):
-        raise FloeConfigError(f"expected s3 uri, got {uri}")
+        raise FloeConfigError(
+            f"expected s3 uri, got {uri}", code="config_invalid_value"
+        )
     bucket, _, key = uri.removeprefix("s3://").partition("/")
     if not bucket:
-        raise FloeConfigError(f"missing bucket in s3 uri: {uri}")
+        raise FloeConfigError(
+            f"missing bucket in s3 uri: {uri}", code="config_invalid_value"
+        )
     return bucket, key
 
 
