@@ -3,7 +3,7 @@
 import json
 from collections.abc import Callable
 
-from floe.errors import FloeError, FloeRunError
+from floe.errors import FloeError, FloeRunError, FloeStorageError
 from floe.storage.inputs import InputFile
 from floe.storage.local import LocalClient
 from floe.storage.paths import archive_relative_path_for_run, parse_s3_uri
@@ -27,11 +27,17 @@ def write_source_mtime_index(client: StorageClient, base: str, entity_name: str,
 
     One object per run, not a sidecar per file: its key is bounded by base, entity and run id, so it is never longer than the
     archived keys it describes (they hold the run id too); a per-file key could pass S3's 1024 bytes. Not on local storage: a
-    local copy's nanosecond mtime already follows the load order. A failed copy leaves an extra entry, harmless; a retry is a new run."""
+    local copy's nanosecond mtime already follows the load order. A failed copy leaves an extra entry, harmless; a retry with the same run id adds to the entries."""
     if mtimes and not isinstance(client, LocalClient):
-        client.write(
-            f"{base}/{entity_name}/{_INDEX}/{run_id}.json", json.dumps(mtimes).encode()
-        )
+        uri = f"{base}/{entity_name}/{_INDEX}/{run_id}.json"
+        stored = client.read(
+            uri
+        )  # a retry with the same run id (Dagster) adds to the first attempt's entries
+        try:
+            kept: dict[str, str] = json.loads(stored.body) if stored else {}
+        except ValueError as e:
+            raise FloeStorageError(f"unreadable source mtime index {uri}: {e}") from e
+        client.write(uri, json.dumps(kept | mtimes).encode())
 
 
 def read_source_mtime_index(client: StorageClient, entity_uri: str) -> dict[str, str]:
