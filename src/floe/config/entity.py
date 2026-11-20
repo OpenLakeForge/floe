@@ -75,7 +75,8 @@ def _choice(value: str, allowed: tuple[_T, ...], ctx: str) -> _T:
     picked = _pick(_norm(value), allowed)
     if picked is None:
         raise FloeConfigError(
-            f"unsupported value at {ctx}: {value} (allowed: {', '.join(allowed)})"
+            f"unsupported value at {ctx}: {value} (allowed: {', '.join(allowed)})",
+            code="config_invalid_value",
         )
     return picked
 
@@ -86,7 +87,9 @@ def _each(items: list[object], prefix: str, parse: Callable[[object], _R]) -> li
         try:
             out.append(parse(item))
         except FloeError as e:
-            raise FloeConfigError(f"{prefix}[{index}]: {e}") from e
+            raise FloeConfigError(
+                f"{prefix}[{index}]: {e}", code="config_invalid_value"
+            ) from e
     return out
 
 
@@ -112,9 +115,14 @@ def _rate(h: dict[object, object], key: str, ctx: str) -> float | None:
     if value is None:
         return None
     if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise FloeConfigError(f"expected number at {ctx}.{key}")
+        raise FloeConfigError(
+            f"expected number at {ctx}.{key}", code="config_invalid_value"
+        )
     if not 0 <= value <= 1:
-        raise FloeConfigError(f"expected number between 0 and 1 at {ctx}.{key}")
+        raise FloeConfigError(
+            f"expected number between 0 and 1 at {ctx}.{key}",
+            code="config_invalid_value",
+        )
     return float(value)
 
 
@@ -125,12 +133,14 @@ def _policy(value: object) -> PolicyConfig:
     picked = _pick(severity, get_args(PolicySeverity))
     if picked is None:
         raise FloeConfigError(
-            f"policy.severity={severity} is unsupported (allowed: warn, reject, abort)"
+            f"policy.severity={severity} is unsupported (allowed: warn, reject, abort)",
+            code="config_invalid_value",
         )
     rate = _rate(h, "max_rejection_rate", "policy")
     if rate is not None and picked != "reject":
         raise FloeConfigError(
-            f"policy.max_rejection_rate requires policy.severity=reject (got {picked})"
+            f"policy.max_rejection_rate requires policy.severity=reject (got {picked})",
+            code="config_conflict",
         )
     return PolicyConfig(severity=picked, max_rejection_rate=rate)
 
@@ -181,9 +191,14 @@ def _column(value: object) -> ColumnConfig:
     h = yaml_hash(value, ctx)
     for key in ("width", "trim"):
         if key in h:
-            raise FloeConfigError(f"{ctx}.{key} {NOT_SUPPORTED}")
+            raise FloeConfigError(
+                f"{ctx}.{key} {NOT_SUPPORTED}", code="config_not_supported"
+            )
     if "unique" in h:
-        raise FloeConfigError(f"{ctx}.unique {NOT_SUPPORTED}; use schema.unique_keys")
+        raise FloeConfigError(
+            f"{ctx}.unique {NOT_SUPPORTED}; use schema.unique_keys",
+            code="config_not_supported",
+        )
     validate_known_keys(h, ctx, ("name", "source", "type", "nullable"))
     return ColumnConfig(
         name=get_string(h, "name", ctx),
@@ -239,7 +254,8 @@ def _pii_column(value: object) -> PiiColumn:
     if strategy is None:
         raise FloeConfigError(
             f"pii.columns[name={name}].strategy={key} is unsupported "
-            "(allowed: hash, drop, nullify, redact, mask)"
+            "(allowed: hash, drop, nullify, redact, mask)",
+            code="config_invalid_value",
         )
     return PiiColumn(
         name=name,
@@ -279,7 +295,8 @@ def _storage(h: dict[object, object], ctx: str) -> str | None:
     filesystem = opt_string(h, "filesystem", ctx)
     if storage is not None and filesystem is not None:
         raise FloeConfigError(
-            f"{ctx}.storage and {ctx}.filesystem are mutually exclusive"
+            f"{ctx}.storage and {ctx}.filesystem are mutually exclusive",
+            code="config_conflict",
         )
     return _or(storage, filesystem)
 
@@ -395,7 +412,8 @@ def _sink_target(
     fmt = get_string(h, "format", ctx)
     if "duckdb" in h and fmt != "duckdb":
         raise FloeConfigError(
-            f'{ctx}.duckdb is only valid when format is "duckdb" (found format={fmt!r})'
+            f'{ctx}.duckdb is only valid when format is "duckdb" (found format={fmt!r})',
+            code="config_conflict",
         )
     spec = _partition_spec(h, ctx)
     return SinkTarget(
@@ -470,7 +488,9 @@ def parse_entity(
     domain = opt_string(h, "domain", "entity")
     mode = opt_string(h, "incremental_mode", "entity")
     if mode is not None and _norm(mode) == "row":
-        raise FloeConfigError(f"incremental_mode=row {NOT_SUPPORTED}")
+        raise FloeConfigError(
+            f"incremental_mode=row {NOT_SUPPORTED}", code="config_not_supported"
+        )
     incremental_mode: IncrementalMode = (
         "none"
         if mode is None
