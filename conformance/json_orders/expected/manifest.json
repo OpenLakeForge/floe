@@ -6,7 +6,7 @@
   "manifest_revision": "<volatile>",
   "runtime_env": "cli",
   "config_uri": "local://<ROOT>/work/config.yml",
-  "config_checksum": "sha256:95719395b24b3d2b3a9f5bcb3795ce04ba691763d8a988c0c50d95e0ee3bb085",
+  "config_checksum": "sha256:92c48ba8452d1b5a809c919ba1129133a36c521097bcd48d0d6752f07fb62c9a",
   "report_base_uri": "local://<ROOT>/work/report",
   "domains": [
     {
@@ -133,8 +133,7 @@
             "name": "order_id",
             "column_type": "string",
             "source": "order.id",
-            "nullable": false,
-            "unique": true
+            "nullable": false
           },
           {
             "name": "customer_id",
@@ -185,7 +184,11 @@
           }
         ],
         "primary_key": [],
-        "unique_keys": [],
+        "unique_keys": [
+          [
+            "order_id"
+          ]
+        ],
         "normalize_columns": {
           "enabled": true,
           "strategy": "snake_case"

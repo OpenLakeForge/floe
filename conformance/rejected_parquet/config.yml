@@ -18,8 +18,9 @@ entities:
     policy:
       severity: reject
     schema:
+      unique_keys: [[id]]
       columns:
-        - {name: id, type: int64, nullable: false, unique: true}
+        - {name: id, type: int64, nullable: false}
         - {name: day, type: date}
         - {name: amount, type: "decimal(10,2)"}
         - {name: note, type: string}

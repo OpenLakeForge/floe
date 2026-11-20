@@ -992,10 +992,6 @@ $defs:
         type:
         - boolean
         - 'null'
-      unique:
-        type:
-        - boolean
-        - 'null'
   pii_fragment:
     type: object
     additionalProperties: false

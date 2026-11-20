@@ -48,7 +48,6 @@ entities:
           source: ID
           type: string
           nullable: false
-          unique: true
         - name: region
           type: string
         - name: email

@@ -54,7 +54,6 @@ class ColumnConfig(_Model):
     source: str | None
     column_type: str
     nullable: bool | None
-    unique: bool | None
 
 
 class SchemaConfig(_Model):
@@ -194,7 +193,7 @@ def with_partition_columns(entity: EntityConfig) -> EntityConfig:
     date_type = "datetime" if "{HH}" in p.pattern else "date"
     derived = [(p.date_column, date_type), (p.batch_column, "string")]
     columns = [
-        ColumnConfig(name=n, source=n, column_type=t, nullable=False, unique=None)
+        ColumnConfig(name=n, source=n, column_type=t, nullable=False)
         for n, t in derived
         if n is not None
     ]  # fmt: skip  # `source` keeps the name out of normalize_columns
