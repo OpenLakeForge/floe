@@ -223,7 +223,6 @@ def _columns(fmt: str, path: str) -> tuple[Hash | None, list[Hash], list[str]]:
                 "source": n,
                 "type": _floe_type(t),
                 "nullable": nullable[n],
-                "unique": False,
             }
             for n, t in schema.items()
         ],

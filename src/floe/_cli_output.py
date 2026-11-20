@@ -46,7 +46,7 @@ def event_json(event: dict[str, Any]) -> str:
 def event_text(e: dict[str, Any]) -> str:
     kind = e["event"]
     if kind == "log":
-        tags = "".join(f" {k}={e[k]}" for k in ("code", "entity", "input") if e[k] is not None)  # fmt: skip
+        tags = "".join(f" {k}={e[k]}" for k in ("code", "error_code", "entity", "input") if e.get(k) is not None)  # fmt: skip
         return f"log level={e['log_level']}{tags} {e['message']}"
     if kind == "run_started":
         return f"run_started run_id={e['run_id']} config={e['config']} report_base={e['report_base'] or 'disabled'}"  # fmt: skip
@@ -62,7 +62,7 @@ def event_text(e: dict[str, Any]) -> str:
         )  # fmt: skip
     if kind == "entity_finished":
         counts = "".join(f" {k}={e[k]}" for k in (*_COUNTS, "errors"))
-        return f"entity_finished name={e['name']} status={e['status']}{counts}"
+        return f"entity_finished name={e['name']} status={e['status']}{counts}{' error_code=' + e['error_code'] if e.get('error_code') else ''}"  # fmt: skip
     if kind == "schema_evolution_applied":
         return f"schema_evolution_applied entity={e['entity']} mode={e['mode']} added_columns={','.join(e['added_columns'])}"  # fmt: skip
     return f"run_finished status={e['status']} exit_code={e['exit_code']} summary={e['summary_uri'] or 'disabled'}"  # fmt: skip
@@ -101,7 +101,7 @@ class Console:
         code = next(
             (c for t, c in _CODES.items() if isinstance(err, t) and config), "error"
         )
-        self({"event": "log", **base, "log_level": "error", "code": code, "message": str(err), "entity": None, "input": None, **ts})  # fmt: skip
+        self({"event": "log", **base, "log_level": "error", "code": code, "message": str(err), "entity": None, "input": None, **({"error_code": err.code} if err.code else {}), **ts})  # fmt: skip
         self({"event": "run_finished", **base, "status": "failed", "exit_code": 1, **dict.fromkeys(_COUNTS, 0),
               "errors": 1, "summary_uri": None, **ts})  # fmt: skip
 
