@@ -184,11 +184,7 @@ def test_full_refresh_reingests_archived_files(tmp_path: Path) -> None:
     files = report["files"]
     assert [Path(f["input_file"]).name.split("__")[0] for f in files] == ["a", "b.csv"]
     assert [f["output"]["archived_path"] is None for f in files] == [True, False]
-    assert sorted(
-        p.name.split("__")[0]
-        for p in (tmp_path / "arch/o").iterdir()
-        if p.name != ".floe"
-    ) == [
+    assert sorted(p.name.split("__")[0] for p in (tmp_path / "arch/o").iterdir()) == [
         "a",
         "b",
     ]

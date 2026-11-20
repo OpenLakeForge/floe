@@ -104,7 +104,7 @@ def test_d29_archive_keeps_the_partition_path_so_a_full_refresh_rederives_the_da
     put(tmp_path, "2026/10/24/a1b2/x.csv", "id\n1\n", 100)
     archive = "archive: {path: ./arch}"
     go(tmp_path, "incremental_mode: archive", archive)
-    [archived] = [p for p in (tmp_path / "arch/o").rglob("*.csv") if ".floe" not in p.parts]  # fmt: skip
+    [archived] = (tmp_path / "arch/o").rglob("*.csv")
     rel = archived.relative_to(tmp_path / "arch/o").as_posix()
     assert rel.startswith("2026/10/24/a1b2/x__run-") and rel.endswith(".csv")
     assert report(tmp_path)["files"][0]["output"]["archived_path"] == str(archived)
@@ -112,6 +112,19 @@ def test_d29_archive_keeps_the_partition_path_so_a_full_refresh_rederives_the_da
     go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
     got = pl.read_parquet(tmp_path / "out/accepted")
     assert got.rows() == [(1, date(2026, 10, 24), "a1b2"), (2, date(2026, 10, 25), "c3d4")]  # fmt: skip
+
+
+def test_1271_a_local_archive_has_no_sidecar_so_a_long_file_name_still_full_refreshes(tmp_path: Path) -> None:  # fmt: skip
+    """A sidecar read would lock `<sidecar>.lock`, past the 255-byte name limit for an archived name this long."""
+    name = f"{'x' * 240}.csv"
+    put(tmp_path, f"2026/10/24/a1b2/{name}", "id\n1\n", 100)
+    archive = "archive: {path: ./arch}"
+    go(tmp_path, "incremental_mode: archive", archive)
+    [archived] = (tmp_path / "arch/o").rglob("*.csv")
+    assert len(archived.name.encode()) > 240
+    assert not (tmp_path / "arch/o/.floe").exists()
+    go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
+    assert pl.read_parquet(tmp_path / "out/accepted").rows() == [(1, date(2026, 10, 24), "a1b2")]  # fmt: skip
 
 
 def test_d29_a_full_refresh_replays_archived_files_in_their_first_order(tmp_path: Path) -> None:  # fmt: skip
@@ -153,9 +166,9 @@ def test_d29_without_partitioning_the_archive_stays_flat(tmp_path: Path) -> None
     text = CONFIG.format(mode="incremental_mode: archive", archive="archive: {path: ./arch}")  # fmt: skip
     path.write_text("\n".join(line for line in text.splitlines() if "partitioning:" not in line).replace("primary_key: [id, ingest_date]", "primary_key: [id]"))  # fmt: skip
     run(path, parse_config(path, {}))
-    assert [
-        p.parent for p in (tmp_path / "arch").rglob("*.csv") if ".floe" not in p.parts
-    ] == [tmp_path / "arch/o"]
+    assert [p.parent for p in (tmp_path / "arch").rglob("*.csv")] == [
+        tmp_path / "arch/o"
+    ]
 
 
 def test_derived_columns_never_name_headerless_csv_fields(tmp_path: Path) -> None:
