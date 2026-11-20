@@ -129,3 +129,12 @@ def test_d3_ragged_row_rejects_only_that_row(tmp_path: Path) -> None:
     assert flagged == [12]
     assert chunks[2].df.rows()[2:] == [("12", "x"), ("13", "x")]
     assert RAGGED_MESSAGE == "found more fields than defined in 'Schema'"
+
+
+def test_ragged_pass_wraps_polars_errors(tmp_path: Path) -> None:
+    # A Polars error in the ragged-row re-read is a typed read failure, as in the first pass.
+    # The ragged row sits past the ~64 KiB the headless width probe reads.
+    path = write(tmp_path, b"a,b\n" * 20_000 + b'c,d,e\n"NAa\n,\n\xc3\xa9\n')
+    options = opts(header=False, separator=",")
+    with pytest.raises(FloeIoError, match="csv read failed"):
+        list(read_csv(path, options, ["x", "y"]))
