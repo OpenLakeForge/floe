@@ -33,8 +33,8 @@ _install_airflow_stub()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from airflow_floe.hooks import FloeManifestHook
-from airflow_floe.manifest import ManifestExecution
-from airflow_floe.operators import FloeRunHook, FloeRunOperator
+from airflow_floe.manifest import ManifestExecution, ManifestRunnerDefinition
+from airflow_floe.operators import FloeRunHook, FloeRunOperator, _floe_run_id
 from airflow_floe.runtime import build_dag_manifest_context
 
 
@@ -164,6 +164,52 @@ class HookAndOperatorTests(unittest.TestCase):
                 "orders,customer",
             ],
         )
+
+    def _generated_execution(self) -> ManifestExecution:
+        data = _execution_and_runners("/tmp/config.yml")["execution"]
+        data["base_args"] = ["run", "--manifest", "{manifest_uri}", "--log-format", "json"]
+        return ManifestExecution.from_dict(data)
+
+    def test_build_args_renders_manifest_uri(self) -> None:
+        args = FloeRunHook().build_args(
+            "/tmp/config.yml",
+            entities=["orders"],
+            execution=self._generated_execution(),
+            manifest_uri="/dags/manifest.json",
+        )
+        self.assertIn("/dags/manifest.json", args)
+        self.assertFalse(any("{" in arg for arg in args))
+
+    def test_operator_renders_run_id_from_airflow_context(self) -> None:
+        execution = ManifestExecution.from_dict(
+            {
+                **_execution_and_runners("/tmp/c.yml")["execution"],
+                "base_args": ["run", "--run-id", "{run_id}"],
+            }
+        )
+        hook = FloeRunHook()
+        run_id = _floe_run_id({"run_id": "manual__2026-11-20T10:00:00+00:00"}, "floe_orders")
+        self.assertEqual(run_id, "manual__2026-11-20T10_00_00_00_00_floe_orders")
+        args = hook.build_args("/tmp/c.yml", execution=execution, run_id=run_id)
+        self.assertEqual(args[-1], run_id)
+        with self.assertRaisesRegex(ValueError, r"\{run_id\}"):
+            hook.build_args("/tmp/c.yml", execution=execution, run_id=_floe_run_id(None, "t"))
+
+    def test_build_args_unrendered_token_raises(self) -> None:
+        with self.assertRaisesRegex(ValueError, r"\{manifest_uri\}"):
+            FloeRunHook().build_args(
+                "/tmp/config.yml", execution=self._generated_execution(), manifest_uri=None
+            )
+
+    def test_remote_runner_rejects_local_manifest_path(self) -> None:
+        runner = ManifestRunnerDefinition.from_dict({"type": "kubernetes_job"})
+        with self.assertRaisesRegex(ValueError, r"\{manifest_uri\}"):
+            FloeRunHook().run(
+                "/tmp/config.yml",
+                execution=self._generated_execution(),
+                runner_definition=runner,
+                manifest_uri="/dags/manifest.json",
+            )
 
     def test_run_hook_run_returns_normalized_payload(self) -> None:
         hook = FloeRunHook(floe_cmd="floe")
