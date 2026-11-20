@@ -126,12 +126,15 @@ def read_csv(
         # ponytail: the ragged-row pass reads the file again in Python's csv module, only for files
         # that have such rows; a Polars option to flag them would replace it.
         counts = _field_counts(path, args, done + int(args.has_header))
-        for df in args.scan(path, schema, ragged_from=done).collect_batches(
-            chunk_size=chunk_rows
-        ):
-            mask = [n > len(names) for n in islice(counts, df.height)]
-            yield CsvChunk(done, df, pl.Series(mask, dtype=pl.Boolean))
-            done += df.height
+        try:
+            for df in args.scan(path, schema, ragged_from=done).collect_batches(
+                chunk_size=chunk_rows
+            ):
+                mask = [n > len(names) for n in islice(counts, df.height)]
+                yield CsvChunk(done, df, pl.Series(mask, dtype=pl.Boolean))
+                done += df.height
+        except pl.exceptions.PolarsError as ragged_err:
+            raise FloeIoError(f"csv read failed: {ragged_err}") from ragged_err
     except pl.exceptions.PolarsError as err:
         raise FloeIoError(f"csv read failed: {err}") from err
     if done == 0:

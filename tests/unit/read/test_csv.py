@@ -138,3 +138,12 @@ def test_d3_headless_ragged_row_in_probe_window(tmp_path: Path) -> None:
     assert chunk.df.columns == ["x", "y"]
     assert chunk.df.rows() == [("a", "b"), ("c", "d"), ("f", "g")]
     assert chunk.ragged.to_list() == [False, True, False]
+
+
+def test_ragged_pass_wraps_polars_errors(tmp_path: Path) -> None:
+    # A Polars error in the ragged-row re-read is a typed read failure, as in the first pass.
+    # The ragged row sits past the ~64 KiB the headless width probe reads.
+    path = write(tmp_path, b"a,b\n" * 20_000 + b'c,d,e\n"NAa\n,\n\xc3\xa9\n')
+    options = opts(header=False, separator=",")
+    with pytest.raises(FloeIoError, match="csv read failed"):
+        list(read_csv(path, options, ["x", "y"]))
