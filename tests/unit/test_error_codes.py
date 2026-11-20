@@ -21,12 +21,10 @@ PREFIX = {
 ALLOWLIST = {
     "__init__.py",
     "_cli.py",
-    "add_entity.py",
     "checks/mismatch.py",
     "checks/normalize.py",
     "config/entity.py",
     "config/include.py",
-    "config/validate.py",
     "config/vars.py",
     "config/yaml.py",
     "extras.py",
@@ -38,7 +36,6 @@ ALLOWLIST = {
     "iceberg/write.py",
     "maintain.py",
     "manifest.py",
-    "manifest_run.py",
     "pii.py",
     "run/__init__.py",
     "run/entity.py",
@@ -60,12 +57,23 @@ def _sites(path: Path) -> list[tuple[int, str, ast.Call]]:
     """Every `Floe…Error(...)` call, and every `_fail(...)` call in config/validate.py (it builds a FloeConfigError)."""
     rel = path.relative_to(SRC).as_posix()
     out: list[tuple[int, str, ast.Call]] = []
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    # A helper that takes `code` forwards it; its callers are the sites (`_fail`, `_pii_error`).
+    forwarded = {
+        id(inner)
+        for fn in ast.walk(tree)
+        if isinstance(fn, ast.FunctionDef)
+        and any(a.arg == "code" for a in fn.args.kwonlyargs)
+        for inner in ast.walk(fn)
+    }
+    for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             name = node.func.id
+            if id(node) in forwarded:
+                continue
             if re.fullmatch(r"Floe\w*Error", name):
                 out.append((node.lineno, name, node))
-            elif name == "_fail" and rel == "config/validate.py":
+            elif name in ("_fail", "_pii_error") and rel == "config/validate.py":
                 out.append((node.lineno, "FloeConfigError", node))
     return out
 

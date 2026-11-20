@@ -98,8 +98,7 @@ class LocalClient:
             key=lambda r: r.uri,
         )
 
-    def copy(self, src_uri: str, dst_uri: str, source_mtime: str | None = None) -> None:
-        """`source_mtime` is not kept: a local copy's nanosecond mtime already follows the archive (load) order (#939)."""
+    def copy(self, src_uri: str, dst_uri: str) -> None:
         src, dst = _path(src_uri), _path(dst_uri)
         try:
             dst.parent.mkdir(parents=True, exist_ok=True)

@@ -8,6 +8,7 @@ from floe.config.storage import StorageDefinition, StoragesConfig
 from floe.config.types import EntityConfig
 from floe.run.incremental import state_uri
 from floe.state import read_state
+from floe.storage.archive import read_source_mtime_index
 from floe.storage.inputs import NoInputsError, ResolvedInputs, resolve_inputs
 from floe.storage.local import LocalClient
 from floe.storage.partitioning import (
@@ -93,7 +94,8 @@ def _with_archived(e: EntityConfig, archive: tuple[str, StorageClient], source: 
         )  # nothing archived: the source's "no input files matched" stands
     if p is not None:  # D29: the archive keeps the partition sub-paths
         # #939: D28 orders a day's batches by the source's modification time, which the copy's own does not keep
-        kept = [replace(f, source_mtime=client.source_mtime(f.source_uri) or f.source_mtime) for f in old.files]  # fmt: skip
+        index = read_source_mtime_index(client, f"{base}/{e.name}")
+        kept = [replace(f, source_mtime=index.get(f.source_uri.removeprefix(f"{base}/{e.name}/")) or client.source_mtime(f.source_uri) or f.source_mtime) for f in old.files]  # fmt: skip
         old = in_load_order(
             p, e.name, f"{base}/{e.name}", replace(old, files=kept), archived=True
         )
