@@ -24,7 +24,7 @@ from floe.config.types import (
     catalog_ident,
     with_partition_columns,
 )
-from floe.errors import NOT_SUPPORTED, FloeConfigError
+from floe.errors import NOT_SUPPORTED, ErrorCode, FloeConfigError
 from floe.extras import require
 from floe.pii import token_n
 from floe.read.json import parse_selector as parse_json_selector
@@ -73,8 +73,8 @@ def _canonical(value: str) -> str:
     return value.lower().replace("-", "").replace("_", "")
 
 
-def _fail(entity: EntityConfig, message: str) -> FloeConfigError:
-    return FloeConfigError(f"entity.name={entity.name} {message}")
+def _fail(entity: EntityConfig, message: str, *, code: ErrorCode) -> FloeConfigError:
+    return FloeConfigError(f"entity.name={entity.name} {message}", code=code)
 
 
 def _check_primary_key(entity: EntityConfig) -> None:
@@ -82,24 +82,37 @@ def _check_primary_key(entity: EntityConfig) -> None:
     if primary_key is None:
         return
     if not primary_key:
-        raise _fail(entity, "schema.primary_key must not be empty")
+        raise _fail(
+            entity, "schema.primary_key must not be empty", code="config_invalid_value"
+        )
     columns = {c.name: c for c in reversed(entity.schema_.columns)}
     seen: set[str] = set()
     for index, name in enumerate(primary_key):
         value = name.strip()
         if not value:
-            raise _fail(entity, f"schema.primary_key[{index}] must not be empty")
+            raise _fail(
+                entity,
+                f"schema.primary_key[{index}] must not be empty",
+                code="config_invalid_value",
+            )
         if value in seen:
-            raise _fail(entity, f"schema.primary_key has duplicate column {value}")
+            raise _fail(
+                entity,
+                f"schema.primary_key has duplicate column {value}",
+                code="config_duplicate",
+            )
         seen.add(value)
         if value not in columns:
             raise _fail(
                 entity,
                 f"schema.primary_key[{index}]={value} references unknown schema column",
+                code="config_unknown_reference",
             )
         if columns[value].nullable is True:
             raise _fail(
-                entity, f"schema.primary_key column {value} cannot set nullable=true"
+                entity,
+                f"schema.primary_key column {value} cannot set nullable=true",
+                code="config_conflict",
             )
 
 
@@ -109,24 +122,37 @@ def _check_unique_keys(entity: EntityConfig) -> None:
     if unique_keys is None:
         return
     if not unique_keys:
-        raise _fail(entity, "schema.unique_keys must not be empty")
+        raise _fail(
+            entity, "schema.unique_keys must not be empty", code="config_invalid_value"
+        )
     names = {c.name for c in entity.schema_.columns}
     for index, key in enumerate(unique_keys):
         where = f"schema.unique_keys[{index}]"
         if not key:
-            raise _fail(entity, f"{where} must not be empty")
+            raise _fail(
+                entity, f"{where} must not be empty", code="config_invalid_value"
+            )
         seen: set[str] = set()
         for column_index, name in enumerate(key):
             value = name.strip()
             if not value:
-                raise _fail(entity, f"{where}[{column_index}] must not be empty")
+                raise _fail(
+                    entity,
+                    f"{where}[{column_index}] must not be empty",
+                    code="config_invalid_value",
+                )
             if value not in names:
                 raise _fail(
                     entity,
                     f"{where}[{column_index}]={value} references unknown schema column",
+                    code="config_unknown_reference",
                 )
             if value in seen:
-                raise _fail(entity, f"{where} has duplicate column {value}")
+                raise _fail(
+                    entity,
+                    f"{where} has duplicate column {value}",
+                    code="config_duplicate",
+                )
             seen.add(value)
 
 
@@ -135,11 +161,16 @@ def _check_evolution(entity: EntityConfig, version: str) -> None:
     if evolution is None:
         return
     if config_version(version) < (0, 2):
-        raise _fail(entity, 'schema.schema_evolution requires root.version >= "0.2"')
+        raise _fail(
+            entity,
+            'schema.schema_evolution requires root.version >= "0.2"',
+            code="config_version",
+        )
     if evolution.mode == "add_columns" and entity.sink.accepted.format != "iceberg":
         raise _fail(
             entity,
             "schema.schema_evolution.mode=add_columns requires sink.accepted.format=iceberg",
+            code="config_conflict",
         )
 
 
@@ -151,19 +182,28 @@ def _merge_list(entity: EntityConfig, field: str, values: list[str]) -> None:
     for index, raw in enumerate(values):
         value = raw.strip()
         if not value:
-            raise _fail(entity, f"{where}[{index}] must not be empty")
+            raise _fail(
+                entity,
+                f"{where}[{index}] must not be empty",
+                code="config_invalid_value",
+            )
         if value not in names:
             raise _fail(
-                entity, f"{where}[{index}]={value} references unknown schema column"
+                entity,
+                f"{where}[{index}]={value} references unknown schema column",
+                code="config_unknown_reference",
             )
         if value in seen:
-            raise _fail(entity, f"{where} has duplicate column {value}")
+            raise _fail(
+                entity, f"{where} has duplicate column {value}", code="config_duplicate"
+            )
         seen.add(value)
     for index, raw in enumerate(values):
         if raw.strip() in primary_key:
             raise _fail(
                 entity,
                 f"{where}[{index}]={raw.strip()} cannot reference schema.primary_key column",
+                code="config_conflict",
             )
 
 
@@ -175,16 +215,22 @@ def _check_merge(entity: EntityConfig) -> None:
     if not any(
         m.startswith("merge") for m in SINK_WRITE_MODES[entity.sink.accepted.format]
     ):
-        raise _fail(entity, "sink.accepted.merge requires sink.accepted.format=iceberg")
+        raise _fail(
+            entity,
+            "sink.accepted.merge requires sink.accepted.format=iceberg",
+            code="config_conflict",
+        )
     if mode not in ("merge_scd1", "merge_scd2"):
         raise _fail(
             entity,
             "sink.accepted.merge is only supported with sink.write_mode=merge_scd1 or merge_scd2",
+            code="config_conflict",
         )
     if mode == "merge_scd1" and merge.compare_columns is not None:
         raise _fail(
             entity,
             f"sink.accepted.merge.compare_columns with sink.write_mode=merge_scd1 {NOT_SUPPORTED}",
+            code="config_not_supported",
         )
     for field in ("ignore_columns", "compare_columns"):
         values = getattr(merge, field)
@@ -196,6 +242,7 @@ def _check_merge(entity: EntityConfig) -> None:
         raise _fail(
             entity,
             "sink.accepted.merge.scd2 is only supported with sink.write_mode=merge_scd2",
+            code="config_conflict",
         )
     nc = (
         entity.schema_.normalize_columns
@@ -208,14 +255,23 @@ def _check_merge(entity: EntityConfig) -> None:
     }
     for field, value in resolved.items():
         if not value:
-            raise _fail(entity, f"sink.accepted.merge.scd2.{field} must not be empty")
+            raise _fail(
+                entity,
+                f"sink.accepted.merge.scd2.{field} must not be empty",
+                code="config_invalid_value",
+            )
         if value in names:
             raise _fail(
                 entity,
                 f"sink.accepted.merge.scd2.{field}={value} collides with schema column name",
+                code="config_conflict",
             )
     if len(set(resolved.values())) != len(resolved):
-        raise _fail(entity, "sink.accepted.merge.scd2 column names must be unique")
+        raise _fail(
+            entity,
+            "sink.accepted.merge.scd2 column names must be unique",
+            code="config_duplicate",
+        )
 
 
 def _check_write_mode(entity: EntityConfig) -> None:
@@ -224,15 +280,22 @@ def _check_write_mode(entity: EntityConfig) -> None:
         raise _fail(
             entity,
             f"sink.write_mode={mode} is not supported by sink.accepted.format={fmt}",
+            code="config_not_supported",
         )
     if mode in ("merge_scd1", "merge_scd2"):
         require("merge", "duckdb", f"entity.name={entity.name} sink.write_mode={mode}")
         primary_key = entity.schema_.primary_key
         if primary_key is None:
-            raise _fail(entity, f"sink.write_mode={mode} requires schema.primary_key")
+            raise _fail(
+                entity,
+                f"sink.write_mode={mode} requires schema.primary_key",
+                code="config_missing_key",
+            )
         if not primary_key:
             raise _fail(
-                entity, f"sink.write_mode={mode} requires non-empty schema.primary_key"
+                entity,
+                f"sink.write_mode={mode} requires non-empty schema.primary_key",
+                code="config_missing_key",
             )
     _check_merge(entity)
 
@@ -243,6 +306,7 @@ def _check_partitioning(entity: EntityConfig) -> None:
         raise _fail(
             entity,
             "sink.accepted.partition_by and sink.accepted.partition_spec are mutually exclusive",
+            code="config_conflict",
         )
     # ponytail: `partition_by` is Delta-only (D1), so its per-column checks are unreachable.
     if accepted.partition_by is not None:
@@ -250,6 +314,7 @@ def _check_partitioning(entity: EntityConfig) -> None:
             entity,
             "sink.accepted.partition_by is not supported in 0.8; "
             "use sink.accepted.partition_spec with sink.accepted.format=iceberg",
+            code="config_not_supported",
         )
     spec = accepted.partition_spec
     if spec is None:
@@ -257,20 +322,27 @@ def _check_partitioning(entity: EntityConfig) -> None:
     where = "sink.accepted.partition_spec"
     if accepted.format != "iceberg":
         raise _fail(
-            entity, f"{where} is only supported for sink.accepted.format=iceberg"
+            entity,
+            f"{where} is only supported for sink.accepted.format=iceberg",
+            code="config_conflict",
         )
     if not spec:
-        raise _fail(entity, f"{where} must not be empty")
+        raise _fail(entity, f"{where} must not be empty", code="config_invalid_value")
     names = {c.name for c in entity.schema_.columns}
     seen: set[tuple[str, str]] = set()
     for index, field in enumerate(spec):
         column = field.column.strip()
         if not column:
-            raise _fail(entity, f"{where}[{index}].column must not be empty")
+            raise _fail(
+                entity,
+                f"{where}[{index}].column must not be empty",
+                code="config_invalid_value",
+            )
         if column not in names:
             raise _fail(
                 entity,
                 f"{where}[{index}].column={column} references unknown schema column",
+                code="config_unknown_reference",
             )
         transform = field.transform.strip().lower()
         if transform not in PARTITION_TRANSFORMS:
@@ -278,20 +350,32 @@ def _check_partitioning(entity: EntityConfig) -> None:
                 entity,
                 f"{where}[{index}].transform={field.transform} is unsupported "
                 f"(allowed: {', '.join(PARTITION_TRANSFORMS)})",
+                code="config_invalid_value",
             )
         if transform == "bucket" and field.num_buckets is None:
             raise _fail(
-                entity, f"{where}[{index}].num_buckets is required for transform=bucket"
+                entity,
+                f"{where}[{index}].num_buckets is required for transform=bucket",
+                code="config_missing_key",
             )
         if transform != "bucket" and field.num_buckets is not None:
             raise _fail(
                 entity,
                 f"{where}[{index}].num_buckets is only supported with transform=bucket",
+                code="config_conflict",
             )
         if field.num_buckets == 0:
-            raise _fail(entity, f"{where}[{index}].num_buckets must be greater than 0")
+            raise _fail(
+                entity,
+                f"{where}[{index}].num_buckets must be greater than 0",
+                code="config_invalid_value",
+            )
         if (column, transform) in seen:
-            raise _fail(entity, f"{where} has duplicate entry ({column}, {transform})")
+            raise _fail(
+                entity,
+                f"{where} has duplicate entry ({column}, {transform})",
+                code="config_duplicate",
+            )
         seen.add((column, transform))
 
 
@@ -307,10 +391,14 @@ def _storage_ref(
         name = (storages and storages.default) or "local"
     if storages is None and name != "local":
         raise FloeConfigError(
-            f"{who}{field} references unknown storage {name} (no storages block)"
+            f"{who}{field} references unknown storage {name} (no storages block)",
+            code="config_unknown_reference",
         )
     if storages and name not in {d.name for d in storages.definitions}:
-        raise FloeConfigError(f"{who}{field} references unknown storage {name}")
+        raise FloeConfigError(
+            f"{who}{field} references unknown storage {name}",
+            code="config_unknown_reference",
+        )
     return name
 
 
@@ -333,6 +421,7 @@ def _check_iceberg(
         raise _fail(
             entity,
             f"sink.{kind}.iceberg is only supported for sink.{kind}.format=iceberg",
+            code="config_conflict",
         )
     require(
         "iceberg", "pyiceberg", f"entity.name={entity.name} sink.{kind}.format=iceberg"
@@ -347,28 +436,32 @@ def _check_iceberg(
         raise _fail(
             entity,
             f"sink.{kind}.iceberg.catalog is required (or set catalogs.default)",
+            code="config_missing_key",
         )
     definitions = catalogs.definitions if catalogs else []
     definition = next((c for c in definitions if c.name == name), None)
     if definition is None:
         raise _fail(
-            entity, f"sink.{kind}.iceberg.catalog references unknown catalog {name}"
+            entity,
+            f"sink.{kind}.iceberg.catalog references unknown catalog {name}",
+            code="config_unknown_reference",
         )
     if definition.type == "glue" and "{domain}" in (definition.database or "") and not (iceberg.namespace or entity.domain):  # fmt: skip
-        raise _fail(entity, f"sink.{kind}.iceberg.namespace or domain is required for catalog {name} database containing {{domain}}")  # fmt: skip
+        raise _fail(entity, f"sink.{kind}.iceberg.namespace or domain is required for catalog {name} database containing {{domain}}", code="config_missing_key")  # fmt: skip
     # Unity is rejected at parse (D1); the registry checked `warehouse_storage`.
     if kind == "accepted" and definition.type == "glue" and entity.sink.write_mode.startswith("merge"):  # fmt: skip
         # ponytail: merges run through DuckDB, attached to REST catalogs only; attach Glue when a merge needs it
-        raise _fail(entity, f"sink.write_mode={entity.sink.write_mode} requires a rest catalog (glue supports overwrite and append)")  # fmt: skip
+        raise _fail(entity, f"sink.write_mode={entity.sink.write_mode} requires a rest catalog (glue supports overwrite and append)", code="config_not_supported")  # fmt: skip
     if definition.warehouse_storage is None:
         type_ = _storage_type(config, storage)
         if type_ not in ("s3", "gcs"):
             raise _fail(
                 entity,
                 f"sink.{kind}.iceberg.catalog requires sink.{kind} storage type s3 or gcs (got {type_})",
+                code="config_conflict",
             )
     if kind == "rejected" and iceberg.location is not None and definition.warehouse_storage in (None, storage) and iceberg.location.rstrip("/") == target.path.rstrip("/"):  # fmt: skip  # one string names one place only in one storage
-        raise _fail(entity, "sink.rejected.iceberg.location must differ from sink.rejected.path (raw file copies are written to the path)")  # fmt: skip
+        raise _fail(entity, "sink.rejected.iceberg.location must differ from sink.rejected.path (raw file copies are written to the path)", code="config_conflict")  # fmt: skip
     if kind == "rejected" and entity.sink.accepted.format == "iceberg":
         other = entity.sink.accepted.iceberg or NO_ICEBERG
         mine = (name, catalog_ident(iceberg.namespace or entity.domain or ""), catalog_ident(iceberg.table or f"{entity.name}_rejected"))  # fmt: skip
@@ -377,17 +470,23 @@ def _check_iceberg(
             catalog_ident(other.namespace or entity.domain or ""),
             catalog_ident(other.table or entity.name),
         ):  # fmt: skip
-            raise _fail(entity, "sink.rejected.iceberg must not write to the accepted table")  # fmt: skip
+            raise _fail(entity, "sink.rejected.iceberg must not write to the accepted table", code="config_conflict")  # fmt: skip
 
 
 def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
     sink, accepted = entity.sink, entity.sink.accepted
     if accepted.format in ("delta", "duckdb"):  # D1 (#619): reported first
         raise _fail(
-            entity, f"sink.accepted.format={accepted.format} is not supported in 0.8"
+            entity,
+            f"sink.accepted.format={accepted.format} is not supported in 0.8",
+            code="config_not_supported",
         )
     if accepted.format not in SINK_FORMATS:
-        raise _fail(entity, f"sink.accepted.format={accepted.format} is unsupported")
+        raise _fail(
+            entity,
+            f"sink.accepted.format={accepted.format} is unsupported",
+            code="config_invalid_value",
+        )
     options = accepted.options
     if options is not None and accepted.format == "parquet":
         if options.compression not in (None, *PARQUET_COMPRESSIONS):
@@ -395,18 +494,23 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
                 entity,
                 f"sink.accepted.options.compression={options.compression} is unsupported "
                 f"(allowed: {', '.join(PARQUET_COMPRESSIONS)})",
+                code="config_invalid_value",
             )
         for field in ("row_group_size", "max_size_per_file"):
             if getattr(options, field) == 0:
                 raise _fail(
-                    entity, f"sink.accepted.options.{field} must be greater than 0"
+                    entity,
+                    f"sink.accepted.options.{field} must be greater than 0",
+                    code="config_invalid_value",
                 )
     # D39 (#1007): abort writes the failing file to sink.rejected too
     if entity.policy.severity in ("reject", "abort") and sink.rejected is None:
-        raise _fail(entity, f"sink.rejected is required when policy.severity={entity.policy.severity}")  # fmt: skip
+        raise _fail(entity, f"sink.rejected is required when policy.severity={entity.policy.severity}", code="config_missing_key")  # fmt: skip
     if sink.rejected is not None and sink.rejected.format not in ("csv", "parquet", "iceberg"):  # fmt: skip
         raise _fail(
-            entity, f"sink.rejected.format={sink.rejected.format} is unsupported"
+            entity,
+            f"sink.rejected.format={sink.rejected.format} is unsupported",
+            code="config_invalid_value",
         )
     if (
         sink.rejected is not None
@@ -416,7 +520,7 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
         for index, (column, out) in enumerate(zip(columns, output_names(columns, strategy), strict=True)):  # fmt: skip
             if out.startswith("__floe_"):  # the output name, after normalize_columns
                 shown = column.name if out == column.name else f"{column.name} normalizes to {out}, which"  # fmt: skip
-                raise _fail(entity, f"schema.columns[{index}].name={shown} is reserved (names starting with __floe_ are reserved when sink.rejected is set)")  # fmt: skip
+                raise _fail(entity, f"schema.columns[{index}].name={shown} is reserved (names starting with __floe_ are reserved when sink.rejected is set)", code="config_invalid_value")  # fmt: skip
     who = f"entity.name={entity.name} "
     accepted_storage = _storage_ref(
         config, accepted.storage, "sink.accepted.storage", who
@@ -430,7 +534,9 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
     source = _storage_ref(config, entity.source.storage, "source.storage", who)
     if archive is not None and archive.storage not in (None, source):
         raise _fail(
-            entity, f"sink.archive.storage must match source.storage ({source})"
+            entity,
+            f"sink.archive.storage must match source.storage ({source})",
+            code="config_conflict",
         )
 
 
@@ -444,6 +550,7 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
             entity,
             f"schema.columns has {len(inputs)} entries which exceeds "
             f"the JSON selector limit of {MAX_JSON_COLUMNS}",
+            code="config_invalid_value",
         )
     strategy = schema.normalize_columns and schema.normalize_columns.strategy
     if strategy is not None and _canonical(strategy) not in {
@@ -453,13 +560,14 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
             entity,
             f"schema.normalize_columns.strategy={strategy} is unsupported "
             f"(allowed: {', '.join(NORMALIZE_STRATEGIES)})",
+            code="config_invalid_value",
         )
     try:
         resolved = resolve_strategy(schema)
         source_names(schema.columns, resolved)
         output_column_mapping(schema.columns, resolved)
     except FloeConfigError as err:
-        raise _fail(entity, str(err)) from err
+        raise _fail(entity, str(err), code="config_invalid_value") from err
     mismatch = schema.mismatch
     if mismatch is not None:
         for field, policy, allowed in (
@@ -471,24 +579,31 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
                     entity,
                     f"schema.mismatch.{field}={policy} is unsupported "
                     f"(allowed: {', '.join(allowed)})",
+                    code="config_invalid_value",
                 )
     for index, column in enumerate(inputs):
         kind = _canonical(column.column_type)
         try:
             exact = decimal_type(column.column_type)
         except ValueError as err:
-            raise _fail(entity, f"schema.columns[{index}].type: {err}") from err
+            raise _fail(
+                entity,
+                f"schema.columns[{index}].type: {err}",
+                code="config_invalid_value",
+            ) from err
         if kind == "decimal":  # Float64 cannot hold exact decimals; scale is required
             raise _fail(
                 entity,
                 f"schema.columns[{index}].type=decimal needs a precision and scale, "
                 "e.g. decimal(19,2); use float64 for approximate numbers",
+                code="config_invalid_value",
             )
         if exact is None and kind not in _TYPE_NAMES:
             raise _fail(
                 entity,
                 f"schema.columns[{index}].type={column.column_type} is unsupported "
                 f"for column {column.name} (allowed: {', '.join(COLUMN_TYPES)})",
+                code="config_invalid_value",
             )
         parse = {"xml": parse_selector, "json": parse_json_selector}.get(
             entity.source.format
@@ -501,6 +616,7 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
                 raise _fail(
                     entity,
                     f"schema.columns[{index}].source={selector} is invalid: {err}",
+                    code="config_invalid_value",
                 ) from err
     _check_primary_key(entity)
     _check_unique_keys(entity)
@@ -510,14 +626,23 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
 def _check_source(entity: EntityConfig, config: RootConfig) -> None:
     source = entity.source
     if source.format == "fixed":  # D1 (#619): fixed-width is dropped
-        raise _fail(entity, f"source.format={source.format} is not supported in 0.8")
+        raise _fail(
+            entity,
+            f"source.format={source.format} is not supported in 0.8",
+            code="config_not_supported",
+        )
     if source.format not in SOURCE_FORMATS:
-        raise _fail(entity, f"source.format={source.format} is unsupported")
+        raise _fail(
+            entity,
+            f"source.format={source.format} is unsupported",
+            code="config_invalid_value",
+        )
     if source.cast_mode not in CAST_MODES:
         raise _fail(
             entity,
             f"source.cast_mode={source.cast_mode} is unsupported "
             f"(allowed: {', '.join(CAST_MODES)})",
+            code="config_invalid_value",
         )
     who = f"entity.name={entity.name} "
     _storage_ref(config, source.storage, "source.storage", who)
@@ -527,35 +652,59 @@ def _check_source(entity: EntityConfig, config: RootConfig) -> None:
         raise _fail(
             entity,
             f"source.options.json_mode={mode} is unsupported (allowed: array, ndjson)",
+            code="config_invalid_value",
         )
     if source.format == "xlsx":
         require("xlsx", "fastexcel", f"entity.name={entity.name} source.format=xlsx")
         sheet, header_row = options.sheet, options.header_row
         if sheet is not None and not sheet.strip():
-            raise _fail(entity, "source.options.sheet must not be empty")
+            raise _fail(
+                entity,
+                "source.options.sheet must not be empty",
+                code="config_invalid_value",
+            )
         header_row = 1 if header_row is None else header_row
         if header_row == 0:
-            raise _fail(entity, "source.options.header_row must be greater than 0")
+            raise _fail(
+                entity,
+                "source.options.header_row must be greater than 0",
+                code="config_invalid_value",
+            )
         data_row = header_row + 1 if options.data_row is None else options.data_row
         if data_row <= header_row:
             raise _fail(
                 entity,
                 "source.options.data_row must be greater than source.options.header_row",
+                code="config_invalid_value",
             )
     if source.format == "xml":
         if not (options.row_tag or "").strip():
-            raise _fail(entity, "source.options.row_tag is required for xml input")
+            raise _fail(
+                entity,
+                "source.options.row_tag is required for xml input",
+                code="config_missing_key",
+            )
         for field in ("namespace", "value_tag"):
             value = getattr(options, field)
             if value is not None and not value.strip():
-                raise _fail(entity, f"source.options.{field} must not be empty")
+                raise _fail(
+                    entity,
+                    f"source.options.{field} must not be empty",
+                    code="config_invalid_value",
+                )
     # D7 (#584 S3, S4): rejected at validate time, not when the reader opens the file.
     if source.format in ("csv", "tsv"):
         separator, encoding = options.separator or "", options.encoding or "utf8"
         if len(separator.encode()) != 1:
-            raise _fail(entity, f"separator must be a single byte, got {separator!r}")
+            raise _fail(
+                entity,
+                f"separator must be a single byte, got {separator!r}",
+                code="config_invalid_value",
+            )
         if _canonical(encoding) not in ("utf8", "lossyutf8"):
-            raise _fail(entity, f"unsupported encoding: {encoding}")
+            raise _fail(
+                entity, f"unsupported encoding: {encoding}", code="config_invalid_value"
+            )
 
 
 def _check_source_partitioning(entity: EntityConfig) -> None:
@@ -566,13 +715,23 @@ def _check_source_partitioning(entity: EntityConfig) -> None:
     tokens = PARTITION_TOKEN.findall(p.pattern)
     if unknown := [t for t in tokens if t not in PARTITION_TOKENS]:
         allowed = ", ".join(f"{{{t}}}" for t in PARTITION_TOKENS)
-        raise _fail(entity, f"{pattern} has unknown token {{{unknown[0]}}} (allowed: {allowed})")  # fmt: skip
+        raise _fail(entity, f"{pattern} has unknown token {{{unknown[0]}}} (allowed: {allowed})", code="config_invalid_value")  # fmt: skip
     if set("{}") & set(PARTITION_TOKEN.sub("", p.pattern)):
-        raise _fail(entity, f"{pattern} has an unmatched brace")
+        raise _fail(
+            entity, f"{pattern} has an unmatched brace", code="config_invalid_value"
+        )
     if repeated := [t for t in PARTITION_TOKENS if tokens.count(t) > 1]:
-        raise _fail(entity, f"{pattern} repeats token {{{repeated[0]}}}")
+        raise _fail(
+            entity,
+            f"{pattern} repeats token {{{repeated[0]}}}",
+            code="config_duplicate",
+        )
     if not {"yyyy", "MM", "dd"} <= set(tokens):
-        raise _fail(entity, f"{pattern} must contain {{yyyy}}, {{MM}} and {{dd}}")
+        raise _fail(
+            entity,
+            f"{pattern} must contain {{yyyy}}, {{MM}} and {{dd}}",
+            code="config_invalid_value",
+        )
     # #913: also the names after normalize_columns (the input names and the output names)
     nc, columns = entity.schema_.normalize_columns, entity.schema_.columns
     strategy = (nc.strategy or "snake_case") if nc and nc.enabled else None
@@ -582,33 +741,46 @@ def _check_source_partitioning(entity: EntityConfig) -> None:
         if name is None:
             continue
         if not name.strip():
-            raise _fail(entity, f"{where}.{field} must not be empty")
+            raise _fail(
+                entity,
+                f"{where}.{field} must not be empty",
+                code="config_invalid_value",
+            )
         if name in names or normalize_name(name, strategy) in inputs:
-            raise _fail(entity, f"{where}.{field}={name} is already a column in schema.columns")  # fmt: skip
+            raise _fail(entity, f"{where}.{field}={name} is already a column in schema.columns", code="config_conflict")  # fmt: skip
     if p.batch_column is not None and "batch" not in tokens:
-        raise _fail(entity, f"{where}.batch_column requires {{batch}} in {where}.pattern")  # fmt: skip
+        raise _fail(entity, f"{where}.batch_column requires {{batch}} in {where}.pattern", code="config_conflict")  # fmt: skip
     if p.batch_column == p.date_column:
-        raise _fail(entity, f"{where}.batch_column={p.batch_column} must differ from {where}.date_column")  # fmt: skip
+        raise _fail(entity, f"{where}.batch_column={p.batch_column} must differ from {where}.date_column", code="config_conflict")  # fmt: skip
 
 
 def _check_state(entity: EntityConfig) -> None:
     state, archive = entity.state, entity.sink.archive
     if state and state.path is not None and not state.path.strip():
-        raise _fail(entity, "entity.state.path must not be empty")
+        raise _fail(
+            entity, "entity.state.path must not be empty", code="config_invalid_value"
+        )
     mode = entity.incremental_mode
     if mode == "archive" and archive is None:
-        raise _fail(entity, "incremental_mode=archive requires sink.archive")
+        raise _fail(
+            entity,
+            "incremental_mode=archive requires sink.archive",
+            code="config_missing_key",
+        )
     # ponytail: no deprecation warning for `sink.archive` without a mode.
     if archive is not None and mode == "file":
         raise _fail(
             entity,
             f"sink.archive conflicts with incremental_mode={mode}; "
             "use incremental_mode=archive or remove sink.archive",
+            code="config_conflict",
         )
 
 
-def _pii_error(entity: EntityConfig, name: str, message: str) -> FloeConfigError:
-    return _fail(entity, f"pii.columns[name={name}]{message}")
+def _pii_error(
+    entity: EntityConfig, name: str, message: str, *, code: ErrorCode
+) -> FloeConfigError:
+    return _fail(entity, f"pii.columns[name={name}]{message}", code=code)
 
 
 def _check_pii(entity: EntityConfig) -> None:
@@ -620,12 +792,14 @@ def _check_pii(entity: EntityConfig) -> None:
             entity,
             "pii: masking is not applied when policy.severity=abort because the raw "
             "file is written to sink.rejected without DataFrame processing",
+            code="config_conflict",
         )
     if entity.sink.archive is not None:
         raise _fail(
             entity,
             "pii: sink.archive copies the original unmasked source file to the archive "
             "sink; remove sink.archive or disable pii masking",
+            code="config_conflict",
         )
     schema = entity.schema_
     mismatch = schema.mismatch
@@ -639,6 +813,7 @@ def _check_pii(entity: EntityConfig) -> None:
                 f"pii: schema.mismatch.{field}=reject_file writes the raw unmasked file "
                 "to sink.rejected before PII masking can be applied; "
                 f"use {field}={fix} instead",
+                code="config_conflict",
             )
     columns = {c.name: c for c in schema.columns}
     primary_key = set(schema.primary_key or [])
@@ -652,12 +827,25 @@ def _check_pii(entity: EntityConfig) -> None:
     for col in pii.columns:
         name, strategy = col.name, col.strategy
         if name in seen:
-            raise _fail(entity, f"pii.columns: column name {name} is duplicated")
+            raise _fail(
+                entity,
+                f"pii.columns: column name {name} is duplicated",
+                code="config_duplicate",
+            )
         seen.add(name)
         if name not in columns:
-            raise _fail(entity, f"pii.columns: {name} is not a schema column")
+            raise _fail(
+                entity,
+                f"pii.columns: {name} is not a schema column",
+                code="config_unknown_reference",
+            )
         if strategy == "tokenize":
-            raise _pii_error(entity, name, ".strategy=tokenize is not yet supported")
+            raise _pii_error(
+                entity,
+                name,
+                ".strategy=tokenize is not yet supported",
+                code="config_not_supported",
+            )
         declared = columns[name]
         if strategy in ("hash", "redact", "mask") and _canonical(
             declared.column_type
@@ -668,16 +856,21 @@ def _check_pii(entity: EntityConfig) -> None:
                 f".strategy={strategy} can only be applied to string columns "
                 f"(declared type={declared.column_type}); "
                 "use strategy=nullify or strategy=drop instead",
+                code="config_invalid_value",
             )
         if strategy == "nullify" and declared.nullable is False:
             raise _pii_error(
                 entity,
                 name,
                 ".strategy=nullify cannot be applied to a nullable=false column",
+                code="config_conflict",
             )
         if strategy == "drop" and name in primary_key:
             raise _pii_error(
-                entity, name, ".strategy=drop cannot be applied to a primary_key column"
+                entity,
+                name,
+                ".strategy=drop cannot be applied to a primary_key column",
+                code="config_conflict",
             )
         if name in primary_key and mode in ("merge_scd1", "merge_scd2"):
             raise _pii_error(
@@ -685,6 +878,7 @@ def _check_pii(entity: EntityConfig) -> None:
                 name,
                 f": PII strategy cannot be applied to a primary_key column with write_mode={mode}: "
                 "masking the merge key corrupts the merge predicate",
+                code="config_conflict",
             )
         if name in unique and strategy in ("drop", "nullify", "redact", "mask"):
             raise _pii_error(
@@ -692,6 +886,7 @@ def _check_pii(entity: EntityConfig) -> None:
                 name,
                 f".strategy={strategy} cannot be applied to a unique-key column: the strategy "
                 "collapses or removes values, violating uniqueness constraints",
+                code="config_conflict",
             )
         if name in unique and strategy == "hash":
             raise _pii_error(
@@ -699,6 +894,7 @@ def _check_pii(entity: EntityConfig) -> None:
                 name,
                 ".strategy=hash cannot be applied to a unique-key column: uniqueness checks "
                 "record raw values in the run report before masking, leaking unmasked PII",
+                code="config_conflict",
             )
         # ponytail: no warning for an unkeyed `hash`.
         fmt = entity.sink.accepted.format
@@ -710,16 +906,23 @@ def _check_pii(entity: EntityConfig) -> None:
                 name,
                 f".strategy=drop is not supported with {refused} "
                 "because the sink enforces the full declared schema",
+                code="config_not_supported",
             )
         if strategy == "mask":
             pattern = col.mask_pattern
             if pattern is None:
-                raise _pii_error(entity, name, ".strategy=mask requires mask_pattern")
+                raise _pii_error(
+                    entity,
+                    name,
+                    ".strategy=mask requires mask_pattern",
+                    code="config_missing_key",
+                )
             if not (token_n(pattern, "{last") or token_n(pattern, "{first")):
                 raise _pii_error(
                     entity,
                     name,
                     ".mask_pattern must contain at least one token ({firstN} or {lastN})",
+                    code="config_invalid_value",
                 )
 
 
@@ -728,35 +931,46 @@ def _check_storages(config: RootConfig) -> None:
     names: set[str] = set()
     if storages is not None:
         if not storages.definitions:
-            raise FloeConfigError("storages.definitions must not be empty")
+            raise FloeConfigError(
+                "storages.definitions must not be empty", code="config_invalid_value"
+            )
         for d in storages.definitions:
             if d.type not in STORAGE_TYPES:
                 raise FloeConfigError(
                     f"storages.definitions name={d.name} type={d.type} is unsupported "
-                    f"(allowed: {', '.join(STORAGE_TYPES)})"
+                    f"(allowed: {', '.join(STORAGE_TYPES)})",
+                    code="config_invalid_value",
                 )
             if d.type == "s3":
                 require("s3", "boto3", f"storages.definitions name={d.name} type=s3")
             if d.type == "s3" and (d.bucket is None or d.region is None):
                 missing = "bucket" if d.bucket is None else "region"
                 raise FloeConfigError(
-                    f"storages.definitions name={d.name} requires {missing} for type s3"
+                    f"storages.definitions name={d.name} requires {missing} for type s3",
+                    code="config_missing_key",
                 )
             if d.name in names:
                 raise FloeConfigError(
-                    f"storages.definitions name={d.name} is duplicated"
+                    f"storages.definitions name={d.name} is duplicated",
+                    code="config_duplicate",
                 )
             names.add(d.name)
         if storages.default is None:
-            raise FloeConfigError("storages.default is required when storages is set")
+            raise FloeConfigError(
+                "storages.default is required when storages is set",
+                code="config_missing_key",
+            )
         if storages.default not in names:
             raise FloeConfigError(
-                f"storages.default={storages.default} does not match any definition"
+                f"storages.default={storages.default} does not match any definition",
+                code="config_unknown_reference",
             )
     if catalogs is None:
         return
     if not catalogs.definitions:
-        raise FloeConfigError("catalogs.definitions must not be empty")
+        raise FloeConfigError(
+            "catalogs.definitions must not be empty", code="config_invalid_value"
+        )
     seen: set[str] = set()
     for c in catalogs.definitions:
         wh = c.warehouse_storage
@@ -764,45 +978,64 @@ def _check_storages(config: RootConfig) -> None:
             if wh not in names:
                 raise FloeConfigError(
                     f"catalogs.definitions name={c.name} warehouse_storage "
-                    f"references unknown storage {wh}"
+                    f"references unknown storage {wh}",
+                    code="config_unknown_reference",
                 )
             kind = _storage_type(config, wh)
             if c.type == "glue" and kind != "s3":
                 raise FloeConfigError(
                     f"catalogs.definitions name={c.name} warehouse_storage must "
-                    f"reference s3 storage for glue catalog (got {kind})"
+                    f"reference s3 storage for glue catalog (got {kind})",
+                    code="config_conflict",
                 )
             if kind not in ("s3", "gcs"):
                 raise FloeConfigError(
                     f"catalogs.definitions name={c.name} warehouse_storage must "
-                    f"reference s3 or gcs storage for rest catalog (got {kind})"
+                    f"reference s3 or gcs storage for rest catalog (got {kind})",
+                    code="config_conflict",
                 )
         if c.name in seen:
-            raise FloeConfigError(f"catalogs.definitions name={c.name} is duplicated")
+            raise FloeConfigError(
+                f"catalogs.definitions name={c.name} is duplicated",
+                code="config_duplicate",
+            )
         seen.add(c.name)
     if catalogs.default is not None and catalogs.default not in seen:
         raise FloeConfigError(
-            f"catalogs.default={catalogs.default} does not match any definition"
+            f"catalogs.default={catalogs.default} does not match any definition",
+            code="config_unknown_reference",
         )
 
 
 def check_lineage(lineage: LineageConfig, ctx: str) -> None:
     if not lineage.url.strip():
-        raise FloeConfigError(f"{ctx}.url must not be empty")
+        raise FloeConfigError(
+            f"{ctx}.url must not be empty", code="config_invalid_value"
+        )
     if not lineage.namespace.strip():
-        raise FloeConfigError(f"{ctx}.namespace must not be empty")
+        raise FloeConfigError(
+            f"{ctx}.namespace must not be empty", code="config_invalid_value"
+        )
     if lineage.max_failures == 0:
-        raise FloeConfigError(f"{ctx}.max_failures must be at least 1")
+        raise FloeConfigError(
+            f"{ctx}.max_failures must be at least 1", code="config_invalid_value"
+        )
 
 
 def _check_report_lineage(config: RootConfig) -> None:
     report, lineage = config.report, config.lineage
     name = _storage_ref(config, report.storage, "report.storage", "")
     if _storage_type(config, name) == "local" and report.path.startswith(REMOTE_URIS):
-        raise FloeConfigError(f"report.path must be a local path (got {report.path})")
+        raise FloeConfigError(
+            f"report.path must be a local path (got {report.path})",
+            code="config_invalid_value",
+        )
     # D7 (#584 S5): an unknown formatter is rejected at validate time, not when a run starts.
     if report.formatter not in (None, "json", "csv", "text"):
-        raise FloeConfigError(f"unsupported report.formatter: {report.formatter}")
+        raise FloeConfigError(
+            f"unsupported report.formatter: {report.formatter}",
+            code="config_invalid_value",
+        )
     if lineage is not None:
         check_lineage(lineage, "lineage")
 
@@ -812,16 +1045,19 @@ def validate_entities(config: RootConfig) -> None:
     if version < MIN_VERSION:
         raise FloeConfigError(
             f"root.version={config.version} is unsupported "
-            f"(minimum supported version: {MIN_VERSION[0]}.{MIN_VERSION[1]})"
+            f"(minimum supported version: {MIN_VERSION[0]}.{MIN_VERSION[1]})",
+            code="config_version",
         )
     if version > FLOE_VERSION:
         raise FloeConfigError(
             f"root.version={config.version} is unsupported "
-            f"(newer than Floe {FLOE_VERSION[0]}.{FLOE_VERSION[1]})"
+            f"(newer than Floe {FLOE_VERSION[0]}.{FLOE_VERSION[1]})",
+            code="config_version",
         )
     if not config.entities:
         raise FloeConfigError(
-            "entities list is empty (at least one entity is required)"
+            "entities list is empty (at least one entity is required)",
+            code="config_missing_key",
         )
     _check_storages(config)
     _check_report_lineage(config)
@@ -844,11 +1080,13 @@ def validate_entities(config: RootConfig) -> None:
                     entity,
                     f"entity.{field} must be non-empty without '.', '/' or '\\' "
                     'when root.version >= "0.3"',
+                    code="config_invalid_value",
                 )
         if entity.id in ids:
             raise FloeConfigError(
                 f"entity.name={entity.id} is duplicated in config "
-                f"(entities[{ids[entity.id]}] and entities[{index}])"
+                f"(entities[{ids[entity.id]}] and entities[{index}])",
+                code="config_duplicate",
             )
         ids[entity.id] = index
     # D26 (#844): catalog-less Iceberg tables are dropped; checked last so
@@ -858,6 +1096,7 @@ def validate_entities(config: RootConfig) -> None:
             raise _fail(
                 entity,
                 "sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8",
+                code="config_missing_key",
             )
 
 
