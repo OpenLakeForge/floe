@@ -1,4 +1,4 @@
-"""Strict YAML decoding, ported from `crates/floe-core/src/config/yaml_decode.rs` (yaml-rust2 0.11)."""
+"""Strict YAML decoding, matching yaml-rust2 0.11."""
 
 import copy
 import re
