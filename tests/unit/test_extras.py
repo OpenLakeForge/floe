@@ -61,7 +61,7 @@ entities:
   policy: {severity: warn}
   schema: {columns: [{name: id, type: string}]}
 """)
-    monkeypatch.setitem(sys.modules, "boto3", None)
+    monkeypatch.setitem(sys.modules, "obstore", None)
     with pytest.raises(FloeConfigError) as err:
         validate_entities(parse_config(config))
     assert str(err.value) == (
@@ -70,14 +70,17 @@ entities:
 
 
 def test_s3_client_names_the_s3_extra(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(sys.modules, "boto3", None)
+    monkeypatch.setitem(sys.modules, "obstore", None)
+    monkeypatch.setitem(sys.modules, "obstore.store", None)
     with pytest.raises(FloeConfigError) as err:
         S3Client("bucket")
     assert str(err.value) == S3
 
 
-def test_core_modules_import_without_boto(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("boto3", "botocore", "botocore.exceptions", "botocore.config"):
+def test_core_modules_import_without_obstore_and_boto(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("obstore", "obstore.exceptions", "obstore.store", "boto3", "botocore", "botocore.exceptions"):  # fmt: skip
         monkeypatch.setitem(sys.modules, name, None)
     for name in ("floe.storage.s3", "floe.iceberg.catalog"):
         monkeypatch.delitem(sys.modules, name, raising=False)

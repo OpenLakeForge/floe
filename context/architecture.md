@@ -62,7 +62,8 @@ The CLI and the Python API share the same functions: `_cli.py` parses arguments 
 | DuckDB (pinned) | Iceberg `MERGE INTO`, compaction; spills to disk |
 | pyarrow | Arrow exchange between the three, ORC reads |
 | fastexcel | XLSX |
-| boto3 | S3 storage client |
+| obstore | S3 storage client (conditional writes make the incremental state CAS) |
+| boto3 | Glue catalog credentials and errors (PyIceberg needs it) |
 | pydantic, PyYAML | Config models and strict YAML decoding |
 
 They exchange data through the Arrow C Data Interface, so there is no version lockstep between

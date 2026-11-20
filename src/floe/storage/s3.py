@@ -1,7 +1,6 @@
-"""S3 storage client, ported from `io/storage/providers/s3.rs` (`S3Client`)."""
+"""S3 storage client on obstore, ported from `io/storage/providers/s3.rs` (`S3Client`)."""
 
 import os
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,18 +11,35 @@ from floe.storage.paths import fnv1a_hex, parse_s3_uri
 from floe.storage.types import ObjectRef, StoredObject
 
 if TYPE_CHECKING:
-    from botocore.exceptions import BotoCoreError, ClientError
+    import obstore as obs
+    from obstore import PutMode
+    from obstore.exceptions import (
+        AlreadyExistsError,
+        PermissionDeniedError,
+        PreconditionError,
+        UnauthenticatedError,
+    )
+    from obstore.store import ObjectStore, S3Config
 else:
     try:
-        from botocore.exceptions import BotoCoreError, ClientError
+        import obstore as obs
+        from obstore.exceptions import (
+            AlreadyExistsError,
+            PermissionDeniedError,
+            PreconditionError,
+            UnauthenticatedError,
+        )
     except ImportError:
         # no s3 extra: `S3Client()` raises, so nothing below is ever caught
-        BotoCoreError = ClientError = Exception
+        AlreadyExistsError = PermissionDeniedError = PreconditionError = UnauthenticatedError = Exception  # fmt: skip
 
-_CONFLICT = ("PreconditionFailed", "ConditionalRequestConflict", "412", "409")
-_NOT_FOUND = ("NoSuchKey", "NotFound", "404")
-# #939: the metadata key archive copies carried before the #1271 sidecar; still read, so older archives keep their D28 order
+# #939: the metadata key archive copies carried before the #1271 index; still read, so older archives keep their D28 order
+_DEBUG_DUMP = (
+    "\n\nDebug source:"  # obstore appends the Rust `Debug` of the error to its message
+)
 _SOURCE_MTIME = "floe-source-mtime"
+# S3 answers a failed `If-None-Match` or `If-Match` with 412, or 409 while a concurrent write is in flight: obstore raises these for all of them
+_CONFLICT = (PreconditionError, AlreadyExistsError)
 
 
 def resolve_path_style_access(configured: bool | None) -> bool:
@@ -33,17 +49,20 @@ def resolve_path_style_access(configured: bool | None) -> bool:
     return env == "1" or env.lower() == "true"
 
 
-def _code(err: ClientError) -> str:
-    return str(err.response.get("Error", {}).get("Code", ""))
+def _fail(what: str, e: Exception, where: str = "") -> FloeStorageError:
+    """`what` failed with obstore error `e`; the code follows its class (a Rust debug dump after the message is cut)."""
+    msg = f"s3 {what} failed{where}: {str(e).partition(_DEBUG_DUMP)[0]}"
+    if isinstance(e, PermissionDeniedError | UnauthenticatedError):
+        return FloeStorageError(msg, code="storage_access_denied")
+    if isinstance(e, FileNotFoundError):
+        return FloeStorageError(msg, code="storage_not_found")
+    if isinstance(e, _CONFLICT):
+        return FloeStorageError(msg, code="storage_conflict")
+    return FloeStorageError(msg, code="storage_error")
 
 
-def _is(err: ClientError, codes: tuple[str, ...]) -> bool:
-    status = str(err.response.get("ResponseMetadata", {}).get("HTTPStatusCode", ""))
-    return _code(err) in codes or status in codes
-
-
-def _iso(ts: datetime | None) -> str | None:
-    return ts and ts.astimezone(UTC).isoformat().replace("+00:00", "Z")
+def _iso(ts: datetime) -> str:
+    return ts.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def temp_path_for_key(temp_dir: Path, key: str) -> Path:
@@ -55,6 +74,12 @@ def temp_path_for_key(temp_dir: Path, key: str) -> Path:
 
 
 class S3Client:
+    """The `bucket` is the only one a client reaches: URIs are reduced to their key.
+
+    Threads: one client is shared by the entity threads (`resolve.py`). An obstore store holds no mutable state (a Rust
+    `object_store` handle over a pooled HTTP client, `Send + Sync`) and its calls release the GIL, so it needs no lock.
+    """
+
     def __init__(
         self,
         bucket: str,
@@ -63,25 +88,34 @@ class S3Client:
         path_style_access: bool | None = None,
     ) -> None:
         try:
-            import boto3
-            from botocore.config import Config
+            from obstore.store import S3Store
         except ImportError as e:
             raise missing("s3", "an s3 storage") from e
         self.bucket = bucket
-        self._client = boto3.session.Session().client(  # pyright: ignore[reportUnknownMemberType]  # stubs cover s3 only
-            "s3",
-            region_name=region,
-            endpoint_url=endpoint,
-            config=Config(
-                s3={"addressing_style": "path"}
-                if resolve_path_style_access(path_style_access)
-                else None,
-                # boto3 >= 1.36 adds CRC checksums that S3-compatible services may reject.
-                request_checksum_calculation="when_required",
-                response_checksum_validation="when_required",
-            ),
+        env = os.environ
+        custom = endpoint or env.get("AWS_ENDPOINT_URL_S3") or env.get("AWS_ENDPOINT_URL")  # fmt: skip
+        # identifies the store behind a bucket name
+        self.endpoint: str = (custom or f"https://s3.{region or env.get('AWS_REGION') or env.get('AWS_DEFAULT_REGION') or 'us-east-1'}.amazonaws.com").rstrip("/")  # fmt: skip
+        # credentials and the rest (AWS_ACCESS_KEY_ID, ...) are read from the environment by obstore
+        config: S3Config = {
+            # boto3's `auto`: virtual-hosted on AWS (a dotted bucket name breaks its TLS name), else path style
+            "virtual_hosted_style_request": not resolve_path_style_access(
+                path_style_access
+            )
+            and custom is None
+            and "." not in bucket,
+        }
+        if region:
+            config["region"] = region
+        if custom:
+            config["endpoint"] = custom
+        self._store: ObjectStore = S3Store(
+            bucket,
+            config=config,
+            client_options={"allow_http": True}
+            if self.endpoint.startswith("http://")
+            else None,
         )
-        self.endpoint: str = self._client.meta.endpoint_url.rstrip("/")  # pyright: ignore[reportUnknownMemberType]  # identifies the store behind a bucket name
 
     def resolve_uri(self, path: str) -> str:
         key = path.lstrip("/")
@@ -89,113 +123,89 @@ class S3Client:
 
     def list(self, prefix: str, start_after: str = "") -> list[ObjectRef]:
         """Keys under `prefix`; D30: only those after `start_after`."""
+        # obstore lists whole directories (`in/data_` would mean `in/data_/`): list the directory, keep the raw prefix
+        directory, key_prefix = prefix.rpartition("/")[0], prefix.lstrip("/")
         try:
-            paginator = self._client.get_paginator("list_objects_v2")
-            pages = (
-                paginator.paginate(Bucket=self.bucket, Prefix=prefix, StartAfter=start_after)
-                if start_after
-                else paginator.paginate(Bucket=self.bucket, Prefix=prefix)
-            )  # fmt: skip
+            batches = obs.list(self._store, directory, offset=start_after or None)  # pyright: ignore[reportUnknownMemberType]  # the `return_arrow` overload names arro3, which is not installed
             return [
                 ObjectRef(
-                    f"s3://{self.bucket}/{o['Key']}",
-                    o["Key"],
-                    _iso(o.get("LastModified")),
-                    o.get("Size"),
+                    f"s3://{self.bucket}/{m['path']}",
+                    m["path"],
+                    _iso(m["last_modified"]),
+                    m["size"],
                 )
-                for page in pages
-                for o in page.get("Contents", [])
-                if "Key" in o
+                for batch in batches
+                for m in batch
+                if m["path"].startswith(key_prefix)
             ]
-        except (ClientError, BotoCoreError) as e:
-            raise FloeStorageError(
-                f"s3 list objects failed for bucket {self.bucket}: {e}"
-            ) from e
+        except Exception as e:
+            raise _fail("list objects", e, f" for bucket {self.bucket}") from e
 
     def download(self, uri: str, temp_dir: Path) -> Path:
-        bucket, key = parse_s3_uri(uri)
+        key = parse_s3_uri(uri)[1]
         dest = temp_path_for_key(temp_dir, key)
         try:
-            body = self._client.get_object(Bucket=bucket, Key=key)["Body"]
             dest.parent.mkdir(parents=True, exist_ok=True)
             with dest.open("wb") as f:
-                shutil.copyfileobj(body, f)
-        except (ClientError, BotoCoreError, OSError) as e:
-            raise FloeStorageError(f"s3 get object failed: {e}") from e
+                for chunk in obs.get(self._store, key):
+                    f.write(chunk)
+        except Exception as e:
+            raise _fail("get object", e) from e
         return dest
 
     def write(self, uri: str, body: bytes) -> None:
-        bucket, key = parse_s3_uri(uri)
         try:
-            self._client.put_object(Bucket=bucket, Key=key, Body=body)
-        except (ClientError, BotoCoreError) as e:
-            raise FloeStorageError(f"s3 put object failed: {e}") from e
+            obs.put(self._store, parse_s3_uri(uri)[1], body)
+        except Exception as e:
+            raise _fail("put object", e) from e
 
     def copy(self, src_uri: str, dst_uri: str) -> None:
-        (sb, sk), (db, dk) = parse_s3_uri(src_uri), parse_s3_uri(dst_uri)
         try:
-            self._client.copy_object(
-                Bucket=db, Key=dk, CopySource={"Bucket": sb, "Key": sk}
-            )
-        except (ClientError, BotoCoreError) as e:
-            raise FloeStorageError(f"s3 copy object failed: {e}") from e
+            obs.copy(self._store, parse_s3_uri(src_uri)[1], parse_s3_uri(dst_uri)[1])
+        except Exception as e:
+            raise _fail("copy object", e) from e
 
     def source_mtime(self, uri: str) -> str | None:
-        """#939: the source mtime in the metadata of an archive copy made before the sidecar (#1271); None otherwise."""
-        bucket, key = parse_s3_uri(uri)
+        """#939: the source mtime in the metadata of an archive copy made before the index (#1271); None otherwise."""
         try:
-            meta = self._client.head_object(Bucket=bucket, Key=key).get("Metadata", {})
-            # a Go server (MinIO, SeaweedFS) may send the header canonicalised: `X-Amz-Meta-Floe-Source-Mtime`
-            return next(
-                (v for k, v in meta.items() if k.lower() == _SOURCE_MTIME), None
-            )
-        except (ClientError, BotoCoreError) as e:
-            raise FloeStorageError(f"s3 head object failed for {uri}: {e}") from e
+            head = obs.get(self._store, parse_s3_uri(uri)[1], options={"head": True})
+            return head.attributes.get(_SOURCE_MTIME)
+        except Exception as e:
+            raise _fail("head object", e, f" for {uri}") from e
 
     def delete(self, uri: str) -> None:
-        bucket, key = parse_s3_uri(uri)
         try:
-            self._client.delete_object(Bucket=bucket, Key=key)
-        except (ClientError, BotoCoreError) as e:
-            raise FloeStorageError(f"s3 delete object failed: {e}") from e
+            obs.delete(self._store, parse_s3_uri(uri)[1])
+        except Exception as e:
+            raise _fail("delete object", e) from e
 
     def read(self, uri: str) -> StoredObject | None:
-        bucket, key = parse_s3_uri(uri)
         try:
-            resp = self._client.get_object(Bucket=bucket, Key=key)
-            return StoredObject(resp["Body"].read(), resp.get("ETag", ""))
-        except ClientError as e:
-            if _is(e, _NOT_FOUND):
-                return None
-            raise FloeStorageError(f"s3 get object failed: {e}") from e
-        except BotoCoreError as e:
-            raise FloeStorageError(f"s3 get object failed: {e}") from e
+            got = obs.get(self._store, parse_s3_uri(uri)[1])
+            return StoredObject(got.bytes().to_bytes(), got.meta["e_tag"] or "")
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            raise _fail("get object", e) from e
 
     def write_conditional(
         self, uri: str, expected_version: str | None, body: bytes
     ) -> str | None:
-        bucket, key = parse_s3_uri(uri)
+        """Create only if absent (`expected_version` None), else replace only if the ETag still matches; None on a lost race."""
+        mode: PutMode = (
+            "create" if expected_version is None else {"e_tag": expected_version}
+        )
         try:
-            if expected_version is None:
-                resp = self._client.put_object(
-                    Bucket=bucket, Key=key, Body=body, IfNoneMatch="*"
-                )
-            else:
-                resp = self._client.put_object(
-                    Bucket=bucket, Key=key, Body=body, IfMatch=expected_version
-                )
-            return resp.get("ETag", "")
-        except ClientError as e:
-            if _is(e, _CONFLICT):
-                return None
-            raise FloeStorageError(f"s3 put object failed: {e}") from e
-        except BotoCoreError as e:
-            raise FloeStorageError(f"s3 put object failed: {e}") from e
+            return obs.put(self._store, parse_s3_uri(uri)[1], body, mode=mode)["e_tag"] or ""  # fmt: skip
+        except _CONFLICT:
+            return None
+        except Exception as e:
+            raise _fail("put object", e) from e
 
 
 def read_s3(uri: str, what: str) -> bytes:
     # S3 settings come from the environment (AWS_ENDPOINT_URL, ...), as for `-o s3://`
     found = S3Client(parse_s3_uri(uri)[0]).read(uri)
     if found is None:
-        raise FloeIoError(f"{what} not found: {uri}")
+        raise FloeIoError(f"{what} not found: {uri}", code="io_not_found")
     return found.body

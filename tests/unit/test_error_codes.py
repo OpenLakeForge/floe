@@ -55,7 +55,6 @@ ALLOWLIST = {
     "storage/partitioning.py",
     "storage/paths.py",
     "storage/resolve.py",
-    "storage/s3.py",
     "write/outputs.py",
 }
 

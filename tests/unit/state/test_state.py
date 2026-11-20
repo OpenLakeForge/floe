@@ -1,12 +1,10 @@
 """Ported from `crates/floe-core/tests/unit/state/mod.rs` (state cases)."""
 
-import io
 import json
 from pathlib import Path
 
 import pytest
-from botocore.response import StreamingBody
-from botocore.stub import Stubber
+from obstore.store import MemoryStore
 
 import floe.state as state_mod
 from floe.errors import FloeConfigError
@@ -474,19 +472,14 @@ def test_reset_empties_s3_state_with_its_etag(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
     client = S3Client("b", "us-east-1")
-    key = {"Bucket": "b", "Key": "s/state.json"}
-    empty = dump_state(EntityState("sales", None, {}, {}))
-    with Stubber(client._client) as stub:  # pyright: ignore[reportPrivateUsage]
-        body = StreamingBody(io.BytesIO(b"{not valid json"), 15)
-        stub.add_response("get_object", {"ETag": '"e1"', "Body": body}, key)  # pyright: ignore[reportUnknownMemberType]
-        stub.add_response(
-            "put_object", {"ETag": '"e2"'}, key | {"Body": empty, "IfMatch": '"e1"'}
-        )  # pyright: ignore[reportUnknownMemberType]
-        body = StreamingBody(io.BytesIO(empty), len(empty))
-        stub.add_response("get_object", {"ETag": '"e2"', "Body": body}, key)  # pyright: ignore[reportUnknownMemberType]
-        assert reset(client, "s3://b/s/state.json", "sales") is True
-        assert reset(client, "s3://b/s/state.json", "sales") is False
-        stub.assert_no_pending_responses()
+    client._store = MemoryStore()  # pyright: ignore[reportPrivateUsage]  # the real client over obstore's in-memory store
+    uri = "s3://b/s/state.json"
+    client.write(uri, b"{not valid json")
+    assert reset(client, uri, "sales") is True
+    stored = client.read(uri)
+    assert stored is not None
+    assert stored.body == dump_state(EntityState("sales", None, {}, {}))
+    assert reset(client, uri, "sales") is False
 
 
 class NoDelete(LocalClient):

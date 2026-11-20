@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 import yaml
-from botocore.stub import ANY, Stubber
+from obstore.store import MemoryStore
 
 from floe import __version__
 from floe._cli import main
@@ -99,22 +99,13 @@ def test_s3_output_is_put_through_the_s3_client_and_baked_into_base_args(
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
     uri = "s3://b/dev/manifests/sales.json"
     client = S3Client("b", "us-east-1")
-    sent: dict[str, Any] = {}
-    client._client.meta.events.register(  # pyright: ignore[reportPrivateUsage]
-        "provide-client-params.s3.PutObject",
-        lambda params, **_: sent.update(params),  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # botocore hooks are untyped
-    )
-    monkeypatch.setattr("floe._cli.S3Client", lambda _bucket: client)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # one stubbed client
-    with Stubber(client._client) as stub:  # pyright: ignore[reportPrivateUsage]
-        stub.add_response(  # pyright: ignore[reportUnknownMemberType]
-            "put_object",
-            {},
-            {"Bucket": "b", "Key": "dev/manifests/sales.json", "Body": ANY},
-        )
-        assert generate(tmp_path, monkeypatch, "-o", uri) == 0
-        stub.assert_no_pending_responses()
+    client._store = MemoryStore()  # pyright: ignore[reportPrivateUsage]  # the real client over obstore's in-memory store
+    monkeypatch.setattr("floe._cli.S3Client", lambda _bucket: client)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # one in-memory client
+    assert generate(tmp_path, monkeypatch, "-o", uri) == 0
     assert capsys.readouterr().out == f"Manifest written: {uri}\n"
-    manifest = json.loads(sent["Body"])
+    stored = client.read(uri)
+    assert stored is not None
+    manifest = json.loads(stored.body)
     assert manifest["execution"]["base_args"][:3] == ["run", "--manifest", uri]
 
 

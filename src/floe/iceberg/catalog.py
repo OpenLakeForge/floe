@@ -64,7 +64,7 @@ try:
     from botocore.exceptions import BotoCoreError, ClientError
 
     _s3_errors: tuple[type[Exception], ...] = (BotoCoreError, ClientError)
-except ImportError:  # no s3 extra: nothing here raises them
+except ImportError:  # no boto3 (the iceberg extra): nothing here raises them
     _s3_errors = ()
 try:
     from duckdb import Error as DuckDBError
