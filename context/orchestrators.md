@@ -22,6 +22,8 @@ the identical change to both copies.
 framework-specific (Dagster `Failure` vs Airflow logging/operators, different
 manifest feature sets) and are not shared.
 
+Airflow 1.0 assessment and build plan: [airflow-1.0-plan.md](airflow-1.0-plan.md).
+
 ---
 
 ## The Manifest
