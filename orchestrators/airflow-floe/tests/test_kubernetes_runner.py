@@ -675,6 +675,7 @@ class OperatorKubernetesRoutingTests(unittest.TestCase):
             "status": "success",
             "backend_type": "kubernetes",
             "backend_run_id": "floe-orders-abc12345",
+            "backend_status": "succeeded",
         }
 
         with tempfile.TemporaryDirectory() as tmp:

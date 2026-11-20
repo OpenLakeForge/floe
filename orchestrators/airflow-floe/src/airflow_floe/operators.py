@@ -37,6 +37,26 @@ def _split_cmd(command: str) -> list[str]:
     return parts
 
 
+# `backend_status` of a finished remote job: Kubernetes `succeeded`, Databricks `result_state`.
+_BACKEND_SUCCEEDED = {"succeeded", "SUCCESS"}
+
+
+def _raise_if_remote_run_failed(payload: dict[str, Any]) -> None:
+    """Fail the task like the local runner (non-zero exit), plus the backend's own verdict."""
+    exit_code = payload.get("exit_code")
+    if (
+        payload.get("backend_status") in _BACKEND_SUCCEEDED
+        and exit_code in (None, 0)
+        and payload.get("status") not in ("failed", "aborted")
+    ):
+        return
+    raise RuntimeError(
+        f"floe remote run {payload.get('backend_run_id')} failed: "
+        f"status={payload.get('status')} backend_status={payload.get('backend_status')} "
+        f"exit_code={exit_code} failure_reason={payload.get('failure_reason')}"
+    )
+
+
 class FloeRunHook:
     """Execute `floe run` and return normalized Airflow run payload."""
 
@@ -202,6 +222,8 @@ class FloeRunOperator(BaseOperator):  # pyright: ignore[reportGeneralTypeIssues]
             log_stdout=log_stdout,
             log_stderr=log_stderr,
         )
+        if runner_definition is not None and runner_definition.runner_type != "local_process":
+            _raise_if_remote_run_failed(payload)
         self._emit_asset_events(payload, context)
         return payload
 

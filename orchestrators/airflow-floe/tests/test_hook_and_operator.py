@@ -455,6 +455,96 @@ class ManifestRoutingTests(unittest.TestCase):
                 operator.execute({})
             self.assertIn("docker", str(cm.exception).lower())
 
+    def _remote_operator(self, tmp: str, runner_type: str) -> FloeRunOperator:
+        base = Path(tmp)
+        config_path = base / "config.yml"
+        config_path.write_text("version: v1\n", encoding="utf-8")
+        manifest_path = self._write_manifest_with_runner_type(base, config_path, runner_type)
+        return FloeRunOperator(
+            task_id="run_floe",
+            config_path=str(config_path),
+            floe_cmd="floe",
+            manifest_context=build_dag_manifest_context(str(manifest_path)),
+        )
+
+    def test_kubernetes_job_not_succeeded_fails_task(self) -> None:
+        for backend_status in ("failed", "timeout", "canceled"):
+            with self.subTest(backend_status=backend_status), tempfile.TemporaryDirectory() as tmp:
+                operator = self._remote_operator(tmp, "kubernetes_job")
+                payload = {
+                    "status": backend_status,
+                    "exit_code": None,
+                    "backend_type": "kubernetes",
+                    "backend_run_id": "floe-orders-1",
+                    "backend_status": backend_status,
+                    "failure_reason": "pod OOMKilled",
+                }
+                with (
+                    patch("airflow_floe.operators.run_kubernetes_job", return_value=payload),
+                    self.assertRaises(RuntimeError) as cm,
+                ):
+                    operator.execute({})
+                self.assertIn("pod OOMKilled", str(cm.exception))
+                self.assertIn("floe-orders-1", str(cm.exception))
+
+    def test_kubernetes_job_floe_run_failed_fails_task(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = self._remote_operator(tmp, "kubernetes_job")
+            payload = {
+                "status": "aborted",
+                "exit_code": 1,
+                "backend_run_id": "floe-orders-1",
+                "backend_status": "succeeded",
+            }
+            with (
+                patch("airflow_floe.operators.run_kubernetes_job", return_value=payload),
+                self.assertRaises(RuntimeError),
+            ):
+                operator.execute({})
+
+    def test_kubernetes_job_succeeded_returns_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = self._remote_operator(tmp, "kubernetes_job")
+            payload = {
+                "status": "success",
+                "exit_code": 0,
+                "backend_run_id": "floe-orders-1",
+                "backend_status": "succeeded",
+            }
+            with patch("airflow_floe.operators.run_kubernetes_job", return_value=payload):
+                self.assertEqual(operator.execute({}), payload)
+
+    def test_databricks_job_failed_fails_task(self) -> None:
+        for status, backend_status in (("failed", "FAILED"), ("timeout", None)):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                operator = self._remote_operator(tmp, "databricks_job")
+                payload = {
+                    "status": status,
+                    "exit_code": 1,
+                    "backend_run_id": 42,
+                    "backend_status": backend_status,
+                    "failure_reason": "cluster terminated",
+                }
+                with (
+                    patch("airflow_floe.operators.run_databricks_job", return_value=payload),
+                    self.assertRaises(RuntimeError) as cm,
+                ):
+                    operator.execute({})
+                self.assertIn("cluster terminated", str(cm.exception))
+                self.assertIn("42", str(cm.exception))
+
+    def test_databricks_job_succeeded_returns_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = self._remote_operator(tmp, "databricks_job")
+            payload = {
+                "status": "success",
+                "exit_code": 0,
+                "backend_run_id": 42,
+                "backend_status": "SUCCESS",
+            }
+            with patch("airflow_floe.operators.run_databricks_job", return_value=payload):
+                self.assertEqual(operator.execute({}), payload)
+
     def test_profile_path_not_in_template_fields(self) -> None:
         """profile_path must NOT be in FloeRunOperator.template_fields."""
         self.assertNotIn("profile_path", FloeRunOperator.template_fields)
