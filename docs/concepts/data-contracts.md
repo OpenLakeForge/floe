@@ -87,7 +87,6 @@ output column:
 | `name` | The column in the output. The input column of the same name is read, unless `source` names another (for nested JSON or XML, `user.address.city` or `order/@id`). |
 | `type` | The value must cast to this type: `string`, `boolean`, integer and float types, `decimal(p,s)`, `date`, `datetime`. A value that does not cast is a `cast_error`. |
 | `nullable: false` | The value must be present. A missing or null value is a `not_null` error. |
-| `unique: true` | No two rows may share the value. Later duplicates are `unique` errors. |
 
 Keys apply to whole rows:
 

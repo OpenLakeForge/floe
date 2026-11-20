@@ -73,7 +73,6 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
     tracker = UniqueTracker(
         resolve_unique_keys(
             entity.schema_.unique_keys,
-            [c.name for c in columns if c.unique],
             entity.schema_.primary_key,
         )
     )

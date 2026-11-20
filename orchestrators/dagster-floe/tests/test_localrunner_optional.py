@@ -42,7 +42,7 @@ def test_localrunner_runs_example_entity_json_logs(tmp_path):
             policy: { severity: reject }
             schema:
               columns:
-                - { name: id, type: string, nullable: false, unique: false }
+                - { name: id, type: string, nullable: false }
         """,
     )
     _write(in_dir / "demo.csv", "id\n1\n2\n")

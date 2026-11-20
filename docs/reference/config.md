@@ -602,7 +602,7 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - Array of unique constraints, each constraint being an array of schema column names.
   - Supports single-column and multi-column uniqueness:
     - `unique_keys: [["email"], ["id","country_code"]]`
-  - If `unique_keys` is present, legacy `columns[].unique` flags are ignored.
+  - Migration: the per-column `unique: true` flag was removed in 1.0 and now fails validation; replace each flagged column `c` with an entry `["c"]` here.
   - Null semantics: a row is ignored for a constraint if any key component is null.
 - `columns` (required)
   - Array of column definitions.
@@ -620,8 +620,6 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - `type` (required): logical type. Accepted values are case-insensitive and
     normalized by removing `-` and `_`.
   - `nullable` (optional): default `true`.
-  - `unique` (optional, legacy): default `false`.
-    - Legacy single-column unique. Prefer `schema.unique_keys`.
 
 ## Supported column types
 
