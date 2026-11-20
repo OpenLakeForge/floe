@@ -61,7 +61,7 @@ Notes:
   and S3 storage for the table data.
 - Iceberg `partition_spec` supports `identity`, `year`, `month`, `day`, `hour` and
   `bucket` (with `num_buckets`, D12).
-- `schema.schema_evolution.mode: add_columns` is Iceberg-only and additive-only (D13).
+- `schema.schema_evolution.mode: add_columns` is Iceberg-only and additive-only (D13): no type widening, so `int32` to `int64` or `float32` to `float64` fails the run.
 - Iceberg `append` commits carry an input fingerprint, so a retry after a crash does not write
   the same batch twice (D5).
 - Iceberg merges are merge-on-read and leave position delete files. `floe maintain` expires old
