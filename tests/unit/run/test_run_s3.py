@@ -447,6 +447,22 @@ def test_1271_the_run_index_key_stays_within_s3s_limit_for_an_archived_key_near_
     assert pl.read_parquet(io.BytesIO(s3.objects[part]))["v"].to_list() == ["old"]
 
 
+def test_1271_a_long_run_id_keeps_the_run_index_key_within_s3s_limit(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    """Codex: a ~900-byte archive prefix and a 100-character run id. The archived keys fit (their run component is bounded);
+    the index key must use the same bounded component, not the raw run id; `MemS3.write` rejects a key over 1024 bytes."""
+    prefix = "p" * 880
+    config = ARCHIVE.replace("archive: {path: archive/", f"archive: {{path: {prefix}/")
+    config = config.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
+    s3.write("s3://b/in/2026/10/24/a1b2/x.csv", b"id\n1\n")
+    (tmp_path / "config.yml").write_text(config)
+    run(tmp_path / "config.yml", parse_config(tmp_path / "config.yml"), run_id="r" * 100)  # fmt: skip
+    [index] = [u for u in s3.objects if "/.floe/source_mtime/" in u]
+    archived = [u for u in s3.objects if u.startswith(f"s3://b/{prefix}/orders/20")]
+    assert archived and len(parse_s3_uri(index)[1]) < min(
+        len(parse_s3_uri(u)[1]) for u in archived
+    )
+
+
 def test_d30_an_s3_file_mode_run_starts_after_the_window(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     config = SINKS.replace("    domain: d\n", "    domain: d\n    incremental_mode: file\n", 1).replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
     for day in (20, 23, 24):

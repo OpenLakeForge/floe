@@ -44,7 +44,7 @@ def _truncate_utf8(value: str, max_bytes: int) -> str:
     return value.encode()[:max_bytes].decode(errors="ignore")
 
 
-def _run_component(run_id: str) -> str:
+def run_component(run_id: str) -> str:
     safe = "".join(
         c if c.isascii() and (c.isalnum() or c in "-_.") else "_" for c in run_id
     )
@@ -61,7 +61,7 @@ def archive_relative_path_for_run(
     stem, _, ext = name.rpartition(".")
     if not ext or not stem:
         stem, ext = name, ""
-    suffix = f"__run-{_run_component(run_id)}__src-{fnv1a_hex(source_uri)}"
+    suffix = f"__run-{run_component(run_id)}__src-{fnv1a_hex(source_uri)}"
     ext_suffix = f".{ext}" if ext else ""
     available = _MAX_FILENAME_COMPONENT_BYTES - len(suffix) - len(ext_suffix.encode())
     archived = f"{_truncate_utf8(stem, max(available, 0))}{suffix}{ext_suffix}"

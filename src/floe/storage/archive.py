@@ -6,7 +6,11 @@ from collections.abc import Callable
 from floe.errors import FloeError, FloeRunError, FloeStorageError
 from floe.storage.inputs import InputFile
 from floe.storage.local import LocalClient
-from floe.storage.paths import archive_relative_path_for_run, parse_s3_uri
+from floe.storage.paths import (
+    archive_relative_path_for_run,
+    parse_s3_uri,
+    run_component,
+)
 from floe.storage.types import StorageClient
 
 _INDEX = ".floe/source_mtime"
@@ -25,11 +29,11 @@ def write_source_mtime_index(client: StorageClient, base: str, entity_name: str,
     """#1271: before a run's archive copies, one `<base>/<entity>/.floe/source_mtime/<run_id>.json` maps each file's archived
     path under `<entity>/` to its source mtime (the copy keeps only its own, to the second on S3), for the D28 order.
 
-    One object per run, not a sidecar per file: its key is bounded by base, entity and run id, so it is never longer than the
-    archived keys it describes (they hold the run id too); a per-file key could pass S3's 1024 bytes. Not on local storage: a
+    One object per run, not a sidecar per file: its key is base, entity and the same bounded run component as the archived
+    names (`run_component`), so it is never longer than the archived keys it describes; a per-file key could pass S3's 1024 bytes. Not on local storage: a
     local copy's nanosecond mtime already follows the load order. A failed copy leaves an extra entry, harmless; a retry with the same run id adds to the entries."""
     if mtimes and not isinstance(client, LocalClient):
-        uri = f"{base}/{entity_name}/{_INDEX}/{run_id}.json"
+        uri = f"{base}/{entity_name}/{_INDEX}/{run_component(run_id)}.json"
         stored = client.read(
             uri
         )  # a retry with the same run id (Dagster) adds to the first attempt's entries
