@@ -29,7 +29,9 @@ def read_parquet(
         lf = pl.scan_parquet(path)
         picked = [name for name in lf.collect_schema().names() if name in columns]
     except (pl.exceptions.PolarsError, OSError) as err:
-        raise FloeIoError(f"failed to scan parquet at {path}: {err}") from err
+        raise FloeIoError(
+            f"failed to scan parquet at {path}: {err}", code="io_read_error"
+        ) from err
     if picked:
         lf = lf.select(picked)
     try:
@@ -40,4 +42,4 @@ def read_parquet(
         if done == 0:
             yield ParquetChunk(0, lf.head(0).collect())
     except (pl.exceptions.PolarsError, OSError) as err:
-        raise FloeIoError(f"parquet read failed: {err}") from err
+        raise FloeIoError(f"parquet read failed: {err}", code="io_read_error") from err

@@ -132,7 +132,10 @@ class _Rows:
 def _options(options: SourceOptions) -> tuple[str, str | None, str | None]:
     row_tag = (options.row_tag or "").strip()
     if not row_tag:
-        raise FloeConfigError("source.options.row_tag is required for xml input")
+        raise FloeConfigError(
+            "source.options.row_tag is required for xml input",
+            code="config_missing_key",
+        )
     return (
         row_tag,
         (options.namespace or "").strip() or None,
@@ -155,7 +158,9 @@ def read_xml(
     if len(set(names)) != len(names):
         dup = next(n for n in names if names.count(n) > 1)
         raise FloeIoError(
-            f"duplicate xml selector source: {dup}", rule="xml_selector_invalid"
+            f"duplicate xml selector source: {dup}",
+            rule="xml_selector_invalid",
+            code="io_invalid_option",
         )
     plans: list[Selector] = []
     for name in names:
@@ -163,7 +168,9 @@ def read_xml(
             plans.append(parse_selector(name))
         except ValueError as err:
             raise FloeIoError(
-                f"invalid selector {name}: {err}", rule="xml_selector_invalid"
+                f"invalid selector {name}: {err}",
+                rule="xml_selector_invalid",
+                code="io_invalid_option",
             ) from err
 
     target = _Rows(
@@ -192,13 +199,15 @@ def read_xml(
                     target.rows = rest
         parser.close()
     except ET.ParseError as err:
-        raise FloeIoError(f"xml parse error: {err}") from err
+        raise FloeIoError(f"xml parse error: {err}", code="io_read_error") from err
     except OSError as err:
-        raise FloeIoError(f"failed to read xml at {path}: {err}") from err
+        raise FloeIoError(
+            f"failed to read xml at {path}: {err}", code="io_read_error"
+        ) from err
     if target.rows:
         yield XmlChunk(done, frame())
     elif done == 0:
-        raise FloeIoError(f"row_tag={row_tag} produced no rows")
+        raise FloeIoError(f"row_tag={row_tag} produced no rows", code="io_read_error")
 
 
 def _in_namespace(tag: str, namespace: str | None) -> bool:
@@ -226,7 +235,9 @@ def xml_columns(path: Path, options: SourceOptions) -> list[str]:
                     }
                 )
     except ET.ParseError as err:
-        raise FloeIoError(f"xml parse error: {err}") from err
+        raise FloeIoError(f"xml parse error: {err}", code="io_read_error") from err
     except OSError as err:
-        raise FloeIoError(f"failed to read xml at {path}: {err}") from err
-    raise FloeIoError(f"row_tag={row_tag} not found in xml")
+        raise FloeIoError(
+            f"failed to read xml at {path}: {err}", code="io_read_error"
+        ) from err
+    raise FloeIoError(f"row_tag={row_tag} not found in xml", code="io_read_error")

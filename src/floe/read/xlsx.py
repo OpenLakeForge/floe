@@ -15,7 +15,7 @@ except ImportError as e:  # the xlsx extra is not installed
 
 
 def _fail(rule: str, message: str) -> FloeIoError:
-    return FloeIoError(f"{rule}: {message}", rule=rule)
+    return FloeIoError(f"{rule}: {message}", code="io_read_error", rule=rule)
 
 
 def _header(cells: tuple[str | None, ...]) -> list[str]:
@@ -54,9 +54,10 @@ def read_xlsx(path: Path, options: SourceOptions) -> pl.DataFrame:
         raise _fail("xlsx_read_error", f"no sheets found in {path}")
     sheet = names[0] if options.sheet is None else options.sheet
     if sheet not in names:
-        raise _fail(
-            "xlsx_sheet_error",
-            f"sheet {sheet} not found in {path} (available: {', '.join(names)})",
+        raise FloeIoError(
+            f"xlsx_sheet_error: sheet {sheet} not found in {path} (available: {', '.join(names)})",
+            code="io_invalid_option",
+            rule="xlsx_sheet_error",
         )
     try:
         # the eager=True overload of fastexcel's stubs returns an untyped pyarrow table
