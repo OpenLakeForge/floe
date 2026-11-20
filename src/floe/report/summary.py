@@ -1,4 +1,4 @@
-"""Run `run.summary.json`, run status and exit code, report layout (Rust: `report/{mod,output}.rs`, `run/mod.rs`)."""
+"""Run `run.summary.json`, run status and exit code, report layout."""
 
 import os
 from collections.abc import Mapping, Sequence
@@ -40,7 +40,7 @@ def run_dir(report_path: str, run_id: str, domain: str | None) -> str:
 
 
 def run_outcome(file_statuses: Sequence[str], warnings: int = 0) -> tuple[str, int]:
-    """Rust's `compute_run_outcome` then `upgrade_status_for_warnings`: (status, exit code)."""
+    """The run outcome, upgraded for warnings: (status, exit code)."""
     if "failed" in file_statuses:
         return "failed", 1
     if "aborted" in file_statuses:
@@ -163,7 +163,7 @@ def write_reports(
     reports: Sequence[tuple[str, dict[str, Any]]],
     client: StorageClient,
 ) -> None:
-    """Write `<run_dir>/<id_path>/run.json` per entity, then `run.summary.json` (overwriting, as Rust)."""
+    """Write `<run_dir>/<id_path>/run.json` per entity, then `run.summary.json` (overwriting)."""
     summary_file = summary["report"]["report_file"]
     run_dir = summary_file.removesuffix("/run.summary.json")
     for path, report in reports:
@@ -174,5 +174,5 @@ def write_reports(
 def write_entity_report(
     run_dir: str, path: str, report: dict[str, Any], client: StorageClient
 ) -> None:
-    """One entity's `run.json`, written as the entity finishes (Rust)."""
+    """One entity's `run.json`, written as the entity finishes."""
     client.write(f"{run_dir}/{path}/run.json", serialize(report).encode())

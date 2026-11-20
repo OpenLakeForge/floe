@@ -1,4 +1,4 @@
-"""The run's Iceberg accepted sink: catalog target, table and one commit (Rust `io/write/iceberg.rs` `write`)."""
+"""The run's Iceberg accepted sink: catalog target, table and one commit."""
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingTypeStubs=false
 # ^ pyarrow ships no type stubs
@@ -52,18 +52,18 @@ class IcebergTarget:
     namespace: str
     table: str
     location: str
-    accepted_uri: str  # `sink.accepted.path` resolved, as Rust reports it
+    accepted_uri: str  # `sink.accepted.path` resolved
 
 
 def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | None, config_dir: Path, entity: EntityConfig, kind: Literal["accepted", "rejected"] = "accepted") -> IcebergTarget:  # fmt: skip
-    """Rust `CatalogResolver::resolve_iceberg_target`; the catalog reference is validated. A rejected sink's table defaults to `<entity>_rejected`."""
+    """Resolve the Iceberg target; the catalog reference is validated. A rejected sink's table defaults to `<entity>_rejected`."""
     sink = entity.sink.accepted if kind == "accepted" else entity.sink.rejected
     assert sink is not None  # the caller checked `format`
     options = sink.iceberg or (
         NO_ICEBERG if kind == "rejected" else None
     )  # a rejected sink needs no `iceberg` block, only a default catalog
     if options is None:
-        # ponytail: Rust 0.7 also wrote catalog-less filesystem tables; PyIceberg has no such catalog without sqlalchemy
+        # ponytail: catalog-less filesystem tables are unsupported; PyIceberg has no such catalog without sqlalchemy
         raise FloeRunError(f"entity.name={entity.name} sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8")  # fmt: skip
     name = options.catalog or (catalogs and catalogs.default)
     catalog = next((c for c in (catalogs.definitions if catalogs else []) if c.name == name), None)  # fmt: skip
@@ -92,7 +92,7 @@ def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | N
         location = (
             accepted_uri if kind == "accepted" else f"{accepted_uri.rstrip('/')}/table"
         )
-    # Rust: the Glue database holds the table; the namespace only names its location
+    # the Glue database holds the table; the namespace only names its location
     if database is not None:
         namespace = database
     return IcebergTarget(catalog, storage, namespace, table, location, accepted_uri)  # fmt: skip
@@ -112,7 +112,7 @@ _WIDER: dict[pl.DataType, pl.DataType] = {pl.UInt8(): pl.Int32(), pl.UInt16(): p
 
 
 def _reader(entity: EntityConfig, frames: Iterator[pl.DataFrame], names: list[str]) -> pa.RecordBatchReader:  # fmt: skip
-    """Output columns in schema order, from at least one frame; `nullable: false` columns are required, as in Rust."""
+    """Output columns in schema order, from at least one frame; `nullable: false` columns are required."""
     columns = entity.schema_.columns
 
     def arrow(df: pl.DataFrame) -> pa.Table:  # Iceberg has no unsigned types
@@ -160,10 +160,10 @@ def write_iceberg(
     reader = _reader(entity, frames, names)
     options = entity.sink.accepted.merge
     scd2 = options.scd2 if options else None
-    # (is_current, valid_from, valid_to), as Rust `resolve_scd2_system_columns`
+    # (is_current, valid_from, valid_to)
     system = [(d if (v := getattr(scd2, f, None)) is None else v).strip() for f, d in SCD2_DEFAULTS.items()]  # fmt: skip
     table_schema = reader.schema
-    if mode == "merge_scd2":  # the table also holds the system columns (Rust `scd2.rs`)
+    if mode == "merge_scd2":  # the table also holds the system columns
         for name, kind, nullable in zip(system, (pa.bool_(), pa.timestamp("us"), pa.timestamp("us")), (False, False, True)):  # fmt: skip
             table_schema = table_schema.append(pa.field(name, kind, nullable=nullable))
     arrow_schema = Catalog._convert_schema_if_needed(table_schema)  # pyright: ignore[reportPrivateUsage] -- PyIceberg's own pyarrow -> Iceberg conversion
@@ -181,7 +181,6 @@ def write_iceberg(
                 existing = set(catalog.load_table(identifier).schema().column_names)
             except (NoSuchTableError, NoSuchNamespaceError):
                 existing = None
-        # Rust `merge/shared.rs`
         if existing is not None and (added := [k for k in key if k not in existing]):
             raise FloeRunError(f"entity.name={entity.name} iceberg schema evolution failed: merge key columns cannot be added: {', '.join(added)}")  # fmt: skip
     table, added = ensure_table(
@@ -208,17 +207,16 @@ def write_iceberg(
                 merged = merge_scd2(con, table, reader, key, compare, ignore, system)
         result = merged.write
         merge = {
-            "merge_key": primary_key,  # Rust's Delta merge reports the configured key
+            "merge_key": primary_key,  # the report carries the configured key
             "inserted_count": merged.inserted_count,
             "updated_count": merged.updated_count,
         }
-        if mode == "merge_scd2":  # Rust's report omits these for SCD1
+        if mode == "merge_scd2":  # the report omits these for SCD1
             merge |= {"closed_count": merged.closed_count, "unchanged_count": merged.unchanged_count}  # fmt: skip
         merge["merge_elapsed_ms"] = int((time.monotonic() - started) * 1000)
     else:
         options = entity.sink.accepted.options
         size = options.max_size_per_file if options else None
-        # Rust `default_small_file_threshold_bytes`
         threshold = SMALL_FILE_THRESHOLD_BYTES if size is None else max(1, size // 2)
         append = "overwrite" if mode == "overwrite" else "append"
         unique = [[output.get(c, c) for c in k] for k in resolve_unique_keys(entity.schema_.unique_keys, [c.name for c in entity.schema_.columns if c.unique], entity.schema_.primary_key)]  # fmt: skip

@@ -1,4 +1,4 @@
-"""Entity `run.json` (Rust: `report/{entity,build,mod}.rs`). Dicts in Rust's field order, serialised like serde."""
+"""Entity `run.json`. Dicts in the report's field order, serialised like serde."""
 
 import json
 from collections.abc import Mapping, Sequence
@@ -33,7 +33,7 @@ def serialize(report: dict[str, Any]) -> str:
 def summarize_rules(
     checks: Sequence[RowCheck], entity: EntityConfig
 ) -> list[dict[str, Any]]:
-    """Rust's `summarize_validation_exprs`: per rule (fixed order), per column (sorted) violation counts."""
+    """Per rule (fixed order), per column (sorted) violation counts."""
     columns = entity.schema_.columns
     names = source_names(columns, resolve_strategy(entity.schema_))
     types = {n: c.column_type for n, c in zip(names, columns, strict=True)}
@@ -73,8 +73,8 @@ def file_report(
     errors_path: str | None = None,
     forced_rejects: int = 0,
 ) -> dict[str, Any]:
-    """One `files[]` entry. `rejected_count` is the split's; severity decides status and counts (Rust `validate_split`)."""
-    # a rejected/aborted mismatch decides the file before any row check runs (Rust `precheck.rs`)
+    """One `files[]` entry. `rejected_count` is the split's; severity decides status and counts."""
+    # a rejected/aborted mismatch decides the file before any row check runs
     precheck = mismatch.aborted or mismatch.rejected
     rules = [] if precheck else summarize_rules(checks, entity)
     violations = sum(r["violations"] for r in rules)
@@ -237,7 +237,7 @@ def build_report(
             "parts_written": write.files_written,
             **({"part_files": write.part_files} if write.part_files else {}),
             **(table or {}),
-            # Rust's default output (nothing written) has no byte metrics
+            # the default output (nothing written) has no byte metrics
             "total_bytes_written": write.total_bytes_written if write.files_written or table else None,
             "avg_file_size_mb": write.avg_file_size_mb if write.files_written or table else None,
             "small_files_count": write.small_files_count if write.files_written or table else None,

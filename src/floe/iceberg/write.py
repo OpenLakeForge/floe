@@ -263,7 +263,7 @@ def write_result(
     data_files: list[DataFile],
     small_file_threshold_bytes: int = SMALL_FILE_THRESHOLD_BYTES,
 ) -> IcebergWriteResult:
-    """Rust's report fields for the files a commit added."""
+    """The report fields for the files a commit added."""
     sizes = [f.file_size_in_bytes for f in data_files]
     snapshot = table.current_snapshot()
     return IcebergWriteResult(
