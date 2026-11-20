@@ -1,8 +1,8 @@
 """SCD1 and SCD2 merges into Iceberg: the batch is staged as Parquet, then DuckDB `MERGE INTO` (#598).
 
-SCD1: match on the merge key, update every non-key,
-non-ignored column, insert unmatched rows with every column. The update is guarded by a null-safe change
-predicate, so rerunning a batch writes nothing. SCD2: see `scd2_sql`.
+SCD1: match on the merge key, update every non-key, non-ignored column, insert unmatched rows
+with every column. The update is guarded by a null-safe change predicate, so rerunning a batch
+writes nothing. SCD2: see `scd2_sql`.
 
 A bucket-partitioned target gets one MERGE per bucket in one transaction, so one catalog commit:
 a single MERGE runs out of memory there (#609).

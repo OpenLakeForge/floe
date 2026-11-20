@@ -301,7 +301,7 @@ def _describe_field(field: NestedField) -> str:
 
 
 def check_schema_matches(existing: Schema, expected: Schema, entity: str) -> None:
-    """Floe has no Iceberg schema evolution: any difference fails (see the questions on #650)."""
+    """Strict schema evolution: any difference fails (see the questions on #650)."""
     if len(existing.fields) != len(expected.fields):
         raise FloeRunError(
             f"entity.name={entity} iceberg schema evolution is not supported "
@@ -322,7 +322,7 @@ def check_schema_matches(existing: Schema, expected: Schema, entity: str) -> Non
 def additive_columns(
     existing: Schema, expected: Schema, entity: str
 ) -> list[NestedField]:
-    """The Delta rules for `add_columns`: new columns only."""
+    """`add_columns`: only new columns are allowed; existing ones must keep their type and not become nullable."""
     incoming = {f.name: f for f in expected.fields}
     incompatible: list[str] = []
     for old in existing.fields:
