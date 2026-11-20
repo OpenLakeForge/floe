@@ -1,4 +1,4 @@
-"""XLSX reader: every cell as a raw string (Rust: `io/read/xlsx.rs`), via `fastexcel` (calamine)."""
+"""XLSX reader: every cell as a raw string, via `fastexcel` (calamine)."""
 
 from pathlib import Path
 
@@ -19,7 +19,7 @@ def _fail(rule: str, message: str) -> FloeIoError:
 
 
 def _header(cells: tuple[str | None, ...]) -> list[str]:
-    """Trimmed names; blank cells become `column_N`; repeats become `<name>_dup_<count>` (as Rust)."""
+    """Trimmed names; blank cells become `column_N`; repeats become `<name>_dup_<count>`."""
     counts: dict[str, int] = {}
     used: set[str] = set()
     names: list[str] = []
@@ -37,10 +37,10 @@ def _header(cells: tuple[str | None, ...]) -> list[str]:
 
 
 def read_xlsx(path: Path, options: SourceOptions) -> pl.DataFrame:
-    """Read the whole sheet; rows and columns count from the sheet's used range, as in Rust.
+    """Read the whole sheet; rows and columns count from the sheet's used range.
 
     The data rows start at `data_row` (default `header_row + 1`). Numbers, booleans and dates are
-    rendered by calamine (see the tests for the one rendering that differs from Rust: dates).
+    rendered by calamine (see the tests for the one rendering that differs: dates).
     """
     # ponytail: calamine loads the whole sheet in memory, so there is one frame, not chunks.
     header_row = 1 if options.header_row is None else options.header_row
