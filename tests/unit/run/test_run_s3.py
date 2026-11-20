@@ -34,7 +34,9 @@ class MemS3:
         self.endpoint: str | None = None
         self.now = "2026-01-01T00:00:00Z"  # `LastModified` of what is written or copied next, to the second as S3
         self.mtimes: dict[str, str] = {}
-        self.meta: dict[str, str | None] = {}  # the `floe-source-mtime` a copy keeps
+        self.meta: dict[
+            str, str | None
+        ] = {}  # the legacy (#939) `floe-source-mtime` of a copy made before the sidecar
 
     def resolve_uri(self, path: str) -> str:
         return f"s3://b/{path.lstrip('/')}"
@@ -51,9 +53,8 @@ class MemS3:
     def write(self, uri: str, body: bytes) -> None:
         self.objects[uri], self.mtimes[uri] = body, self.now
 
-    def copy(self, src_uri: str, dst_uri: str, source_mtime: str | None = None) -> None:
+    def copy(self, src_uri: str, dst_uri: str) -> None:
         self.objects[dst_uri], self.mtimes[dst_uri] = self.objects[src_uri], self.now
-        self.meta[dst_uri] = source_mtime
 
     def source_mtime(self, uri: str) -> str | None:
         return self.meta.get(uri)
@@ -196,7 +197,7 @@ ARCHIVE = SINKS.replace("    domain: d\n", "    domain: d\n    incremental_mode:
 def test_archive_copies_then_deletes_the_s3_input(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
     s3.write("s3://b/in/a.csv", b"id\n1\n")
     go(tmp_path, ARCHIVE)
-    [archived] = parts(s3, "s3://b/archive/")
+    [archived] = [u for u in parts(s3, "s3://b/archive/") if "/.floe/" not in u]
     assert archived.startswith("s3://b/archive/orders/a__run-r1__src-")
     assert "s3://b/in/a.csv" not in s3.objects
     report = json.loads(s3.objects["s3://b/runs/d/run_r1/d/orders/run.json"])
@@ -345,7 +346,7 @@ def test_d29_the_s3_archive_keeps_the_partition_path_for_a_full_refresh(tmp_path
     config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
     s3.write("s3://b/in/2026/10/24/a1b2/x.csv", b"id\n1\n")
     go(tmp_path, config)
-    [archived] = parts(s3, "s3://b/archive/")
+    [archived] = [u for u in parts(s3, "s3://b/archive/") if "/.floe/" not in u]
     assert archived.startswith("s3://b/archive/orders/2026/10/24/a1b2/x__run-r1__src-")
     full_refresh(tmp_path, config)
     [part] = parts(s3, "s3://b/out/accepted/")
@@ -353,7 +354,7 @@ def test_d29_the_s3_archive_keeps_the_partition_path_for_a_full_refresh(tmp_path
 
 
 def test_939_a_full_refresh_replays_same_second_s3_archive_copies_in_load_order(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
-    """D28 loads batch `ff00` (older) before `a1b2`; their archive copies share one second, so only the kept source time orders them."""
+    """D28 loads batch `ff00` (older) before `a1b2`; their archive copies share one second, so only the kept source time orders them (#1271: from the sidecar)."""
     config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
     config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64, unique: true}\n        - {name: v, type: string}\n")  # fmt: skip
     s3.now = "2026-10-24T10:00:00Z"
@@ -370,6 +371,31 @@ def test_939_a_full_refresh_replays_same_second_s3_archive_copies_in_load_order(
     assert accepted() == ["old"]  # the first row of a key wins
     full_refresh(tmp_path, config)
     assert accepted() == ["old"]
+    sidecars = {
+        u: b
+        for u, b in s3.objects.items()
+        if "/archive/orders/.floe/source_mtime/2026/10/24/" in u
+    }
+    assert sorted(sidecars.values()) == [b"2026-10-24T10:00:00Z", b"2026-10-24T11:00:00Z"]  # fmt: skip
+    assert not any(u in s3.meta for u in s3.objects)  # the copies carry no metadata
+
+
+def test_1271_a_full_refresh_orders_a_legacy_archive_by_its_copy_metadata(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
+    """An archive written before the sidecar has the source mtime in the copy's metadata only."""
+    config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
+    config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64, unique: true}\n        - {name: v, type: string}\n")  # fmt: skip
+    s3.now = "2026-10-24T10:00:00Z"
+    s3.write("s3://b/in/2026/10/24/ff00/x.csv", b"id,v\n1,old\n")
+    s3.now = "2026-10-24T11:00:00Z"
+    s3.write("s3://b/in/2026/10/24/a1b2/y.csv", b"id,v\n1,new\n")
+    s3.now = "2026-10-24T12:00:00Z"
+    go(tmp_path, config)
+    for uri in [u for u in s3.objects if "/archive/orders/.floe/source_mtime/" in u]:
+        legacy = uri.replace(".floe/source_mtime/", "")
+        s3.meta[legacy] = s3.objects.pop(uri).decode()
+    full_refresh(tmp_path, config)
+    [part] = parts(s3, "s3://b/out/accepted/")
+    assert pl.read_parquet(io.BytesIO(s3.objects[part]))["v"].to_list() == ["old"]
 
 
 def test_d30_an_s3_file_mode_run_starts_after_the_window(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
