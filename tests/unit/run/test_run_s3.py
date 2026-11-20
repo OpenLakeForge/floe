@@ -166,7 +166,7 @@ def test_parquet_and_rejected_parts_are_written_to_s3(tmp_path: Path, s3: MemS3)
 
 def test_append_seeds_unique_keys_from_the_s3_parts(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
     s3.write("s3://b/in/a.csv", b"id\n1\n")
-    config = SINKS.replace("    sink:\n", "    sink:\n      write_mode: append\n").replace("{name: id, type: int64}", "{name: id, type: int64, unique: true}")  # fmt: skip
+    config = SINKS.replace("    sink:\n", "    sink:\n      write_mode: append\n").replace("      columns:\n", "      unique_keys: [[id]]\n      columns:\n")  # fmt: skip
     go(tmp_path, config)
     out = go(tmp_path, config)
     assert out.summary["results"]["rejected_total"] == 1
@@ -357,7 +357,7 @@ def test_d29_the_s3_archive_keeps_the_partition_path_for_a_full_refresh(tmp_path
 def test_939_a_full_refresh_replays_same_second_s3_archive_copies_in_load_order(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
     """D28 loads batch `ff00` (older) before `a1b2`; their archive copies share one second, so only the kept source time orders them (#1271: from the run index)."""
     config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
-    config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64, unique: true}\n        - {name: v, type: string}\n")  # fmt: skip
+    config = config.replace("      columns:\n        - {name: id, type: int64}\n", "      unique_keys: [[id]]\n      columns:\n        - {name: id, type: int64}\n        - {name: v, type: string}\n")  # fmt: skip
     s3.now = "2026-10-24T10:00:00Z"
     s3.write("s3://b/in/2026/10/24/ff00/x.csv", b"id,v\n1,old\n")
     s3.now = "2026-10-24T11:00:00Z"

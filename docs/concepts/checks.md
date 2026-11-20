@@ -22,7 +22,7 @@ For the full execution order (file-level vs row-level vs entity-level), see
 - **Notes**:
   - Null values are ignored (they do not count as duplicates).
   - Applies independently per key, across all input files in the entity.
-  - The legacy `schema.columns[].unique: true` is still accepted, but is ignored when `schema.unique_keys` is set.
+  - The legacy `schema.columns[].unique` flag was removed in 1.0: `floe validate` and `floe run` fail on it. Use `schema.unique_keys`, e.g. `unique_keys: [[order_id]]`.
 
 ### cast_error (type mismatch)
 

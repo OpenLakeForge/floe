@@ -91,12 +91,8 @@ def test_null_keys_are_skipped_and_ties_sort_on_the_typed_key() -> None:
 
 
 def test_resolve_unique_keys_matches_rust() -> None:
-    assert resolve_unique_keys(None, [" a ", "b"], [" b", ""]) == [
-        ["a"],
-        ["b"],
-        ["b", ""],
-    ]
-    assert resolve_unique_keys([["a", "b"], [" a", "b "], []], ["z"], ["a", "b"]) == [
+    assert resolve_unique_keys(None, [" b", ""]) == [["b", ""]]
+    assert resolve_unique_keys([["a", "b"], [" a", "b "], []], ["a", "b"]) == [
         ["a", "b"]
     ]
 

@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- **Breaking: `schema.columns[].unique` is removed (#1259).** `floe validate` and `floe run` fail with `is not supported (see CHANGELOG); use schema.unique_keys` on a column carrying `unique`, true or false, and `floe run --manifest` fails the same way on a manifest that carries it; regenerate such a manifest with `floe manifest generate`. Replace each `unique: true` column `c` with an entry `[c]` in `schema.unique_keys`, and delete `unique: false` lines (older `floe add-entity` wrote one on every column). The manifest schema and the config schemas drop `unique`.
 - **Breaking:** rejected CSV and Parquet output always appends, whatever the entity's `sink.write_mode` (#1254). An `overwrite` entity used to delete the previous run's rejected parts on its next run; it now keeps them, like the append-only Iceberg quarantine. There is no opt-out: clear old rejected output with your storage lifecycle. A retry of the same input still rewrites its own parts. The accepted sink's `overwrite` is unchanged.
 - `floe add-entity` no longer writes `unique: false` on each generated column (#1259); the flag was a no-op default.
 - `docs/reference/errors.md` lists the typed error codes (#1260). Text logs print `error_code=<code>` on a failure line when the error carries one. Raise sites adopt the codes in the next PRs of #1260, so no error carries a code yet.

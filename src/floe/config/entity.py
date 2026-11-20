@@ -182,13 +182,14 @@ def _column(value: object) -> ColumnConfig:
     for key in ("width", "trim"):
         if key in h:
             raise FloeConfigError(f"{ctx}.{key} {NOT_SUPPORTED}")
-    validate_known_keys(h, ctx, ("name", "source", "type", "nullable", "unique"))
+    if "unique" in h:
+        raise FloeConfigError(f"{ctx}.unique {NOT_SUPPORTED}; use schema.unique_keys")
+    validate_known_keys(h, ctx, ("name", "source", "type", "nullable"))
     return ColumnConfig(
         name=get_string(h, "name", ctx),
         source=opt_string(h, "source", ctx),
         column_type=get_string(h, "type", ctx),
         nullable=opt_bool(h, "nullable", ctx),
-        unique=opt_bool(h, "unique", ctx),
     )
 
 

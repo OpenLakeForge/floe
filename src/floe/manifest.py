@@ -230,7 +230,6 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
                             {"name": c.name, "column_type": c.column_type},
                             source=c.source,
                             nullable=c.nullable,
-                            unique=c.unique,
                         )
                         for c in schema.columns
                     ],

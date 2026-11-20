@@ -286,7 +286,6 @@ def _run_entity(
     runtime = {c.name: n for c, n in zip(columns, names, strict=True)}
     keys = resolve_unique_keys(
         entity.schema_.unique_keys,
-        [c.name for c in columns if c.unique],
         entity.schema_.primary_key,
     )
     primary = {runtime.get(k.strip(), k.strip()) for k in entity.schema_.primary_key or []}  # fmt: skip

@@ -6,7 +6,7 @@
   "manifest_revision": "<volatile>",
   "runtime_env": "cli",
   "config_uri": "local://<ROOT>/work/config.yml",
-  "config_checksum": "sha256:afdd79fac9b86b9cd68721bb7c766d5ee3596b63eb47ae2ace978c300e372ae9",
+  "config_checksum": "sha256:15bacd9a336783901846477f8d2c2b5db60c42c78399e669321e0fa22f7dec9c",
   "report_base_uri": "local://<ROOT>/work/report",
   "domains": [
     {
@@ -132,8 +132,7 @@
           {
             "name": "id",
             "column_type": "int64",
-            "nullable": false,
-            "unique": true
+            "nullable": false
           },
           {
             "name": "day",
@@ -149,7 +148,11 @@
           }
         ],
         "primary_key": [],
-        "unique_keys": []
+        "unique_keys": [
+          [
+            "id"
+          ]
+        ]
       }
     }
   ]

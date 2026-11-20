@@ -644,10 +644,6 @@ def _check_pii(entity: EntityConfig) -> None:
     primary_key = set(schema.primary_key or [])
     mode = entity.sink.write_mode
     unique = primary_key | {c for key in schema.unique_keys or [] for c in key}
-    if (
-        schema.unique_keys is None
-    ):  # legacy `unique: true` is ignored once `unique_keys` is set
-        unique |= {c.name for c in schema.columns if c.unique is True}
     seen: set[str] = set()
     for col in pii.columns:
         name, strategy = col.name, col.strategy

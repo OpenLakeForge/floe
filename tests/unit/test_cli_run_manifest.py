@@ -612,6 +612,7 @@ def test_1153_domain_default_rejected_parquet_survives_the_manifest(
         ({"incremental_mode": "row"}, "incremental_mode=row is not supported"),
         ({"trim": True}, "schema.columns.trim is not supported"),
         ({"width": 3}, "schema.columns.width is not supported"),
+        ({"unique": True}, "schema.columns.unique is not supported (see CHANGELOG); use schema.unique_keys"),
         ({"merge": {"compare_columns": ["id"]}}, "compare_columns with sink.write_mode=merge_scd1 is not supported"),
     ],
 )  # fmt: skip
@@ -621,7 +622,7 @@ def test_1009_a_manifest_carrying_a_refused_option_fails_before_the_run(
     path = manifest(tmp_path, monkeypatch, QUALIFIED)
     doc = json.loads(path.read_text())
     entity = doc["entities"][0]
-    if "trim" in edit or "width" in edit:
+    if "trim" in edit or "width" in edit or "unique" in edit:
         entity["schema"]["columns"][0].update(edit)
     elif "merge" in edit:
         entity["write_mode"] = "merge_scd1"
