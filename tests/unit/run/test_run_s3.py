@@ -381,7 +381,7 @@ def test_939_a_full_refresh_replays_same_second_s3_archive_copies_in_load_order(
 def test_1271_a_full_refresh_orders_a_legacy_archive_by_its_copy_metadata(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
     """An archive written before the run index has the source mtime in the copy's metadata only."""
     config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
-    config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64, unique: true}\n        - {name: v, type: string}\n")  # fmt: skip
+    config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64}\n        - {name: v, type: string}\n      unique_keys: [[id]]\n")  # fmt: skip
     s3.now = "2026-10-24T10:00:00Z"
     s3.write("s3://b/in/2026/10/24/ff00/x.csv", b"id,v\n1,old\n")
     s3.now = "2026-10-24T11:00:00Z"
@@ -399,7 +399,7 @@ def test_1271_a_full_refresh_orders_a_legacy_archive_by_its_copy_metadata(tmp_pa
 def test_1271_a_retry_with_the_same_run_id_keeps_the_mtimes_of_files_archived_before_the_failure(tmp_path: Path, s3: MemS3, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
     """Dagster reuses a run id: the retry's index must add to the first attempt's, not replace it."""
     config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
-    config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64, unique: true}\n        - {name: v, type: string}\n")  # fmt: skip
+    config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64}\n        - {name: v, type: string}\n      unique_keys: [[id]]\n")  # fmt: skip
     s3.now = "2026-10-24T10:00:00Z"
     s3.write("s3://b/in/2026/10/24/ff00/x.csv", b"id,v\n1,old\n")
     s3.now = "2026-10-24T11:00:00Z"
@@ -430,7 +430,7 @@ def test_1271_a_retry_with_the_same_run_id_keeps_the_mtimes_of_files_archived_be
 def test_1271_the_run_index_key_stays_within_s3s_limit_for_an_archived_key_near_it(tmp_path: Path, s3: MemS3) -> None:  # fmt: skip
     """A per-file sidecar key (the archived key plus 19 bytes) would pass 1024 bytes; `MemS3.write` rejects a longer key."""
     config = ARCHIVE.replace('separator: ","}}', 'separator: ","}, partitioning: {pattern: "{yyyy}/{MM}/{dd}/{batch}", date_column: day}}')  # fmt: skip
-    config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64, unique: true}\n        - {name: v, type: string}\n")  # fmt: skip
+    config = config.replace("        - {name: id, type: int64}\n", "        - {name: id, type: int64}\n        - {name: v, type: string}\n      unique_keys: [[id]]\n")  # fmt: skip
     batch = "b" * 745
     s3.now = "2026-10-24T10:00:00Z"
     s3.write(f"s3://b/in/2026/10/24/{batch}/{'x' * 200}.csv", b"id,v\n1,old\n")
