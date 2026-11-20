@@ -188,11 +188,12 @@ def test_1271_the_archive_run_index_orders_a_full_refresh_on_real_s3(
     config.write_text(
         CONFIG.replace("incremental_mode: file", "incremental_mode: archive")
         .replace("storage: lake, options:", f"storage: lake, {partitioning}options:")
-        .replace("      accepted:", "      archive: {{path: archive/, storage: lake}}\n      accepted:")
+        .replace("      accepted:", "      archive: {{path: archive/, storage: lake}}\n      rejected: {{format: csv, path: out/rejected, storage: lake}}\n      accepted:")
         .replace("        - {{name: id, type: int64}}\n", "        - {{name: id, type: int64}}\n        - {{name: v, type: string}}\n      unique_keys: [[id]]\n")
         .format(bucket=BUCKET, endpoint=os.environ["FLOE_S3_ENDPOINT"], prefix=prefix)
     )  # fmt: skip
-    assert run(config, parse_config(config), run_id="r1").summary["run"]["status"] == "success"  # fmt: skip
+    # the second batch repeats key 1, so one row is rejected
+    assert run(config, parse_config(config), run_id="r1").summary["run"]["status"] in ("success", "rejected")  # fmt: skip
     stored = s3.read(s3.resolve_uri(f"{prefix}/archive/orders/.floe/source_mtime/r1.json"))  # fmt: skip
     assert stored is not None
     index = json.loads(stored.body)
