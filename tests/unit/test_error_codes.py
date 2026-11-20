@@ -21,7 +21,6 @@ PREFIX = {
 ALLOWLIST = {
     "__init__.py",
     "_cli.py",
-    "add_entity.py",
     "checks/mismatch.py",
     "checks/normalize.py",
     "config/entity.py",
@@ -41,7 +40,6 @@ ALLOWLIST = {
     "iceberg/write.py",
     "maintain.py",
     "manifest.py",
-    "manifest_run.py",
     "pii.py",
     "run/__init__.py",
     "run/entity.py",
