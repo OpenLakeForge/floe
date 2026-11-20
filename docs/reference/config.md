@@ -84,6 +84,9 @@ entities:
     `report.path/run_<run_id>/run.summary.json` and
     `report.path/run_<run_id>/<entity.name>/run.json`; a single-domain run goes under
     `report.path/<domain>/run_<run_id>/` (D37, see [report](report.md)).
+  - A profile's `report:` block can fix the storage and a prefix; `report.path` then nests under
+    that prefix and must be relative, without `..` (see
+    [profiles](../guides/profiles.md#fixing-where-run-reports-go)).
   - Supports `{{var}}` templating (see "Templating & domains").
 - `storages` (optional)
   - Defines named storage clients for `source.storage` and `sink.*.storage`.

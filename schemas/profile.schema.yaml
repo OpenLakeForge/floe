@@ -49,7 +49,26 @@ properties:
   lineage:
     $ref: "#/$defs/lineage"
 
+  report:
+    $ref: "#/$defs/profile_report"
+
 $defs:
+  profile_report:
+    type: object
+    additionalProperties: false
+    required:
+      - storage
+    description: >
+      Where every run report of this environment goes. The project's report.path nests under
+      prefix and must be relative, without "..".
+    properties:
+      storage:
+        type: string
+        description: A storage name from the profile or the config.
+      prefix:
+        type: string
+        description: Prepended to the project's report.path.
+
   profile_metadata:
     type: object
     additionalProperties: false

@@ -4,6 +4,8 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- A profile can fix where run reports are written with a `report:` block, `storage` (required) and `prefix` (optional) (#1237). Every report of the run (`run.summary.json`, each `run.json`, `run.failure.json`) then goes to that storage under `<prefix>/<project report.path>`, so a platform can grant each environment read on one prefix it controls. A project `report.path` that is absolute, a URI or contains `..`, or a `report.storage` naming another storage, fails validation. Projects run without the profile block behave as before. `schemas/profile.schema.yaml` accepts the block.
+
 ## v0.10.2
 
 - `policy.max_rejection_rate` (a number in `[0, 1]`, `severity: reject` only) aborts an entity whose rejected rows exceed that share of its input rows (#1220). The accepted rows are committed, the entity ends `aborted` (exit `2`) and its `run.json` `policy` block records the threshold, the observed `rejection_rate` and `max_rejection_rate_exceeded`. It can be set per domain and per entity, and travels in the manifest as the optional `policy_max_rejection_rate`.

@@ -256,6 +256,32 @@ def test_profile_variables_reach_the_config(
     assert (tmp_path / "out" / "bronze" / "a").exists()
 
 
+REPORT_PROFILE = """\
+apiVersion: floe/v1
+kind: EnvironmentProfile
+metadata: {name: uat}
+storages:
+  default: work
+  definitions:
+    - {name: work, type: local}
+    - {name: ops, type: local, prefix: ops}
+report: {storage: ops, prefix: activations/uat}
+"""
+
+
+def test_1237_the_profile_fixes_where_reports_go(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = write(tmp_path, {"a": "id\n1\n"})
+    (tmp_path / "p.yml").write_text(REPORT_PROFILE)
+    assert floe(monkeypatch, "run", "-c", str(config), "-p", str(tmp_path / "p.yml"), "--run-id", "r1") == 0  # fmt: skip
+    run_dir = tmp_path / "activations/uat/report/d/run_r1"
+    assert (run_dir / "d/a/run.json").exists()
+    report = json.loads((run_dir / "run.summary.json").read_text())["report"]
+    assert report["report_file"] == f"{run_dir}/run.summary.json"
+    assert not (tmp_path / "report").exists()
+
+
 @pytest.mark.parametrize(
     ("args", "error"),
     [
