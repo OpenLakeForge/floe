@@ -25,7 +25,14 @@ concurrency:
 
 jobs:
   test:
+    name: test (airflow ${{ matrix.airflow }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # ponytail: exact patch versions, because Airflow's constraints files are tagged per
+        # release; bump when a new 3.1.x / 3.4.x patch ships.
+        airflow: ["3.1.8", "3.4.0"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -33,9 +40,10 @@ jobs:
           python-version: "3.12"
       - name: Syntax check
         run: python -m compileall orchestrators/airflow-floe/src orchestrators/airflow-floe/dags orchestrators/airflow-floe/tests
-      - name: Package install check
+      - name: Install real Airflow with its constraints
         run: |
           python -m pip install --upgrade pip
-          python -m pip install orchestrators/airflow-floe --no-deps
+          python -m pip install orchestrators/airflow-floe "apache-airflow==${{ matrix.airflow }}" \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${{ matrix.airflow }}/constraints-3.12.txt"
       - name: Tests
         run: python -m unittest discover -s orchestrators/airflow-floe/tests -p "test_*.py"
