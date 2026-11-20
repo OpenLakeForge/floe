@@ -54,11 +54,11 @@ entities:
       schema_evolution:
         mode: "strict"
         on_incompatible: "fail"
+      unique_keys: [["customer_id"]]
       columns:
         - name: "customer_id"
           type: "string"
           nullable: false
-          unique: true
 ```
 
 ## Top-level fields

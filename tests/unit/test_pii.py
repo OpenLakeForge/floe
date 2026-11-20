@@ -90,7 +90,7 @@ def test_hash_matches_rust_recorded_output() -> None:
         "email"
     ]
     rejected = pl.read_csv(
-        next((CASE / "expected" / "rejected" / "orders").glob("part-0*.csv")),
+        CASE / "expected" / "rejected" / "orders" / "part-UUID.csv",
         infer_schema=False,
     )["email"]
     recorded = {
