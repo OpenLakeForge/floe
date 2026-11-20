@@ -4,7 +4,11 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+## v0.10.4
+
 - An Iceberg `append` with unique keys no longer prints Polars 2.1's `PerformanceWarning` about the missing `polars_iceberg` planner plugin (#1272). Floe sets `POLARS_ICEBERG_PLANNER=pyiceberg`, the planning Polars used before 2.1, unless the variable is already set.
+- The Docker image and the lock now use Polars 2.1.0 (#1247), the version `pip install floe-python` already resolves. Polars 2.1 reads local CSV files with plain reads instead of memory-mapping them; with default settings a run's peak RSS is about the same (see the next entry for the settings that lower it).
+- `docs/sinks/parquet.md` describes the memory behaviour of Polars 2.1 (#1265): the CSV read-ahead (up to two 32 MiB chunks per worker thread) replaces the memory-mapping explanation, and `POLARS_CSV_CHUNK_SIZE` and `POLARS_CSV_CHUNK_PREFETCH_LIMIT` join the settings that lower the peak.
 
 ## v0.10.3
 
