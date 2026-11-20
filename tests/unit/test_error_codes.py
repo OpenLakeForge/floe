@@ -39,7 +39,6 @@ ALLOWLIST = {
     "iceberg/merge.py",
     "iceberg/sink.py",
     "iceberg/write.py",
-    "maintain.py",
     "manifest.py",
     "manifest_run.py",
     "pii.py",
@@ -47,7 +46,6 @@ ALLOWLIST = {
     "run/entity.py",
     "run/file.py",
     "run/incremental.py",
-    "state.py",
     "storage/s3.py",
     "write/outputs.py",
 }

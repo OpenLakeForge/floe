@@ -40,7 +40,9 @@ def write_source_mtime_index(client: StorageClient, base: str, entity_name: str,
         try:
             kept: dict[str, str] = json.loads(stored.body) if stored else {}
         except ValueError as e:
-            raise FloeStorageError(f"unreadable source mtime index {uri}: {e}") from e
+            raise FloeStorageError(
+                f"unreadable source mtime index {uri}: {e}", code="storage_error"
+            ) from e
         client.write(uri, json.dumps(kept | mtimes).encode())
 
 
