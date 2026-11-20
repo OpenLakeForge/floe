@@ -4,10 +4,10 @@ import math
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import cast
 
-from floe.config.project import LineageConfig, RootConfig, parse_lineage
+from floe.config.project import LineageConfig, ReportConfig, RootConfig, parse_lineage
 from floe.config.storage import (
     CatalogsConfig,
     StoragesConfig,
@@ -44,6 +44,14 @@ CONTRACT = {
 
 
 @dataclass(frozen=True)
+class ProfileReport:
+    """#1237: where every run report goes; a project's `report.path` only nests under `prefix`."""
+
+    storage: str
+    prefix: str | None
+
+
+@dataclass(frozen=True)
 class ProfileConfig:
     name: str
     # `type` and every field, None when unset; then a kubernetes_job's pass-through keys
@@ -54,6 +62,7 @@ class ProfileConfig:
     lineage: LineageConfig | None
     orchestration: dict[str, object] | None = None  # its set fields only, as Rust
     runners: dict[str, dict[str, object]] | None = None
+    report: ProfileReport | None = None
 
 
 def _string(hash: Hash, key: str, ctx: str, required: bool = False) -> str | None:
@@ -266,6 +275,15 @@ def _validation(value: object) -> None:
     validate_known_keys(hash, ctx, ())
 
 
+def _report(value: object) -> ProfileReport:
+    ctx = "profile.report"
+    hash = yaml_hash(value, ctx)
+    validate_known_keys(hash, ctx, ("storage", "prefix"))
+    storage = _string(hash, "storage", ctx, True)
+    assert storage is not None  # `required` raised otherwise
+    return ProfileReport(storage, _string(hash, "prefix", ctx))
+
+
 def _parse_doc(doc: object) -> ProfileConfig:
     root = yaml_hash(doc, "profile")
     validate_known_keys(
@@ -273,7 +291,7 @@ def _parse_doc(doc: object) -> ProfileConfig:
         "profile",
         (
             *("apiVersion", "kind", "metadata", "execution", "variables"),
-            *("catalogs", "storages", "lineage", "validation"),
+            *("catalogs", "storages", "lineage", "validation", "report"),
         ),
     )
     for key, expected in (("apiVersion", API_VERSION), ("kind", KIND)):
@@ -318,6 +336,7 @@ def _parse_doc(doc: object) -> ProfileConfig:
     lineage = parse_lineage(root["lineage"]) if "lineage" in root else None
     if "validation" in root:
         _validation(root["validation"])
+    report = _report(root["report"]) if "report" in root else None
     return ProfileConfig(
         name,
         runner,
@@ -327,6 +346,7 @@ def _parse_doc(doc: object) -> ProfileConfig:
         lineage,
         orchestration=orchestration,
         runners=runners,
+        report=report,
     )
 
 
@@ -446,12 +466,26 @@ def validate_runners(config: RootConfig, profile: ProfileConfig | None) -> None:
             )
 
 
+def _report_under(report: ReportConfig, fixed: ProfileReport) -> ReportConfig:
+    if report.storage not in (None, fixed.storage):
+        raise FloeConfigError(
+            f"report.storage={report.storage} differs from the profile's report.storage={fixed.storage}"
+        )
+    if "://" in report.path or report.path.startswith(("/", "\\")) or ".." in PurePosixPath(report.path).parts:  # fmt: skip
+        raise FloeConfigError(
+            f"report.path must be a relative path under the profile's report prefix (got {report.path})"
+        )
+    path = "/".join(p for p in ((fixed.prefix or "").rstrip("/"), report.path) if p)
+    return report.model_copy(update={"path": path, "storage": fixed.storage})
+
+
 def apply_profile(config: RootConfig, profile: ProfileConfig) -> RootConfig:
     blocks = {
         "catalogs": profile.catalogs,
         "storages": profile.storages,
         "lineage": profile.lineage,
         "entity_workers": entity_workers(profile.orchestration),
+        "report": profile.report and _report_under(config.report, profile.report),
     }
     return config.model_copy(update={k: v for k, v in blocks.items() if v is not None})
 

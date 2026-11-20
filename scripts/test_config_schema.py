@@ -1259,6 +1259,8 @@ class ConfigSchemaTest(unittest.TestCase):
             "S32 memory_mb": runner(type="local", resources={"memory_mb": too_big}),
             "#1065 unknown key on local": runner(type="local", priority_class_name="p"),
             "#1065 unknown key on databricks_job": runner(**databricks, priority_class_name="p"),
+            "#1237 report without storage": profile(report={"prefix": "p"}),
+            "#1237 report unknown key": profile(report={"storage": "ops", "path": "p"}),
         }
         for name, document in invalid.items():
             with self.subTest(name):
@@ -1273,6 +1275,8 @@ class ConfigSchemaTest(unittest.TestCase):
             "#1065 pod option on kubernetes_job": runner(**k8s, priority_class_name="p"),
             "#1065 legacy pod key on local": runner(type="local", labels={"team": "x"}),
             "#1065 legacy pod key on databricks_job": runner(**databricks, labels={"team": "x"}),
+            "#1237 report": profile(report={"storage": "ops", "prefix": "activations/uat"}),
+            "#1237 report without prefix": profile(report={"storage": "ops"}),
         }
         for name, document in valid.items():
             with self.subTest(name):

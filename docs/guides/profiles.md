@@ -36,6 +36,9 @@ execution:                   # optional
     max_concurrent_entities: 4  # optional; integer >= 1
 variables:                   # optional; flat string → string map
   KEY: value
+report:                      # optional; see "Fixing where run reports go"
+  storage: ops               # required when report is present
+  prefix: activations/uat    # optional
 ```
 
 ### Required fields
@@ -375,6 +378,29 @@ Notes:
   duplicate catalog names, and `catalogs.default` references.
 - Full config validation (`floe validate -c config.yml --profile profiles/prod.yml`)
   additionally checks catalog/storage compatibility and entity sink bindings.
+
+## Fixing where run reports go
+
+A profile's `report:` block fixes where every run report of the environment is written, so a
+platform can grant each environment read access on one prefix it controls (#1237):
+
+```yaml
+report:
+  storage: ops             # required: a storage name from the profile or the config
+  prefix: activations/uat  # optional
+```
+
+- Reports use `report.storage`, and their base is `<prefix>/<project report.path>` (the project's
+  `report.path` defaults to `report`). With `storages.definitions[ops].prefix: floe`, a project
+  `report.path: team_a` writes under `s3://<bucket>/floe/activations/uat/team_a/`.
+- This applies to every report of the run: `run.summary.json`, each entity's `run.json` and
+  `run.failure.json`. The summary records the resolved location.
+- The project cannot move reports out of that prefix. `floe validate` and `floe run` fail with
+  `report.path must be a relative path under the profile's report prefix (got <path>)` for an
+  absolute `report.path`, a URI or a path with `..`, and with
+  `report.storage=<name> differs from the profile's report.storage=<name>` when the project names
+  another storage.
+- Without a profile `report:` block, `report.path` and `report.storage` behave as before.
 
 ## Running entities in parallel
 
