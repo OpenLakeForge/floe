@@ -51,7 +51,7 @@ class CatalogDefinition(_Model):
     scope: str | None = None
     warehouse_storage: str | None
     warehouse_prefix: str | None
-    # Glue only; Rust 0.7's `allow_takeover` is accepted and ignored (D42)
+    # Glue only; `allow_takeover` is accepted and ignored (D42)
     region: str | None = None
     database: str | None = None
     create_database_if_missing: bool = True
@@ -100,7 +100,7 @@ _CATALOG_KEYS = (
     "database",
     "create_database_if_missing",
     "allow_takeover",
-    # Unity keys stay allowed, as in Rust, so a typo reports the key first
+    # Unity keys stay allowed, so a typo reports the key first
     "host",
     "catalog",
     "schema",

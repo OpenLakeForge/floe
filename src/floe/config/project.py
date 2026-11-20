@@ -395,7 +395,7 @@ def parse_root(doc: object, origins: IncludeOrigins) -> RootConfig:
 
 
 def validate_domains(config: RootConfig) -> None:
-    """D7 (#584 S6, S7): Rust 0.7 accepts these at validate time; Python rejects them."""
+    """D7 (#584 S6, S7): these are rejected at validate time."""
     qualified = config_version(config.version) >= V0_3
     used = {e.domain for e in config.entities}  # the entity check reports a used domain
     for domain in config.domains:

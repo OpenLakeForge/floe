@@ -21,7 +21,7 @@ from floe.glob import Pattern, glob
 
 
 def glob_base(directory: Path) -> str:
-    """Rust `glob_base`: escaping would turn a Windows verbatim prefix's `?` into `[?]`."""
+    """Escaping would turn a Windows verbatim prefix's `?` into `[?]`."""
     text = str(directory)
     if text.startswith("\\\\?\\UNC\\"):
         text = "\\\\" + text[8:]
