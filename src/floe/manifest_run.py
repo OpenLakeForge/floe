@@ -88,7 +88,8 @@ def _sink(t: Json, write_mode: str, named_local: bool) -> Json:
     merge = _lenient(MergeOptions, t.get("merge"))
     if write_mode == "merge_scd1" and merge and merge.compare_columns is not None:
         raise FloeConfigError(
-            f"sink.accepted.merge.compare_columns with sink.write_mode=merge_scd1 {NOT_SUPPORTED}"
+            f"sink.accepted.merge.compare_columns with sink.write_mode=merge_scd1 {NOT_SUPPORTED}",
+            code="config_not_supported",
         )
     return {
         "format": t["format"],
@@ -110,10 +111,13 @@ def _schema(s: Json) -> Json:
     for c in s["columns"]:
         for key in ("width", "trim"):
             if c.get(key) is not None:
-                raise FloeConfigError(f"schema.columns.{key} {NOT_SUPPORTED}")
+                raise FloeConfigError(
+                    f"schema.columns.{key} {NOT_SUPPORTED}", code="config_not_supported"
+                )
         if c.get("unique") is not None:
             raise FloeConfigError(
-                f"schema.columns.unique {NOT_SUPPORTED}; use schema.unique_keys"
+                f"schema.columns.unique {NOT_SUPPORTED}; use schema.unique_keys",
+                code="config_not_supported",
             )
     return {
         "columns": [
@@ -167,7 +171,8 @@ def _entity(m: Json, named_local: bool) -> EntityConfig:
     }
     if m.get("incremental_mode") == "row":
         raise FloeConfigError(
-            f"entity.name={m['name']} incremental_mode=row {NOT_SUPPORTED}"
+            f"entity.name={m['name']} incremental_mode=row {NOT_SUPPORTED}",
+            code="config_not_supported",
         )
     incremental = _pick(m.get("incremental_mode"), ("archive", "file"), "none")
     return EntityConfig.model_validate(
@@ -202,7 +207,9 @@ def _section(
             value = value | {"definitions": [shape(d) for d in value["definitions"]]}
         return None if value is None else model.model_validate(value)
     except (ValidationError, TypeError, KeyError, AttributeError) as e:
-        raise FloeConfigError(f"manifest {name} block is malformed: {e}") from e
+        raise FloeConfigError(
+            f"manifest {name} block is malformed: {e}", code="config_invalid_value"
+        ) from e
 
 
 def _storage_def(d: Json) -> Json:
@@ -258,11 +265,15 @@ def _read(location: str) -> bytes:
     if location.startswith("s3://"):
         return read_s3(location, "manifest")
     if "://" in location:  # D1: gcs and adls are dropped
-        raise FloeConfigError(f"remote manifest is not supported: {location}")
+        raise FloeConfigError(
+            f"remote manifest is not supported: {location}", code="config_not_supported"
+        )
     try:
         return Path(location).read_bytes()
     except OSError as e:  # as the CLI's `_realpath`
-        raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
+        raise FloeIoError(
+            f"{e.strerror} (os error {e.errno})", code="io_read_error"
+        ) from e
 
 
 def shown(location: str) -> str:
@@ -302,14 +313,16 @@ def load_manifest(location: str | Path) -> tuple[RootConfig, list[EntityConfig],
         metadata = None if meta is None else ProjectMetadata.model_validate(_omitted_as_none(ProjectMetadata, meta))  # fmt: skip
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         why = f"missing field `{e.args[0]}`" if isinstance(e, KeyError) else e
-        raise FloeConfigError(f"manifest parse error: {why}") from e
+        raise FloeConfigError(
+            f"manifest parse error: {why}", code="config_invalid_value"
+        ) from e
     try:
         supported = config_version(spec) <= FLOE_VERSION
     except FloeConfigError:
         supported = False
     if not supported:
         floe = f"{FLOE_VERSION[0]}.{FLOE_VERSION[1]}"
-        raise FloeConfigError(f"manifest spec_version={spec} is unsupported (newer than Floe {floe})")  # fmt: skip
+        raise FloeConfigError(f"manifest spec_version={spec} is unsupported (newer than Floe {floe})", code="config_version")  # fmt: skip
     report, storages = _report(report_base, m.get("report_formatter"), _section(StoragesConfig, m, "storages", _storage_def))  # fmt: skip
     root = RootConfig(
         version=spec,

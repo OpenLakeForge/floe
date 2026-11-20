@@ -39,7 +39,10 @@ def _os(e: OSError) -> str:
 def _file_uri_path(input: str) -> str:
     url = urllib.parse.urlparse(input)
     if url.netloc not in ("", "localhost"):
-        raise FloeConfigError(f"invalid file:// URI for add-entity input: {input}")
+        raise FloeConfigError(
+            f"invalid file:// URI for add-entity input: {input}",
+            code="config_invalid_value",
+        )
     return urllib.request.url2pathname(url.path)
 
 
@@ -52,7 +55,10 @@ def _entity_name(input: str) -> str:
         raw = path.stem if path.name not in ("", "..") else "entity"
     name = re.sub("[^A-Za-z0-9]+", "_", raw).strip("_").lower()
     if not name:
-        raise FloeConfigError(f"failed to derive entity name from input: {input}")
+        raise FloeConfigError(
+            f"failed to derive entity name from input: {input}",
+            code="config_invalid_value",
+        )
     return name
 
 
@@ -61,17 +67,21 @@ def _local_path(input: str) -> str:
     if sep:
         if scheme.lower() != "file":
             raise FloeConfigError(
-                f"remote URI inference is not supported yet for add-entity input: {input}"
+                f"remote URI inference is not supported yet for add-entity input: {input}",
+                code="config_not_supported",
             )
         return _file_uri_path(input)
     path = os.path.join(os.getcwd(), input)
     try:
         mode = os.stat(path).st_mode
     except OSError as e:
-        raise FloeIoError(f"failed to access input at {path}: {_os(e)}") from e
+        raise FloeIoError(
+            f"failed to access input at {path}: {_os(e)}", code="io_read_error"
+        ) from e
     if stat.S_ISDIR(mode):
         raise FloeConfigError(
-            f"add-entity expects a file input for schema inference, got directory: {path}"
+            f"add-entity expects a file input for schema inference, got directory: {path}",
+            code="config_invalid_value",
         )
     return path
 
@@ -113,21 +123,30 @@ def _json_sample(path: str) -> tuple[str, list[dict[str, object]]]:
     try:
         text = Path(path).read_bytes().decode()
     except OSError as e:
-        raise FloeIoError(f"failed to read json at {path}: {_os(e)}") from e
+        raise FloeIoError(
+            f"failed to read json at {path}: {_os(e)}", code="io_read_error"
+        ) from e
     except UnicodeDecodeError as e:
-        raise FloeIoError(f"failed to read json at {path}: stream did not contain valid UTF-8") from e  # fmt: skip
+        raise FloeIoError(f"failed to read json at {path}: stream did not contain valid UTF-8", code="io_read_error") from e  # fmt: skip
     if not (head := text.lstrip()[:1]):
-        raise FloeConfigError(f"json input {path} is empty")
+        raise FloeConfigError(
+            f"json input {path} is empty", code="config_invalid_value"
+        )
     if head == "[":
         try:
             rows = json.loads(text)
         except json.JSONDecodeError as e:
-            raise FloeIoError(f"json parse error: {e}") from e
+            raise FloeIoError(f"json parse error: {e}", code="io_read_error") from e
         if not isinstance(rows, list):
-            raise FloeConfigError("expected json array at root")
+            raise FloeConfigError(
+                "expected json array at root", code="config_invalid_value"
+            )
         rows = cast("list[object]", rows)[:SAMPLE_ROWS]
         if not all(isinstance(row, dict) for row in rows):
-            raise FloeConfigError("expected top-level json objects inside array")
+            raise FloeConfigError(
+                "expected top-level json objects inside array",
+                code="config_invalid_value",
+            )
         return "array", cast("list[dict[str, object]]", rows)
     objects: list[dict[str, object]] = []
     for n, line in enumerate(text.split("\n"), 1):
@@ -138,9 +157,14 @@ def _json_sample(path: str) -> tuple[str, list[dict[str, object]]]:
         try:
             row = json.loads(line)
         except json.JSONDecodeError as e:
-            raise FloeIoError(f"json parse error at line {n}: {e}") from e
+            raise FloeIoError(
+                f"json parse error at line {n}: {e}", code="io_read_error"
+            ) from e
         if not isinstance(row, dict):
-            raise FloeConfigError(f"expected top-level json object at line {n}")
+            raise FloeConfigError(
+                f"expected top-level json object at line {n}",
+                code="config_invalid_value",
+            )
         objects.append(cast("dict[str, object]", row))
     return "ndjson", objects
 
@@ -190,7 +214,9 @@ def _columns(fmt: str, path: str) -> tuple[Hash | None, list[Hash], list[str]]:
                 null_values=SourceOptions.model_fields["null_values"].default, glob=False,
             )  # fmt: skip
         except (OSError, pl.exceptions.PolarsError) as e:
-            raise FloeIoError(f"csv schema inference failed: {e}") from e
+            raise FloeIoError(
+                f"csv schema inference failed: {e}", code="io_read_error"
+            ) from e
         nullable = {c.name: df.height == 0 or c.null_count() > 0 for c in df.iter_columns()}  # fmt: skip
         schema, options = df.schema, cast(Hash, {"separator": separator})
     elif fmt == "parquet":
@@ -198,14 +224,20 @@ def _columns(fmt: str, path: str) -> tuple[Hash | None, list[Hash], list[str]]:
             with open(path, "rb") as f:
                 schema = pl.read_parquet_schema(f)
         except OSError as e:
-            raise FloeIoError(f"failed to open parquet at {path}: {_os(e)}") from e
+            raise FloeIoError(
+                f"failed to open parquet at {path}: {_os(e)}", code="io_read_error"
+            ) from e
         except pl.exceptions.PolarsError as e:
-            raise FloeIoError(f"failed to read parquet schema at {path}: {e}") from e
+            raise FloeIoError(
+                f"failed to read parquet schema at {path}: {e}", code="io_read_error"
+            ) from e
         nullable, options = dict.fromkeys(schema, True), None
     elif fmt == "json":  # D27a (#619): Polars types the values
         mode, rows = _json_sample(path)
         if not rows:
-            raise FloeConfigError(f"no json objects found in {path}")
+            raise FloeConfigError(
+                f"no json objects found in {path}", code="config_invalid_value"
+            )
         df = _read_json(rows)
         nullable = {c.name: c.null_count() > 0 for c in df.iter_columns()}
         schema = {n: _temporal(df[n]) if t == pl.String else t for n, t in sorted(df.schema.items())}  # fmt: skip
@@ -214,7 +246,7 @@ def _columns(fmt: str, path: str) -> tuple[Hash | None, list[Hash], list[str]]:
         if nested := sorted({k for row in rows for k, v in row.items() if isinstance(v, (list, dict))}):  # fmt: skip
             notes.append(f"nested JSON values inferred as string for top-level key(s): {', '.join(nested)}")  # fmt: skip
     else:
-        raise FloeConfigError(f"unsupported add-entity format: {fmt} (allowed: csv, json, parquet)")  # fmt: skip
+        raise FloeConfigError(f"unsupported add-entity format: {fmt} (allowed: csv, json, parquet)", code="config_invalid_value")  # fmt: skip
     return (
         options,
         [
@@ -237,7 +269,9 @@ def infer_entity(
     """The entity generated for a sample file, its format and notes."""
     name = _entity_name(input) if name is None else name
     if not name.strip():
-        raise FloeConfigError("entity name must not be empty")
+        raise FloeConfigError(
+            "entity name must not be empty", code="config_invalid_value"
+        )
     path = _local_path(input)
     if fmt is None:
         # `.csv` alone has no extension
@@ -245,11 +279,14 @@ def infer_entity(
         if fmt not in ("csv", "json", "parquet"):
             raise FloeConfigError(
                 f"could not infer add-entity format from input {input} "
-                "(supported extensions: .csv, .json, .parquet); use --format"
+                "(supported extensions: .csv, .json, .parquet); use --format",
+                code="config_invalid_value",
             )
     options, columns, notes = _columns(fmt, path)
     if not columns:
-        raise FloeConfigError(f"no columns inferred from {path}")
+        raise FloeConfigError(
+            f"no columns inferred from {path}", code="config_invalid_value"
+        )
     if source_ref is not None:
         source: Hash = {"ref": source_ref, "resource": resource}
     else:
@@ -354,21 +391,26 @@ def _included_domain(
         try:
             matches = glob(os.path.join(base, pattern))
         except PatternError as e:
-            raise FloeConfigError(f"invalid include.domains pattern {pattern!r} in {config}: {e}") from e  # fmt: skip
+            raise FloeConfigError(f"invalid include.domains pattern {pattern!r} in {config}: {e}", code="config_invalid_value") from e  # fmt: skip
         except FloeError as e:
-            raise FloeConfigError(f"failed to match include.domains pattern {pattern!r} in {config}: {e}") from e  # fmt: skip
+            raise FloeConfigError(f"failed to match include.domains pattern {pattern!r} in {config}: {e}", code="config_invalid_value") from e  # fmt: skip
         for file in matches:
             try:
                 docs: list[object] = load_yaml(Path(file))
             except FloeIoError as e:
-                raise FloeIoError(f"failed to read domain file: {e}") from e
+                raise FloeIoError(
+                    f"failed to read domain file: {e}", code="io_read_error"
+                ) from e
             except FloeError as e:
-                raise FloeConfigError(f"failed to parse domain file {file}: {e}") from e
+                raise FloeConfigError(
+                    f"failed to parse domain file {file}: {e}",
+                    code="config_invalid_yaml",
+                ) from e
             doc = docs[0] if docs else None
             if isinstance(doc, dict) and cast(Hash, doc).get("name") == domain:
                 # ponytail: a sibling would not load; writing into the glob's folder is the upgrade
                 if "entities" in doc:
-                    raise FloeConfigError(f"domain file {file} sets entities; add-entity writes only sibling entity files, so create this one by hand")  # fmt: skip
+                    raise FloeConfigError(f"domain file {file} sets entities; add-entity writes only sibling entity files, so create this one by hand", code="config_not_supported")  # fmt: skip
                 return os.path.dirname(file), cast(Hash, doc).get("defaults", {})
     return None
 
@@ -425,17 +467,23 @@ def _write_new(path: str, text: str) -> None:
     try:
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     except OSError as e:
-        raise FloeIoError(f"failed to stage entity file: {_os(e)}") from e
+        raise FloeIoError(
+            f"failed to stage entity file: {_os(e)}", code="io_write_error"
+        ) from e
     try:  # a partial `.yml` left behind would be loaded as an entity
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(text.encode())
         except OSError as e:
-            raise FloeIoError(f"failed to stage entity file: {_os(e)}") from e
+            raise FloeIoError(
+                f"failed to stage entity file: {_os(e)}", code="io_write_error"
+            ) from e
         try:
             os.link(tmp, path)
         except OSError as e:
-            raise FloeIoError(f"failed to write entity file: {_os(e)}") from e
+            raise FloeIoError(
+                f"failed to write entity file: {_os(e)}", code="io_write_error"
+            ) from e
     finally:
         os.unlink(tmp)
 
@@ -445,7 +493,10 @@ def add_entity(
     source_ref: str | None, resource: str | None, output: str | None, dry_run: bool,
 ) -> Added:  # fmt: skip
     if (source_ref is None) != (resource is None):
-        raise FloeConfigError("--source and --resource must be provided together")
+        raise FloeConfigError(
+            "--source and --resource must be provided together",
+            code="config_invalid_value",
+        )
     entity, fmt, notes = infer_entity(input, fmt, name, domain, source_ref, resource)
     name = cast(str, entity["name"])
     columns = len(cast("list[object]", cast(Hash, entity["schema"])["columns"]))
@@ -454,19 +505,24 @@ def add_entity(
     try:  # D21 (#619): a new config targets this Floe major.minor
         docs: list[object] = load_yaml(Path(config)) if exists else [{"version": ".".join(__version__.split(".")[:2]), "entities": []}]  # fmt: skip
     except FloeIoError as e:
-        raise FloeIoError(f"failed to read config at {config}: {e}") from e
+        raise FloeIoError(
+            f"failed to read config at {config}: {e}", code="io_read_error"
+        ) from e
     included = None
     if output is None and domain is not None and exists:
         included = _included_domain(config, docs[0] if docs else None, domain)
     if included is not None:
         directory, defaults = included
         if "/" in name or "\\" in name:
-            raise FloeConfigError(f"entity name cannot contain a path separator for an included domain at {directory}")  # fmt: skip
+            raise FloeConfigError(f"entity name cannot contain a path separator for an included domain at {directory}", code="config_invalid_value")  # fmt: skip
         output = os.path.join(directory, f"{name}.yml")
         if os.path.exists(output):
-            raise FloeIoError(f"refusing to overwrite existing entity file at {output}")
+            raise FloeIoError(
+                f"refusing to overwrite existing entity file at {output}",
+                code="io_write_error",
+            )
         if _matches_domain_include(config, docs[0], output):
-            raise FloeConfigError(f"entity file {output} would also match an include.domains pattern and load as a domain; use --output or a different name")  # fmt: skip
+            raise FloeConfigError(f"entity file {output} would also match an include.domains pattern and load as a domain; use --output or a different name", code="config_conflict")  # fmt: skip
         if isinstance(defaults, dict):
             # first drop `name`, `schema.columns` and `primary_key` from the defaults; D7 rejects those
             _strip_defaults(entity, cast(Hash, defaults))
@@ -477,16 +533,20 @@ def add_entity(
             [reloaded] = parse_yaml(rendered)
             _validate(Path(config), {**cast(Hash, reloaded), "domain": domain})
         except FloeError as e:
-            raise FloeConfigError(f"generated entity file {output} failed validation: {e}") from e  # fmt: skip
+            raise FloeConfigError(f"generated entity file {output} failed validation: {e}", code="config_invalid_value") from e  # fmt: skip
         if not dry_run:
             _write_new(output, rendered)
         return Added(name, fmt, columns, output, rendered if dry_run else None, notes)
 
     if len(docs) > 1:
-        raise FloeConfigError("YAML contains multiple documents; expected one")
+        raise FloeConfigError(
+            "YAML contains multiple documents; expected one", code="config_invalid_yaml"
+        )
     root = docs[0] if docs else None
     if not isinstance(root, dict):
-        raise FloeConfigError("config root must be a YAML mapping")
+        raise FloeConfigError(
+            "config root must be a YAML mapping", code="config_invalid_value"
+        )
     root = cast(Hash, root)
     version = root.get("version")
     try:  # 0.3+ entity identity is (domain, name) (#464); older configs compare names only
@@ -494,7 +554,9 @@ def add_entity(
     except FloeConfigError:
         qualified = False
     if not isinstance(entities := root.setdefault("entities", []), list):
-        raise FloeConfigError("root.entities must be a YAML sequence")
+        raise FloeConfigError(
+            "root.entities must be a YAML sequence", code="config_invalid_value"
+        )
     entities = cast("list[object]", entities)
 
     def field(e: object, key: str) -> object:
@@ -503,7 +565,9 @@ def add_entity(
 
     for e in entities:
         if field(e, "name") == name and (not qualified or field(e, "domain") == domain):
-            raise FloeConfigError(f"entity already exists: {name}")
+            raise FloeConfigError(
+                f"entity already exists: {name}", code="config_duplicate"
+            )
     entities.append(entity)
     rendered = _render(root)
     output = config if output is None else output
@@ -514,5 +578,7 @@ def add_entity(
         try:
             Path(output).write_bytes(rendered.encode())
         except OSError as e:
-            raise FloeIoError(f"failed to write config at {output}: {_os(e)}") from e
+            raise FloeIoError(
+                f"failed to write config at {output}: {_os(e)}", code="io_write_error"
+            ) from e
     return Added(name, fmt, columns, output, rendered if dry_run else None, notes)

@@ -8,7 +8,12 @@ import pytest
 
 from floe import _cli
 from floe.config.parse import parse_config
-from floe.config.project import RootConfig, config_version, validate_domains
+from floe.config.project import (
+    RootConfig,
+    at_file,
+    config_version,
+    validate_domains,
+)
 from floe.config.yaml import merge_yaml
 from floe.errors import FloeConfigError
 
@@ -310,3 +315,36 @@ def test_cli_validate(
         )
         assert _cli.main() == code
         assert capsys.readouterr().err == stderr
+
+
+def test_a_wrapped_error_keeps_the_code_of_the_inner_error(tmp_path: Path) -> None:
+    text = f'version: "0.3"\n{SOURCES}\nentities: [{{name: orders, source: {{ref: river}}}}]'
+    with pytest.raises(FloeConfigError) as err:
+        load(tmp_path, text)
+    assert str(err.value).startswith("entities[0] (entity.name=orders): ")
+    assert err.value.code == "config_unknown_reference"
+
+
+def test_at_file_keeps_the_code_of_the_inner_error(tmp_path: Path) -> None:
+    with pytest.raises(FloeConfigError) as err, at_file(tmp_path / "c.yml"):
+        raise FloeConfigError("boom", code="config_conflict")
+    assert err.value.code == "config_conflict"
+
+
+@pytest.mark.parametrize(
+    ("entity", "code"),
+    [
+        (
+            "schema: {columns: [{name: id, type: string, unique: true}]}",
+            "config_not_supported",
+        ),
+        ("schema: {columns: [{name: id, bogus: 1}]}", "config_unknown_key"),
+    ],
+)
+def test_a_nested_entity_error_keeps_its_code_through_parse_config(
+    tmp_path: Path, entity: str, code: str
+) -> None:
+    text = f'version: "0.3"\nentities: [{{name: orders, source: {{format: csv, path: in.csv}}, sink: {{accepted: {{format: parquet, path: o}}}}, policy: {{severity: warn}}, {entity}}}]'
+    with pytest.raises(FloeConfigError) as err:
+        load(tmp_path, text)
+    assert err.value.code == code

@@ -87,9 +87,7 @@ def _each(items: list[object], prefix: str, parse: Callable[[object], _R]) -> li
         try:
             out.append(parse(item))
         except FloeError as e:
-            raise FloeConfigError(
-                f"{prefix}[{index}]: {e}", code="config_invalid_value"
-            ) from e
+            raise FloeConfigError(f"{prefix}[{index}]: {e}", code=e.code) from e
     return out
 
 

@@ -21,13 +21,8 @@ PREFIX = {
 ALLOWLIST = {
     "__init__.py",
     "_cli.py",
-    "add_entity.py",
     "checks/mismatch.py",
     "checks/normalize.py",
-    "config/parse.py",
-    "config/profile.py",
-    "config/project.py",
-    "config/storage.py",
     "extras.py",
     "glob.py",
     "iceberg/catalog.py",
@@ -37,7 +32,6 @@ ALLOWLIST = {
     "iceberg/write.py",
     "maintain.py",
     "manifest.py",
-    "manifest_run.py",
     "pii.py",
     "run/__init__.py",
     "run/entity.py",
@@ -100,6 +94,14 @@ def test_every_raise_site_passes_a_code_whose_prefix_matches_its_class() -> None
             code = _code(call)
             if code is None:
                 uncoded.add(rel)
+                continue
+            if (
+                isinstance(code, ast.Attribute)
+                and code.attr == "code"
+                and isinstance(code.value, ast.Name)
+            ):
+                # A wrapper that re-raises a caught error keeps its code (`code=e.code`); the
+                # prefix of a code that is not known statically is not checked.
                 continue
             assert isinstance(code, ast.Constant), f"{rel}:{line} code is not a literal"
             assert code.value in codes, f"{rel}:{line} unknown code {code.value!r}"
