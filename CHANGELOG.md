@@ -4,7 +4,13 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+## v0.10.3
+
 - A profile can fix where run reports are written with a `report:` block, `storage` (required) and `prefix` (optional) (#1237). Every report of the run (`run.summary.json`, each `run.json`, `run.failure.json`) then goes to that storage under `<prefix>/<project report.path>`, so a platform can grant each environment read on one prefix it controls. A project `report.path` that is absolute, a URI or contains `..`, or a `report.storage` naming another storage, fails validation. Projects run without the profile block behave as before. `schemas/profile.schema.yaml` accepts the block.
+- A CSV file with a row of more fields than the header and malformed quoting after it fails with `FloeIoError: csv read failed: ...` instead of a raw Polars `ComputeError` (#1240), so callers that catch `FloeError` see it.
+- A headless CSV (`header: false`) with a row of more fields than its first row within roughly its first 64 KiB rejects just that row (D3) instead of failing the whole file with `csv header read failed` (#1242).
+- `docs/sinks/parquet.md` explains why a run's peak RSS grows with its input (Polars memory-maps the CSV and its allocator keeps freed buffers per thread; unique-key checks keep their keys for the run) and documents `_RJEM_MALLOC_CONF=dirty_decay_ms:0,muzzy_decay_ms:0` and `POLARS_MAX_THREADS` as deployment settings that lower it (#1169, #1199).
+- `docs/concepts/incremental.md` documents that a Parquet `append` retry whose input set gained files can reject the dead run's rows as duplicates (#1203).
 
 ## v0.10.2
 
