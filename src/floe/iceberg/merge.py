@@ -1,9 +1,8 @@
 """SCD1 and SCD2 merges into Iceberg: the batch is staged as Parquet, then DuckDB `MERGE INTO` (#598).
 
-SCD1 follows `io/write/strategy/merge/scd1.rs`: match on the merge key, update every non-key,
-non-ignored column, insert unmatched rows with every column. Rust updates every matched row; here
-the update is guarded by a null-safe change predicate, so rerunning a batch writes nothing. The
-resulting rows are the same. SCD2 follows `merge/scd2.rs` (see `scd2_sql`).
+SCD1: match on the merge key, update every non-key,
+non-ignored column, insert unmatched rows with every column. The update is guarded by a null-safe change
+predicate, so rerunning a batch writes nothing. SCD2: see `scd2_sql`.
 
 A bucket-partitioned target gets one MERGE per bucket in one transaction, so one catalog commit:
 a single MERGE runs out of memory there (#609).
@@ -49,7 +48,7 @@ def _q(name: str) -> str:
 class MergeResult:
     write: IcebergWriteResult
     inserted_count: int
-    # SCD1: matched rows that changed; Rust counts every matched row (D2). SCD2: closed rows.
+    # SCD1: matched rows that changed (D2). SCD2: closed rows.
     updated_count: int
     closed_count: int | None = None
     unchanged_count: int | None = None
@@ -95,9 +94,8 @@ def scd2_sql(
 ) -> tuple[str, str, str]:
     """(count, changed, merge), as `scd1_sql`; the count returns (inserted, closed, unchanged).
 
-    Rust closes changed current rows, then inserts new versions, in two Delta merges. Here it is
-    one MERGE: each changed row is in the source twice, once with its key (it matches the current
-    version and closes it) and once with a NULL key (it never matches, so it is inserted).
+    Changed current rows are closed and new versions inserted in one MERGE: each changed row is in
+    the source twice, once with its key (it matches the current version and closes it) and once with a NULL key (it never matches, so it is inserted).
     `changed` copies the changed rows of `$1` to `$2` first, so the MERGE's source never reads
     the target the MERGE is writing.
     """
@@ -277,7 +275,7 @@ def merge_scd2(
 ) -> MergeResult:
     """As `merge_scd1`; the table also has the system columns (is_current, valid_from, valid_to).
 
-    Compare columns default to every non-key, non-ignored batch column, as in Rust.
+    Compare columns default to every non-key, non-ignored batch column.
     """
     columns = reader.schema.names
     if compare_columns is None:
@@ -286,7 +284,7 @@ def merge_scd2(
         ]
 
     def statements() -> tuple[str, str, str | None]:
-        # Rust stamps both versions with the UTC time of the merge, as a naive timestamp
+        # both versions are stamped with the UTC time of the merge, as a naive timestamp
         now = dt.datetime.now(dt.UTC).replace(tzinfo=None)
         count, changed, merge = scd2_sql(
             _target(table), columns, merge_key, compare_columns, system_columns, now

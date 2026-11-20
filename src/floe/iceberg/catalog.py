@@ -151,7 +151,7 @@ def open_catalog(
 def _open_catalog(
     definition: CatalogDefinition, storage: StorageDefinition | None
 ) -> Catalog:
-    """Credentials for S3 and Glue come from the environment; the catalog never vends them (as in Rust)."""
+    """Credentials for S3 and Glue come from the environment; the catalog never vends them."""
     props = {
         "type": "rest",
         "uri": definition.uri,
@@ -301,7 +301,7 @@ def _describe_field(field: NestedField) -> str:
 
 
 def check_schema_matches(existing: Schema, expected: Schema, entity: str) -> None:
-    """Rust has no Iceberg schema evolution: any difference fails (see the questions on #650)."""
+    """Floe has no Iceberg schema evolution: any difference fails (see the questions on #650)."""
     if len(existing.fields) != len(expected.fields):
         raise FloeRunError(
             f"entity.name={entity} iceberg schema evolution is not supported "
@@ -322,7 +322,7 @@ def check_schema_matches(existing: Schema, expected: Schema, entity: str) -> Non
 def additive_columns(
     existing: Schema, expected: Schema, entity: str
 ) -> list[NestedField]:
-    """Rust's Delta rules (`merge/shared.rs`) for `add_columns`: new columns only."""
+    """The Delta rules for `add_columns`: new columns only."""
     incoming = {f.name: f for f in expected.fields}
     incompatible: list[str] = []
     for old in existing.fields:
@@ -382,7 +382,7 @@ def ensure_table(
     schema_evolution: SchemaEvolutionMode = "strict",
     create_namespace: bool = True,
 ) -> tuple[Table, list[str]]:
-    """Create the namespace (unless `create_namespace` is off) and table if missing; otherwise check the table matches (Rust's append path).
+    """Create the namespace (unless `create_namespace` is off) and table if missing; otherwise check the table matches.
 
     With `add_columns`, columns new in `schema` are added as optional (D13) and returned by name; partition changes stay rejected.
     """
