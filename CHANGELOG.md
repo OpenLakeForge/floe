@@ -4,6 +4,8 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- An emptied incremental state and `floe state reset` now leave an empty `state.json` on storage instead of deleting it (#1271); an empty state reads as no state, and `StorageClient` no longer has `delete_conditional`.
+
 ## v0.10.4
 
 - An Iceberg `append` with unique keys no longer prints Polars 2.1's `PerformanceWarning` about the missing `polars_iceberg` planner plugin (#1272). Floe sets `POLARS_ICEBERG_PLANNER=pyiceberg`, the planning Polars used before 2.1, unless the variable is already set.

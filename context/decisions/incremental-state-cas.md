@@ -11,7 +11,7 @@ Floe supports incremental ingestion: it tracks which source files have already b
 
 Use **compare-and-swap (CAS)** with a **time-bounded claims** model.
 
-The state file gains a `claims` map alongside the existing `files` map. A claim is `{ run_id, acquired_at, expires_at, size, mtime }` written for each file being processed. Claims expire after 1 hour. All writes are conditional so only one concurrent writer wins: `If-Match` / `If-None-Match` with ETags on S3, and a content-hash version token with an atomic rename on local storage (D18). Losers retry with backoff (`CAS_RETRIES` in `src/floe/state.py`). A background thread renews `expires_at` every TTL/3 seconds while the entity runs. When the entity finishes, its claims are promoted to `files`; when it fails, they are released.
+The state file gains a `claims` map alongside the existing `files` map. A claim is `{ run_id, acquired_at, expires_at, size, mtime }` written for each file being processed. Claims expire after 1 hour. All writes are conditional so only one concurrent writer wins: `If-Match` / `If-None-Match` with ETags on S3, and a content-hash version token with an atomic rename on local storage (D18). Losers retry with backoff (`CAS_RETRIES` in `src/floe/state.py`). The state is never deleted under CAS: an emptied state (no `files`, `claims`, `watermark`, `pruned_before`) and `floe state reset` write an empty state with the same conditional put, and an empty state reads as no state. The storage clients need only conditional put (obstore has no conditional delete; #1271). A background thread renews `expires_at` every TTL/3 seconds while the entity runs. When the entity finishes, its claims are promoted to `files`; when it fails, they are released.
 
 ## Rationale
 

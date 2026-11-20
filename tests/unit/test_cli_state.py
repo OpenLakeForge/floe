@@ -1,5 +1,6 @@
 """`floe state inspect|reset` (Rust: `crates/floe-cli/tests/state.rs`)."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -113,7 +114,7 @@ def test_state_commands_do_not_require_a_runner_profile(
         )[0]
         == 0
     )
-    assert not state.exists()
+    assert json.loads(state.read_text())["files"] == {}
 
 
 def test_state_reset_requires_explicit_yes_flag(
@@ -128,13 +129,13 @@ def test_state_reset_requires_explicit_yes_flag(
 @pytest.mark.parametrize(
     "body",
     [
-        '{"schema":"floe.state.file-ingest.v1","entity":"sales","updated_at":null,"files":{}}',
+        '{"schema":"floe.state.file-ingest.v1","entity":"sales","updated_at":null,"files":{"a":{"processed_at":"t","size":1,"mtime":null}}}',
         "{not valid json",
         '{"schema":"wrong.schema","entity":"other","updated_at":null,"files":{}}',
     ],
     ids=["existing", "malformed", "mismatched"],
 )
-def test_state_reset_removes_the_state_file(
+def test_state_reset_empties_the_state_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -151,7 +152,7 @@ def test_state_reset_removes_the_state_file(
         f"State path: local://{state}",
         "State reset: removed state object",
     ]
-    assert not state.exists()
+    assert "files" in state.read_text() and "not valid" not in state.read_text()
     assert floe(monkeypatch, capsys, *args)[1].endswith("State reset: no state object found\n")  # fmt: skip
 
 

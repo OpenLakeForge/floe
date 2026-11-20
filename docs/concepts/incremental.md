@@ -104,15 +104,17 @@ This is useful before or after a run to confirm:
 
 ## Reset State
 
-Use `floe state reset` to remove the state object:
+Use `floe state reset` to empty the state object:
 
 ```bash
 floe state reset -c config.yml --entity orders --yes
 ```
 
-The next run treats matching source files as new again. Remote resets use a
-conditional delete so Floe fails if another process changes state while the
-reset is running.
+The next run treats matching source files as new again. An empty state is the
+same as no state, so Floe leaves an empty `state.json` on storage; resetting an
+empty state does nothing. Resets write the empty state conditionally (version
+or ETag), so Floe fails if another process changes state while the reset is
+running.
 
 ## State File Shape
 

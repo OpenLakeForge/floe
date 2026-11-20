@@ -216,7 +216,7 @@ def test_inspect_and_reset_entity_state(tmp_path: Path) -> None:
     assert result["state"]["schema"] == "floe.state.file-ingest.v2"
     assert result["state"]["files"]["local:///tmp/incoming/sales.csv"]["size"] == 42
     assert floe.reset_entity_state(config, "sales") is True
-    assert not state_file.exists()
+    assert floe.inspect_entity_state(config, "sales")["state"] is None
     assert floe.reset_entity_state(config, "sales") is False
 
 
@@ -231,7 +231,7 @@ def test_inspection_and_state_api_do_not_require_a_runner_profile(
             '    runner: large\n    incremental_mode: "file"',
         )
     )
-    state = EntityState("sales", "2026-04-22T09:00:00Z", {}, {})
+    state = EntityState("sales", "2026-04-22T09:00:00Z", {"a": FileState("t", 1, None)}, {})  # fmt: skip
     state_file.parent.mkdir(parents=True)
     state_file.write_bytes(dump_state(state))
 
