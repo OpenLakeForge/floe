@@ -1,4 +1,4 @@
-"""One entity run: inputs, per-file checks, split, outputs, `run.json` (Rust: `run/entity/*.rs`, local and S3 storage)."""
+"""One entity run: inputs, per-file checks, split, outputs, `run.json`."""
 
 import io
 import tempfile
@@ -107,7 +107,7 @@ def _refuse_overlap(
 
 
 def _archive(plan: Plan, file: InputFile) -> str | None:
-    """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>` (Rust `archive_input`).
+    """Move the source file to `<archive>/<entity>/<stem>__run-…__src-….<ext>`.
 
     D29: with `source.partitioning`, its partition sub-path is kept: `<archive>/<entity>/yyyy/MM/dd/<batch>/<stem>__run-…`.
     """
@@ -116,7 +116,7 @@ def _archive(plan: Plan, file: InputFile) -> str | None:
     base, client = plan.archive
     if file.source_uri.startswith(f"{base}/"):
         return None  # D24: an archived input stays put
-    # Rust: copy, then delete the source; the report shows a local target as a path
+    # copy, then delete the source; the report shows a local target as a path
     sub = file.source_uri.removeprefix(f"{plan.root}/").rpartition("/")[0] if plan.root else ""  # fmt: skip
     uri = archive_input_file(client, plan.run_id, plan.entity.name, lambda rel: f"{base}/{rel}", file, sub)  # fmt: skip
     return uri.removeprefix("local://")
@@ -126,7 +126,7 @@ def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batch: 
     """Append mode: the key columns of the target's existing data, written once to local disk (#1057).
 
     Each chunk then joins its keys against this cache, so the target is read once per entity and
-    memory follows the chunk, not the history (Rust `seed_unique_tracker_for_append`).
+    memory follows the chunk, not the history.
     """
     cache = temp / "unique-keys"
     cache.mkdir()
@@ -302,7 +302,7 @@ def _run_entity(
     if sink.write_mode == "append" and target is not None:
         from floe.iceberg.sink import existing_table
 
-        plan.table = existing_table(target)  # fmt: skip  # Rust `seed_unique_tracker`, and the retry guard
+        plan.table = existing_table(target)  # fmt: skip  # seeds the unique tracker, and the retry guard
 
     def source() -> ResolvedInputs:
         # `listed`: the run's pre-check already listed the source (#864)
@@ -365,7 +365,7 @@ def _run_entity(
         """Files are read as the sink pulls (#1056); `files` and `complete` are final once it is exhausted."""
         try:
             queue = pending[::-1] if latest_first else pending
-            # Rust `localize_input`: a remote input is read from a local copy; #1102: downloaded ahead, and closed before the temp dir goes
+            # a remote input is read from a local copy; #1102: downloaded ahead, and closed before the temp dir goes
             with (
                 tempfile.TemporaryDirectory(prefix="floe-") as temp_dir,
                 closing(localized_inputs(queue, downloader, Path(temp_dir))) as inputs,
@@ -409,7 +409,7 @@ def _run_entity(
     added: list[str] = []
     stream = accepted_frames()
     try:
-        first = next(stream, None)  # Rust writes nothing when every input was skipped
+        first = next(stream, None)  # nothing is written when every input was skipped
         if pending and (first is not None or sink.write_mode == "overwrite"):
             empty = pl.DataFrame(schema=dict.fromkeys(names, pl.String)).select(
                 cast_column(n, c.column_type)[0]
@@ -451,7 +451,7 @@ def _run_entity(
         files[skipped:] = files[skipped:][::-1]
     files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
     inc.committed = files  # #915: from here on a failure promotes the written files
-    # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source (Rust archives before)
+    # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source
     by_uri = {r["input_file"]: r for r in files}
     order = {f.source_uri: i for i, f in enumerate(inputs.files)}
     # #1090: oldest first, so a partial archive leaves the newest batch pending, never only an older one

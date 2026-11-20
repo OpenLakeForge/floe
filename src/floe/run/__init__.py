@@ -1,4 +1,4 @@
-"""A run: entity selection, run context, entities in config order or in parallel threads (`workers` > 1), dry run, full refresh, events (Rust: `run/mod.rs`, `run/context.rs`)."""
+"""A run: entity selection, run context, entities in config order or in parallel threads (`workers` > 1), dry run, full refresh, events."""
 
 import time
 from collections.abc import Sequence
@@ -46,7 +46,7 @@ class RunOutcome:
 
 
 def select_entities(root: RootConfig, selectors: Sequence[str]) -> list[EntityConfig]:
-    """Config order; a selector is an entity id, else a name (Rust `select_entities`)."""
+    """Config order; a selector is an entity id, else a name."""
     if not selectors:
         return list(root.entities)
     picked: set[int] = set()
@@ -124,7 +124,7 @@ def run(
     config_uri: str | None = None,
     workers: int = 1,
 ) -> RunOutcome:
-    """Run the selected entities, writing each entity's report as it finishes. A failing entity raises: no summary, as Rust, but a best-effort `run.failure.json` is written first.
+    """Run the selected entities, writing each entity's report as it finishes. A failing entity raises: no summary, but a best-effort `run.failure.json` is written first.
 
     One worker runs them in config order. More run them in parallel threads (observers are called from those threads), never two on the same target; reports and summary stay in config order.
     """
@@ -157,7 +157,7 @@ def run(
         listing_ms[e.id] = int((time.monotonic() - listing) * 1000)
         return found
 
-    if dry_run:  # Rust: no events, no reports; the inputs are only listed
+    if dry_run:  # no events, no reports; the inputs are only listed
         scanned = {e.id: [f.source_uri for f in inputs(e).files] for e in selected}
         summary = build_summary(
             root.version, [], run_id=run_id, started_at=started, finished_at=_rfc3339(),
@@ -206,7 +206,7 @@ def run(
     emit("run_started", config=config, report_base=report_path, **dagster_parent())
     # D36: a policy abort fails only its entity; a FloeError still stops the run
     try:
-        # Rust resolves every entity's inputs before the first entity_started (#864); run_entity reuses them
+        # every entity's inputs are resolved before the first entity_started (#864); run_entity reuses them
         # D24: a full refresh may rebuild from the archive alone, so run_entity decides
         to_list = [e for e in selected if not (full_refresh and e.sink.archive and e.incremental_mode in ("none", "archive"))]  # fmt: skip
         # `map` yields in config order, so the first failure in config order is raised

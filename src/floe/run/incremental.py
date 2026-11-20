@@ -42,7 +42,7 @@ def _parent(value: str) -> str | None:
 
 
 def _source_root(raw: str, fmt: str, resolved: Path | None) -> str:
-    """Rust `derive_source_root`: the directory the default state lives under."""
+    """The directory the default state lives under."""
     trimmed = raw.rstrip(_SEPARATORS)
     if not trimmed:
         return ""
@@ -56,13 +56,13 @@ def _source_root(raw: str, fmt: str, resolved: Path | None) -> str:
     if (resolved and resolved.is_file()) or trimmed.lower().endswith(
         tuple(suffixes_for_format(fmt))
     ):
-        # #813: a bare filename lives in the config dir (Rust 0.7 used the file itself)
+        # #813: a bare filename lives in the config dir
         return (_parent(trimmed) or ".").rstrip(_SEPARATORS)
     return trimmed
 
 
 def state_uri(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None = None) -> tuple[str, StorageClient]:  # fmt: skip
-    """`state.path` if set (a URI on the source storage, else local), else `<source root>/.floe/state/<domain>/<name>/state.json` on the source storage (Rust `resolve_entity_state_path`)."""
+    """`state.path` if set (a URI on the source storage, else local), else `<source root>/.floe/state/<domain>/<name>/state.json` on the source storage."""
     src, field = entity.source, f"entity.name={entity.name} entity.state.path"
     custom = entity.state and entity.state.path
     if custom and "://" not in custom:
@@ -156,7 +156,7 @@ class Incremental:
         self._thread: threading.Thread | None = None
 
     def claim(self, inputs: list[InputFile], emit: Emitter) -> tuple[list[InputFile], list[dict[str, Any]]]:  # fmt: skip
-        """The inputs left to process and the reports of the skipped ones; `row` mode and a full refresh never skip (Rust 0.7)."""
+        """The inputs left to process and the reports of the skipped ones; `row` mode and a full refresh never skip."""
         e = self.entity
         if e.incremental_mode != "file":
             return inputs, []
@@ -255,9 +255,9 @@ class Incremental:
             release(self.client, self.uri, self.run_id, claimed, restore, self.advance is not None and not self.full_refresh)  # fmt: skip
 
     def finish(self, files: list[dict[str, Any]]) -> None:
-        """Promote unless the entity failed (Rust commits on success, warnings and rejected).
+        """Promote unless the entity failed (success, warnings and rejected all commit).
 
-        #918: an abort still writes the files before it (Rust 0.7), so it promotes those and releases the rest;
+        #918: an abort still writes the files before it, so it promotes those and releases the rest;
         under `overwrite` it releases them all, as the retry rebuilds the output from every file.
         """
         status, _ = run_outcome([f["status"] for f in files])

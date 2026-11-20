@@ -1,4 +1,4 @@
-"""Storage reference resolution: name, else `storages.default`, else local (Rust `StorageResolver::resolve_path`)."""
+"""Storage reference resolution: name, else `storages.default`, else local."""
 
 from pathlib import Path
 from threading import Lock
@@ -60,7 +60,7 @@ def clear_storage_clients() -> None:
 
 
 def storage_client(definition: StorageDefinition | None) -> LocalClient | S3Client:
-    """S3 credentials come from the environment, as in Rust. One shared client per definition between `clear_storage_clients` calls."""
+    """S3 credentials come from the environment. One shared client per definition between `clear_storage_clients` calls."""
     if definition is None or definition.type == "local":
         return LocalClient()
     with (

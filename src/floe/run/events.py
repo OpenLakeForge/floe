@@ -1,4 +1,4 @@
-"""Observer events: the shapes of `crates/floe-python/python/floe/_floe.pyi` (Rust: `run/events.rs`)."""
+"""Observer events: the `RunEvent` dict shapes."""
 
 import time
 from collections.abc import Callable
@@ -18,9 +18,7 @@ class Emitter:
 
     def __call__(self, event: str, **fields: Any) -> None:
         if self.observer:
-            with suppress(
-                Exception
-            ):  # an observer must not abort ingestion (Rust ignores callback errors)
+            with suppress(Exception):  # an observer must not abort ingestion
                 self.observer(
                     {"event": event, "run_id": self.run_id, **fields}
                     | {"ts_ms": time.time_ns() // 1_000_000}
@@ -30,7 +28,7 @@ class Emitter:
 NO_EVENTS = Emitter()
 
 
-# The `RunEvent` dicts an observer receives, as typed in `_floe.pyi`.
+# The `RunEvent` dicts an observer receives.
 RunStartedEvent = TypedDict("RunStartedEvent", {"event": Literal["run_started"], "run_id": str, "config": str, "report_base": str | None, "dagster_run_id": NotRequired[str], "dagster_job_name": NotRequired[str], "ts_ms": int})  # fmt: skip
 EntityStartedEvent = TypedDict("EntityStartedEvent", {"event": Literal["entity_started"], "run_id": str, "name": str, "ts_ms": int})  # fmt: skip
 FileStartedEvent = TypedDict("FileStartedEvent", {"event": Literal["file_started"], "run_id": str, "entity": str, "input": str, "ts_ms": int})  # fmt: skip
