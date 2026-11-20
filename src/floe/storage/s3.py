@@ -4,7 +4,7 @@ import os
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from floe.errors import FloeIoError, FloeStorageError
 from floe.extras import missing
@@ -22,17 +22,8 @@ else:
 
 _CONFLICT = ("PreconditionFailed", "ConditionalRequestConflict", "412", "409")
 _NOT_FOUND = ("NoSuchKey", "NotFound", "404")
-# #939: an archive copy's `LastModified` is its copy time, to the second; this keeps the source's, for D28 replay order
+# #939: the metadata key archive copies carried before the #1271 sidecar; still read, so older archives keep their D28 order
 _SOURCE_MTIME = "floe-source-mtime"
-# the headers a `MetadataDirective=REPLACE` copy would otherwise drop
-_KEPT = (
-    "ContentType",
-    "ContentEncoding",
-    "ContentDisposition",
-    "ContentLanguage",
-    "CacheControl",
-    "Expires",
-)
 
 
 def resolve_path_style_access(configured: bool | None) -> bool:
@@ -140,23 +131,17 @@ class S3Client:
         except (ClientError, BotoCoreError) as e:
             raise FloeStorageError(f"s3 put object failed: {e}") from e
 
-    def copy(self, src_uri: str, dst_uri: str, source_mtime: str | None = None) -> None:
-        """`source_mtime` goes to the copy's `x-amz-meta-floe-source-mtime`, with the source's metadata and headers."""
+    def copy(self, src_uri: str, dst_uri: str) -> None:
         (sb, sk), (db, dk) = parse_s3_uri(src_uri), parse_s3_uri(dst_uri)
         try:
-            extra: dict[str, Any] = {}
-            if source_mtime:
-                head = self._client.head_object(Bucket=sb, Key=sk)
-                meta = {**head.get("Metadata", {}), _SOURCE_MTIME: source_mtime}
-                extra = {k: head[k] for k in _KEPT if k in head} | {"Metadata": meta, "MetadataDirective": "REPLACE"}  # fmt: skip
             self._client.copy_object(
-                Bucket=db, Key=dk, CopySource={"Bucket": sb, "Key": sk}, **extra
+                Bucket=db, Key=dk, CopySource={"Bucket": sb, "Key": sk}
             )
         except (ClientError, BotoCoreError) as e:
             raise FloeStorageError(f"s3 copy object failed: {e}") from e
 
     def source_mtime(self, uri: str) -> str | None:
-        """#939: the source modification time an archive copy keeps; None on a copy made before it was kept."""
+        """#939: the source mtime in the metadata of an archive copy made before the sidecar (#1271); None otherwise."""
         bucket, key = parse_s3_uri(uri)
         try:
             meta = self._client.head_object(Bucket=bucket, Key=key).get("Metadata", {})

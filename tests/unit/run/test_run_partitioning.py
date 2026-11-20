@@ -114,6 +114,19 @@ def test_d29_archive_keeps_the_partition_path_so_a_full_refresh_rederives_the_da
     assert got.rows() == [(1, date(2026, 10, 24), "a1b2"), (2, date(2026, 10, 25), "c3d4")]  # fmt: skip
 
 
+def test_1271_a_local_archive_has_no_sidecar_so_a_long_file_name_still_full_refreshes(tmp_path: Path) -> None:  # fmt: skip
+    """A sidecar read would lock `<sidecar>.lock`, past the 255-byte name limit for an archived name this long."""
+    name = f"{'x' * 240}.csv"
+    put(tmp_path, f"2026/10/24/a1b2/{name}", "id\n1\n", 100)
+    archive = "archive: {path: ./arch}"
+    go(tmp_path, "incremental_mode: archive", archive)
+    [archived] = (tmp_path / "arch/o").rglob("*.csv")
+    assert len(archived.name.encode()) > 240
+    assert not (tmp_path / "arch/o/.floe").exists()
+    go(tmp_path, "incremental_mode: archive", archive, full_refresh=True)
+    assert pl.read_parquet(tmp_path / "out/accepted").rows() == [(1, date(2026, 10, 24), "a1b2")]  # fmt: skip
+
+
 def test_d29_a_full_refresh_replays_archived_files_in_their_first_order(tmp_path: Path) -> None:  # fmt: skip
     """`x.csv` loads before `x0.csv`, though `x0__run-…` sorts before `x__run-…`: the first duplicate key wins both times."""
     put(tmp_path, "2026/10/24/a1b2/x.csv", "id\n1\n", 100)
