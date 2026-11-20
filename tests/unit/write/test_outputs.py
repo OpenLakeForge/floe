@@ -8,7 +8,6 @@ CSV byte for byte).
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportMissingTypeStubs=false
 # ^ pyarrow ships no type stubs; check.py is a script on the conformance sys.path
 
-import re
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -37,7 +36,6 @@ CONFORMANCE = Path(__file__).parents[3] / "conformance"
 sys.path.insert(0, str(CONFORMANCE))
 from check import comparable, load_expected  # pyright: ignore[reportMissingImports]  # script on the sys.path entry above
 
-UUID_PART = re.compile(r"part-[0-9a-f]{8}-[0-9a-f-]{27}")
 Columns = list[tuple[str, str]]
 
 
@@ -82,7 +80,7 @@ def emit(
     accepted, rejected = frames
     write_accepted([accepted], LOCAL, f"local://{base}/accepted/{entity}", mode)
     if rejected.height:
-        write_rejected(rejected, LOCAL, f"local://{base}/rejected/{entity}", mode)
+        write_rejected(rejected, LOCAL, f"local://{base}/rejected/{entity}", "append")
 
 
 def check(case: str, base: Path, entities: list[str]) -> None:
@@ -101,9 +99,9 @@ def check(case: str, base: Path, entities: list[str]) -> None:
             actual[f"accepted/{e}.parquet"] = pa.concat_tables(
                 [pq.read_table(p) for p in parts]
             )
-        for p in sorted((base / "rejected" / e).glob("*.csv")):
-            name = UUID_PART.sub("part-UUID", p.name)
-            actual[f"rejected/{e}/{name}"] = p.read_text()
+        texts = sorted(p.read_text() for p in (base / "rejected" / e).glob("*.csv"))  # by content, as record.py names parts of one directory  # fmt: skip
+        for i, text in enumerate(texts):
+            actual[f"rejected/{e}/part-UUID" + (f"-{i + 1}" if i else "") + ".csv"] = text  # fmt: skip
     assert sorted(actual) == sorted(expected)
     for name, value in expected.items():
         assert comparable(name, actual[name]) == comparable(name, value), name

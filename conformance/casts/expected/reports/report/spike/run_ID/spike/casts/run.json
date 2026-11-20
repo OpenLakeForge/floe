@@ -86,7 +86,7 @@
       },
       "output": {
         "accepted_path": "local://<ROOT>/out/accepted/casts",
-        "rejected_path": "<ROOT>/out/rejected/casts/part-00000.csv",
+        "rejected_path": "<ROOT>/out/rejected/casts/part-<uuid>.csv",
         "errors_path": null,
         "archived_path": null
       },

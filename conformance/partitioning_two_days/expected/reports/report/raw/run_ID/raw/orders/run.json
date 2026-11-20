@@ -109,7 +109,7 @@
       },
       "output": {
         "accepted_path": "local://<ROOT>/out/accepted/orders",
-        "rejected_path": "<ROOT>/out/rejected/orders/part-00000.csv",
+        "rejected_path": "<ROOT>/out/rejected/orders/part-<uuid>.csv",
         "errors_path": null,
         "archived_path": null
       },
