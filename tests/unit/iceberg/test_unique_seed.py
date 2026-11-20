@@ -8,6 +8,7 @@ import random
 import struct
 import tempfile
 import uuid
+import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -15,6 +16,7 @@ import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from polars.exceptions import PerformanceWarning
 from pyiceberg.io import load_file_io
 from pyiceberg.manifest import (
     DataFile,
@@ -235,6 +237,19 @@ def test_stored_names_are_scanned_and_renamed_back(tmp_path: Path) -> None:
     seed_from_table(tracker, table, batch, {"ID": "id"})
     assert tracker.check(batch)[0].mask.arg_true().to_list() == [0, 3, 4, 8]
     assert tracker.results()[0].target_duplicates_count == 3
+
+
+def test_1272_the_seed_scan_warns_nothing_without_the_planner_plugin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # setenv then delenv: the variable is unset here and removed again after the test
+    monkeypatch.setenv("POLARS_ICEBERG_PLANNER", "")
+    monkeypatch.delenv("POLARS_ICEBERG_PLANNER")
+    table = local_table(tmp_path, HISTORY, partitioned=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", PerformanceWarning)
+        assert cache_table_keys(table, [["id"]], {}, tmp_path / "keys.parquet")
+    assert pl.read_parquet(tmp_path / "keys.parquet").height == len(HISTORY)
 
 
 def test_an_empty_table_seeds_nothing(tmp_path: Path) -> None:

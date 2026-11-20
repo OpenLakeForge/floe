@@ -4,6 +4,8 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- An Iceberg `append` with unique keys no longer prints Polars 2.1's `PerformanceWarning` about the missing `polars_iceberg` planner plugin (#1272). Floe sets `POLARS_ICEBERG_PLANNER=pyiceberg`, the planning Polars used before 2.1, unless the variable is already set.
+
 ## v0.10.3
 
 - A profile can fix where run reports are written with a `report:` block, `storage` (required) and `prefix` (optional) (#1237). Every report of the run (`run.summary.json`, each `run.json`, `run.failure.json`) then goes to that storage under `<prefix>/<project report.path>`, so a platform can grant each environment read on one prefix it controls. A project `report.path` that is absolute, a URI or contains `..`, or a `report.storage` naming another storage, fails validation. Projects run without the profile block behave as before. `schemas/profile.schema.yaml` accepts the block.
