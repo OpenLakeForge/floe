@@ -1,7 +1,7 @@
-"""Orchestrator manifest, ported from `manifest/builder.rs` and `manifest/model.rs`.
+"""Orchestrator manifest.
 
-The manifest JSON is the contract (Dagster and Airflow consume it): key order is the order of the
-Rust structs, and every value Rust builds with `serde_json::to_value` has its keys sorted.
+The manifest JSON is the contract (Dagster and Airflow consume it): key order is the
+manifest model's field order, and values serialised as JSON objects have their keys sorted.
 """
 
 import hashlib
@@ -92,7 +92,7 @@ class _Context(NamedTuple):
 
 
 def _s3_uri(bucket: str, prefix: str | None, raw: str) -> str | None:
-    """`resolve_s3_uri`: the bucket-qualified URI, or None where Rust errors."""
+    """`resolve_s3_uri`: the bucket-qualified URI, or None when the URI names another bucket."""
     uri_bucket, _, uri_key = raw.removeprefix("s3://").partition("/")
     if raw.startswith("s3://") and uri_bucket:
         if uri_bucket != bucket:
@@ -266,7 +266,7 @@ def _execution(manifest_uri: str | None, profile: ProfileConfig | None) -> Json:
         },
         "defaults": {"env": {}, "workdir": None},
     }
-    if orchestration is not None:  # Rust skips it when the profile sets none
+    if orchestration is not None:  # skipped when the profile sets none
         execution["orchestration"] = orchestration
     return execution
 
@@ -279,7 +279,7 @@ _RUNNER_FIELDS = (
 )
 
 
-# Rust `runners_contract`: the fields each profile runner type carries into the manifest
+# The fields each profile runner type carries into the manifest
 _PROFILE_RUNNER_FIELDS = {
     "kubernetes_job": _RUNNER_FIELDS[:11],
     "databricks_job": (*_RUNNER_FIELDS[:3], _RUNNER_FIELDS[4], *_RUNNER_FIELDS[11:]),
@@ -295,7 +295,7 @@ def _runner_definition(definition: dict[str, object]) -> Json:
     runner: Json = {"type": kind}
     for k in _RUNNER_FIELDS:
         v = definition.get(k) if k in keep else None
-        if k in ("env", "env_parameters") and isinstance(v, dict):  # a BTreeMap in Rust
+        if k in ("env", "env_parameters") and isinstance(v, dict):  # keys sorted
             v = dict(sorted(cast(dict[str, str], v).items()))
         runner[k] = v
     if kind == "kubernetes_job":
@@ -346,7 +346,7 @@ def _config_files(files: list[Path]) -> list[Json] | None:
 
 
 def _blocks(root: RootConfig) -> Json:
-    """The effective `storages`, `catalogs` and `lineage`, serialized as Rust does (secrets in clear)."""
+    """The effective `storages`, `catalogs` and `lineage`, serialized (secrets in clear)."""
     blocks: Json = {}
     if root.storages:
         blocks["storages"] = _sorted(

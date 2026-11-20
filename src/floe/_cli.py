@@ -109,21 +109,21 @@ def _run(args: argparse.Namespace) -> int:
     run_id = args.run_id or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S.%fZ")
     console = Console(args.log_format, run_id)
     if args.manifest is not None:
-        try:  # Rust logs a manifest that fails to load after a `run_started`
+        try:  # a manifest that fails to load is logged after a `run_started`
             root, observed, path = load_manifest(args.manifest)
-        except FloeIoError as e:  # Rust: a bare io error, logged with code `error`
+        except FloeIoError as e:  # a bare io error, logged with code `error`
             console.failed(FloeError(str(e)), args.manifest)
             raise
         except FloeError as e:
             console.failed(e, args.manifest)
             raise
-        config_uri = shown(args.manifest)  # as typed, as Rust
-        job = ""  # Rust names the lineage job `floe-run` (or `job_name`)
+        config_uri = shown(args.manifest)  # as typed
+        job = ""  # the lineage job is named `floe-run` (or `job_name`)
     elif args.config is None:
         raise FloeConfigError("one of --config or --manifest is required")
     else:
         profile = _profile(args.profile)
-        try:  # Rust logs a missing config without `run_started`
+        try:  # a missing config is logged without `run_started`
             path = _realpath(args.config)
         except FloeError as e:
             console.failed(e, None)
