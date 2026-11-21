@@ -8,8 +8,8 @@ Supported values:
 - `merge_scd1`: SCD1 upsert keyed by `schema.primary_key` on Iceberg accepted sinks (D2).
 - `merge_scd2`: SCD2 merge keyed by `schema.primary_key` on Iceberg accepted sinks.
 
-Parquet accepted sinks support `overwrite` and `append` only. The Delta and DuckDB sinks were
-dropped in 0.8 (D1).
+Parquet and Delta accepted sinks support `overwrite` and `append` only (see the
+[Delta sink](../sinks/delta.md)). The DuckDB sink was dropped in 0.8 (D1).
 
 ## Standard Iceberg writes (`append`, `overwrite`)
 
