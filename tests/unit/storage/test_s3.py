@@ -196,6 +196,17 @@ def test_copy_download_and_delete(
     assert err.value.code == "storage_not_found"
 
 
+def test_1271_the_default_endpoint_is_the_one_an_explicit_aws_endpoint_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D34 (#931): one store has one identity, or the source/sink overlap check is skipped and a sink can delete source files."""
+    for var in ("AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_S3", "AWS_REGION", "AWS_DEFAULT_REGION"):  # fmt: skip
+        monkeypatch.delenv(var, raising=False)
+    default = S3Client("b", "us-east-1")
+    assert default.endpoint == S3Client("b", "us-east-1", "https://s3.amazonaws.com").endpoint  # fmt: skip
+    assert default.endpoint != S3Client("b", "eu-west-1").endpoint
+
+
 def test_endpoint_ignores_a_trailing_slash() -> None:
     """D34 (#931) compares endpoints to tell two stores apart: `http://minio:9000/` is the same store."""
     assert S3Client("b", "us-east-1", "http://minio:9000/").endpoint == S3Client("b", "us-east-1", "http://minio:9000").endpoint  # fmt: skip

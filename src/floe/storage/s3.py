@@ -2,7 +2,6 @@
 
 import os
 from datetime import UTC, datetime, timedelta
-from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -110,26 +109,38 @@ class S3Client:
         path_style_access: bool | None = None,
     ) -> None:
         try:
+            import boto3
+            from botocore.config import Config
             from obstore.store import S3Store
         except ImportError as e:
             raise missing("s3", "an s3 storage") from e
         self.bucket = bucket
-        self._list_args = (
-            region,
-            endpoint,
-            resolve_path_style_access(path_style_access),
+        path_style = resolve_path_style_access(path_style_access)
+        credentials = (
+            _aws_credentials()
+        )  # first: an unknown profile fails here with its own error
+        # boto3 lists with the raw prefix; obstore only lists directories (`in/data_` becomes `in/data_/`), which an IAM
+        # `s3:prefix` condition on `in/data_*` refuses. It also names the store behind a bucket name (`endpoint`).
+        make = boto3.session.Session().client  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]  # stubs cover s3 only
+        self._lister: Any = make(
+            "s3",
+            region_name=region,
+            endpoint_url=endpoint,
+            config=Config(
+                s3={"addressing_style": "path"} if path_style else None,
+                # boto3 >= 1.36 adds CRC checksums that S3-compatible services may reject.
+                request_checksum_calculation="when_required",
+                response_checksum_validation="when_required",
+            ),
         )
-        env = os.environ
-        custom = endpoint or env.get("AWS_ENDPOINT_URL_S3") or env.get("AWS_ENDPOINT_URL")  # fmt: skip
-        # identifies the store behind a bucket name
-        self.endpoint: str = (custom or f"https://s3.{region or env.get('AWS_REGION') or env.get('AWS_DEFAULT_REGION') or 'us-east-1'}.amazonaws.com").rstrip("/")  # fmt: skip
-        credentials = _aws_credentials()
+        self.endpoint: str = self._lister.meta.endpoint_url.rstrip("/")
+        custom = endpoint or os.environ.get("AWS_ENDPOINT_URL_S3") or os.environ.get("AWS_ENDPOINT_URL")  # fmt: skip
         # without boto3 the credentials and the rest (AWS_ACCESS_KEY_ID, ...) are read from the environment by obstore
         config: S3Config = (
             credentials.config.copy() if credentials else {}
         )  # the session's region; ours wins
         # boto3's `auto`: virtual-hosted on AWS (a dotted bucket name breaks its TLS name), else path style
-        config["virtual_hosted_style_request"] = not resolve_path_style_access(path_style_access) and custom is None and "." not in bucket  # fmt: skip
+        config["virtual_hosted_style_request"] = not path_style and custom is None and "." not in bucket  # fmt: skip
         if region:
             config["region"] = region
         if custom:
@@ -149,23 +160,6 @@ class S3Client:
     def resolve_uri(self, path: str) -> str:
         key = path.lstrip("/")
         return f"s3://{self.bucket}/{key}" if key else f"s3://{self.bucket}"
-
-    @cached_property
-    def _lister(self) -> Any:
-        """boto3 lists with the raw prefix; obstore only lists directories (`in/data_` becomes `in/data_/`), which an IAM
-        `s3:prefix` condition on `in/data_*` refuses. Built on first use: a boto3 session costs 55-120 ms."""
-        import boto3
-        from botocore.config import Config
-
-        region, endpoint, path_style = self._list_args
-        config = Config(
-            s3={"addressing_style": "path"} if path_style else None,
-            # boto3 >= 1.36 adds CRC checksums that S3-compatible services may reject.
-            request_checksum_calculation="when_required",
-            response_checksum_validation="when_required",
-        )
-        make = boto3.session.Session().client  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]  # stubs cover s3 only
-        return make("s3", region_name=region, endpoint_url=endpoint, config=config)
 
     def list(self, prefix: str, start_after: str = "") -> list[ObjectRef]:
         """Keys under `prefix`; D30: only those after `start_after`."""
