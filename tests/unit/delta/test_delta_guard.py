@@ -21,6 +21,7 @@ from floe.errors import FloeRunError
 from floe.run import incremental as incremental_module
 from floe.run.entity import run_entity
 from floe.run.events import Emitter
+from floe.storage.inputs import NoInputsError
 
 CONFIG = """\
 version: "0.3"
@@ -187,3 +188,34 @@ def test_an_entity_whose_rows_are_all_rejected_reports_normally(
     report = run_entity(parse_config(path).entities[0], tmp_path, "0.3").report
     assert report["accepted_output"]["accepted_rows"] == 0
     assert report["accepted_output"]["files_written"] == 0
+
+
+def test_a_raced_batch_archives_every_input_including_the_unread(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """The rival committed this batch after the guard looked: no pending file may stay behind to be appended again."""
+    project(tmp_path, "incremental_mode: archive")
+    (tmp_path / "in" / "b.csv").write_text("id,name\n3,c\n")
+    path = tmp_path / "config.yml"
+    path.write_text(path.read_text().replace("      accepted:", "      archive: {path: ./arch}\n      accepted:"))  # fmt: skip
+    entity = parse_config(path).entities[0]
+    table = str(tmp_path / "out" / "accepted")
+    seed = pa.table({"id": pa.array([0], pa.int64()), "name": ["seed"]})
+    write_deltalake(table, seed)
+    real, rivals = write_module.committed, []
+
+    def rival(*args: Any) -> bool | None:
+        found = real(*args)
+        if not rivals:  # the run's own hash, committed by another run
+            rivals.append(1)
+            write_deltalake(table, seed, mode="append", commit_properties=stamp("rival", args[1]))  # fmt: skip
+        return found
+
+    monkeypatch.setattr(write_module, "committed", rival)
+    report = run_entity(entity, tmp_path, "0.3").report
+    assert {f["skip_reason"] for f in report["files"]} == {"already_committed"}
+    assert len(report["files"]) == 2
+    assert not list((tmp_path / "in").glob("*.csv"))
+    assert sorted(p.name.split("__")[0] for p in (tmp_path / "arch").rglob("*.csv")) == ["b", "orders"]  # fmt: skip
+    assert ids(tmp_path) == [0, 0]
+    with pytest.raises(NoInputsError):  # nothing is left to append again
+        run_entity(entity, tmp_path, "0.3")
+    assert ids(tmp_path) == [0, 0]

@@ -465,6 +465,12 @@ def _run_entity(
                         f.source_uri for f in pending
                     }  # the stream may not have been read at all
                     files[:] = [r for r in files if r["input_file"] not in done] + [skipped_report(u, "already_committed") for u in sorted(done)]  # fmt: skip
+                    queued = {
+                        f.source_uri for f in plan.to_archive
+                    }  # `archive` mode: the archive is the marker, for the unread inputs too
+                    plan.to_archive += [
+                        f for f in pending if f.source_uri not in queued
+                    ]
             elif target is None:
                 write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options, input_hash(entity, pending) if plan.tracker.keys and entity.incremental_mode == "file" else None)  # fmt: skip
             else:
