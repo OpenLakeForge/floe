@@ -23,7 +23,10 @@ def resolve_strategy(schema: SchemaConfig) -> str | None:
         return None
     raw = config.strategy or "snake_case"
     if (strategy := _canonical(raw)) not in _STRATEGIES:
-        raise FloeConfigError(f"unsupported normalize_columns.strategy: {raw}")
+        raise FloeConfigError(
+            f"unsupported normalize_columns.strategy: {raw}",
+            code="config_invalid_value",
+        )
     return strategy
 
 
@@ -78,7 +81,8 @@ def source_names(columns: Sequence[ColumnConfig], strategy: str | None) -> list[
         )
         if name in seen:
             raise FloeConfigError(
-                f"column source collision: {seen[name]} and {label} -> {name}"
+                f"column source collision: {seen[name]} and {label} -> {name}",
+                code="config_duplicate",
             )
         seen[name] = label
     return list(seen)
@@ -98,7 +102,8 @@ def output_column_mapping(
     for column, target in zip(columns, output_names(columns, strategy), strict=True):
         if target in targets:
             raise FloeConfigError(
-                f"output column name collision: {targets[target]} and {column.name} -> {target}"
+                f"output column name collision: {targets[target]} and {column.name} -> {target}",
+                code="config_duplicate",
             )
         targets[target] = column.name
         source = normalize_name(column.source or column.name, strategy)
@@ -114,7 +119,8 @@ def normalize_columns(df: pl.DataFrame, strategy: str | None) -> pl.DataFrame:
     for old, new in names.items():
         if new in seen:
             raise FloeConfigError(
-                f"normalized input column collision: {seen[new]} and {old} -> {new}"
+                f"normalized input column collision: {seen[new]} and {old} -> {new}",
+                code="config_duplicate",
             )
         seen[new] = old
     renamed = df.clone()

@@ -57,13 +57,18 @@ def select_entities(root: RootConfig, selectors: Sequence[str]) -> list[EntityCo
         ]
         if len(hits) > 1:
             ids = ", ".join(root.entities[i].id for i in hits)
-            raise FloeConfigError(f"entity {sel} is ambiguous; use one of: {ids}")
+            raise FloeConfigError(
+                f"entity {sel} is ambiguous; use one of: {ids}",
+                code="config_invalid_value",
+            )
         if hits:
             picked.add(hits[0])
         else:
             missing.append(sel)
     if missing:
-        raise FloeConfigError(f"entities not found: {', '.join(missing)}")
+        raise FloeConfigError(
+            f"entities not found: {', '.join(missing)}", code="config_unknown_reference"
+        )
     return [e for i, e in enumerate(root.entities) if i in picked]
 
 
@@ -71,7 +76,9 @@ def domain_entities(root: RootConfig, domains: Sequence[str]) -> list[str]:
     """Ids of the entities of these domains, as `select_entities` selectors."""
     missing = [d for d in dict.fromkeys(domains) if all(e.domain != d for e in root.entities)]  # fmt: skip
     if missing:
-        raise FloeConfigError(f"domains not found: {', '.join(missing)}")
+        raise FloeConfigError(
+            f"domains not found: {', '.join(missing)}", code="config_unknown_reference"
+        )
     return [e.id for e in root.entities if e.domain in domains]
 
 
@@ -83,7 +90,7 @@ def _refresh(entity: EntityConfig) -> EntityConfig:
     """Full refresh: an append sink overwrites; `merge_scd1` overwrites in `run_entity`, which keeps its merge checks."""
     mode = entity.sink.write_mode
     if mode == "merge_scd2":
-        raise FloeConfigError(f"entity '{entity.name}': --full-refresh is not supported with write_mode '{mode}': its version history cannot be rebuilt from the inputs")  # fmt: skip
+        raise FloeConfigError(f"entity '{entity.name}': --full-refresh is not supported with write_mode '{mode}': its version history cannot be rebuilt from the inputs", code="config_conflict")  # fmt: skip
     if mode != "append":
         return entity
     return entity.model_copy(update={"sink": entity.sink.model_copy(update={"write_mode": "overwrite"})})  # fmt: skip

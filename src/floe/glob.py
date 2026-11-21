@@ -190,7 +190,9 @@ _Todo = list[_Entry | FloeError]
 
 def _glob_error(path: str, e: OSError) -> FloeError:
     msg = f"{e.strerror} (os error {e.errno})" if e.errno else str(e)
-    return FloeError(f"attempting to read `{path}` resulted in an error: {msg}")
+    return FloeError(
+        f"attempting to read `{path}` resulted in an error: {msg}", code="io_read_error"
+    )
 
 
 def _is_dir(e: "os.DirEntry[str]") -> bool:

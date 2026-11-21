@@ -106,7 +106,8 @@ def _chunks(entity: EntityConfig, path: Path, names: list[str], head: list[tuple
                 yield j.offset, j.df, None
         case other:
             raise FloeRunError(
-                f"entity.name={entity.name} unsupported source format: {other}"
+                f"entity.name={entity.name} unsupported source format: {other}",
+                code="run_not_supported",
             )
 
 
@@ -152,7 +153,10 @@ def _failed_file(
 def _rejected(plan: "Plan", severity: str) -> tuple[str, StorageClient]:
     """The rejected sink's URI and client."""
     if plan.rejected is None:
-        raise FloeConfigError(f"sink.rejected is required for {severity} severity")
+        raise FloeConfigError(
+            f"sink.rejected is required for {severity} severity",
+            code="config_missing_key",
+        )
     return plan.rejected
 
 
@@ -272,7 +276,9 @@ def _typed(
         both = df.with_columns([t for t, _ in casts] + masks)
         typed = both[plan.names]
     except pl.exceptions.InvalidOperationError as err:
-        raise FloeRunError(f"entity.name={entity.name} cast failed: {err}") from err
+        raise FloeRunError(
+            f"entity.name={entity.name} cast failed: {err}", code="run_invalid_input"
+        ) from err
     cast_checks = [
         RowCheck("cast_error", n, CAST_ERROR_MESSAGE, both[f"{tag}{n}"])
         for n, c in zip(plan.names, columns, strict=True)

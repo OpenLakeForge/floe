@@ -426,8 +426,8 @@ def test_a_missing_manifest_is_logged_after_run_started_with_code_error(
     assert floe(monkeypatch, *argv) == 1
     assert capsys.readouterr().out.splitlines()[:2] == [
         "run_started run_id=r config=nope.json report_base=disabled",
-        "log level=error code=error No such file or directory (os error 2)",
-    ]  # Rust 0.7, byte for byte
+        "log level=error code=error error_code=io_read_error No such file or directory (os error 2)",
+    ]
 
 
 def test_a_rest_catalog_loads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -672,3 +672,31 @@ def test_manifest_errors_carry_codes(tmp_path: Path) -> None:
     with pytest.raises(FloeIoError) as io:
         load_manifest(tmp_path / "gone.json")
     assert io.value.code == "io_read_error"
+
+
+@pytest.mark.parametrize("kind", ["adls", "gcs"])
+def test_manifest_replay_refuses_adls_and_gcs_storages(kind: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#1323: a replayed storage block with another remote type would resolve its paths as local."""
+    from floe.errors import FloeConfigError
+
+    path = manifest(tmp_path, monkeypatch, QUALIFIED)
+    doc = json.loads(path.read_text())
+    doc["storages"]["definitions"].append(
+        {"name": "lake", "fs_type": kind}
+        | dict.fromkeys(
+            (
+                "bucket",
+                "region",
+                "account",
+                "container",
+                "prefix",
+                "endpoint",
+                "path_style_access",
+            )
+        )
+    )
+    path.write_text(json.dumps(doc))
+    with pytest.raises(FloeConfigError) as e:
+        load_manifest(path)
+    assert e.value.code == "config_not_supported"
+    assert str(e.value) == f"floe manifest replay: storage lake (type {kind}) is not supported yet"  # fmt: skip

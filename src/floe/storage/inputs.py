@@ -12,7 +12,7 @@ from typing import Literal
 from floe.config.types import EntityConfig
 from floe.errors import FloeConfigError, FloeError, FloeRunError
 from floe.glob import MatchOptions, Pattern, PatternError, glob
-from floe.storage.paths import normalize_local_path, parse_s3_uri
+from floe.storage.paths import normalize_local_path, split_uri
 from floe.storage.types import Downloader, ObjectRef, StorageClient
 
 _SUFFIXES = {
@@ -252,7 +252,7 @@ def resolve_inputs(
     if path.startswith("s3://"):
         if client is None:
             raise FloeRunError("s3 storage client missing", code="run_invalid_setup")
-        bucket, key = parse_s3_uri(path)
+        bucket, key = split_uri(path)
         refs = _cloud_refs(
             client,
             key,
@@ -261,7 +261,7 @@ def resolve_inputs(
             storage,
             f"bucket={bucket}",
             exclude,
-            parse_s3_uri(after)[1] if after else "",
+            split_uri(after)[1] if after else "",
         )
         if not list_only:
             for r in refs:

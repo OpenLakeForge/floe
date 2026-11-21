@@ -107,7 +107,7 @@ def _refuse_overlap(
     root = _real(sink).rstrip("/") + "/"
     for f in inputs:
         if _real(f.source_uri).startswith(root):
-            raise FloeConfigError(f"{who} source file {f.source_uri} lies under {what} {sink}; the sink would overwrite or re-read it")  # fmt: skip
+            raise FloeConfigError(f"{who} source file {f.source_uri} lies under {what} {sink}; the sink would overwrite or re-read it", code="config_conflict")  # fmt: skip
 
 
 def _subdir(plan: Plan, file: InputFile) -> str:
@@ -162,7 +162,7 @@ def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batch: 
                 body = client.read(uri)
                 keys = pl.read_parquet(io.BytesIO(body.body if body else b""), columns=columns)  # fmt: skip
             except pl.exceptions.PolarsError as err:
-                raise FloeRunError(f"entity.name={plan.entity.name} cannot seed unique keys from {part}: {err}") from err  # fmt: skip
+                raise FloeRunError(f"entity.name={plan.entity.name} cannot seed unique keys from {part}: {err}", code="run_invalid_input") from err  # fmt: skip
             keys.write_parquet(cache / f"{i}.parquet")
     return pl.scan_parquet(cache / "*.parquet") if any(cache.iterdir()) else None
 
@@ -252,7 +252,7 @@ def _run_entity(
         entity = entity.model_copy(update={"sink": entity.sink.model_copy(update={"write_mode": "overwrite"})})  # fmt: skip
     sink = entity.sink
     if sink.accepted.format not in ("parquet", "iceberg", "delta"):
-        raise FloeRunError(f"entity.name={entity.name} unsupported sink format: {sink.accepted.format}")  # fmt: skip
+        raise FloeRunError(f"entity.name={entity.name} unsupported sink format: {sink.accepted.format}", code="run_not_supported")  # fmt: skip
     iceberg = sink.accepted.format == "iceberg"
     who = f"entity.name={entity.name}"
     delta = sink.accepted.format == "delta"
@@ -284,7 +284,8 @@ def _run_entity(
         rejected_table = resolve_target(storages, catalogs, config_dir, entity, "rejected") if rejected_iceberg else None  # fmt: skip
     if target and rejected_table and (target.catalog, target.namespace, target.table) == (rejected_table.catalog, rejected_table.namespace, rejected_table.table):  # fmt: skip
         raise FloeConfigError(
-            f"{who} sink.rejected.iceberg must not write to the accepted table"
+            f"{who} sink.rejected.iceberg must not write to the accepted table",
+            code="config_conflict",
         )
     # PyIceberg writes an Iceberg table's files, not Floe's storage clients
     base, accepted = resolve_path(storages, config_dir, sink.accepted.storage, sink.accepted.path, f"{who} sink.accepted.storage")  # fmt: skip
@@ -363,7 +364,7 @@ def _run_entity(
             for d in (plan.rejected[0], *([rows] if parquet else []))
         }
         if target is None and accepted_client.endpoint == plan.rejected[1].endpoint and _real(base).rstrip("/") in shared:  # fmt: skip
-            raise FloeConfigError(f"{who} sink.accepted.path must differ from sink.rejected.path" + (f" and its rows directory {rows}" if parquet else ""))  # fmt: skip
+            raise FloeConfigError(f"{who} sink.accepted.path must differ from sink.rejected.path" + (f" and its rows directory {rows}" if parquet else ""), code="config_conflict")  # fmt: skip
     pending, files = inc.claim(inputs.files, emit)
     if done := inc.skip_committed(plan.table, pending, emit):
         files += done

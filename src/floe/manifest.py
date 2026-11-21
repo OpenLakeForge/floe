@@ -26,6 +26,7 @@ from floe.errors import FloeConfigError, FloeError
 from floe.pii import PiiColumn
 from floe.run import select_entities
 from floe.storage.paths import normalize_local_path
+from floe.storage.resolve import refuse_unsupported_storages
 from floe.storage.s3 import read_s3
 
 Json = dict[str, Any]
@@ -147,7 +148,8 @@ def _pii_key(entity: EntityConfig, column: PiiColumn) -> str | None:
     raise FloeConfigError(
         f"entity.name={entity.name} pii.columns[name={column.name}].key: a manifest never "
         "carries secrets, so a literal hash key cannot be written to it; "
-        "set key to a ${ENV_VAR} reference"
+        "set key to a ${ENV_VAR} reference",
+        code="config_invalid_value",
     )
 
 
@@ -446,8 +448,10 @@ def build_manifest(
 ) -> Json:
     if options.path_mode not in ("default", "resolved-uri"):
         raise FloeError(
-            f"unknown --manifest-path-mode value '{options.path_mode}'; expected 'default' or 'resolved-uri'"
+            f"unknown --manifest-path-mode value '{options.path_mode}'; expected 'default' or 'resolved-uri'",
+            code="config_invalid_value",
         )
+    refuse_unsupported_storages(root.storages, "floe manifest generate")
     runtime = options.runtime or detect_runtime()
     work_root = None
     if runtime == "image":

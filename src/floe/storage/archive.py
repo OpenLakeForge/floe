@@ -8,8 +8,8 @@ from floe.storage.inputs import InputFile
 from floe.storage.local import LocalClient
 from floe.storage.paths import (
     archive_relative_path_for_run,
-    parse_s3_uri,
     run_component,
+    split_uri,
 )
 from floe.storage.types import StorageClient
 
@@ -50,7 +50,7 @@ def read_source_mtime_index(client: StorageClient, entity_uri: str) -> dict[str,
     """The merged run indexes of `<entity_uri>/` (archived path under the entity to source mtime); empty on local storage."""
     if isinstance(client, LocalClient):
         return {}
-    prefix = f"{parse_s3_uri(entity_uri)[1]}/{_INDEX}/"
+    prefix = f"{split_uri(entity_uri)[1]}/{_INDEX}/"
     merged: dict[str, str] = {}
     for ref in client.list(prefix):
         stored = client.read(ref.uri) if ref.key.endswith(".json") else None
@@ -76,6 +76,6 @@ def archive_input_file(
     except FloeError as e:
         raise FloeRunError(
             f"entity.name={entity_name} archive delete failed for {input_file.source_uri}: {e}",
-            code="run_invalid_setup",
+            code="run_archive_failed",
         ) from e
     return dest_uri

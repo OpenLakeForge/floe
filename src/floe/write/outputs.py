@@ -12,7 +12,7 @@ import polars as pl
 
 from floe.config.types import SinkOptions, WriteMode
 from floe.errors import FloeError, FloeStorageError
-from floe.storage.paths import parse_s3_uri
+from floe.storage.paths import split_uri
 from floe.storage.types import StorageClient
 
 DEFAULT_MAX_SIZE_PER_FILE = 256 * 1024 * 1024
@@ -33,7 +33,7 @@ def _os_errors() -> Generator[None]:
         os = e if isinstance(e, OSError) else e.__cause__
         if not isinstance(os, OSError):
             raise
-        raise FloeError(f"{os.strerror} (os error {os.errno})" if os.errno is not None else str(os)) from os  # fmt: skip
+        raise FloeError(f"{os.strerror} (os error {os.errno})" if os.errno is not None else str(os), code="storage_error") from os  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -49,7 +49,7 @@ class AcceptedWrite:
 
 def part_uris(client: StorageClient, base: str, ext: str) -> list[str]:
     """The `part-*.<ext>` files directly under `base`, sorted."""
-    key = parse_s3_uri(base)[1] if base.startswith("s3://") else None
+    key = split_uri(base)[1] if base.startswith("s3://") else None
     prefix = (
         base.removeprefix("local://") if key is None else key and f"{key}/"
     )  # a bucket root lists every key

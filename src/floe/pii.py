@@ -60,7 +60,8 @@ def _as_string(series: pl.Series) -> pl.Series:
         return series.cast(pl.String)
     except pl.exceptions.PolarsError as e:
         raise FloeRunError(
-            f"PII: failed to cast column {series.name} to string: {e}"
+            f"PII: failed to cast column {series.name} to string: {e}",
+            code="run_invalid_input",
         ) from e
 
 
@@ -105,15 +106,20 @@ def _resolve_key(raw: str, name: str) -> str:
     if not (raw.startswith("${") and raw.endswith("}")):
         raise FloeConfigError(
             f"pii column {name}: key must be a plain value or a single ${{VAR_NAME}} reference; "
-            "mixing literal text with ${...} is not supported"
+            "mixing literal text with ${...} is not supported",
+            code="config_invalid_value",
         )
     var = raw[2:-1]
     if not var or "{" in var or "}" in var:
-        raise FloeConfigError(f"pii column {name}: key has invalid placeholder syntax")
+        raise FloeConfigError(
+            f"pii column {name}: key has invalid placeholder syntax",
+            code="config_invalid_value",
+        )
     value = os.environ.get(var)
     if value is None:
         raise FloeRunError(
-            f"pii column {name}: key references env var {var} which is not set"
+            f"pii column {name}: key references env var {var} which is not set",
+            code="run_invalid_setup",
         )
     return value
 

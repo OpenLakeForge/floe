@@ -17,6 +17,7 @@ from floe.errors import FloeConfigError, FloeRunError
 from floe.extras import require
 from floe.run import select_entities
 from floe.storage.paths import normalize_local_path, parse_s3_uri
+from floe.storage.resolve import refuse_unsupported_storages
 from floe.storage.s3 import S3Client
 
 if TYPE_CHECKING:
@@ -125,6 +126,7 @@ def maintain(path: Path, root: RootConfig, entities: Sequence[str], older_than_d
     if compact_tables:
         require("merge", "duckdb", "--compact")
     validate_config(root)
+    refuse_unsupported_storages(root.storages, "floe maintain")
     config_dir = normalize_local_path(path.resolve().parent)
     results: list[dict[str, Any]] = []
     for entity in select_entities(root, entities):
