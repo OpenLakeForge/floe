@@ -106,7 +106,8 @@ class ConfigSchemaTest(unittest.TestCase):
             types.SchemaEvolutionConfig: "schema_evolution", types.SchemaMismatchConfig: "schema_mismatch",
             types.ColumnConfig: "column",
         }  # `duckdb` stays raw in the model (D1) and has no binding.
-        internal = {project.RootConfig: {"config_files", "entity_workers"}, project.DomainConfig: {"resolved_incoming_dir"}, types.EntityConfig: {"id"}, types.SinkTarget: {"write_mode"}}
+        # ponytail: `rule_severity` is model-only until #1359 parses it and adds it to the schema; #1359 drops these entries
+        internal = {project.RootConfig: {"config_files", "entity_workers"}, project.DomainConfig: {"resolved_incoming_dir"}, types.EntityConfig: {"id"}, types.SinkTarget: {"write_mode"}, types.PolicyConfig: {"rule_severity"}, types.ColumnConfig: {"rule_severity"}}
         aliases = {types.SourceConfig: {"source_ref": "ref"}, types.ColumnConfig: {"column_type": "type"}}
         wire_extras = {
             project.RootConfig: {"sources", "include", "filesystems"},
