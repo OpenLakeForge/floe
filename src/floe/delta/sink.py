@@ -12,8 +12,9 @@ import pyarrow as pa
 from deltalake import DeltaTable
 from deltalake.exceptions import DeltaError, TableNotFoundError
 
-from floe.config.storage import StorageDefinition
+from floe.config.storage import CatalogsConfig, StorageDefinition
 from floe.config.types import EntityConfig, WriteMode, max_level
+from floe.delta.unity import register
 from floe.delta.write import named, write_table
 from floe.errors import FloeRunError
 from floe.write.outputs import AcceptedWrite
@@ -27,9 +28,6 @@ _WIDER: dict[pl.DataType, pl.DataType] = {pl.UInt8(): pl.Int32(), pl.UInt16(): p
 def check_supported(entity: EntityConfig) -> None:
     """Refuse, before anything is claimed, what the writer would otherwise skip silently."""
     who = f"entity.name={entity.name}"
-    # a path write would leave the table invisible to Unity; registering it is #1314
-    if entity.sink.accepted.delta is not None:
-        raise FloeRunError(f"{who} sink.accepted.delta (Unity Catalog) is not supported yet: the table would be written without being registered", code="run_not_supported")  # fmt: skip
     if entity.sink.write_mode not in ("overwrite", "append"):
         raise FloeRunError(f"{who} sink.write_mode={entity.sink.write_mode} is not supported with sink.accepted.format=delta yet", code="run_not_supported")  # fmt: skip
     # an aborted file leaves a smaller batch committed than the hash the retry guard stamps names
@@ -95,3 +93,21 @@ def write_delta(entity: EntityConfig, uri: str, storage: StorageDefinition | Non
     by = [out[c] for c in entity.sink.accepted.partition_by] if entity.sink.accepted.partition_by else None  # fmt: skip
     written, version, raced = write_table(f"entity.name={entity.name}", path, storage_options(storage), reader, mode, run_id, input_hash, table, by, claimed_ms)  # fmt: skip
     return written, {"table_version": version}, raced
+
+
+def register_unity(entity: EntityConfig, catalogs: CatalogsConfig | None, uri: str, storage: StorageDefinition | None) -> dict[str, str]:  # fmt: skip
+    """After the commit, on every run: registers the table in Unity Catalog; returns the report fields (none without a `delta:` block or a table)."""
+    delta = entity.sink.accepted.delta
+    table = existing_table(entity, uri, storage) if delta else None
+    if delta is None or table is None:  # no table when no run ever had a row to write
+        return {}
+    name = delta.catalog or (catalogs.default if catalogs else None)
+    definition = next(c for c in catalogs.definitions if c.name == name) if catalogs else None  # validation checked it  # fmt: skip
+    if definition is None or delta.schema_ is None or delta.table is None:
+        raise FloeRunError(f"entity.name={entity.name} sink.accepted.delta does not name a unity catalog, schema and table", code="run_invalid_setup")  # fmt: skip
+    register(definition, delta.schema_, delta.table, uri, table)
+    return {
+        "delta_catalog_name": definition.name,
+        "delta_schema": delta.schema_,
+        "delta_table": delta.table,
+    }
