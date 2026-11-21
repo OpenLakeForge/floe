@@ -497,6 +497,11 @@ def _run_entity(
         raise failure[0] from failure[0].__cause__
     finally:
         stream.close()
+    if delta:  # after the commit and before the state is promoted: a failure here is retried, and the guard then finds the commit
+        from floe.delta.sink import register_unity
+
+        if registered := register_unity(entity, catalogs, base, accepted):
+            table = (table or {}) | registered
     if latest_first:  # the report lists the files in file order
         files[skipped:] = files[skipped:][::-1]
     files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip

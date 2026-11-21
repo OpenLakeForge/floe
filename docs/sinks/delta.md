@@ -37,8 +37,8 @@ entities:
 ```
 
 The table lives at `sink.accepted.path` on `sink.accepted.storage`, and is created on the first
-write. `sink.accepted.delta` (the Unity Catalog block) is refused with `config_not_supported`
-for now (#1313, #1314); Databricks reads the table by its path.
+write. Without a `sink.accepted.delta` block Databricks reads the table by its path; with one,
+Floe also registers it in Unity Catalog (see [Unity Catalog](#unity-catalog)).
 
 ## Storage
 
@@ -109,6 +109,26 @@ A table that needs a feature delta-rs cannot write (for example catalog-managed 
 run with `run_not_supported`, and the table is never altered. Disable the feature on the table,
 or write another table.
 
+## Unity Catalog
+
+`sink.accepted.delta: {catalog, schema, table}` with a `type: unity` catalog (`host`, `catalog`, `token`,
+`create_schema_if_missing`) registers the table as an **external** Delta table, on S3 storage only. `token` is
+an environment reference such as `${DATABRICKS_TOKEN}`, expanded when the table is registered.
+
+- Floe commits the Delta table first, then registers it (`GET`, then `POST /api/2.1/unity-catalog/tables` with
+  `table_type: EXTERNAL`, `data_source_format: DELTA`, the table's `s3://` location and its columns as Spark types).
+  It does this on every successful run, so a run that died between the commit and the registration is registered
+  by its retry, even when the retry reports `already_committed`.
+- If the registration fails, the run fails and the Delta commit stays; fix the cause and run again.
+- A table that already exists is checked, not changed: it must be an `EXTERNAL` `DELTA` table at the same
+  location, else the run fails with `run_state_conflict`. Its columns are never updated, since Unity reads an
+  external table's schema from the Delta log. Other API errors fail with `run_catalog_error`.
+- With `create_schema_if_missing` (the default) the schema is created when absent; the catalog must exist.
+- Unity needs an **external location** covering the table's `s3://` path, created by you in Databricks, and the
+  token's principal needs `CREATE EXTERNAL TABLE` and `EXTERNAL USE LOCATION` on it.
+- The report's `accepted_output` carries `delta_catalog_name`, `delta_schema` and `delta_table`.
+- Managed tables and credential vending are not supported.
+
 ## Memory
 
 The write is not memory-bounded: peak memory is about twice the compressed size of the entity's
@@ -118,5 +138,5 @@ for the measurements and the upgrade path.
 
 ## Limitations
 
-- No merges, no `add_columns`, no Unity Catalog registration, no ADLS or GCS (all follow-ups).
+- No merges, no `add_columns`, no managed Unity tables, no ADLS or GCS (all follow-ups).
 - Floe does not run `OPTIMIZE`, `VACUUM` or checkpoints.
