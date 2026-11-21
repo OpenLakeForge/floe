@@ -286,7 +286,7 @@ class DagsterManifest:
 
 
 def _is_remote_uri(path: str) -> bool:
-    return path.startswith(("s3://", "gs://", "abfs://"))
+    return path.startswith(("s3://", "gs://", "abfs://", "abfss://"))
 
 
 def _fsspec_storage_options(uri: str) -> dict[str, Any]:
