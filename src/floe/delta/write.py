@@ -9,6 +9,7 @@ import pyarrow as pa
 from deltalake import DeltaTable, write_deltalake
 from deltalake.exceptions import DeltaError, TableNotFoundError
 
+from floe.delta.guard import stamp
 from floe.errors import FloeRunError
 from floe.write.outputs import AcceptedWrite
 
@@ -42,23 +43,23 @@ def _refuse_drift(who: str, table: DeltaTable, schema: pa.Schema) -> None:
             raise FloeRunError(f"{who} delta schema evolution failed: column {name} is {have[name]} in the table, {kind} in the batch", code="run_schema_evolution")  # fmt: skip
 
 
-def _named(who: str, uri: str, err: DeltaError | OSError) -> FloeRunError:
+def named(who: str, uri: str, err: DeltaError | OSError) -> FloeRunError:
     text = str(err)
     if any(s in text for s in _UNSUPPORTED):
         return FloeRunError(f"{who} cannot write the delta table at {uri}: it uses a table feature delta-rs cannot write ({text}); disable the feature or write another table", code="run_not_supported")  # fmt: skip
     return FloeRunError(f"{who} delta write failed: {text}", code="run_commit_failed")
 
 
-def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBatchReader, mode: str) -> tuple[AcceptedWrite, int]:  # fmt: skip
-    """Write `reader` as one commit; returns the files it added and the table's version after it.
+def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBatchReader, mode: str, run_id: str, input_hash: str | None) -> tuple[AcceptedWrite, int]:  # fmt: skip
+    """Write `reader` as one commit; returns the files it added and the version of that commit.
 
     Overwrite removes every live file in the same commit. A table Floe creates keeps delta-rs's minimal protocol; an
-    existing table is never altered.
+    existing table is never altered. The commit carries `run_id` and, with an `input_hash`, the retry guard's `txn` (#1340).
 
     ponytail: `write_deltalake` is not memory-bounded: peak memory is about twice the entity's compressed size
     (measured in context/decisions/delta-sink.md). Upgrade path: chunked data files plus `DeltaTable.create_write_transaction`.
-    ponytail: no retry guard yet, so a retry after a commit that was not promoted appends the batch again (#1308:
-    the `txn` action).
+    ponytail: the guard is checked once, before the write (preflight); a run committing the same batch while this one
+    writes is not detected, so both append it. Upgrade path: #1341 (check the guarded snapshot, handle the conflict).
     """
     try:
         try:
@@ -68,13 +69,14 @@ def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBa
         if table is not None:
             _refuse_drift(who, table, reader.schema)
         before = _files(table) if table is not None else {}
-        write_deltalake(uri, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options)  # fmt: skip
-        # ponytail: `write_deltalake` returns nothing, so the version is read after it: another writer committing in
-        # between would be reported as ours. Upgrade path: take it from the commit result / `txn` of the retry guard (#1308).
+        base = table.version() if table is not None else -1
+        write_deltalake(uri, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options, commit_properties=stamp(run_id, input_hash))  # fmt: skip
         after = DeltaTable(uri, storage_options=options)
         added = {p: s for p, s in _files(after).items() if p not in before}
+        # the commit's own version: the newest commit since `base` that carries this run's id; no commit (nothing to write) leaves the current version
+        version = next((h["version"] for h in after.history(limit=after.version() - base) if h.get("floe.run_id") == run_id), after.version())  # fmt: skip
     except (DeltaError, OSError) as err:
-        raise _named(who, uri, err) from err
+        raise named(who, uri, err) from err
     sizes = list(added.values())
     return AcceptedWrite(
         len(added),
@@ -82,4 +84,4 @@ def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBa
         sum(sizes),
         sum(sizes) / len(sizes) / (1024 * 1024) if sizes else None,
         sum(s < _SMALL_FILE_BYTES for s in sizes),
-    ), after.version()
+    ), version
