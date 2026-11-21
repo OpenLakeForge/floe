@@ -9,6 +9,7 @@ from floe.storage.paths import (
     archive_relative_path_for_run,
     normalize_local_path,
     parse_s3_uri,
+    split_uri,
 )
 
 
@@ -111,3 +112,25 @@ def test_bad_s3_uri_carries_a_code() -> None:
     with pytest.raises(FloeConfigError) as e:
         parse_s3_uri("s3://")
     assert e.value.code == "config_invalid_value"
+
+
+@pytest.mark.parametrize(
+    ("uri", "expected"),
+    [
+        ("s3://bucket/a/b.csv", ("bucket", "a/b.csv")),
+        ("gs://bucket/a/b.csv", ("bucket", "a/b.csv")),
+        (
+            "abfss://c@acct.dfs.core.windows.net/a/b.csv",
+            ("c@acct.dfs.core.windows.net", "a/b.csv"),
+        ),
+        ("abfss://c@acct.dfs.core.windows.net", ("c@acct.dfs.core.windows.net", "")),
+    ],
+)
+def test_split_uri_cloud_schemes(uri: str, expected: tuple[str, str]) -> None:
+    assert split_uri(uri) == expected
+
+
+@pytest.mark.parametrize("uri", ["no-scheme/key", "gs:///key"])
+def test_split_uri_rejects_a_missing_root(uri: str) -> None:
+    with pytest.raises(FloeConfigError):
+        split_uri(uri)

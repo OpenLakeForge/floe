@@ -18,6 +18,18 @@ def parse_s3_uri(uri: str) -> tuple[str, str]:
     return bucket, key
 
 
+def split_uri(uri: str) -> tuple[str, str]:
+    """`(root, key)` of a cloud URI: the root is the authority (bucket, or `container@account.host`), the key the rest."""
+    _, sep, rest = uri.partition("://")
+    root, _, key = rest.partition("/")
+    if not sep or not root:
+        raise FloeConfigError(
+            f"expected a uri with a bucket or container, got {uri}",
+            code="config_invalid_value",
+        )
+    return root, key
+
+
 def normalize_local_path(path: Path) -> Path:
     """Collapse `.` and `..` lexically, but keep a `..` that follows a symlink."""
     out = Path(path.anchor)
