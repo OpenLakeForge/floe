@@ -114,6 +114,4 @@ for the measurements and the upgrade path.
 ## Limitations
 
 - No merges, no `add_columns`, no Unity Catalog registration, no ADLS or GCS (all follow-ups).
-- If a rival run commits the same batch while this run writes, rejected rows can appear twice
-  in `sink.rejected` (#1348).
 - Floe does not run `OPTIMIZE`, `VACUUM` or checkpoints.
