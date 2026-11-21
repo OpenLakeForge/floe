@@ -92,6 +92,25 @@ def test_non_s3_remote_output_is_refused(
     assert "remote manifest output is not supported yet" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("kind", ["adls", "gcs"])
+def test_manifest_refuses_adls_storage(tmp_path: Path, kind: str) -> None:
+    """#1323: `type: adls|gcs` is refused at parse today; a definition that reaches generate must not read as local."""
+    from floe.config.parse import parse_config
+    from floe.config.storage import StorageDefinition, StoragesConfig
+    from floe.errors import FloeConfigError
+    from floe.manifest import Options, build_manifest
+
+    (tmp_path / "config.yml").write_text(CONFIG)
+    root = parse_config(tmp_path / "config.yml", {})
+    lake = StorageDefinition(name="lake", type=kind, bucket=None, region=None, account=None, container=None, prefix=None, endpoint=None, path_style_access=None)  # fmt: skip
+    root = root.model_copy(update={"storages": StoragesConfig(default=None, definitions=[lake])})  # fmt: skip
+    options = Options(str(tmp_path / "config.yml"), True, None, None, "default", "host")
+    with pytest.raises(FloeConfigError) as e:
+        build_manifest(root, tmp_path / "config.yml", options, [])
+    assert e.value.code == "config_not_supported"
+    assert str(e.value) == f"floe manifest generate: storage lake (type {kind}) is not supported yet"  # fmt: skip
+
+
 def test_s3_output_is_put_through_the_s3_client_and_baked_into_base_args(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

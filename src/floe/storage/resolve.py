@@ -25,6 +25,13 @@ def _definition(
     return found
 
 
+def refuse_unsupported_storages(storages: StoragesConfig | None, command: str) -> None:
+    """These commands handle only local and s3 storages; an adls or gcs one must not fall through to local."""
+    for d in storages.definitions if storages else []:
+        if d.type in ("adls", "gcs"):
+            raise FloeConfigError(f"{command}: storage {d.name} (type {d.type}) is not supported yet", code="config_not_supported")  # fmt: skip
+
+
 def resolve_path(
     storages: StoragesConfig | None,
     config_dir: Path,
