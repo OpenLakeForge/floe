@@ -55,7 +55,7 @@ All other fields are optional.
 
 ## Profile location
 
-A profile is a local path, an `s3://` URI or `env:NAME`, for `-p` / `--profile` on every command and for `profile_path=`
+A profile is a local path, an `s3://`, `gs://` or `abfss://` URI or `env:NAME`, for `-p` / `--profile` on every command and for `profile_path=`
 in the Python API:
 
 ```bash
@@ -66,6 +66,11 @@ An `s3://` profile is read with the AWS default credential chain (`AWS_ENDPOINT_
 `AWS_S3_FORCE_PATH_STYLE` for S3-compatible stores), as an `s3://` manifest is. A missing object fails with
 `profile not found: <uri>`. `floe manifest generate -p s3://...` records the URI as `profile_uri`, and the
 SHA-256 of the object as `profile_checksum`. The config (`-c`) is still a local path.
+
+A `gs://<bucket>/<key>` or `abfss://<container>@<account>.dfs.core.windows.net/<key>` profile is read the same way, with
+credentials and endpoint from the environment: `GOOGLE_*` (Application Default Credentials), or `AZURE_STORAGE_ACCOUNT_KEY`
+and `AZURE_CLIENT_*`. For Azurite set `AZURE_STORAGE_ENDPOINT` (and `AZURE_ALLOW_HTTP=true` for `http://`); these are
+obstore's variables, Floe adds none. `az://`, `abfs://` and `gcs://` spellings are refused.
 
 `-p env:NAME` reads the profile YAML from environment variable `NAME`, so a container or Job needs no profile file:
 

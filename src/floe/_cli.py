@@ -19,7 +19,7 @@ from floe.config.profile import (
 )
 from floe.config.project import RootConfig
 from floe.config.types import EntityConfig
-from floe.config.validate import validate_config
+from floe.config.validate import REMOTE_URIS, validate_config
 from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import run_with_lineage
@@ -30,8 +30,8 @@ from floe.run.incremental import state_uri
 from floe.run.sources import resolve_source
 from floe.state import EntityState, dump_state, forget, read_state, reset
 from floe.storage.partitioning import partition_date, source_root, window
-from floe.storage.paths import normalize_local_path, parse_s3_uri
-from floe.storage.s3 import S3Client
+from floe.storage.paths import normalize_local_path
+from floe.storage.resolve import write_object
 from floe.storage.types import StorageClient
 
 
@@ -52,7 +52,7 @@ def _realpath(path: str) -> Path:
 def _profile(location: str | None) -> ProfileConfig | None:
     if not location:
         return None
-    return parse_profile(location if location.startswith(("s3://", "env:")) else _realpath(location))  # fmt: skip
+    return parse_profile(location if location.startswith((*REMOTE_URIS, "env:")) else _realpath(location))  # fmt: skip
 
 
 def _load(
@@ -100,7 +100,7 @@ def _validate(args: argparse.Namespace) -> int:
         print(f"  Severity: {e.policy.severity}")
     profile_arg = ""
     if args.profile:
-        profile_arg = f" -p {args.profile if args.profile.startswith(('s3://', 'env:')) else os.path.realpath(args.profile)}"  # fmt: skip
+        profile_arg = f" -p {args.profile if args.profile.startswith((*REMOTE_URIS, 'env:')) else os.path.realpath(args.profile)}"  # fmt: skip
     print(f"Next: floe run -c {path}{profile_arg}")
     return 0
 
@@ -163,8 +163,6 @@ def _run(args: argparse.Namespace) -> int:
 
 def _manifest(args: argparse.Namespace) -> int:
     remote = "://" in args.output
-    if remote and not args.output.startswith("s3://"):  # D1: gcs and adls are dropped
-        raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}", code="config_not_supported")  # fmt: skip
     manifest = build_manifest(
         args.config, args.profile, deterministic=args.deterministic,
         manifest_name=args.manifest_name, default_domain=args.default_domain,
@@ -179,7 +177,7 @@ def _manifest(args: argparse.Namespace) -> int:
     if (
         remote
     ):  # one PutObject: readers see the old or the new manifest, never a partial one
-        S3Client(parse_s3_uri(args.output)[0]).write(args.output, text.encode())
+        write_object(args.output, text.encode())
     else:
         out = Path(args.output)
         out.parent.mkdir(parents=True, exist_ok=True)

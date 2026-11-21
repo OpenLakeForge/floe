@@ -400,8 +400,8 @@ def test_a_bad_manifest_fails_before_the_run(
     ("location", "error"),
     [
         (
-            "gs://b/m.json",
-            "Error: remote manifest is not supported: gs://b/m.json\n",
+            "az://a/m.json",
+            "Error: remote location must be s3://, gs:// or abfss://<container>@<account>.dfs.core.windows.net/ (got az://a/m.json)\n",
         ),
         ("missing.json", "Error: No such file or directory (os error 2)\n"),
     ],
@@ -667,7 +667,7 @@ def test_manifest_errors_carry_codes(tmp_path: Path) -> None:
         load_manifest(bad)
     assert e.value.code == "config_invalid_value"
     with pytest.raises(FloeConfigError) as e:
-        load_manifest("gs://b/m.json")
+        load_manifest("az://a/m.json")
     assert e.value.code == "config_not_supported"
     with pytest.raises(FloeIoError) as io:
         load_manifest(tmp_path / "gone.json")
@@ -713,3 +713,32 @@ def test_a_gcs_report_base_matching_no_storage_fails() -> None:
     with pytest.raises(FloeConfigError) as e:
         _report("gs://nope/runs", None, None)
     assert e.value.code == "config_invalid_value"
+
+
+ADLS_CONFIG = GCS_CONFIG.replace(
+    "{name: lake, type: gcs, bucket: b, prefix: base}",
+    "{name: lake, type: adls, account: acct, container: cont, prefix: base}",
+)
+
+
+@pytest.mark.parametrize(
+    ("store_class", "config", "uri"),
+    [
+        ("GCSStore", GCS_CONFIG, "gs://b/m.json"),
+        ("AzureStore", ADLS_CONFIG, "abfss://cont@acct.dfs.core.windows.net/m.json"),
+    ],
+)
+def test_a_gcs_manifest_location_is_read_through_obstore(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, store_class: str, config: str, uri: str) -> None:  # fmt: skip
+    from obstore.store import MemoryStore
+
+    store = MemoryStore()
+
+    def build(*_: object, **__: object) -> MemoryStore:
+        return store
+
+    monkeypatch.setattr(f"obstore.store.{store_class}", build)
+    store.put("base/in/a.csv", b"id\n1\n")
+    store.put("m.json", manifest(tmp_path, monkeypatch, config).read_bytes())
+    assert floe(monkeypatch, "run", "--manifest", uri, "--run-id", "r1") == 0
+    assert store.get("base/runs/d/run_r1/d/orders/run.json").bytes()
+    assert not (tmp_path / "gs:").exists()

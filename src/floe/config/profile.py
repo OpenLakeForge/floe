@@ -14,7 +14,7 @@ from floe.config.storage import (
     parse_catalogs,
     parse_storages,
 )
-from floe.config.validate import check_lineage
+from floe.config.validate import REMOTE_URIS, check_lineage
 from floe.config.vars import string_map
 from floe.config.yaml import (
     load_yaml,
@@ -26,7 +26,7 @@ from floe.config.yaml import (
     yaml_string,
 )
 from floe.errors import NOT_SUPPORTED, FloeConfigError, FloeIoError
-from floe.storage.s3 import read_s3
+from floe.storage.resolve import read_object
 
 Hash = dict[object, object]
 Reader = Callable[[Hash, str, str], object]
@@ -558,10 +558,10 @@ def read_env_profile(location: str) -> str:
 def _docs(location: str | Path) -> list[object]:
     if isinstance(location, str) and location.startswith(ENV_PREFIX):
         return parse_yaml(read_env_profile(location))
-    if isinstance(location, Path) or not location.startswith("s3://"):
+    if isinstance(location, Path) or not location.startswith(REMOTE_URIS):
         return load_yaml(Path(location))
     try:
-        return parse_yaml(read_s3(location, "profile").decode())
+        return parse_yaml(read_object(location, "profile").decode())
     except UnicodeDecodeError as e:
         raise FloeIoError(
             "stream did not contain valid UTF-8", code="io_read_error"

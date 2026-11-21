@@ -162,3 +162,52 @@ def test_gcs_clients_are_cached_per_storage() -> None:
     assert storage_client(gcs()) is not storage_client(http)
     assert storage_client(http).endpoint == "http://127.0.0.1:4443"
     clear_storage_clients()
+
+
+PROFILE = "apiVersion: floe/v1\nkind: EnvironmentProfile\nmetadata: {name: prod}\nvariables: {ZONE: bronze}\n"  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("store_class", "uri"),
+    [
+        ("GCSStore", "gs://b/p/prod.yml"),
+        ("AzureStore", "abfss://c@a.dfs.core.windows.net/p/prod.yml"),
+    ],
+)
+def test_a_profile_is_read_from_gcs_and_adls(monkeypatch: pytest.MonkeyPatch, store_class: str, uri: str) -> None:  # fmt: skip
+    from obstore.store import MemoryStore
+
+    from floe.config.profile import parse_profile
+    from floe.errors import FloeIoError
+
+    store = MemoryStore()
+    monkeypatch.setattr(f"obstore.store.{store_class}", lambda *_, **__: store)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # a stubbed store
+    store.put("p/prod.yml", PROFILE.encode())
+    assert parse_profile(uri).variables == {"ZONE": "bronze"}
+    with pytest.raises(FloeIoError, match="^profile not found: "):
+        parse_profile(uri.replace("prod", "absent"))
+
+
+def test_a_bare_abfss_uri_takes_its_endpoint_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    from obstore.store import MemoryStore
+
+    seen: dict[str, object] = {}
+    store = MemoryStore()
+
+    def azure(container: str, **kwargs: object) -> MemoryStore:
+        seen.update(container=container, **kwargs)
+        return store
+
+    monkeypatch.setattr("obstore.store.AzureStore", azure)
+    monkeypatch.setenv("AZURE_STORAGE_ENDPOINT", "http://127.0.0.1:10000/acct")
+    resolve_module.write_object("abfss://c@acct.dfs.core.windows.net/k", b"x")
+    # no explicit endpoint: obstore reads AZURE_STORAGE_ENDPOINT itself
+    assert seen == {"container": "c", "account_name": "acct", "config": None, "client_options": None}  # fmt: skip
+    assert resolve_module.read_object("abfss://c@acct.dfs.core.windows.net/k", "x") == b"x"  # fmt: skip
+
+
+@pytest.mark.parametrize("uri", ["abfss://c.dfs.core.windows.net/k", "abfss://c@a.blob.core.windows.net/k", "abfs://c@a.dfs.core.windows.net/k", "gcs://b/k"])  # fmt: skip
+def test_other_remote_spellings_are_refused(uri: str) -> None:
+    with pytest.raises(FloeConfigError) as e:
+        resolve_module.read_object(uri, "manifest")
+    assert e.value.code == "config_not_supported"

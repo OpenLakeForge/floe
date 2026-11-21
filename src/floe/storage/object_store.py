@@ -140,8 +140,8 @@ class ObjectStoreClient:
             raise _fail(f"put object {uri}", e) from e
 
 
-def azure_store(definition: StorageDefinition) -> ObjectStoreClient:
-    """Credentials come from the environment (`AZURE_STORAGE_*`, `AZURE_CLIENT_*`)."""
+def azure_store(definition: StorageDefinition, *, env_endpoint: bool = False) -> ObjectStoreClient:  # fmt: skip
+    """Credentials come from the environment (`AZURE_STORAGE_*`, `AZURE_CLIENT_*`). `env_endpoint`: no endpoint of its own, so `AZURE_STORAGE_ENDPOINT` and `AZURE_ALLOW_HTTP` apply."""
     try:
         from obstore.store import AzureStore
     except ImportError as e:
@@ -149,13 +149,18 @@ def azure_store(definition: StorageDefinition) -> ObjectStoreClient:
     if not (definition.account and definition.container):
         raise FloeConfigError(f"storage {definition.name} requires account and container for type adls", code="config_missing_key")  # fmt: skip
     account, container = definition.account, definition.container
-    endpoint = (definition.endpoint or f"https://{account}.blob.core.windows.net").rstrip("/")  # fmt: skip
+    endpoint = definition.endpoint or (None if env_endpoint else f"https://{account}.blob.core.windows.net")  # fmt: skip
+    endpoint = endpoint.rstrip("/") if endpoint else None
     try:
         store = AzureStore(
             container,
             account_name=account,
-            endpoint=endpoint,
-            client_options={"allow_http": endpoint.startswith("http://")},
+            config={"endpoint": endpoint}
+            if endpoint
+            else None,  # none: obstore reads AZURE_STORAGE_ENDPOINT
+            client_options={"allow_http": True}
+            if endpoint and endpoint.startswith("http://")
+            else None,
         )
     except (oe.BaseError, ValueError) as e:
         raise _fail(f"azure store for {account}/{container}", e) from e

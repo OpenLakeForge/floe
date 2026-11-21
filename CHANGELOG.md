@@ -4,6 +4,8 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- `floe run --manifest`, `-p` and `floe manifest generate -o` accept `gs://` and `abfss://<container>@<account>.dfs.core.windows.net/` URIs, as they did `s3://` (#1389): manifests and profiles are read from, and generated manifests written to, GCS and ADLS in one put. A bare URI has no storage definition, so credentials and endpoint come from obstore's environment (`GOOGLE_*`, `AZURE_STORAGE_*`; `AZURE_STORAGE_ENDPOINT` and `AZURE_ALLOW_HTTP` for an emulator); Floe adds no variable. `az://`, `abfs://` and `gcs://` stay refused.
+
 - `floe manifest generate` and `floe run --manifest` support `type: adls` and `type: gcs` storages (#1388): the manifest records the `abfss://` and `gs://` URIs the run writes, and a replayed run writes its report to the storage matching `report_base_uri` (`config_invalid_value` when none matches). `floe maintain` still refuses them.
 - Iceberg sinks work on ADLS storage (#1344): `floe validate` accepts an `adls` accepted or rejected storage (and a catalog `warehouse_storage` on ADLS), and PyIceberg writes through its fsspec FileIO at the `abfss://<container>@<account>.dfs.core.windows.net/...` location Floe generates. The `adls` extra now installs `adlfs` (`pip install floe-python[adls]`).
 - `dagster-floe` loads manifests from `abfss://` URIs (#1391), and resolves a relative `config_uri` against them; `abfss://` was read as a local path and failed with `FileNotFoundError`.

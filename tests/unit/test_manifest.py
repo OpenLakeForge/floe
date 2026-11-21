@@ -81,15 +81,29 @@ def test_literal_pii_hash_key_is_refused(
     assert "${ENV_VAR}" in err
 
 
-@pytest.mark.parametrize("output", ["gs://b/m.json", "abfs://c@a/m.json"])
-def test_non_s3_remote_output_is_refused(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    output: str,
+def test_an_unsupported_remote_output_spelling_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert generate(tmp_path, monkeypatch, "-o", output) == 1
-    assert "remote manifest output is not supported yet" in capsys.readouterr().err
+    assert generate(tmp_path, monkeypatch, "-o", "abfs://c@a/m.json") == 1
+    assert "remote location must be s3://, gs:// or abfss://" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("store_class", "output", "name"),
+    [
+        ("GCSStore", "gs://b/p/m.json", "p/m.json"),
+        ("AzureStore", "abfss://c@a.dfs.core.windows.net/p/m.json", "p/m.json"),
+    ],
+)
+def test_a_gcs_or_adls_output_is_written_with_one_put(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, store_class: str, output: str, name: str) -> None:  # fmt: skip
+    from obstore.store import MemoryStore
+
+    store = MemoryStore()
+    monkeypatch.setattr(f"obstore.store.{store_class}", lambda *_, **__: store)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # a stubbed store
+    assert generate(tmp_path, monkeypatch, "-o", output) == 0
+    written = json.loads(bytes(store.get(name).bytes()))
+    assert written["execution"]["base_args"][:3] == ["run", "--manifest", output]
+    assert not (tmp_path / "gs:").exists()
 
 
 ADLS = "{name: lake, type: adls, account: acct, container: cont, prefix: base}"
@@ -148,7 +162,7 @@ def test_s3_output_is_put_through_the_s3_client_and_baked_into_base_args(
         "provide-client-params.s3.PutObject",
         lambda params, **_: sent.update(params),  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # botocore hooks are untyped
     )
-    monkeypatch.setattr("floe._cli.S3Client", lambda _bucket: client)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # one stubbed client
+    monkeypatch.setattr("floe.storage.resolve.S3Client", lambda _bucket: client)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]  # one stubbed client
     with Stubber(client._client) as stub:  # pyright: ignore[reportPrivateUsage]
         stub.add_response(  # pyright: ignore[reportUnknownMemberType]
             "put_object",
