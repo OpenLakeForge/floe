@@ -48,6 +48,9 @@ VOLATILE_KEYS = {
 # Recorded, but ignored on compare (G5 ruling on #594).
 WRITER_BYTES_KEYS = {"total_bytes_written", "avg_file_size_mb"}
 RUN_DIR = re.compile(r"run_[0-9T:.\-Z]+")
+RUN_ID = re.compile(
+    r"\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d\.\d+Z"
+)  # the default run id, as a rejected CSV row carries it
 # Archived file names embed the run id and a hash of the absolute source URI.
 ARCHIVE_NAME = re.compile(r"__run-.+?__src-[0-9a-f]{16}")
 UUID_PART = re.compile(
@@ -131,7 +134,7 @@ def snapshot(work: Path) -> Snapshot:
     ] = {}  # rejected output appends: a run can leave several keyed parts in one directory
     for path in work.glob("out/rejected/**/*.csv"):
         key = f"rejected/{UUID_PART.sub('part-UUID', path.relative_to(work / 'out/rejected').as_posix())}"
-        same_name.setdefault(key, []).append(path.read_text())
+        same_name.setdefault(key, []).append(RUN_ID.sub("<run_id>", path.read_text().replace(root, "<ROOT>")))  # fmt: skip  # volatile: the run id and the temp dir
     for key, texts in sorted(same_name.items()):
         for i, text in enumerate(
             sorted(texts)

@@ -18,6 +18,7 @@ from floe.read.xml import read_xml
 from floe.run import file as file_module
 from floe.run import sources as sources_module
 from floe.run.entity import run_entity
+from floe.run.events import NO_EVENTS
 
 CONFIG = """\
 version: "0.3"
@@ -85,6 +86,22 @@ def test_reject_splits_rows_and_numbers_them_by_file_position(tmp_path: Path) ->
     assert rejected["__floe_row_index"].to_list() == [1, 3]
     assert report["files"][0]["status"] == "rejected"
     assert report["files"][0]["output"]["rejected_path"] == str(part)
+
+
+def test_csv_rejected_rows_carry_the_run_id_and_source_uri(tmp_path: Path) -> None:
+    """#1384: the CSV envelope matches Parquet's, after `__floe_errors`."""
+    run(tmp_path, "reject", "id,name\n1,a\nx,b\n")
+    (part,) = (tmp_path / "out" / "rejected").glob("*.csv")
+    rejected = pl.read_csv(part)
+    assert rejected.columns[-3:] == [
+        "__floe_errors",
+        "__floe_run_id",
+        "__floe_source_uri",
+    ]
+    assert rejected["__floe_run_id"].to_list() == [NO_EVENTS.run_id]
+    assert rejected["__floe_source_uri"].to_list() == [
+        f"local://{tmp_path / 'in' / 'orders.csv'}"
+    ]
 
 
 def test_warn_keeps_every_row_and_writes_an_error_report(tmp_path: Path) -> None:

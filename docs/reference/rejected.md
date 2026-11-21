@@ -23,11 +23,11 @@ order below. `floe validate` refuses a declared column name that starts with `__
 |---|---|---|---|---|
 | `__floe_row_index` | yes (text) | yes, `UInt64` | yes, `long` | 0-based index of the row in the source file's record stream, across all chunks. Not a line number: a quoted multi-line CSV field is one record. |
 | `__floe_errors` | yes (text) | yes, `String` | yes, `string` | The failed checks of the row, as described [below](#the-__floe_errors-value). |
-| `__floe_run_id` | **no** | yes, `String` | yes, `string` | `run_id` of the run that rejected the row (as in `run.json`). |
-| `__floe_source_uri` | **no** | yes, `String` | yes, `string` | URI of the file the row came from, as `files[].input_file` in the run report (before any archive move). |
+| `__floe_run_id` | yes (text) | yes, `String` | yes, `string` | `run_id` of the run that rejected the row (as in `run.json`). |
+| `__floe_source_uri` | yes (text) | yes, `String` | yes, `string` | URI of the file the row came from, as `files[].input_file` in the run report (before any archive move). |
 
-The CSV rejected output carries only `__floe_row_index` and `__floe_errors`. To find the source file of a CSV rejected
-part, use `files[].output.rejected_path` in that run's report (one rejected part per file per run).
+A CSV rejected header ends with `__floe_errors,__floe_run_id,__floe_source_uri`. A reader that indexes CSV rejected
+columns by position past `__floe_errors` must account for the two added columns; read by header name instead.
 
 ### Nullability
 
@@ -107,7 +107,7 @@ rows selected by `__floe_row_index`; the index is only valid for the same bytes 
 
 Rejected output is append-only, whatever `sink.write_mode` is. A retried run can write the same rejected row again
 (the Iceberg table is at-least-once), so dedupe on `(__floe_source_uri, __floe_row_index)` and keep the latest
-`__floe_run_id`. CSV rejected output has no `__floe_source_uri`: identify the file by `output.rejected_path`.
+`__floe_run_id`.
 
 ## Pinned by
 

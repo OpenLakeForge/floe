@@ -1,3 +1,3 @@
-id,name,__floe_row_index,__floe_errors
-2,,1,"[{""rule"":""not_null"",""column"":""name"",""message"":""required value missing""}]"
-x,gamma,2,"[{""rule"":""cast_error"",""column"":""id"",""message"":""invalid value for target type""}]"
+id,name,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+2,,1,"[{""rule"":""not_null"",""column"":""name"",""message"":""required value missing""}]",<run_id>,local://<ROOT>/in/sales/orders.csv
+x,gamma,2,"[{""rule"":""cast_error"",""column"":""id"",""message"":""invalid value for target type""}]",<run_id>,local://<ROOT>/in/sales/orders.csv

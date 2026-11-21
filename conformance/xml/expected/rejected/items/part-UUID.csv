@@ -1,2 +1,2 @@
-id,name,city,price,__floe_row_index,__floe_errors
-3,,Rome,,2,"[{""rule"":""not_null"",""column"":""name"",""message"":""required value missing""}]"
+id,name,city,price,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+3,,Rome,,2,"[{""rule"":""not_null"",""column"":""name"",""message"":""required value missing""}]",<run_id>,local://<ROOT>/in/items.xml
