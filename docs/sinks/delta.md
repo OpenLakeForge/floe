@@ -45,8 +45,11 @@ for now (#1313, #1314); Databricks reads the table by its path.
 - Local and S3 only. Delta on ADLS or GCS fails `floe validate` with `config_not_supported`.
 - S3 options (`region`, `endpoint`, `path_style_access`) are passed to delta-rs; credentials
   come from the `AWS_*` environment, as for Floe's own S3 client. A plain `http://` endpoint
-  is allowed. Commits use delta-rs's conditional put, which SeaweedFS supports; the
-  integration tests run against it (#1311).
+  is allowed.
+- Commits use delta-rs's conditional put, so no unsafe-rename option (`AWS_S3_ALLOW_UNSAFE_RENAME`)
+  is set or needed. The S3 integration tests run on SeaweedFS (`pytest -m s3` with `FLOE_S3_ENDPOINT` set) and cover
+  create, overwrite, append, the retry guard (a commit that landed, retried) and racing appends
+  of the same batch (one `success`, the others `already_committed`, one commit).
 
 ## Write modes
 
