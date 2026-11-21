@@ -507,6 +507,8 @@ state file shape, and CAS behavior.
     - The columns are added, but 0.8 does not report it yet: the entity report's `schema_evolution` block stays `applied: false` and no `schema_evolution_applied` event is emitted (#994).
 - `rejected` (required when `policy.severity` is `reject` or `abort`; D39)
   - `format`: `csv` (default), `parquet` or `iceberg`.
+  - The `__floe_*` columns of each format and the `__floe_errors` format are a versioned contract: see
+    [Rejected row envelope](rejected.md).
 - `path`: output directory for rejected rows.
   - Supports `{{var}}` templating (see "Templating & domains").
   - Rejected outputs are written as dataset parts (`part-*.csv` or `part-*.parquet`).
@@ -589,6 +591,11 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - `warn`: keep rows, log violations.
   - `reject`: reject rows with violations (first unique kept, duplicates rejected).
   - `abort`: abort the entire file on first violation.
+- `rule_severity` (optional): a map from a rule to `warn`, `reject` or `abort`, overriding `severity` for that rule
+  on every column. Keys: `not_null`, `cast_error`, `unique`, `schema_mismatch`. A column's own `rule_severity`
+  wins over this map, and this map wins over `severity`. In a domain's `defaults.policy` it merges with the entity's
+  map key by key. `reject` or `abort` here requires `sink.rejected`, and `abort` is refused with `pii`.
+  See [Checks](../concepts/checks.md#severity-per-check).
 - `max_rejection_rate` (optional, `severity: reject` only)
   - A number in `[0, 1]`: the largest fraction of input rows (`rejected_total / rows_total`) the entity may reject. Above it the entity ends `aborted` (exit `2`); at the threshold it stays `rejected`. The accepted rows are committed either way. `null` clears a domain default.
 
@@ -638,6 +645,9 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - `type` (required): logical type. Accepted values are case-insensitive and
     normalized by removing `-` and `_`.
   - `nullable` (optional): default `true`.
+  - `rule_severity` (optional): a map from `not_null` or `cast_error` to `warn`, `reject` or `abort`, for this
+    column only. `not_null` needs a required column (`nullable: false` or in `schema.primary_key`) and `cast_error`
+    a non-`string` column; otherwise validation fails with `config_conflict`.
 
 ## Supported column types
 

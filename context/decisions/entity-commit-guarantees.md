@@ -101,3 +101,4 @@ Unverified assumption: PyIceberg and DuckDB-Iceberg surface the 409 as a catchab
 - Sub-issues, in order: #914, #915 → #916 → #917, #918, #919 → #920 → #921, #922 → #923, #924, #925.
 - The run report gains `skip_reason: already_committed`.
 - Snapshot expiry must honour the retention floor before the guard is relied on.
+- Re-ingesting a corrected file (`floe state forget`) and why it does not worsen these guards: [`reprocess-changed-file.md`](reprocess-changed-file.md).

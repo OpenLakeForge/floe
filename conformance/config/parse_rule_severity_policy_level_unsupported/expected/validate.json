@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): policy.rule_severity.unique=ignore is unsupported (allowed: warn, reject, abort)"
+}

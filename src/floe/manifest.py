@@ -224,7 +224,11 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
                 "archive": sink.archive and _Target(ctx, sink.archive).json(),
             },
             "runner": entity.runner,
-            **_put({}, policy_max_rejection_rate=entity.policy.max_rejection_rate),
+            **_put(
+                {},
+                policy_max_rejection_rate=entity.policy.max_rejection_rate,
+                policy_rule_severity=_sorted(entity.policy.rule_severity),
+            ),
             "policy_severity": entity.policy.severity,
             "write_mode": sink.write_mode,
             "incremental_mode": entity.incremental_mode,
@@ -235,6 +239,7 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
                             {"name": c.name, "column_type": c.column_type},
                             source=c.source,
                             nullable=c.nullable,
+                            rule_severity=_sorted(c.rule_severity),
                         )
                         for c in schema.columns
                     ],

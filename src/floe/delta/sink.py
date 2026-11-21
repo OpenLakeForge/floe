@@ -13,7 +13,7 @@ from deltalake import DeltaTable
 from deltalake.exceptions import DeltaError, TableNotFoundError
 
 from floe.config.storage import CatalogsConfig, StorageDefinition
-from floe.config.types import EntityConfig, WriteMode
+from floe.config.types import EntityConfig, WriteMode, max_level
 from floe.delta.unity import register
 from floe.delta.write import named, write_table
 from floe.errors import FloeRunError
@@ -31,8 +31,13 @@ def check_supported(entity: EntityConfig) -> None:
     if entity.sink.write_mode not in ("overwrite", "append"):
         raise FloeRunError(f"{who} sink.write_mode={entity.sink.write_mode} is not supported with sink.accepted.format=delta yet", code="run_not_supported")  # fmt: skip
     # an aborted file leaves a smaller batch committed than the hash the retry guard stamps names
-    if entity.sink.write_mode == "append" and entity.policy.severity == "abort":
-        raise FloeRunError(f"{who} policy.severity=abort on a delta append is not supported yet: the retry guard cannot cover it", code="run_not_supported")  # fmt: skip
+    if entity.sink.write_mode == "append" and max_level(entity) == "abort":
+        cause = (
+            "policy.severity=abort"
+            if entity.policy.severity == "abort"
+            else "a rule_severity of abort"
+        )
+        raise FloeRunError(f"{who} {cause} on a delta append is not supported yet: the retry guard cannot cover it", code="run_not_supported")  # fmt: skip
 
 
 def storage_options(storage: StorageDefinition | None) -> dict[str, str]:
@@ -80,13 +85,13 @@ def existing_table(entity: EntityConfig, uri: str, storage: StorageDefinition | 
         raise named(f"entity.name={entity.name}", uri, err) from err
 
 
-def write_delta(entity: EntityConfig, uri: str, storage: StorageDefinition | None, frames: Iterator[pl.DataFrame], names: list[str], mode: WriteMode, run_id: str, input_hash: str | None, table: DeltaTable | None) -> tuple[AcceptedWrite, dict[str, Any], bool]:  # fmt: skip
+def write_delta(entity: EntityConfig, uri: str, storage: StorageDefinition | None, frames: Iterator[pl.DataFrame], names: list[str], mode: WriteMode, run_id: str, input_hash: str | None, table: DeltaTable | None, claimed_ms: int | None = None) -> tuple[AcceptedWrite, dict[str, Any], bool]:  # fmt: skip
     """`frames` (at least one) hold the output columns `names`, `table` is the snapshot the retry guard checked; returns the commit's files, the `accepted_output` table fields and whether a rival had committed this batch."""
     reader = _reader(entity, frames, names)
     path = uri.removeprefix("local://")  # delta-rs takes a plain path for local storage
     out = dict(zip((c.name for c in entity.schema_.columns), names, strict=True))  # `partition_by` names config columns; the table has the output names  # fmt: skip
     by = [out[c] for c in entity.sink.accepted.partition_by] if entity.sink.accepted.partition_by else None  # fmt: skip
-    written, version, raced = write_table(f"entity.name={entity.name}", path, storage_options(storage), reader, mode, run_id, input_hash, table, by)  # fmt: skip
+    written, version, raced = write_table(f"entity.name={entity.name}", path, storage_options(storage), reader, mode, run_id, input_hash, table, by, claimed_ms)  # fmt: skip
     return written, {"table_version": version}, raced
 
 

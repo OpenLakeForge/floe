@@ -1,0 +1,34 @@
+version: '0.3'
+entities:
+- name: orders
+  source:
+    format: csv
+    path: in/orders.csv
+  sink:
+    accepted:
+      format: parquet
+      path: out/accepted
+    rejected:
+      format: csv
+      path: out/rejected
+  policy:
+    severity: reject
+    rule_severity:
+      cast_error: warn
+      unique: abort
+      schema_mismatch: warn
+  schema:
+    primary_key: [id]
+    columns:
+    - name: id
+      type: int64
+      nullable: false
+    - name: email
+      type: string
+      nullable: false
+      rule_severity:
+        not_null: warn
+    - name: amt
+      type: decimal(18,2)
+      rule_severity:
+        cast_error: abort

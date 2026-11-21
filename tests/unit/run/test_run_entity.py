@@ -68,6 +68,14 @@ def test_clean_file_is_all_accepted(tmp_path: Path) -> None:
     assert report["files"][0]["status"] == "success"
 
 
+def test_file_report_records_the_input_size_and_mtime(tmp_path: Path) -> None:
+    rows = "id,name\n1,a\n2,b\n"
+    report, _ = run(tmp_path, "reject", rows)
+    entry = report["files"][0]
+    assert entry["input_size"] == len(rows.encode())
+    assert entry["input_mtime"] is not None
+
+
 def test_reject_splits_rows_and_numbers_them_by_file_position(tmp_path: Path) -> None:
     report, aborted = run(tmp_path, "reject", "id,name\n1,a\nx,b\n3,c\n,d\n")
     assert not aborted

@@ -84,6 +84,7 @@ them (see `context/decisions/polars-and-arrow.md`).
    cast to declared types → not_null → unique (within the run; with `append`, against the
    accepted sink's key columns, cached once per entity in the entity's temp dir and joined per chunk) → rows with errors get `__floe_row_index` + `__floe_errors`
    → severity decides: warn keeps them, reject routes them to rejected CSV, abort fails the entity
+   (severity per check: `context/decisions/per-check-severity.md`)
 
 4. Write outputs (once per entity)
    PII masking on accepted and rejected rows

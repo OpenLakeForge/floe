@@ -22,6 +22,7 @@ from floe.config.types import (
     EntityConfig,
     WriteMode,
     catalog_ident,
+    max_level,
     with_partition_columns,
 )
 from floe.errors import NOT_SUPPORTED, ErrorCode, FloeConfigError
@@ -76,6 +77,39 @@ def _canonical(value: str) -> str:
 
 def _fail(entity: EntityConfig, message: str, *, code: ErrorCode) -> FloeConfigError:
     return FloeConfigError(f"entity.name={entity.name} {message}", code=code)
+
+
+def _level_source(entity: EntityConfig, levels: tuple[str, ...]) -> str:
+    """What sets a level in `levels`: `policy.severity=<v>`, else the first `rule_severity` entry that does."""
+    if entity.policy.severity in levels:
+        return f"policy.severity={entity.policy.severity}"
+    scopes = [("policy.rule_severity", entity.policy.rule_severity)] + [
+        (f"schema.columns[name={c.name}].rule_severity", c.rule_severity)
+        for c in entity.schema_.columns
+    ]
+    return next(
+        f"{where}.{rule}={level}"
+        for where, found in scopes
+        for rule, level in (found or {}).items()
+        if level in levels
+    )
+
+
+def _check_column_rules(entity: EntityConfig) -> None:
+    primary = {k.strip() for k in entity.schema_.primary_key or []}
+    for column in entity.schema_.columns:
+        rules = column.rule_severity or {}
+        required = column.nullable is False or column.name in primary
+        for rule, bad, why in (
+            ("cast_error", _canonical(column.column_type) in ("string", "str", "text"), "a string column has no cast check"),
+            ("not_null", not required, "the column is not required (set nullable=false or add it to schema.primary_key)"),
+        ):  # fmt: skip
+            if rule in rules and bad:
+                raise _fail(
+                    entity,
+                    f"schema.columns[name={column.name}].rule_severity.{rule} is not applicable: {why}",
+                    code="config_conflict",
+                )
 
 
 def _check_primary_key(entity: EntityConfig) -> None:
@@ -477,8 +511,8 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
                     code="config_invalid_value",
                 )
     # D39 (#1007): abort writes the failing file to sink.rejected too
-    if entity.policy.severity in ("reject", "abort") and sink.rejected is None:
-        raise _fail(entity, f"sink.rejected is required when policy.severity={entity.policy.severity}", code="config_missing_key")  # fmt: skip
+    if max_level(entity) in ("reject", "abort") and sink.rejected is None:
+        raise _fail(entity, f"sink.rejected is required when {_level_source(entity, ('reject', 'abort'))}", code="config_missing_key")  # fmt: skip
     if sink.rejected is not None and sink.rejected.format not in ("csv", "parquet", "iceberg"):  # fmt: skip
         raise _fail(
             entity,
@@ -601,6 +635,7 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
                 ) from err
     _check_primary_key(entity)
     _check_unique_keys(entity)
+    _check_column_rules(entity)
     _check_evolution(entity, version)
 
 
@@ -718,18 +753,11 @@ def _check_pii(entity: EntityConfig) -> None:
     pii = entity.pii
     if pii is None:
         return
-    if entity.policy.severity == "abort":
+    if max_level(entity) == "abort":
         raise _fail(
             entity,
-            "pii: masking is not applied when policy.severity=abort because the raw "
+            f"pii: masking is not applied when {_level_source(entity, ('abort',))} because the raw "
             "file is written to sink.rejected without DataFrame processing",
-            code="config_conflict",
-        )
-    if entity.sink.archive is not None:
-        raise _fail(
-            entity,
-            "pii: sink.archive copies the original unmasked source file to the archive "
-            "sink; remove sink.archive or disable pii masking",
             code="config_conflict",
         )
     schema = entity.schema_

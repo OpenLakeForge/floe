@@ -61,6 +61,7 @@ Golden example files live under `example/report/run_2026-01-19T10-23-45Z/`.
 - `schema_evolution`: Entity-level schema-evolution summary for the accepted write path.
 - `results`: Totals for files, rows, accepted/rejected rows, warnings, errors.
 - `files`: Per-file outcomes and validation summary.
+  - `input_size` (integer or `null`) and `input_mtime` (string or `null`): the size in bytes and modification time listed for `input_file`, the values that feed the incremental state and `input_hash`. `null` when the storage does not report them. Use them to check that the file behind `input_file` is still the one that was validated.
 - `timings_ms`: Where the entity spent wall-clock time (see below).
 
 ### `timings_ms` (entity report)
@@ -203,7 +204,9 @@ Validation summaries report aggregated counts only (no row-level examples).
 
 Aggregations:
 - `validation.errors`/`warnings` are totals for the file.
-- `validation.rules[]` aggregates violations by rule and column.
+- `validation.rules[]` aggregates violations by rule and column. A rule appears once per resolved severity, so
+  it repeats only when its columns have different `rule_severity` levels. The `policy` block adds `rule_severity`
+  when the entity sets it.
 
 Example rule summary:
 
@@ -224,6 +227,9 @@ When a column has an explicit `source`, row error logs include a `source`
 field (JSON) or an extra column/annotation (CSV/text) alongside `column`.
 
 With `sink.rejected.format: parquet` the rejected rows carry raw source values plus `__floe_row_index`, `__floe_errors`,
-`__floe_run_id` and `__floe_source_uri` (see [Config](config.md)); `output.rejected_path` is then the `<sink.rejected.path>/rows` directory, not one
+`__floe_run_id` and `__floe_source_uri` (see [Rejected row envelope](rejected.md) for the columns of each format); `output.rejected_path` is then the `<sink.rejected.path>/rows` directory, not one
 part. To replay byte-for-byte use the archived source file
-(`output.archived_path`).
+(`output.archived_path`). For an entity with `pii`, the rejected rows hold masked values only and cannot be
+replayed: the replay input is the original file, `output.archived_path` when set, otherwise `input_file`, read with
+the same `source.options` and selected by `__floe_row_index`
+([decision](https://github.com/OpenLakeForge/floe/blob/main/context/decisions/pii-rejected-replay.md)).

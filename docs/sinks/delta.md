@@ -73,6 +73,7 @@ reported as skipped with `skip_reason: already_committed` and no rows are added.
 - Two runs appending the same batch at the same moment: the second one's commit conflicts, and
   it reports `already_committed`. Only one commit lands.
 - An intentional reload of the same files after `floe state reset` appends again.
+  This holds if the reload run itself dies and is retried: only a commit made since its claim counts.
 - The guard reads the `txn`, which Delta expires after `delta.setTransactionRetentionDuration`.
   If a dead run's claim is older than that retention (or the property cannot be read), Floe
   cannot tell whether it committed and the run fails with `run_state_conflict` rather than guess;

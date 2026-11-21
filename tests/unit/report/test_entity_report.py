@@ -74,7 +74,8 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
         resolve_unique_keys(
             entity.schema_.unique_keys,
             entity.schema_.primary_key,
-        )
+        ),
+        "reject",
     )
     out = tmp / "out"
     files: list[dict[str, Any]] = []
@@ -109,14 +110,14 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
             n for n, c in zip(names, columns, strict=True)
             if c.nullable is False or n in (entity.schema_.primary_key or [])
         ]  # fmt: skip
-        checks = [not_null_check(typed, n) for n in required]
+        checks = [not_null_check(typed, n, "reject") for n in required]
         checks += [
-            RowCheck("cast_error", n, CAST_ERROR_MESSAGE, masks[f"_e_cast_{n}"])
+            RowCheck("cast_error", n, CAST_ERROR_MESSAGE, masks[f"_e_cast_{n}"], "reject")
             for n, c in zip(names, columns, strict=True)
             if c.column_type != "string"
         ]  # fmt: skip
         checks += tracker.check(typed)
-        good, bad = split_rows(typed, checks)
+        good, bad, _ = split_rows(typed, checks)
         accepted.append(good)
         rejected_path = None
         if bad.height:
@@ -127,6 +128,9 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
             rejected_path = written.removeprefix("local://").replace(str(tmp), "<ROOT>")
             rejected_path = UUID_PART.sub("part-<uuid>", rejected_path)
         files.append(file_report(entity, uri, df.height, bad.height, checks, plan, rejected_path))  # fmt: skip
+    # #1362: `run_entity` stamps the listed size and mtime
+    for f, path in zip(files, paths, strict=True):
+        f["input_size"], f["input_mtime"] = path.stat().st_size, "<volatile>"
     write = write_accepted(
         [pl.concat(accepted)], LocalClient(), f"local://{out}/accepted/{entity.name}"
     )

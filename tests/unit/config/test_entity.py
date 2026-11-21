@@ -5,6 +5,7 @@ import copy
 import pytest
 
 from floe.config.entity import parse_entity
+from floe.config.types import rule_level
 from floe.errors import FloeConfigError
 from floe.pii import PiiColumn
 
@@ -455,4 +456,65 @@ _ERRORS: list[tuple[dict[str, object], str]] = [
 
 @pytest.mark.parametrize(("overrides", "expected"), _ERRORS)
 def test_source_and_sink_errors(overrides: dict[str, object], expected: str) -> None:
+    assert message(entity(**overrides)) == expected
+
+
+@pytest.mark.parametrize("severity", ["warn", "reject", "abort"])
+def test_rule_level_is_the_policy_severity(severity: str) -> None:
+    parsed = parse_entity(entity(policy={"severity": severity}))
+    for rule, column in [
+        ("not_null", parsed.schema_.columns[0]),
+        ("unique", None),
+        ("schema_mismatch", None),
+    ]:
+        assert rule_level(parsed, rule, column) == severity
+
+
+def _col(**extra: object) -> dict[str, object]:
+    return {"columns": [{"name": "id", "type": "string", **extra}]}
+
+
+def test_rule_severity_parses_on_policy_and_column() -> None:
+    parsed = parse_entity(
+        entity(
+            policy={"severity": "reject", "rule_severity": {"unique": "abort"}},
+            schema=_col(rule_severity={"not_null": "warn"}),
+        )
+    )
+    assert parsed.policy.rule_severity == {"unique": "abort"}
+    assert parsed.schema_.columns[0].rule_severity == {"not_null": "warn"}
+    assert rule_level(parsed, "unique") == "abort"
+    assert rule_level(parsed, "not_null", parsed.schema_.columns[0]) == "warn"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        (
+            {"schema": _col(rule_severity={"not_nul": "warn"})},
+            "schema.columns[0]: unknown field schema.columns.rule_severity.not_nul",
+        ),
+        (
+            {"schema": _col(rule_severity={"unique": "warn"})},
+            "schema.columns[0]: unknown field schema.columns.rule_severity.unique",
+        ),
+        (
+            {"policy": {"severity": "warn", "rule_severity": {"min_rows": "warn"}}},
+            "unknown field policy.rule_severity.min_rows",
+        ),
+        (
+            {"schema": _col(rule_severity={"not_null": "Warn"})},
+            "schema.columns[0]: schema.columns.rule_severity.not_null=Warn is unsupported (allowed: warn, reject, abort)",
+        ),
+        (
+            {"policy": {"severity": "warn", "rule_severity": {"unique": "ignore"}}},
+            "policy.rule_severity.unique=ignore is unsupported (allowed: warn, reject, abort)",
+        ),
+        (
+            {"policy": {"severity": "warn", "rule_severity": "warn"}},
+            "expected map at policy.rule_severity",
+        ),
+    ],
+)
+def test_rule_severity_errors(overrides: dict[str, object], expected: str) -> None:
     assert message(entity(**overrides)) == expected

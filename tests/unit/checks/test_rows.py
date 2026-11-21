@@ -52,11 +52,11 @@ def check_case(
     casts = [cast_column(n, kind) for n, kind in typed_columns]
     typed = raw.with_columns(c[0] for c in casts)
     masks = raw.select(c[1] for c in casts)
-    checks = [not_null_check(typed, n) for n in required] + [
-        RowCheck("cast_error", n, CAST_ERROR_MESSAGE, masks[f"_e_cast_{n}"])
+    checks = [not_null_check(typed, n, "reject") for n in required] + [
+        RowCheck("cast_error", n, CAST_ERROR_MESSAGE, masks[f"_e_cast_{n}"], "reject")
         for n, _ in typed_columns
     ]
-    _, rejected = split_rows(typed, checks)
+    _, rejected, _ = split_rows(typed, checks)
     expected = pl.read_csv(
         CONFORMANCE / case / "expected" / "rejected" / expected_file, infer_schema=False
     )
@@ -133,9 +133,9 @@ def frame_and_checks() -> tuple[pl.DataFrame, list[RowCheck]]:
     df = pl.DataFrame({"id": ["a", None, "c", None], "n": [1, 2, None, None]})
     cast_mask = pl.Series([False, False, True, True])
     return df, [
-        not_null_check(df, "id"),
-        not_null_check(df, "n"),
-        RowCheck("cast_error", "n", CAST_ERROR_MESSAGE, cast_mask),
+        not_null_check(df, "id", "reject"),
+        not_null_check(df, "n", "reject"),
+        RowCheck("cast_error", "n", CAST_ERROR_MESSAGE, cast_mask, "reject"),
     ]
 
 
@@ -151,7 +151,7 @@ def test_errors_follow_check_order_and_accepted_rows_are_null() -> None:
 
 def test_split_rows_keeps_source_row_index_and_column_order() -> None:
     df, checks = frame_and_checks()
-    accepted, rejected = split_rows(df, checks)
+    accepted, rejected, _ = split_rows(df, checks)
     assert accepted.to_dict(as_series=False) == {"id": ["a"], "n": [1]}
     assert rejected.columns == ["id", "n", "__floe_row_index", "__floe_errors"]
     assert rejected["__floe_row_index"].dtype == pl.UInt64
@@ -159,24 +159,39 @@ def test_split_rows_keeps_source_row_index_and_column_order() -> None:
     assert rejected["__floe_errors"].null_count() == 0
 
 
+def test_split_rows_rejects_only_on_a_reject_level_failure_and_lists_warn_ones_too() -> None:  # fmt: skip
+    df = pl.DataFrame({"id": ["a", "b", "c"]})
+    checks = [
+        RowCheck("not_null", "id", "w", pl.Series([False, True, True]), "warn"),
+        RowCheck("unique", "id", "r", pl.Series([False, False, True]), "reject"),
+    ]
+    accepted, rejected, warned = split_rows(df, checks, "text")
+    assert accepted["id"].to_list() == ["a", "b"]
+    assert rejected.select("id", "__floe_errors").rows() == [("c", '"not_null:id w; unique:id r"')]  # fmt: skip
+    assert warned.rows() == [(1, '"not_null:id w"')]
+
+
 def test_split_rows_without_checks_or_rows() -> None:
     df = pl.DataFrame({"id": ["a", "b"]})
-    accepted, rejected = split_rows(df, [])
+    accepted, rejected, _ = split_rows(df, [])
     assert accepted.equals(df)
     assert rejected.columns == ["id", "__floe_row_index", "__floe_errors"]
     assert rejected.height == 0
     empty = df.clear()
-    accepted, rejected = split_rows(empty, [not_null_check(empty, "id")])
+    accepted, rejected, _ = split_rows(empty, [not_null_check(empty, "id", "reject")])
     assert accepted.height == rejected.height == 0
 
 
 def test_split_rows_when_no_check_fires_matches_a_rejected_row_schema() -> None:
     df = pl.DataFrame({"id": ["a", "b"]})
     nulls = pl.Series([None, None], dtype=pl.Boolean)  # a null mask passes the row
-    passing = [RowCheck("unique", "id", "m", nulls), not_null_check(df, "id")]
-    accepted, rejected = split_rows(df, passing)
+    passing = [
+        RowCheck("unique", "id", "m", nulls, "reject"),
+        not_null_check(df, "id", "reject"),
+    ]
+    accepted, rejected, _ = split_rows(df, passing)
     assert accepted.equals(df) and rejected.height == 0
-    failing = RowCheck("not_null", "id", "m", pl.Series([True, False]))
+    failing = RowCheck("not_null", "id", "m", pl.Series([True, False]), "reject")
     assert rejected.schema == split_rows(df, [failing])[1].schema
 
 
@@ -185,7 +200,7 @@ def test_error_entry_escapes_like_rust() -> None:
         '{"rule":"we\\"ird\\\\","column":"c\\n","message":"m\\t\\r"}'
     )
     df = pl.DataFrame({'a"b': [None]})
-    assert error_column(1, [not_null_check(df, 'a"b')]).to_list() == [
+    assert error_column(1, [not_null_check(df, 'a"b', "reject")]).to_list() == [
         '[{"rule":"not_null","column":"a\\"b","message":"required value missing"}]'
     ]
 
@@ -238,13 +253,13 @@ def test_formatters_match_rust(
 ) -> None:
     df = pl.DataFrame({"id": [None]}, schema={"id": pl.String})
     checks = [
-        not_null_check(df, "id"),
-        RowCheck("unique", "id", "dup", pl.Series([True])),
+        not_null_check(df, "id", "reject"),
+        RowCheck("unique", "id", "dup", pl.Series([True]), "reject"),
     ]
     assert error_column(1, checks, formatter, sources).to_list() == [expected]
 
 
 def test_csv_and_text_formatters_escape_the_json_string() -> None:
-    checks = [RowCheck("r", 'a,"b"', "m", pl.Series([True]))]
+    checks = [RowCheck("r", 'a,"b"', "m", pl.Series([True]), "reject")]
     assert error_column(1, checks, "csv").to_list() == ['"r,\\"a,\\"\\"b\\"\\"\\",m"']
     assert error_column(1, checks, "text").to_list() == ['"r:a,\\"b\\" m"']

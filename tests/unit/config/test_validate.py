@@ -756,3 +756,13 @@ def test_gcs_is_accepted_for_parquet_and_iceberg_and_refused_for_delta(tmp_path:
     assert str(err.value) == "entity.name=orders sink.accepted.format=delta is not supported on gcs storage yet"  # fmt: skip
     catalogs = gcs + "catalogs: {default: c, definitions: [{name: c, type: rest, uri: u}]}\n"  # fmt: skip
     check(tmp_path, f"{{{COLS}}}", sink=sink.replace("parquet", "iceberg").replace("}}", ", iceberg: {}}}"), catalogs=catalogs)  # fmt: skip
+
+
+def test_rule_severity_scope(tmp_path: Path) -> None:
+    ok = "{primary_key: [id], columns: [{name: id, type: int64, rule_severity: {not_null: warn, cast_error: warn}}]}"  # fmt: skip
+    check(tmp_path, ok)
+    bad = ok.replace("primary_key: [id], ", "").replace("int64", "string")
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, bad)
+    assert err.value.code == "config_conflict"
+    assert str(err.value) == "entity.name=orders schema.columns[name=id].rule_severity.cast_error is not applicable: a string column has no cast check"  # fmt: skip

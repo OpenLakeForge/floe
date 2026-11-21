@@ -29,7 +29,12 @@ from floe.checks.unique import (
     resolve_unique_keys,
 )
 from floe.config.storage import CatalogsConfig, StoragesConfig
-from floe.config.types import EntityConfig, with_partition_columns
+from floe.config.types import (
+    EntityConfig,
+    max_level,
+    rule_level,
+    with_partition_columns,
+)
 from floe.errors import FloeConfigError, FloeRunError
 from floe.extras import require
 from floe.report.entity import build_report
@@ -311,7 +316,7 @@ def _run_entity(
         output_column_mapping(columns, strategy),
         {n: c.source for n, c in zip(names, columns, strict=True) if c.source},
         [n for n, c in zip(names, columns, strict=True) if c.nullable is False or n in primary],
-        UniqueTracker([[runtime.get(k, k) for k in key] for key in keys]),
+        UniqueTracker([[runtime.get(k, k) for k in key] for key in keys], rule_level(entity, "unique")),
         {
             c.name: n
             for c in columns
@@ -397,7 +402,7 @@ def _run_entity(
     failure: list[Exception] = []
     # #1090: a merge keeps a key's latest version, so the newest file is checked first; the first row of a file still wins.
     # Not under abort: a duplicate aborts there anyway, and newer files committed ahead of a pending older one would let it merge stale rows later
-    latest_first = merging and entity.policy.severity != "abort"
+    latest_first = merging and max_level(entity) != "abort"
 
     def accepted_frames() -> Generator[pl.DataFrame]:
         """Files are read as the sink pulls (#1056); `files` and `complete` are final once it is exhausted."""
@@ -464,7 +469,7 @@ def _run_entity(
                 from floe.delta.sink import write_delta
 
                 stamp = input_hash(entity, pending) if sink.write_mode == "append" else None  # fmt: skip
-                write, table, raced = write_delta(entity, base, accepted, frames, [plan.out_map.get(n, n) for n in names], sink.write_mode, emit.run_id, stamp, guarded)  # fmt: skip
+                write, table, raced = write_delta(entity, base, accepted, frames, [plan.out_map.get(n, n) for n in names], sink.write_mode, emit.run_id, stamp, guarded, inc.claimed_ms(pending))  # fmt: skip
                 if raced:  # #1341: a rival committed this batch after the guard looked; settle every input, the unread too
                     done = {f.source_uri for f in pending}
                     files[:] = [r for r in files if r["input_file"] not in done] + [skipped_report(u, "already_committed") for u in sorted(done)]  # fmt: skip
@@ -507,6 +512,10 @@ def _run_entity(
     files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
     inc.committed = files  # #915: from here on a failure promotes the written files
     # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source
+    meta = {m.source_uri: m for m in inputs.files}
+    for r in files:  # #1362: the listed size and mtime, the values `input_hash` uses; null for an entry not listed
+        m = meta.get(r["input_file"])
+        r["input_size"], r["input_mtime"] = (m.source_size, m.source_mtime) if m else (None, None)  # fmt: skip
     by_uri = {r["input_file"]: r for r in files}
     order = {f.source_uri: i for i, f in enumerate(inputs.files)}
     _write_mtime_index(plan)

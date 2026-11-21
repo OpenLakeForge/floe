@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): schema.columns[0]: schema.columns.rule_severity.not_null=ignore is unsupported (allowed: warn, reject, abort)"
+}

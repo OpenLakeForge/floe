@@ -7,7 +7,7 @@ from typing import Any
 import polars as pl
 
 from floe.checks.normalize import normalize_name, resolve_strategy, source_names
-from floe.config.types import EntityConfig
+from floe.config.types import EntityConfig, rule_level
 from floe.errors import FloeConfigError, FloeIoError
 from floe.read.json import json_records
 
@@ -61,7 +61,7 @@ def plan_mismatch(
     policy = entity.schema_.mismatch
     on_missing = (policy and policy.missing_columns) or "fill_nulls"
     on_extra = (policy and policy.extra_columns) or "ignore"
-    severity = entity.policy.severity
+    severity = rule_level(entity, "schema_mismatch")
 
     def requested() -> bool:
         return (on_missing == "reject_file" and bool(missing)) or (

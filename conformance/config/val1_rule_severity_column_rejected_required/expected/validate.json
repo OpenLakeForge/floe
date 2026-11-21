@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders sink.rejected is required when schema.columns[name=id].rule_severity.not_null=abort"
+}

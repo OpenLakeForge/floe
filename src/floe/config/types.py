@@ -32,6 +32,31 @@ class EntityStateConfig(_Model):
 class PolicyConfig(_Model):
     severity: PolicySeverity
     max_rejection_rate: float | None = None
+    rule_severity: dict[str, PolicySeverity] | None = None
+
+
+_LEVELS: tuple[PolicySeverity, ...] = ("warn", "reject", "abort")
+
+
+def rule_level(
+    entity: "EntityConfig", rule: str, column: "ColumnConfig | None" = None
+) -> PolicySeverity:
+    """The severity of one check: the column's `rule_severity`, else the entity's, else `policy.severity`."""
+    for levels in (column and column.rule_severity, entity.policy.rule_severity):
+        if levels and rule in levels:
+            return levels[rule]
+    return entity.policy.severity
+
+
+def max_level(entity: "EntityConfig") -> PolicySeverity:
+    """The most severe level any check of the entity can resolve to."""
+    levels: list[PolicySeverity] = [
+        entity.policy.severity,
+        *(entity.policy.rule_severity or {}).values(),
+    ]
+    for c in entity.schema_.columns:
+        levels += (c.rule_severity or {}).values()
+    return max(levels, key=_LEVELS.index)
 
 
 class NormalizeColumnsConfig(_Model):
@@ -54,6 +79,7 @@ class ColumnConfig(_Model):
     source: str | None
     column_type: str
     nullable: bool | None
+    rule_severity: dict[str, PolicySeverity] | None = None
 
 
 class SchemaConfig(_Model):

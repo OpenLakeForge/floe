@@ -876,6 +876,34 @@ $defs:
         - 'null'
         minimum: 0
         maximum: 1
+      rule_severity:
+        type: object
+        additionalProperties: false
+        properties:
+          not_null:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          cast_error:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          unique:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          schema_mismatch:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
     if:
       required:
       - max_rejection_rate
@@ -992,6 +1020,22 @@ $defs:
         type:
         - boolean
         - 'null'
+      rule_severity:
+        type: object
+        additionalProperties: false
+        properties:
+          not_null:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          cast_error:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
   pii_fragment:
     type: object
     additionalProperties: false

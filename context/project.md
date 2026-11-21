@@ -51,4 +51,4 @@ Floe 0.8 dropped Delta, DuckDB/MotherDuck, fixed-width, Unity, ADLS and GCS (D1,
 
 ## Versioning
 
-The project follows semantic versioning. A config's `version:` is the minimum Floe major.minor it targets, and a manifest's `spec_version` is the Floe major.minor that generated it (D21, D22). Breaking changes bump the minor version and are documented in `CHANGELOG.md`. See `context/bump-release.md`.
+Floe follows semantic versioning. From 1.0, breaking changes wait for 2.0, minor releases only add, and patch releases only fix. `docs/reference/stability.md` is the user-facing promise: it lists the frozen surface (config YAML, manifest, run reports, events, the rejected row envelope, exit codes, error codes and exception classes, the CLI, `floe.__all__`), what a minor may add, and what is not promised. A config's `version:` is the minimum Floe major.minor it needs, and a manifest's `spec_version` is the Floe major.minor that generated it (D21, D22). See `context/bump-release.md`.

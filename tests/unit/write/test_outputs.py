@@ -56,15 +56,15 @@ def process(
     casts = {n: cast_column(n, k, "strict", raw.schema[n]) for n, k in columns}
     typed = raw.with_columns(c[0] for c in casts.values())
     masks = raw.select(c[1] for c in casts.values())
-    checks = [not_null_check(typed, n) for n in required]
+    checks = [not_null_check(typed, n, "reject") for n in required]
     checks += [
-        RowCheck("cast_error", n, CAST_ERROR_MESSAGE, masks[f"_e_cast_{n}"])
+        RowCheck("cast_error", n, CAST_ERROR_MESSAGE, masks[f"_e_cast_{n}"], "reject")
         for n, k in columns
         if k != "string"
     ]
     if tracker is not None:
         checks += tracker.check(typed)
-    accepted, rejected = split_rows(typed, checks, raw=raw)
+    accepted, rejected, _ = split_rows(typed, checks, raw=raw)
     return (
         apply_pii_masking(accepted, pii or [], {}),
         apply_pii_masking(rejected, pii or [], {}),
@@ -124,7 +124,7 @@ def test_mismatch(tmp_path: Path) -> None:
         raw,
         columns,
         ["tenant", "code"],
-        UniqueTracker([["tenant", "code"]]),
+        UniqueTracker([["tenant", "code"]], "reject"),
         [PiiColumn("phone", "hash")],
     )
     emit(tmp_path, "customers", frames)
@@ -134,7 +134,7 @@ def test_mismatch(tmp_path: Path) -> None:
 def test_unique_pii_overwrite_then_append(tmp_path: Path) -> None:
     columns = [("customer_id", "int64"), ("email", "string"), ("region", "string"),
                ("order_no", "int64"), ("amount", "number")]  # fmt: skip
-    tracker = UniqueTracker([["customer_id"], ["region", "order_no"]])
+    tracker = UniqueTracker([["customer_id"], ["region", "order_no"]], "reject")
     pii = [PiiColumn("email", "hash", key="spike-hmac-key")]
     runs: list[tuple[str, WriteMode]] = [("a.csv", "overwrite"), ("b.csv", "append")]
     for name, mode in runs:

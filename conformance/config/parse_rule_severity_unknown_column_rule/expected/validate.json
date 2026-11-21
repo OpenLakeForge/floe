@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): schema.columns[0]: unknown field schema.columns.rule_severity.not_nul"
+}
