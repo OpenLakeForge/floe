@@ -276,6 +276,7 @@ def test_concurrent_runs_of_one_batch_commit_it_once(tmp_path: Path, monkeypatch
             real(*args, **kwargs)
 
     monkeypatch.setattr(write_module, "write_deltalake", after_every_guard)
+
     def go(i: int) -> Any:
         return run_entity(entity, tmp_path, "0.3", emit=Emitter(None, f"r{i}"))
 
