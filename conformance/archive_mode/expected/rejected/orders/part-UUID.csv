@@ -1,2 +1,2 @@
-id,name,__floe_row_index,__floe_errors
-x,b,1,"[{""rule"":""cast_error"",""column"":""id"",""message"":""invalid value for target type""}]"
+id,name,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+x,b,1,"[{""rule"":""cast_error"",""column"":""id"",""message"":""invalid value for target type""}]",<run_id>,local://<ROOT>/in/b.csv

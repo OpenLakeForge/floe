@@ -8,6 +8,8 @@ CSV byte for byte).
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportMissingTypeStubs=false
 # ^ pyarrow ships no type stubs; check.py is a script on the conformance sys.path
 
+import csv
+import io
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -104,6 +106,10 @@ def check(case: str, base: Path, entities: list[str]) -> None:
             actual[f"rejected/{e}/part-UUID" + (f"-{i + 1}" if i else "") + ".csv"] = text  # fmt: skip
     assert sorted(actual) == sorted(expected)
     for name, value in expected.items():
+        if name.endswith(".csv"):  # the writer gets no `__floe_run_id`, `__floe_source_uri` (#1384): the run adds them, so drop them from the golden  # fmt: skip
+            got, golden = (list(csv.reader(io.StringIO(str(t)))) for t in (actual[name], value))  # fmt: skip
+            assert got == [r[:-2] for r in golden], name
+            continue
         assert comparable(name, actual[name]) == comparable(name, value), name
 
 

@@ -1,2 +1,2 @@
-id,name,qty,score,__floe_row_index,__floe_errors
-2,,7,2.5,1,"[{""rule"":""not_null"",""column"":""name"",""message"":""required value missing""}]"
+id,name,qty,score,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+2,,7,2.5,1,"[{""rule"":""not_null"",""column"":""name"",""message"":""required value missing""}]",<run_id>,local://<ROOT>/in/data.csv
