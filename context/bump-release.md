@@ -15,13 +15,15 @@ Version bumps get their own PR (AGENTS.md §3).
 
 ## 1. Decide the new version
 
-Floe follows semantic versioning, pre-1.0:
+Floe follows semantic versioning; `docs/reference/stability.md` lists what is frozen:
 
 | Change | Version bump |
 |---|---|
-| Breaking config, manifest, report or API change | minor (`0.X.0`) |
-| New feature, backward-compatible | minor (`0.X.0`) or patch (`0.x.Y`) |
-| Bug fix, internal refactor, test, doc | patch (`0.x.Y`) |
+| Remove, rename or change the meaning of a frozen item | not in 1.x (deprecate it, remove it in 2.0) |
+| An addition to a frozen surface | minor (`1.X.0`) |
+| Bug fix, internal refactor, test, doc | patch (`1.x.Y`) |
+
+A minor that adds an error code or a public name also adds it to `tests/unit/test_contract.py`.
 
 The Floe major.minor is also a contract version (D21, D22):
 - a config's `version:` is the minimum Floe version it targets; Floe accepts any version up to
@@ -50,6 +52,9 @@ Branch `chore/bump-v<NEW_VERSION>` from `main`, then:
    (`config/val1_version_d21_newer_minor`, whose config names the next minor, and
    `config/val1_version_future_major_ok`), the `spec_version` in `manifest_run`'s reports, and
    the unit tests that pin the current minor (`test_d21_version_follows_floe`, `test_cli_add_entity.py`).
+   In the 1.0 bump PR only: re-record `config/val1_version_future_major_ok` (now `{"ok": true}`) and
+   `config/val1_version_d21_newer_minor` (it must name `1.1`), and add a `config/val1_version_future_major`
+   case with `version: '2.0'` that is refused.
 
 Title: `chore: release floe-python v<NEW_VERSION>`.
 
@@ -80,7 +85,7 @@ or when a Floe minor release changes what it must accept. Each gets its own PR
 
 1. Set `version` in `orchestrators/<connector>/pyproject.toml`.
 2. For a new Floe minor, add the new `spec_version` to `SUPPORTED_SPEC_VERSIONS` in the
-   connector's `manifest.py`, and update `dagster-floe`'s `floe` extra pin (`floe-python>=X.Y,<X.Y+1`)
+   connector's `manifest.py`. A connector keeps accepting every earlier 1.x `spec_version`: only append. Also update `dagster-floe`'s `floe` extra pin (`floe-python>=X.Y,<X.Y+1`)
    and its compatibility table in the README.
 3. If the manifest schema changed, edit the canonical `orchestrators/schemas/floe.manifest.schema.json`,
    copy it into the connectors, and run the dagster-floe tests (`test_vendored_schema.py` checks the copy).
