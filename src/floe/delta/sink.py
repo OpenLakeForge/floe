@@ -27,11 +27,9 @@ _WIDER: dict[pl.DataType, pl.DataType] = {pl.UInt8(): pl.Int32(), pl.UInt16(): p
 
 def check_supported(entity: EntityConfig) -> None:
     """Refuse, before anything is claimed, what the writer would otherwise skip silently."""
-    who, accepted = f"entity.name={entity.name}", entity.sink.accepted
+    who = f"entity.name={entity.name}"
     if entity.sink.write_mode not in ("overwrite", "append"):
         raise FloeRunError(f"{who} sink.write_mode={entity.sink.write_mode} is not supported with sink.accepted.format=delta yet", code="run_not_supported")  # fmt: skip
-    if accepted.partition_by:
-        raise FloeRunError(f"{who} sink.accepted.partition_by is not supported with sink.accepted.format=delta yet", code="run_not_supported")  # fmt: skip
     # the existing table's keys are not read yet, so an append could not tell a duplicate from a first write
     if entity.sink.write_mode == "append" and resolve_unique_keys(entity.schema_.unique_keys, entity.schema_.primary_key):  # fmt: skip
         raise FloeRunError(f"{who} unique keys on a delta append are not supported yet", code="run_not_supported")  # fmt: skip
@@ -89,5 +87,7 @@ def write_delta(entity: EntityConfig, uri: str, storage: StorageDefinition | Non
     """`frames` (at least one) hold the output columns `names`, `table` is the snapshot the retry guard checked; returns the commit's files, the `accepted_output` table fields and whether a rival had committed this batch."""
     reader = _reader(entity, frames, names)
     path = uri.removeprefix("local://")  # delta-rs takes a plain path for local storage
-    written, version, raced = write_table(f"entity.name={entity.name}", path, storage_options(storage), reader, mode, run_id, input_hash, table)  # fmt: skip
+    out = dict(zip((c.name for c in entity.schema_.columns), names, strict=True))  # `partition_by` names config columns; the table has the output names  # fmt: skip
+    by = [out[c] for c in entity.sink.accepted.partition_by] if entity.sink.accepted.partition_by else None  # fmt: skip
+    written, version, raced = write_table(f"entity.name={entity.name}", path, storage_options(storage), reader, mode, run_id, input_hash, table, by)  # fmt: skip
     return written, {"table_version": version}, raced

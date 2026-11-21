@@ -449,7 +449,7 @@ state file shape, and CAS behavior.
       parts in one pass, Iceberg in one catalog commit. Inputs are archived (when
       `sink.archive` is enabled) only after that write succeeds, so an input is never
       archived unless its rows were written; if the write fails, the inputs stay in the source.
-  - `partition_by`: Delta-only, dropped with Delta in 0.8 (D1); `floe validate` rejects it.
+  - `partition_by` (optional, `sink.accepted.format: delta`): identity partition columns, set when the table is created. An existing table partitioned by other columns fails the run with `run_schema_evolution`. Other formats: `floe validate` rejects it.
   - `partition_spec` (optional, `sink.accepted.format: iceberg`)
     - Array of partition spec entries.
     - Each entry supports:
