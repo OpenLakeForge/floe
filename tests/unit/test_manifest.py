@@ -905,33 +905,57 @@ def test_profile_constructor_preserves_positional_orchestration() -> None:
     assert profile.runners is None
 
 
-def test_manifest_refuses_a_unity_delta_sink_instead_of_dropping_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """The manifest does not carry the `delta` block: running it would write a path-based table silently."""
-    config = CONFIG.replace(
-        "report:",
-        "storages: {default: s, definitions: [{name: s, type: s3, bucket: b, region: r}]}\n"
-        "catalogs: {default: u, definitions: [{name: u, type: unity, host: h, catalog: c, schema: s, token: t}]}\n"
-        "report:",
-    ).replace(
-        "sink: {accepted: {format: parquet, path: ./out/a}}",
-        "sink: {accepted: {format: delta, path: out/a, delta: {schema: s, table: a}}}",
-    )
-    assert generate(tmp_path, monkeypatch, "-o", "-", config=config) == 1
-    assert "sink.accepted.delta (Unity Catalog) is not supported in a manifest yet" in capsys.readouterr().err  # fmt: skip
+UNITY_CONFIG = CONFIG.replace(
+    "report:",
+    "storages: {default: s, definitions: [{name: s, type: s3, bucket: b, region: r}]}\n"
+    "catalogs: {default: u, definitions: [{name: u, type: unity, host: 'https://h', catalog: c, schema: s, token: '${DATABRICKS_TOKEN}', create_schema_if_missing: false}]}\n"
+    "report:",
+).replace(
+    "sink: {accepted: {format: parquet, path: ./out/a}}",
+    "sink: {accepted: {format: delta, path: out/a, delta: {schema: s, table: a}}}",
+)
 
 
-def test_manifest_refuses_a_unity_catalog_instead_of_reading_it_back_as_rest(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_1394_unity_catalog_and_delta_round_trip_and_validate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    config = CONFIG.replace(
-        "report:",
-        "catalogs: {default: u, definitions: [{name: u, type: unity, host: h, catalog: c, schema: s, token: t}]}\n"
-        "report:",
-    )
-    assert generate(tmp_path, monkeypatch, "-o", "-", config=config) == 1
-    assert "Error: a unity catalog is not supported in a manifest yet\n" == capsys.readouterr().err  # fmt: skip
+    from jsonschema import Draft202012Validator
+
+    from floe._cli import _load  # pyright: ignore[reportPrivateUsage] -- the loader `build_manifest` goes through
+    from floe.manifest_run import load_manifest
+
+    monkeypatch.setenv("DATABRICKS_TOKEN", "dapi-expanded-secret")
+    manifest = manifest_of(tmp_path, monkeypatch, UNITY_CONFIG)
+    assert manifest["entities"][0]["sinks"]["accepted"]["delta"] == {"schema": "s", "table": "a"}  # fmt: skip
+    schema = Path(__file__).parents[2] / "orchestrators/schemas/floe.manifest.schema.json"  # fmt: skip
+    Draft202012Validator(json.loads(schema.read_text())).validate(manifest)  # pyright: ignore[reportUnknownMemberType] -- jsonschema ships no types
+    root = _load(tmp_path / "config.yml", None)
+    replayed, [back], _ = load_manifest(tmp_path / "manifest.json")
+    catalogs = replayed.catalogs
+    assert back.sink.accepted.delta == root.entities[0].sink.accepted.delta
+    assert back.sink.accepted.delta is not None
+    assert catalogs is not None and root.catalogs is not None
+    assert catalogs.definitions == root.catalogs.definitions
+    token = catalogs.definitions[0].token
+    assert token is not None and token.get_secret_value() == "${DATABRICKS_TOKEN}"
+
+
+def test_1394_manifest_never_carries_the_expanded_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DATABRICKS_TOKEN", "dapi-expanded-secret")
+    generate(tmp_path, monkeypatch, "-o", str(tmp_path / "m.json"), config=UNITY_CONFIG)  # fmt: skip
+    text = (tmp_path / "m.json").read_text()
+    assert "dapi-expanded-secret" not in text
+    assert "${DATABRICKS_TOKEN}" in text
+
+
+def test_1394_manifest_without_unity_carries_no_delta_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest = manifest_of(tmp_path, monkeypatch, CONFIG)
+    assert "delta" not in manifest["entities"][0]["sinks"]["accepted"]
+    assert "catalogs" not in manifest
 
 
 def with_rule_severity(monkeypatch: pytest.MonkeyPatch) -> None:

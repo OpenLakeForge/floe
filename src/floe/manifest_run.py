@@ -22,6 +22,7 @@ from floe.config.project import (
 )
 from floe.config.storage import CatalogsConfig, StorageDefinition, StoragesConfig
 from floe.config.types import (
+    DeltaSinkOptions,
     EntityConfig,
     EntityMetadata,
     IcebergPartitionField,
@@ -99,6 +100,8 @@ def _sink(t: Json, write_mode: str, named_local: bool) -> Json:
         "options": _lenient(SinkOptions, t.get("options")),
         "merge": _lenient(MergeOptions, t.get("merge")),
         "iceberg": _lenient(IcebergSinkOptions, t.get("iceberg")),
+        # strict, never `_lenient`: a bad block fails EntityConfig validation
+        "delta": (d := t.get("delta")) and _omitted_as_none(DeltaSinkOptions, d),
         "partition_by": t.get("partition_by"),
         # #911: validated when generated, so not lenient; `num_buckets` may be omitted
         "partition_spec": (spec := t.get("partition_spec"))
