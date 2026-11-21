@@ -28,7 +28,7 @@ Errors raised before their migration to a typed code have no `error_code`.
 | `storage_access_denied` | the storage refuses the credentials |
 | `storage_conflict` | a storage write failed its precondition, or a lock could not be acquired |
 | `storage_error` | any other storage failure |
-| `run_state_conflict` | the incremental state kept changing and the retries ran out |
+| `run_state_conflict` | the incremental state kept changing and the retries ran out, or it cannot be reconciled with what the sink committed |
 | `run_commit_failed` | a sink commit failed, or kept conflicting with concurrent commits |
 | `run_schema_evolution` | a schema change on an existing table is not allowed or failed |
 | `run_catalog_error` | the Iceberg catalog request failed |

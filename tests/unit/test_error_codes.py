@@ -26,13 +26,6 @@ ALLOWLIST = {
     "extras.py",
     "glob.py",
     "manifest.py",
-    "pii.py",
-    "run/__init__.py",
-    "run/entity.py",
-    "run/file.py",
-    "run/incremental.py",
-    "storage/s3.py",
-    "write/outputs.py",
 }
 
 
