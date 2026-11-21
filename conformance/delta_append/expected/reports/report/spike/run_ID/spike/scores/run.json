@@ -5,7 +5,7 @@
   },
   "source": {
     "format": "csv",
-    "path": "local://<ROOT>/in",
+    "path": "local://<ROOT>/in2",
     "options": {
       "encoding": "UTF8",
       "header": true,
@@ -21,7 +21,7 @@
       "mode": "directory",
       "file_count": 1,
       "files": [
-        "local://<ROOT>/in/data.csv"
+        "local://<ROOT>/in2/data.csv"
       ]
     }
   },
@@ -45,15 +45,15 @@
     "path": "local://<ROOT>/out/accepted/scores",
     "table_root_uri": "local://<ROOT>/out/accepted/scores",
     "write_mode": "append",
-    "accepted_rows": 2,
+    "accepted_rows": 1,
     "files_written": 1,
     "parts_written": 1,
     "part_files": [
       "part-<uuid>-c000.snappy.parquet"
     ],
     "table_version": 1,
-    "total_bytes_written": 1329,
-    "avg_file_size_mb": 0.0012674331665039062,
+    "total_bytes_written": 1310,
+    "avg_file_size_mb": 0.0012493133544921875,
     "small_files_count": 1
   },
   "schema_evolution": {
@@ -65,18 +65,18 @@
   "results": {
     "files_total": 1,
     "files_skipped": 0,
-    "rows_total": 3,
-    "accepted_total": 2,
+    "rows_total": 2,
+    "accepted_total": 1,
     "rejected_total": 1,
     "warnings_total": 0,
     "errors_total": 1
   },
   "files": [
     {
-      "input_file": "local://<ROOT>/in/data.csv",
+      "input_file": "local://<ROOT>/in2/data.csv",
       "status": "rejected",
-      "row_count": 3,
-      "accepted_count": 2,
+      "row_count": 2,
+      "accepted_count": 1,
       "rejected_count": 1,
       "mismatch": {
         "declared_columns_count": 4,

@@ -30,6 +30,7 @@ from floe.storage.resolve import resolve_path, storage_client
 from floe.storage.types import StorageClient
 
 if TYPE_CHECKING:
+    from deltalake import DeltaTable
     from pyiceberg.table import Table
 
 RENEW_INTERVAL_S = float(min(max(CLAIM_TTL_SECONDS // 3, 1), 300))
@@ -174,7 +175,7 @@ class Incremental:
             self._hold(got.claimed, emit)
         return got.pending, reports
 
-    def skip_committed(self, table: "Table | None", pending: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:  # fmt: skip
+    def skip_committed(self, table: "Table | DeltaTable | None", pending: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:  # fmt: skip
         """#545 retry guard (append): the reports of the pending inputs a dead run already committed, before any is read.
 
         `file` mode re-derives each dead run's batch from its expired claims (by `run_id`, with their size and mtime),
@@ -184,12 +185,18 @@ class Incremental:
         e = self.entity
         if table is None or not pending or self.full_refresh:
             return []
-        from floe.iceberg.write import (
-            find_committed,
-        )  # lazy: a table exists only with the iceberg extra
+        find: Callable[..., bool | None]  # by table kind
+        if e.sink.accepted.format == "delta":
+            from floe.delta.guard import (
+                committed as find,  # lazy: a table exists only with the delta extra
+            )
+        else:
+            from floe.iceberg.write import (
+                find_committed as find,  # lazy: a table exists only with the iceberg extra
+            )
 
         if e.incremental_mode != "file":
-            done = pending if find_committed(table, input_hash(e, pending)) else []
+            done = pending if find(table, input_hash(e, pending)) else []
             return self._skipped(done, emit)
         ours = {f.source_uri for f in pending}
         runs: dict[str, dict[str, Claim]] = {}
@@ -201,7 +208,7 @@ class Incremental:
                 continue  # new inputs, or a reload after `floe state reset`
             since = min(datetime.fromisoformat(c.acquired_at) for c in claims.values())
             batch = [InputFile(u, "", "", c.size, c.mtime) for u, c in claims.items()]
-            found = find_committed(table, input_hash(e, batch), since)
+            found = find(table, input_hash(e, batch), since)
             # fail closed; `run_entity` releases, which puts the dead runs' claims back so the next run fails too
             if found is None:
                 raise FloeRunError(
