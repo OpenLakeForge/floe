@@ -157,9 +157,6 @@ def _pii_key(entity: EntityConfig, column: PiiColumn) -> str | None:
 
 
 def _sink(ctx: _Context, target: SinkTarget) -> Json:
-    # the manifest does not carry the `delta` block yet; dropping it would write a path-based table
-    if target.delta is not None:
-        raise FloeConfigError("sink.accepted.delta (Unity Catalog) is not supported in a manifest yet", code="config_not_supported")  # fmt: skip
     return _put(
         _Target(ctx, target).json(target.format),
         options=_sorted(target.options),
@@ -167,6 +164,13 @@ def _sink(ctx: _Context, target: SinkTarget) -> Json:
         partition_spec=_sorted(target.partition_spec),  # #911
         merge=_sorted(target.merge),
         iceberg=_sorted(target.iceberg),
+        delta=target.delta
+        and _put(  # `schema_` is written under its config key
+            {},
+            catalog=target.delta.catalog,
+            schema=target.delta.schema_,
+            table=target.delta.table,
+        ),
     )
 
 
@@ -371,10 +375,6 @@ def _blocks(root: RootConfig) -> Json:
             }
         )
     if root.catalogs:
-        if any(
-            c.type == "unity" for c in root.catalogs.definitions
-        ):  # it would read back as a rest catalog
-            raise FloeConfigError("a unity catalog is not supported in a manifest yet", code="config_not_supported")  # fmt: skip
         blocks["catalogs"] = _sorted(
             {
                 "default": root.catalogs.default,
@@ -388,6 +388,16 @@ def _blocks(root: RootConfig) -> Json:
                             "create_database_if_missing": c.create_database_if_missing,
                         }
                         if c.type == "glue"
+                        else {
+                            "type": "unity",
+                            "host": c.host,
+                            "catalog": c.catalog,
+                            "schema": c.schema_,
+                            "token": c.token
+                            and c.token.get_secret_value(),  # the `${VAR}` text, like `credential`
+                            "create_schema_if_missing": c.create_schema_if_missing,
+                        }
+                        if c.type == "unity"
                         else {
                             "type": "rest",
                             "uri": c.uri,
