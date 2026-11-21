@@ -8,6 +8,7 @@ import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import duckdb
 import pyarrow as pa
@@ -354,4 +355,16 @@ def test_a_gcs_listing_without_the_current_metadata_deletes_nothing(monkeypatch:
 def test_a_cloud_location_without_a_matching_storage_fails_instead_of_listing_locally(location: str) -> None:  # fmt: skip
     with pytest.raises(FloeRunError) as e:
         _list(location, None)
+    assert e.value.code == "run_invalid_setup"
+
+
+@pytest.mark.parametrize(
+    ("location", "kind"),
+    [("gs://other/t", "gcs"), ("abfss://other@a.dfs.core.windows.net/t", "adls")],
+)
+def test_a_cloud_location_outside_its_storage_is_refused_not_listed(location: str, kind: str) -> None:  # fmt: skip
+    """Listing another bucket or container would report every file there as an orphan."""
+    storage: Any = SimpleNamespace(name="lake", type=kind, bucket="b", account="a", container="c")  # fmt: skip
+    with pytest.raises(FloeRunError, match="is outside storage lake") as e:
+        _list(location, storage)
     assert e.value.code == "run_invalid_setup"

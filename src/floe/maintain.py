@@ -70,7 +70,18 @@ def _list(location: str, storage: StorageDefinition | None) -> list[tuple[str, f
             s3 = storage if storage and storage.type == "s3" else None
             client = S3Client(bucket, s3 and s3.region, s3 and s3.endpoint, s3 and s3.path_style_access)  # fmt: skip
         else:
-            key, client = split_uri(location)[1], storage_client(storage)
+            root, key = split_uri(location)
+            assert storage is not None  # checked above
+            own = (
+                storage.bucket
+                if kind == "gcs"
+                else f"{storage.container}@{storage.account}.dfs.core.windows.net"
+            )
+            if (
+                root != own
+            ):  # listing another bucket or container would report every file there as an orphan
+                raise FloeRunError(f"table location {location} is outside storage {storage.name} ({own})", code="run_invalid_setup")  # fmt: skip
+            client = storage_client(storage)
         return [
             (r.uri, datetime.fromisoformat(r.last_modified).timestamp() if r.last_modified else None,r.size or 0)
             for r in client.list(f"{key.strip('/')}/" if key.strip("/") else "")  # a bucket root lists every key
