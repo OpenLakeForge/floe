@@ -485,7 +485,7 @@ state file shape, and CAS behavior.
     `total_bytes_written`, `avg_file_size_mb`, `small_files_count`) when collected by the writer.
     - Parquet: populated from written parquet files.
     - Iceberg: populated from written Iceberg data files (metadata/manifests excluded from size totals).
-  - `table_version` / `snapshot_id` in reports are Iceberg-only (metadata version + snapshot ID).
+  - `table_version` in reports is the Iceberg metadata version or the Delta table version; `snapshot_id` is Iceberg-only.
   - Floe does not maintain tables during `floe run`. Iceberg snapshot expiry, orphan-file
     removal and (experimental) compaction run separately with `floe maintain` (see [CLI](cli.md)).
   - `schema.schema_evolution` is strict by default.

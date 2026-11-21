@@ -21,7 +21,7 @@ These 0.7 features are rejected by `floe validate` with a "not supported in 0.8"
 | Dropped | Instead |
 |---|---|
 | Fixed-width input (`source.format: fixed`) | Convert to CSV upstream |
-| Delta Lake accepted sink and Unity Catalog | Iceberg |
+| Delta Lake `merge_*` modes and Unity Catalog (#1266); Delta `overwrite` and `append` are supported | Iceberg |
 | DuckDB / MotherDuck accepted sink | Iceberg (merges run through DuckDB) |
 | Catalog-less Iceberg tables (filesystem catalog) | Iceberg REST catalog |
 | ADLS and GCS storage | S3 or an S3-compatible store |
@@ -81,7 +81,7 @@ Notes:
 
 - `accepted_output` in each entity report can include:
   - `files_written`, `parts_written`, `part_files`
-  - `table_version` and `snapshot_id` (Iceberg)
+  - `table_version` (Iceberg metadata version, Delta table version) and `snapshot_id` (Iceberg)
   - `total_bytes_written`, `avg_file_size_mb`, `small_files_count`
   - merge metrics for `merge_scd1` (see [report.md](report.md))
 

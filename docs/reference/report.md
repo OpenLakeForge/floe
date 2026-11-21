@@ -98,6 +98,7 @@ Common fields:
 Format-specific metadata:
 - `table_version`: version identifier when the sink exposes one
   - Iceberg: metadata version (parsed from metadata filename)
+  - Delta: the table version after the run's commit
 - `snapshot_id`: Iceberg snapshot id (when a snapshot exists)
 - `iceberg_catalog_name`, `iceberg_namespace`, `iceberg_table`: present for Iceberg runs
 
