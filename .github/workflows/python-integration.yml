@@ -2,7 +2,8 @@ name: Python integration (Polaris)
 
 # Also nightly: the `glue` tests against moto, the `perf` memory test (#1063) and the 200-entity `scale` suite (#558),
 # whose 10-entity Iceberg subset runs in the `polaris` job below.
-# Runs the `polaris` and `s3` marked tests against the #602 harness (Polaris + SeaweedFS).
+# Runs the `polaris` and `s3` marked tests against the #602 harness (Polaris + SeaweedFS), and the `adls` marked
+# tests against Azurite in the `object-stores` job.
 # Not a required check yet (#840): the maintainer makes it required once it is stable.
 on:
   pull_request:
@@ -86,6 +87,31 @@ jobs:
         run: |
           docker logs seaweedfs
           docker logs polaris
+
+  # ADLS on Azurite (#1327); GCS has no emulator obstore can write to yet (#1342). Azurite's account and key are its published dev credentials, not a secret.
+  object-stores:
+    runs-on: ubuntu-latest
+    env:
+      FLOE_AZURITE_ENDPOINT: http://localhost:10000/devstoreaccount1
+      AZURE_STORAGE_ACCOUNT_KEY: Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --all-groups --all-extras
+      - name: Start Azurite
+        run: |
+          docker run -d --name azurite -p 10000:10000 \
+            mcr.microsoft.com/azure-storage/azurite:3.35.0@sha256:647c63a91102a9d8e8000aab803436e1fc85fbb285e7ce830a82ee5d6661cf37 \
+            azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
+          # any HTTP answer (000 means nothing listens yet) means the blob service is up
+          timeout 60 sh -c 'until [ "$(curl -s -o /dev/null -w "%{http_code}" localhost:10000/devstoreaccount1)" != 000 ]; do sleep 1; done'
+          az storage container create --name warehouse --connection-string \
+            "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=$AZURE_STORAGE_ACCOUNT_KEY;BlobEndpoint=$FLOE_AZURITE_ENDPOINT;"
+      - run: uv run pytest -m adls -rs tests/integration
+      - name: Container logs
+        if: failure()
+        run: |
+          docker logs azurite
 
   # Nightly and on demand only: Glue (moto) and the memory regression need no harness.
   glue:

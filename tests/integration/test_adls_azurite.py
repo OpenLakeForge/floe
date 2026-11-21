@@ -1,0 +1,157 @@
+"""ADLS storage against Azurite (the Blob API, which obstore speaks).
+
+Skipped unless `FLOE_AZURITE_ENDPOINT` is set, e.g. `http://localhost:10000/devstoreaccount1`.
+The account is `devstoreaccount1` and the container `FLOE_AZURITE_CONTAINER` (default `warehouse`);
+`AZURE_STORAGE_ACCOUNT_KEY` is Azurite's published dev key.
+"""
+
+import io
+import json
+import os
+import uuid
+from pathlib import Path
+
+import polars as pl
+import pytest
+
+from floe.config.parse import parse_config
+from floe.config.storage import StorageDefinition
+from floe.run import run
+from floe.storage.object_store import ObjectStoreClient, azure_store
+
+pytestmark = [
+    pytest.mark.adls,
+    pytest.mark.skipif(
+        not os.environ.get("FLOE_AZURITE_ENDPOINT"),
+        reason="FLOE_AZURITE_ENDPOINT not set",
+    ),
+]
+ACCOUNT = "devstoreaccount1"
+CONTAINER = os.environ.get("FLOE_AZURITE_CONTAINER", "warehouse")
+ROOT = f"abfss://{CONTAINER}@{ACCOUNT}.dfs.core.windows.net"
+
+CONFIG = """\
+version: "0.3"
+storages:
+  default: local
+  definitions:
+    - {{name: local, type: local}}
+    - {{name: lake, type: adls, account: {account}, container: {container}, endpoint: "{endpoint}", prefix: {prefix}}}
+domains:
+  - name: d
+entities:
+  - name: orders
+    domain: d
+    incremental_mode: file
+    source: {{format: csv, path: in/, storage: lake, options: {{header: true, separator: ","}}}}
+    sink:
+      accepted: {{format: parquet, path: out/accepted, storage: lake}}
+    policy: {{severity: reject}}
+    schema:
+      columns:
+        - {{name: id, type: int64}}
+report: {{path: runs, storage: lake}}
+"""
+
+
+@pytest.fixture
+def adls() -> ObjectStoreClient:
+    # AZURE_STORAGE_ACCOUNT_KEY comes from the workflow environment
+    return azure_store(
+        StorageDefinition(
+            name="lake",
+            type="adls",
+            bucket=None,
+            region=None,
+            account=ACCOUNT,
+            container=CONTAINER,
+            prefix=None,
+            endpoint=os.environ["FLOE_AZURITE_ENDPOINT"],
+            path_style_access=None,
+        )
+    )
+
+
+def test_conditional_create_replace_and_stale(adls: ObjectStoreClient) -> None:
+    uri = adls.resolve_uri(f"it-{uuid.uuid4().hex}/state.json")
+    created = adls.write_conditional(uri, None, b"1")
+    assert created
+    assert adls.write_conditional(uri, None, b"2") is None
+    replaced = adls.write_conditional(uri, created, b"22")
+    assert replaced
+    assert replaced != created
+    assert adls.write_conditional(uri, created, b"3") is None
+    assert adls.read(uri) == (b"22", replaced)
+
+
+def test_list_matches_the_raw_prefix_not_a_directory(adls: ObjectStoreClient) -> None:
+    """The #1302 bug class: S3-style listing matches `in/data_` and `in` by key prefix, as S3 does."""
+    p = f"it-{uuid.uuid4().hex}"
+    for name in ("in/data_1.csv", "in/data_2.csv", "in/other.csv", "in/sub/data_3.csv", "inbox/x.csv"):  # fmt: skip
+        adls.write(adls.resolve_uri(f"{p}/{name}"), b"id\n1\n")
+    assert [r.key for r in adls.list(f"{p}/in/data_")] == [
+        f"{p}/in/data_1.csv",
+        f"{p}/in/data_2.csv",
+    ]
+    assert [r.key for r in adls.list(f"{p}/in")] == [
+        f"{p}/in/data_1.csv",
+        f"{p}/in/data_2.csv",
+        f"{p}/in/other.csv",
+        f"{p}/in/sub/data_3.csv",
+        f"{p}/inbox/x.csv",
+    ]
+    after = adls.list(f"{p}/in/", start_after=f"{p}/in/data_2.csv")
+    assert [r.key for r in after] == [f"{p}/in/other.csv", f"{p}/in/sub/data_3.csv"]
+    assert all(r.size and r.last_modified for r in after)
+
+
+def test_csv_on_adls_to_parquet_on_adls_then_an_incremental_skip(
+    adls: ObjectStoreClient, tmp_path: Path
+) -> None:
+    prefix = f"it-{uuid.uuid4().hex}"
+    adls.write(adls.resolve_uri(f"{prefix}/in/a.csv"), b"id\n1\n2\n")
+    config = tmp_path / "config.yml"
+    config.write_text(
+        CONFIG.format(
+            account=ACCOUNT,
+            container=CONTAINER,
+            endpoint=os.environ["FLOE_AZURITE_ENDPOINT"],
+            prefix=prefix,
+        )
+    )
+    out = run(config, parse_config(config), run_id="r1")
+    assert out.summary["run"]["status"] == "success"
+    part = adls.read(adls.resolve_uri(f"{prefix}/out/accepted/part-00000.parquet"))
+    assert part is not None
+    assert pl.read_parquet(io.BytesIO(part.body)).height == 2
+    stored = adls.read(adls.resolve_uri(f"{prefix}/runs/d/run_r1/d/orders/run.json"))
+    assert stored is not None
+    assert [f["input_file"] for f in json.loads(stored.body)["files"]] == [
+        f"{ROOT}/{prefix}/in/a.csv"
+    ]
+    again = run(config, parse_config(config), run_id="r2")
+    assert again.summary["results"]["files_skipped"] == 1
+    assert adls.read(adls.resolve_uri(f"{prefix}/in/.floe/state/d/orders/state.json"))
+
+
+def test_archive_mode_moves_the_source_into_the_archive(
+    adls: ObjectStoreClient, tmp_path: Path
+) -> None:
+    """The archive copies, then deletes, on the emulator: the input leaves `in/` and a run-stamped copy lands in `archive/`."""
+    prefix = f"it-{uuid.uuid4().hex}"
+    adls.write(adls.resolve_uri(f"{prefix}/in/a.csv"), b"id\n1\n2\n")
+    config = tmp_path / "config.yml"
+    config.write_text(
+        CONFIG.replace("incremental_mode: file", "incremental_mode: archive")
+        .replace("      accepted:", "      archive: {{path: archive/, storage: lake}}\n      accepted:")
+        .format(account=ACCOUNT, container=CONTAINER, endpoint=os.environ["FLOE_AZURITE_ENDPOINT"], prefix=prefix)
+    )  # fmt: skip
+    out = run(config, parse_config(config), run_id="r1")
+    assert out.summary["run"]["status"] == "success"
+    assert adls.read(adls.resolve_uri(f"{prefix}/in/a.csv")) is None
+    archived = [r.key for r in adls.list(f"{prefix}/archive/orders/")]
+    assert len(archived) == 1
+    assert archived[0].rsplit("/", 1)[-1].startswith("a__run-r1")
+    copy = adls.read(adls.resolve_uri(archived[0]))
+    assert copy is not None
+    assert copy.body == b"id\n1\n2\n"
