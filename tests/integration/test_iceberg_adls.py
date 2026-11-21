@@ -97,11 +97,6 @@ def test_the_fileio_props_reach_azurite_at_a_container_location(
     assert round_trip(floe_file_io(storage, monkeypatch, location), location) == b"floe"  # fmt: skip
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=OSError,
-    reason="PyArrowFileIO parses abfss://<container>@<account>... as the path `<container>@<account>.../x`: InvalidResourceName",
-)
 def test_the_fileio_reads_and_writes_floes_own_abfss_location(
     storage: StorageDefinition, monkeypatch: pytest.MonkeyPatch
 ) -> None:
