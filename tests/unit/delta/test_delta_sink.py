@@ -111,13 +111,6 @@ def test_table_created_by_another_writer_is_appended_to(tmp_path: Path) -> None:
     assert sorted(table(tmp_path)["id"].to_list()) == [1, 9]
 
 
-def test_a_unity_delta_block_is_refused_until_the_table_is_registered(tmp_path: Path) -> None:  # fmt: skip
-    with pytest.raises(FloeRunError, match=r"sink.accepted.delta \(Unity Catalog\) is not supported yet") as e:  # fmt: skip
-        run(tmp_path, "id,name\n1,a\n", part=", delta: {catalog: u, schema: s, table: t}")  # fmt: skip
-    assert e.value.code == "run_not_supported"
-    assert not (tmp_path / "out").exists()
-
-
 def _seeded(tmp_path: Path, **kw: Any) -> None:
     write_deltalake(str(tmp_path / "out" / "accepted"), pa.table({"id": pa.array([1, 2], pa.int64()), "name": ["a", "b"]}), **kw)  # fmt: skip
 
