@@ -27,6 +27,7 @@ from floe.checks.rows import (
     Formatter,
     RowCheck,
     not_null_check,
+    reject_mask,
     split_rows,
 )
 from floe.checks.unique import (
@@ -178,10 +179,10 @@ def _copy_raw(plan: "Plan", source: Path, severity: str, name: str) -> str:
     return _put(plan, severity, name, source.read_bytes())
 
 
-def _error_report(plan: "Plan", stem: str, rows: list[tuple[int, str]]) -> str:
+def _error_report(plan: "Plan", stem: str, rows: list[tuple[int, str]], severity: str) -> str:  # fmt: skip
     """`<stem>_reject_errors.json`."""
     items = ",".join(f'{{"row_index":{i},"errors":{e}}}' for i, e in rows)
-    return _put(plan, rule_level(plan.entity, "row_check"), f"{stem}_reject_errors.json", f"[{items}]".encode())  # fmt: skip
+    return _put(plan, severity, f"{stem}_reject_errors.json", f"[{items}]".encode())  # fmt: skip
 
 
 @dataclass
@@ -267,6 +268,7 @@ def _typed(
             for n in plan.names
         )
     columns = entity.schema_.columns
+    config = dict(zip(plan.names, columns, strict=True))
     tag = "_e_cast_"  # the mask columns' prefix: no declared column may start with it
     while any(n.startswith(tag) for n in plan.names):
         tag = f"_{tag}"
@@ -284,7 +286,7 @@ def _typed(
             f"entity.name={entity.name} cast failed: {err}", code="run_invalid_input"
         ) from err
     cast_checks = [
-        RowCheck("cast_error", n, CAST_ERROR_MESSAGE, both[f"{tag}{n}"], rule_level(entity, "cast_error", n))
+        RowCheck("cast_error", n, CAST_ERROR_MESSAGE, both[f"{tag}{n}"], rule_level(entity, "cast_error", c))
         for n, c in zip(plan.names, columns, strict=True)
         if c.column_type != "string"
     ]  # fmt: skip
@@ -294,7 +296,7 @@ def _typed(
     if any(c.severity == "abort" and c.mask.any() for c in cast_checks):
         return typed, df, cast_checks  # fmt: skip  # abort-mode cast errors skip not_null and unique
     required = [
-        not_null_check(typed, n, rule_level(entity, "not_null", n))
+        not_null_check(typed, n, rule_level(entity, "not_null", config[n]))
         for n in plan.required
     ]
     if plan.history is not None:
@@ -325,9 +327,6 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
     every chunk after the first waits in `spill`, not in memory.
     """
     entity, uri = plan.entity, file.source_uri
-    severity = rule_level(
-        entity, "row_check"
-    )  # ponytail: one level for the file; per-check outcomes land with #1357
     derived = plan.derived.get(uri, [])
     # D28: the derived columns come last in the schema and are not in the file
     file_names = plan.names[: len(plan.names) - len(derived)]
@@ -379,7 +378,10 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
     accepted: list[pl.DataFrame | Path] = []
     rejected: list[pl.DataFrame] = []
     spilled_rejected: list[Path] = []  # a Parquet rejected sink spills every chunk
-    errors: list[tuple[int, str]] = []
+    # the rejected rows' errors, reported only when the file aborts
+    failed_rows: list[tuple[int, str]] = []
+    warned_rows: list[tuple[int, str]] = []
+    aborted = False
     try:
         for offset, raw_df, ragged in chain(first, chunks):
             typed, pre_cast, checks = _typed(plan, raw_df, mismatch, derived)
@@ -394,29 +396,31 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
                         rule_level(entity, "csv_read_error"),
                     ),
                 )
-            good, bad = split_rows(
+            good, bad, warned = split_rows(
                 typed, checks, plan.formatter, plan.sources, pre_cast
             )
             bad = bad.with_columns(pl.col(ROW_INDEX) + offset)
+            aborted = aborted or any(c.severity == "abort" and c.mask.any() for c in checks)  # fmt: skip
             rows += typed.height
             bad_total += bad.height
             for c in checks:
                 masks.setdefault((c.rule, c.column, c.message, c.severity), []).append(
                     c.mask
                 )
-            errors += zip(bad[ROW_INDEX].to_list(), bad[ERRORS].to_list(), strict=True)
-            forced = next((c.mask for c in checks if c.rule == "unique" and c.column == plan.merge_key), None)  # fmt: skip
-            if severity == "warn" and forced is not None:
-                forced = forced.fill_null(False)
+            failed_rows += zip(bad[ROW_INDEX].to_list(), bad[ERRORS].to_list(), strict=True)  # fmt: skip
+            warned_rows += zip((i + offset for i in warned[ROW_INDEX].to_list()), warned[ERRORS].to_list(), strict=True)  # fmt: skip
+            forced = next((c.mask for c in checks if c.rule == "unique" and c.column == plan.merge_key and c.severity == "warn"), None)  # fmt: skip
+            if forced is not None:
+                # aligned with `good`: the rows no reject-level check removed
+                forced = forced.fill_null(False).filter(~reject_mask(checks, typed.height))  # fmt: skip
                 forced_total += int(forced.sum())
-                typed = typed.filter(~forced)
-            frame = good if severity == "reject" else typed
+                good = good.filter(~forced)
             if accepted:
-                frame.write_ipc(spilled := spill / f"{len(accepted)}.ipc")
+                good.write_ipc(spilled := spill / f"{len(accepted)}.ipc")
                 accepted.append(spilled)
             else:
-                accepted.append(frame)
-            if severity == "reject" and bad.height:
+                accepted.append(good)
+            if not aborted and bad.height:
                 if _raw_rejected(plan):
                     bad.write_ipc(spilled := spill / f"rejected-{len(plan.rejected_spills) + len(spilled_rejected)}.ipc")  # fmt: skip
                     spilled_rejected.append(spilled)
@@ -427,12 +431,12 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
 
     merged = [RowCheck(r, c, m, pl.concat(s), v) for (r, c, m, v), s in masks.items()]
     rejected_path = errors_path = None
-    if bad_total and severity == "reject" and plan.rejected_table is not None:
+    if bad_total and not aborted and plan.rejected_table is not None:
         plan.rejected_spills += [
             (p, uri) for p in spilled_rejected
         ]  # one commit for the run
         rejected_path = _rejected(plan, "reject")[0].rstrip("/")
-    elif bad_total and severity == "reject":
+    elif bad_total and not aborted:
         target, client = _rejected(plan, "reject")
         key = input_hash(
             entity, [file]
@@ -447,10 +451,12 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
             else:
                 written = write_rejected(output(plan, pl.concat(rejected)), client, target, "append", key)  # fmt: skip
         rejected_path = written.removeprefix("local://")
-    elif bad_total and severity == "abort":
+    elif aborted:
         rejected_path = _copy_raw(plan, path, "abort", file.source_name)
-    if bad_total and entity.sink.rejected and severity != "reject":
-        errors_path = _error_report(plan, file.source_stem, errors)
+    # the rows accepted with warnings; an aborted file accepts none, so it lists every failing row
+    errors = sorted(failed_rows + warned_rows) if aborted else warned_rows
+    if errors and entity.sink.rejected:
+        errors_path = _error_report(plan, file.source_stem, errors, "abort" if aborted else "warn")  # fmt: skip
     plan.to_archive.append(file)
     out = file_report(entity, uri, rows, bad_total, merged, mismatch, rejected_path, None, errors_path, forced_total)  # fmt: skip
     return out, [] if out["status"] == "aborted" else _replay(plan, accepted)

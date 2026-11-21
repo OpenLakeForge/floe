@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Mapping, Sequence
+from itertools import product
 from typing import Any
 
 from floe.checks.mismatch import MismatchOutcome
@@ -33,18 +34,16 @@ def serialize(report: dict[str, Any]) -> str:
 def summarize_rules(
     checks: Sequence[RowCheck], entity: EntityConfig
 ) -> list[dict[str, Any]]:
-    """Per rule (fixed order), per column (sorted) violation counts."""
+    """Per rule (fixed order) and resolved severity (abort, reject, warn), per column (sorted) violation counts."""
     columns = entity.schema_.columns
     names = source_names(columns, resolve_strategy(entity.schema_))
     types = {n: c.column_type for n, c in zip(names, columns, strict=True)}
     sources = {n: c.source for n, c in zip(names, columns, strict=True) if c.source}
     rules: list[dict[str, Any]] = []
-    for rule in _RULES:
+    for rule, level in product(_RULES, ("abort", "reject", "warn")):
         counts: dict[str, int] = {}
-        level = rule_level(entity, rule)
         for c in checks:
-            if c.rule == rule or (rule == "schema_error" and c.rule not in _RULES):
-                level = c.severity
+            if c.severity == level and (c.rule == rule or (rule == "schema_error" and c.rule not in _RULES)):  # fmt: skip
                 counts[c.column] = counts.get(c.column, 0) + int(c.mask.sum())
         cols: list[dict[str, Any]] = []
         for name, n in sorted(counts.items()):
@@ -75,32 +74,23 @@ def file_report(
     errors_path: str | None = None,
     forced_rejects: int = 0,
 ) -> dict[str, Any]:
-    """One `files[]` entry. `rejected_count` is the split's; severity decides status and counts."""
+    """One `files[]` entry. `rejected_count` is the split's, `forced_rejects` the merge-key duplicates forced out under warn."""
     # a rejected/aborted mismatch decides the file before any row check runs
     precheck = mismatch.aborted or mismatch.rejected
     rules = [] if precheck else summarize_rules(checks, entity)
     violations = sum(r["violations"] for r in rules)
-    severity = rule_level(entity, "row_check")
+    warnings = sum(r["violations"] for r in rules if r["severity"] == "warn")
+    rejected = rejected_count + forced_rejects
     if precheck:
         status = "aborted" if mismatch.aborted else "rejected"
         accepted, rejected = 0, row_count
-    elif (
-        severity == "warn" or not violations
-    ):  # warn still rejects merge-key duplicates
-        status, accepted, rejected = (
-            "success",
-            row_count - forced_rejects,
-            forced_rejects,
-        )
-    elif severity == "reject":
-        status, accepted, rejected = (
-            "rejected",
-            row_count - rejected_count,
-            rejected_count,
-        )
-    else:
+    elif any(r["severity"] == "abort" for r in rules):
         status, accepted, rejected = "aborted", 0, row_count
-    warnings = violations if severity == "warn" else 0
+    else:  # merge-key duplicates forced out under warn leave the file a success
+        status, accepted = (
+            "rejected" if rejected_count else "success",
+            row_count - rejected,
+        )
     return {
         "input_file": input_file,
         "status": status,
@@ -229,7 +219,9 @@ def build_report(
             },
         },
         "sink": sink_echo,
-        "policy": {"severity": severity} | _rate_report(entity.policy.max_rejection_rate, totals),
+        "policy": {"severity": severity}
+        | ({"rule_severity": dict(sorted(levels.items()))} if (levels := entity.policy.rule_severity) else {})
+        | _rate_report(entity.policy.max_rejection_rate, totals),
         "accepted_output": {
             "path": accepted_uri,
             "table_root_uri": table_root_uri or accepted_uri,

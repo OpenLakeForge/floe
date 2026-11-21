@@ -29,7 +29,12 @@ from floe.checks.unique import (
     resolve_unique_keys,
 )
 from floe.config.storage import CatalogsConfig, StoragesConfig
-from floe.config.types import EntityConfig, rule_level, with_partition_columns
+from floe.config.types import (
+    EntityConfig,
+    max_level,
+    rule_level,
+    with_partition_columns,
+)
 from floe.errors import FloeConfigError, FloeRunError
 from floe.extras import require
 from floe.report.entity import build_report
@@ -397,7 +402,7 @@ def _run_entity(
     failure: list[Exception] = []
     # #1090: a merge keeps a key's latest version, so the newest file is checked first; the first row of a file still wins.
     # Not under abort: a duplicate aborts there anyway, and newer files committed ahead of a pending older one would let it merge stale rows later
-    latest_first = merging and rule_level(entity, "row_check") != "abort"
+    latest_first = merging and max_level(entity) != "abort"
 
     def accepted_frames() -> Generator[pl.DataFrame]:
         """Files are read as the sink pulls (#1056); `files` and `complete` are final once it is exhausted."""

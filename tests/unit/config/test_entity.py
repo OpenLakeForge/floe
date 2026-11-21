@@ -463,7 +463,7 @@ def test_source_and_sink_errors(overrides: dict[str, object], expected: str) -> 
 def test_rule_level_is_the_policy_severity(severity: str) -> None:
     parsed = parse_entity(entity(policy={"severity": severity}))
     for rule, column in [
-        ("not_null", "id"),
+        ("not_null", parsed.schema_.columns[0]),
         ("unique", None),
         ("schema_mismatch", None),
     ]:
