@@ -30,8 +30,8 @@ entity. The order is deterministic and is reflected in reports.
    - If the size/mtime changed, Floe still skips the file instead of reprocessing it. It is
      reported as `skipped` with `skip_reason: already_ingested_changed` and a warning, and its
      `file_finished` event carries that `skip_reason`.
-   - If another run has an active claim on the file, Floe skips it for this run
-     and emits an `incremental_file_claimed` warning.
+   - If another run has an active claim on the file, Floe skips it for this run: it is
+     reported as `skipped` with `skip_reason: active_claim` and a warning.
    - Remaining pending files are claimed with a conditional state update before
      accepted sink output is written.
 4. Prepare output directories if needed.
