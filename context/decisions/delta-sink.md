@@ -2,10 +2,22 @@
 
 ## Status
 
-Proposed (design for #1263, Unity Catalog #1266). No code yet. The maintainer approved the `deltalake` dependency
+Accepted (design for #1263, Unity Catalog #1266). No code yet. The maintainer approved the `deltalake` dependency
 behind a `delta` extra on 2026-11-20 (comment on #1263). This ADR answers the design questions of #1263 and splits
-the work into Task sub-issues; the planner creates them. Reverses D1 for Delta (and, with #1266, for Unity) once
-accepted.
+the work into Task sub-issues; the planner creates them. Reverses D1 for Delta (and, with #1266, for Unity).
+
+### Decided (maintainer, on PR #1291)
+
+1. **Retry guard:** the Delta `txn` action (`appId = floe:<input_hash>`, found with `transaction_version`) is the
+   guard, so a retried run never commits twice; `floe.run_id` and `floe.input_hash` also go in `commitInfo` (Q4).
+2. **Report:** a Delta sink reports `table_version` (the Delta version). This is a **run report contract change**: it
+   touches `docs/reference/report.md` (the `table_version` list, which names only Iceberg), the `table_version` note in
+   `docs/reference/config.md` and `docs/reference/support-matrix.md` ("Iceberg-only"), and the golden `expected/reports`
+   of the new Delta cases. There is no JSON schema for the run report; the manifest schema in `orchestrators/schemas/`
+   does not carry it. No `snapshot_id` for Delta.
+3. **Memory:** the first version accepts memory that grows with the entity size. Known ceiling, `ponytail:` in the
+   code: peak memory is about twice the compressed size of the entity; upgrade path: chunked data files plus
+   `DeltaTable.create_write_transaction` (Q1).
 
 ## Context
 
@@ -200,8 +212,7 @@ rejects the dead run's own rows).
   concurrent non-Floe writers.
 - **Rejected output, archive, state:** unchanged (D18, S1, S5, S6 are format-independent).
 - **Report:** `table_version` carries the Delta version (the existing field is "version identifier when the sink exposes
-  one", `docs/reference/report.md`); no `snapshot_id`. Any new field is a report-contract change and needs the
-  maintainer's call in the writer sub-issue.
+  one", `docs/reference/report.md`); no `snapshot_id`. Decided (see Status): a run report contract change, documented in the writer sub-issue.
 
 ## Q5. Unique keys on append
 
@@ -281,13 +292,13 @@ golden-only PR.
 | # | Title | Scope and files | Est. | Test that must fail first |
 |---|---|---|---|---|
 | 1 | `chore(deps): add the delta extra` | `deltalake>=1.6.6,<1.7` in `delta` and `all` extras; `uv.lock`. Own PR (AGENTS.md §3). `pyproject.toml` | 3 lines, 2 files | `tests/unit`: `import deltalake` after `uv sync --extra delta` (fails on `main`) |
-| 2 | `feat(config): accept sink.accepted.format=delta` | Lift the D1 refusal (`config/validate.py:385`, `:706`), add `delta` to `SINK_FORMATS`, make `partition_by` checks reachable (`validate.py:247`: columns exist, exclusive with `partition_spec`, `partition_spec` iceberg-only), refuse `merge_*` and `add_columns` with a "not supported with delta yet" message, keep the `sink.accepted.delta` block refused until #8, `require("delta", "deltalake", ...)`. Reuses the 0.7 shape (`format: delta`, `partition_by`, `options.max_size_per_file`) so 0.7 path-based configs validate. `config/validate.py`, `config/types.py`, `config/entity.py` | ~90 lines, 3 files | `conformance/config/d1_sink_delta` flips to `{"ok": true}`; unit tests assert exact messages for an unknown `partition_by` column and `delta` + `partition_spec` |
-| 3 | `feat(delta): write accepted rows as a Delta table (overwrite, append)` | New `src/floe/delta/` (`sink.py`: resolve path and storage to uri and `storage_options`, reader reuse, widen unsigned, schema-compat check, `write_deltalake` once, named error for unsupported features; `write.py`: result and report fields), wire into `run/entity.py` (`:237`, `:428`) and the manifest/report mapping. Golden cases `delta_overwrite`, `delta_append`; `conformance/record.py` reads a Delta dir with `DeltaTable.scan` instead of globbing `part-*.parquet` (it would include removed files) | ~230 lines, 5 files | unit: two overwrites leave only the second batch; `uint8` 200 round-trips; an unsupported-feature table raises the named `FloeRunError`; type drift on append is refused |
-| 4 | `feat(delta): retry guard for append` | `txn` + `commitInfo` stamp, `committed(table, hash)`, make `run/incremental.py:skip_committed` pick the table kind, `CommitFailedError` handling (refresh, guard, else fail), `file`-mode hash from expired claims, fail closed when `setTransactionRetentionDuration` outlived the claim. `delta/write.py`, `delta/guard.py`, `run/incremental.py`, `run/entity.py` | ~130 lines, 4 files | unit: crash after commit (P2) then retry reports `already_committed` and adds no rows; 6 threads appending one batch give 1 commit (fails with `commitInfo` only) |
-| 5 | `feat(delta): unique keys on append` | `delta/unique.py` (`DeltaTable.scan` to Parquet cache), generalise `run/entity.py:_key_cache` (`plan.table` is Iceberg-typed today). 2-3 files | ~70 lines, 3 files | unit: appended key already in a column-mapped table is rejected (fails with `pl.scan_delta`); memory-bounded test on a multi-file table |
+| 2 | `feat(config): accept sink.accepted.format=delta` | Lift the D1 refusal (`config/validate.py:415`; the PII `drop` check at `:773` already names delta), add `delta` to `SINK_FORMATS` (`:47`), make `partition_by` checks reachable (`validate.py:263`: columns exist, exclusive with `partition_spec`, `partition_spec` iceberg-only), refuse `merge_*` and `add_columns` with a "not supported with delta yet" message, keep the `sink.accepted.delta` block refused until #8, `require("delta", "deltalake", ...)`. Reuses the 0.7 shape (`format: delta`, `partition_by`, `options.max_size_per_file`) so 0.7 path-based configs validate. `config/validate.py`, `config/types.py`, `config/entity.py` | ~90 lines, 3 files | `conformance/config/d1_sink_delta` flips to `{"ok": true}`; unit tests assert exact messages for an unknown `partition_by` column and `delta` + `partition_spec` |
+| 3 | `feat(delta): write accepted rows as a Delta table (overwrite, append)` | New `src/floe/delta/` (`sink.py`: resolve path and storage to uri and `storage_options`, reader reuse, widen unsigned, schema-compat check, `write_deltalake` once, named error for unsupported features; `write.py`: result and report fields), wire into `run/entity.py` (`:254`, `:319-321`, `:444-447`) and the manifest/report mapping. Golden cases `delta_overwrite`, `delta_append`; `conformance/record.py` reads a Delta dir with `DeltaTable.scan` instead of globbing `part-*.parquet` (it would include removed files) | ~230 lines, 5 files | unit: two overwrites leave only the second batch; `uint8` 200 round-trips; an unsupported-feature table raises the named `FloeRunError`; type drift on append is refused |
+| 4 | `feat(delta): retry guard for append` | `txn` + `commitInfo` stamp, `committed(table, hash)`, make `run/incremental.py:skip_committed` (`:177-204`, called from `run/entity.py:359`) pick the table kind, `CommitFailedError` handling (refresh, guard, else fail), `file`-mode hash from expired claims, fail closed when `setTransactionRetentionDuration` outlived the claim. `delta/write.py`, `delta/guard.py`, `run/incremental.py`, `run/entity.py` | ~130 lines, 4 files | unit: crash after commit (P2) then retry reports `already_committed` and adds no rows; 6 threads appending one batch give 1 commit (fails with `commitInfo` only) |
+| 5 | `feat(delta): unique keys on append` | `delta/unique.py` (`DeltaTable.scan` to Parquet cache), generalise `run/entity.py:_key_cache` (`:142-153`; `plan.table` is Iceberg-typed today). 2-3 files | ~70 lines, 3 files | unit: appended key already in a column-mapped table is rejected (fails with `pl.scan_delta`); memory-bounded test on a multi-file table |
 | 6 | `feat(delta): partition_by` | Pass identity `partition_by` on create; on an existing table map delta-rs's `Specified table partitioning does not match table partitioning` to a `FloeRunError`. `delta/sink.py` | ~40 lines, 1 file | unit: partition directories created and `partition_columns` set; mismatch message asserted exactly; golden `delta_partition_by` |
 | 7 | `test(delta): S3-compatible integration` | `-m s3` tests on SeaweedFS (`python-integration.yml`): create, append, overwrite, concurrent commit, guard. Tests only; confirms the conditional-put assumption on the store CI uses | 0 src | the racing-writers test (1 commit wins), run on SeaweedFS |
-| 8 | `feat(catalog): unity catalog type for Delta external tables` (#1266, part 1) | `unity` in `catalogs.definitions` (host, catalog, schema, token ref), `sink.accepted.delta: {catalog, schema, table}`, validation (S3 storage only until #1267/#1268; local refused), lift `config/storage.py:42`, `:138`. | ~90 lines, 3 files | `conformance/config/d1_catalog_unity` flips to ok; unit: exact messages |
+| 8 | `feat(catalog): unity catalog type for Delta external tables` (#1266, part 1) | `unity` in `catalogs.definitions` (host, catalog, schema, token ref), `sink.accepted.delta: {catalog, schema, table}`, validation (S3 storage only until #1267/#1268; local refused), lift `config/storage.py:138`. | ~90 lines, 3 files | `conformance/config/d1_catalog_unity` flips to ok; unit: exact messages |
 | 9 | `feat(delta): register the table in Unity Catalog` (#1266, part 2) | `delta/unity.py`: `POST /api/2.1/unity-catalog/tables`, Arrow to Spark type mapping, OAuth token, report fields `delta_catalog_*`; manual test on a workspace (create, overwrite, append, read from a SQL warehouse; also a Databricks write racing a Floe write, Q3) | ~160 lines, 3 files | unit against a local HTTP stub: the request body for a created table; manual run as in `docs/reference/support-matrix.md` real-AWS row |
 | 10 | `docs: Delta sink` | New `docs/sinks/delta.md` (supported features, Databricks interop, DBR 14+ for S3, external tables), `docs/reference/config.md` (`partition_by`, `table_version`), `docs/reference/support-matrix.md`, `docs/guides/profiles.md`, `context/project.md`, `context/decisions/python-core-for-olf.md` D1 note, #264 note, `CHANGELOG.md` | docs only | none (docs) |
 
@@ -304,7 +315,7 @@ Blocked or later (not in the 1.0 critical path):
 
 ## Trade-offs
 
-- The `txn` guard departs from "stored in commit metadata" in #1263. It costs one `txn` action per append commit and
+- The `txn` guard (decided) departs from "stored in commit metadata" in #1263. It costs one `txn` action per append commit and
   makes the retry evidence outlive log cleanup and conflict-check at commit; the `commitInfo` fields stay for audit.
 - Phase 1 has no in-process commit retry and a memory ceiling proportional to the entity; both are named upgrades
   (chunked writer), not 1.0 blockers for light and medium loads.
