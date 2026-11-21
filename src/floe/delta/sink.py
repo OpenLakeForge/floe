@@ -9,6 +9,8 @@ from typing import Any
 
 import polars as pl
 import pyarrow as pa
+from deltalake import DeltaTable
+from deltalake.exceptions import TableNotFoundError
 
 from floe.checks.unique import resolve_unique_keys
 from floe.config.storage import StorageDefinition
@@ -70,9 +72,17 @@ def _reader(entity: EntityConfig, frames: Iterator[pl.DataFrame], names: list[st
     return pa.RecordBatchReader.from_batches(schema, batches())
 
 
-def write_delta(entity: EntityConfig, uri: str, storage: StorageDefinition | None, frames: Iterator[pl.DataFrame], names: list[str], mode: WriteMode) -> tuple[AcceptedWrite, dict[str, Any]]:  # fmt: skip
-    """`frames` (at least one) hold the output columns `names`; returns the commit's files and the `accepted_output` table fields."""
+def existing_table(uri: str, storage: StorageDefinition | None) -> DeltaTable | None:
+    """The table at `uri`, None before the first write; the retry guard reads its `txn` actions."""
+    try:
+        return DeltaTable(uri.removeprefix("local://"), storage_options=storage_options(storage))  # delta-rs takes a plain path for local storage  # fmt: skip
+    except TableNotFoundError:
+        return None
+
+
+def write_delta(entity: EntityConfig, uri: str, storage: StorageDefinition | None, frames: Iterator[pl.DataFrame], names: list[str], mode: WriteMode, run_id: str, input_hash: str | None) -> tuple[AcceptedWrite, dict[str, Any], bool]:  # fmt: skip
+    """`frames` (at least one) hold the output columns `names`; returns the commit's files, the `accepted_output` table fields and whether a racing run had committed this batch."""
     reader = _reader(entity, frames, names)
     path = uri.removeprefix("local://")  # delta-rs takes a plain path for local storage
-    written, version = write_table(f"entity.name={entity.name}", path, storage_options(storage), reader, mode)  # fmt: skip
-    return written, {"table_version": version}
+    written, version, raced = write_table(f"entity.name={entity.name}", path, storage_options(storage), reader, mode, run_id, input_hash)  # fmt: skip
+    return written, {"table_version": version}, raced

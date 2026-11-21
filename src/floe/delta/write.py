@@ -7,8 +7,9 @@ from pathlib import PurePosixPath
 
 import pyarrow as pa
 from deltalake import DeltaTable, write_deltalake
-from deltalake.exceptions import DeltaError, TableNotFoundError
+from deltalake.exceptions import CommitFailedError, DeltaError, TableNotFoundError
 
+from floe.delta.guard import committed, stamp
 from floe.errors import FloeRunError
 from floe.write.outputs import AcceptedWrite
 
@@ -49,16 +50,15 @@ def _named(who: str, uri: str, err: DeltaError | OSError) -> FloeRunError:
     return FloeRunError(f"{who} delta write failed: {text}", code="run_commit_failed")
 
 
-def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBatchReader, mode: str) -> tuple[AcceptedWrite, int]:  # fmt: skip
-    """Write `reader` as one commit; returns the files it added and the table's version after it.
+def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBatchReader, mode: str, run_id: str, input_hash: str | None) -> tuple[AcceptedWrite, int, bool]:  # fmt: skip
+    """Write `reader` as one commit; returns the files it added, the version of that commit and whether it was already there.
 
     Overwrite removes every live file in the same commit. A table Floe creates keeps delta-rs's minimal protocol; an
-    existing table is never altered.
+    existing table is never altered. The commit carries `run_id` and, with an `input_hash`, the retry guard's `txn`
+    (#1308); a commit conflict that finds that `txn` in the table means a racing run wrote this batch first (#920).
 
     ponytail: `write_deltalake` is not memory-bounded: peak memory is about twice the entity's compressed size
     (measured in context/decisions/delta-sink.md). Upgrade path: chunked data files plus `DeltaTable.create_write_transaction`.
-    ponytail: no retry guard yet, so a retry after a commit that was not promoted appends the batch again (#1308:
-    the `txn` action).
     """
     try:
         try:
@@ -68,18 +68,28 @@ def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBa
         if table is not None:
             _refuse_drift(who, table, reader.schema)
         before = _files(table) if table is not None else {}
-        write_deltalake(uri, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options)  # fmt: skip
-        # ponytail: `write_deltalake` returns nothing, so the version is read after it: another writer committing in
-        # between would be reported as ours. Upgrade path: take it from the commit result / `txn` of the retry guard (#1308).
+        base = table.version() if table is not None else -1
+        try:
+            write_deltalake(uri, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options, commit_properties=stamp(run_id, input_hash))  # fmt: skip
+        except CommitFailedError as err:
+            if input_hash is None or not committed(raced := DeltaTable(uri, storage_options=options), input_hash):  # fmt: skip
+                raise _named(who, uri, err) from err
+            return AcceptedWrite(0, [], 0, 0.0, 0), raced.version(), True
         after = DeltaTable(uri, storage_options=options)
         added = {p: s for p, s in _files(after).items() if p not in before}
+        # the commit's own version: the newest of the commits since `base` that carries this run's id
+        version = next(h["version"] for h in after.history(limit=after.version() - base) if h.get("floe.run_id") == run_id)  # fmt: skip
     except (DeltaError, OSError) as err:
         raise _named(who, uri, err) from err
     sizes = list(added.values())
-    return AcceptedWrite(
-        len(added),
-        [PurePosixPath(p).name for p in added][:_REPORTED_FILES],
-        sum(sizes),
-        sum(sizes) / len(sizes) / (1024 * 1024) if sizes else None,
-        sum(s < _SMALL_FILE_BYTES for s in sizes),
-    ), after.version()
+    return (
+        AcceptedWrite(
+            len(added),
+            [PurePosixPath(p).name for p in added][:_REPORTED_FILES],
+            sum(sizes),
+            sum(sizes) / len(sizes) / (1024 * 1024) if sizes else None,
+            sum(s < _SMALL_FILE_BYTES for s in sizes),
+        ),
+        version,
+        False,
+    )
