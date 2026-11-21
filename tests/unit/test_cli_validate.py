@@ -1,12 +1,15 @@
 """`floe validate` (Rust: `crates/floe-cli/tests/validate_output.rs`)."""
 
+import argparse
 import os
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
-from floe._cli import main
+from floe._cli import _selectors, main  # pyright: ignore[reportPrivateUsage] -- a usage error has no public surface for its code
+from floe.errors import FloeConfigError
 
 REPO = Path(__file__).resolve().parents[2]
 CONFIG = REPO / "example/standalone/config.yml"
@@ -120,3 +123,9 @@ def test_validate_remote_config_is_refused(
         err
         == "Error: s3://b/config.yml: a config must be a local path; download it first\n"
     )
+
+
+def test_a_cli_usage_error_carries_a_code() -> None:
+    with pytest.raises(FloeConfigError) as err:
+        _selectors(Mock(), argparse.Namespace(domain="d", entities=["e"]))
+    assert err.value.code == "config_conflict"

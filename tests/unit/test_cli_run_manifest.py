@@ -426,8 +426,8 @@ def test_a_missing_manifest_is_logged_after_run_started_with_code_error(
     assert floe(monkeypatch, *argv) == 1
     assert capsys.readouterr().out.splitlines()[:2] == [
         "run_started run_id=r config=nope.json report_base=disabled",
-        "log level=error code=error No such file or directory (os error 2)",
-    ]  # Rust 0.7, byte for byte
+        "log level=error code=error error_code=io_read_error No such file or directory (os error 2)",
+    ]
 
 
 def test_a_rest_catalog_loads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
