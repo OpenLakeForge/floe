@@ -102,7 +102,7 @@ wildcard. Listing is recursive and sorted by key.
   `config_not_supported`: DuckDB's GCS secret takes HMAC keys only, not Application Default
   Credentials. `floe validate` does not catch it.
 - Delta on GCS is refused with `config_not_supported`.
-- `floe maintain`, `floe manifest generate` and `floe manifest replay` refuse a config that defines
+- `floe manifest generate` and `floe manifest replay` refuse a config that defines
   any `gcs` (or `adls`) storage, even an unused one.
 - A manifest (`--manifest`, `manifest generate -o`) and a profile (`-p`) are read and written from
   local paths or `s3://` only, not `gs://`.

@@ -7,10 +7,12 @@ import os
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
 import pyarrow as pa
 import pytest
+from obstore.store import MemoryStore
 from pyiceberg.io import load_file_io
 from pyiceberg.partitioning import PartitionSpec
 from pyiceberg.schema import Schema
@@ -29,8 +31,11 @@ import floe
 import floe.iceberg.compact as compact_module
 import floe.iceberg.sink as sink_module
 from floe._cli import main
+from floe.config.storage import StorageDefinition
+from floe.errors import FloeRunError
 from floe.iceberg import catalog as catalog_module
-from floe.maintain import _list  # pyright: ignore[reportPrivateUsage] -- the S3 branch of the listing
+from floe.maintain import _list, remove_orphans  # pyright: ignore[reportPrivateUsage] -- the cloud branches of the listing
+from floe.storage.resolve import clear_storage_clients
 from floe.storage.types import ObjectRef
 
 DAY = 86_400
@@ -313,19 +318,40 @@ def test_compaction_runs_first_on_its_own_duckdb_connection(tmp_path: Path, cata
     assert "  Compaction: 15 data files and 2 delete files rewritten into 1 data file(s)\n" in out  # fmt: skip
 
 
-@pytest.mark.parametrize("kind", ["adls", "gcs"])
-def test_maintain_refuses_adls_and_gcs_storages(kind: str, tmp_path: Path) -> None:  # fmt: skip
-    """#1323: the orphan listing would walk an `abfss://` or `gs://` location as a local directory."""
-    from floe.config.parse import parse_config
-    from floe.config.storage import StorageDefinition, StoragesConfig
-    from floe.errors import FloeConfigError
-    from floe.maintain import maintain
+GCS = StorageDefinition(name="cold", type="gcs", bucket="b", region=None, account=None, container=None, prefix=None, endpoint=None, path_style_access=None)  # fmt: skip
 
-    (tmp_path / "config.yml").write_text(CONFIG)
-    root = parse_config(tmp_path / "config.yml", {})
-    lake = StorageDefinition(name="cold", type=kind, bucket="b", region=None, account="a", container="c", prefix=None, endpoint=None, path_style_access=None)  # fmt: skip
-    root = root.model_copy(update={"storages": StoragesConfig(default="local", definitions=[*(root.storages.definitions if root.storages else []), lake])})  # fmt: skip
-    with pytest.raises(FloeConfigError) as e:
-        maintain(tmp_path / "config.yml", root, [], 7, 10, 3, True, False, False)
-    assert e.value.code == "config_not_supported"
-    assert str(e.value) == f"floe maintain: storage cold (type {kind}) is not supported yet"  # fmt: skip
+
+def gcs_table(monkeypatch: pytest.MonkeyPatch, current: bool = True) -> tuple[SimpleNamespace, list[str], MemoryStore]:  # fmt: skip
+    """A table at `gs://b/t/orders` over obstore's in-memory store; `deleted` collects what `io.delete` is asked to remove."""
+    store, deleted = MemoryStore(), []
+    monkeypatch.setattr("obstore.store.GCSStore", lambda *_, **__: store)  # pyright: ignore[reportUnknownLambdaType] -- stub
+    clear_storage_clients()
+    for key in ("t/orders/metadata/0.metadata.json" if current else "t/orders/other", "t/orders/data/kept.parquet", "t/orders/data/orphan.parquet", "t/orders-2/data/other-table.parquet"):  # fmt: skip
+        store.put(key, b"x")
+    keep = {"b/t/orders/metadata/0.metadata.json", "b/t/orders/data/kept.parquet"}
+    monkeypatch.setattr(sys.modules["floe.maintain"], "_reachable", lambda _t: keep)  # pyright: ignore[reportUnknownLambdaType] -- stub
+    table = SimpleNamespace(location=lambda: "gs://b/t/orders", metadata_location="gs://b/t/orders/metadata/0.metadata.json", io=SimpleNamespace(delete=deleted.append))  # fmt: skip
+    return table, deleted, store
+
+
+def test_orphans_are_listed_on_gcs_through_obstore(monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    table, deleted, _ = gcs_table(monkeypatch)
+    found = remove_orphans(table, GCS, 0, True)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType] -- duck-typed table
+    assert found == [("gs://b/t/orders/data/orphan.parquet", 1)] and deleted == []
+    remove_orphans(table, GCS, 0, False)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType] -- duck-typed table
+    # the sibling table `orders-2` shares the prefix text but not the location
+    assert deleted == ["gs://b/t/orders/data/orphan.parquet"]
+
+
+def test_a_gcs_listing_without_the_current_metadata_deletes_nothing(monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    table, deleted, _ = gcs_table(monkeypatch, current=False)
+    with pytest.raises(FloeRunError, match="current metadata"):
+        remove_orphans(table, GCS, 0, False)  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType] -- duck-typed table
+    assert deleted == []
+
+
+@pytest.mark.parametrize("location", ["gs://b/t", "abfss://c@a.dfs.core.windows.net/t"])
+def test_a_cloud_location_without_a_matching_storage_fails_instead_of_listing_locally(location: str) -> None:  # fmt: skip
+    with pytest.raises(FloeRunError) as e:
+        _list(location, None)
+    assert e.value.code == "run_invalid_setup"

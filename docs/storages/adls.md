@@ -100,7 +100,7 @@ wildcard. Listing is recursive and sorted by key.
 - Iceberg on ADLS is refused: validation fails for an Iceberg accepted or rejected sink on an
   `adls` storage, and for a catalog `warehouse_storage` that is `adls` (#1344).
 - Delta on ADLS is refused with `config_not_supported`.
-- `floe maintain`, `floe manifest generate` and `floe manifest replay` refuse a config that defines
+- `floe manifest generate` and `floe manifest replay` refuse a config that defines
   any `adls` (or `gcs`) storage, even an unused one.
 - A manifest (`--manifest`, `manifest generate -o`) and a profile (`-p`) are read and written from
   local paths or `s3://` only, not `abfss://`.

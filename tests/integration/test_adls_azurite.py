@@ -16,6 +16,7 @@ import pytest
 
 from floe.config.parse import parse_config
 from floe.config.storage import StorageDefinition
+from floe.maintain import _list  # pyright: ignore[reportPrivateUsage] -- the adls branch of the listing
 from floe.run import run
 from floe.storage.object_store import ObjectStoreClient, azure_store
 
@@ -155,3 +156,18 @@ def test_archive_mode_moves_the_source_into_the_archive(
     copy = adls.read(adls.resolve_uri(archived[0]))
     assert copy is not None
     assert copy.body == b"id\n1\n2\n"
+
+
+def test_maintain_lists_a_table_location_on_adls(adls: ObjectStoreClient) -> None:
+    """`floe maintain`'s orphan listing: one table's objects, not a sibling that shares the prefix text."""
+    p = f"it-{uuid.uuid4().hex}"
+    for name in (
+        "orders/metadata/0.json",
+        "orders/data/a.parquet",
+        "orders-2/data/b.parquet",
+    ):
+        adls.write(adls.resolve_uri(f"{p}/{name}"), b"x")
+    definition = StorageDefinition(name="lake", type="adls", bucket=None, region=None, account=ACCOUNT, container=CONTAINER, prefix=None, endpoint=os.environ["FLOE_AZURITE_ENDPOINT"], path_style_access=None)  # fmt: skip
+    listed = _list(f"{ROOT}/{p}/orders", definition)
+    assert [uri for uri, _, _ in listed] == [f"{ROOT}/{p}/orders/data/a.parquet", f"{ROOT}/{p}/orders/metadata/0.json"]  # fmt: skip
+    assert all(mtime and size == 1 for _, mtime, size in listed)
