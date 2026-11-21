@@ -121,3 +121,11 @@ def test_s3_storage_options_follow_the_storage_definition() -> None:
     s3 = StorageDefinition(name="s", type="s3", bucket="b", region="eu-west-1", account=None, container=None, prefix=None, endpoint="http://localhost:9000", path_style_access=False)  # fmt: skip
     assert storage_options(s3) == {"AWS_REGION": "eu-west-1", "AWS_ENDPOINT_URL": "http://localhost:9000", "AWS_ALLOW_HTTP": "true", "AWS_VIRTUAL_HOSTED_STYLE_REQUEST": "true"}  # fmt: skip
     assert storage_options(None) == {}
+
+
+def test_repeated_writes_with_datetime_and_date_columns_match_the_table(tmp_path: Path) -> None:  # fmt: skip
+    columns = (("id", "int64"), ("at", "datetime"), ("day", "date"))
+    run(tmp_path, "id,at,day\n1,2024-01-02T03:04:00,2024-01-02\n", columns=columns)
+    run(tmp_path, "id,at,day\n2,2024-01-03T03:04:00,2024-01-03\n", columns=columns)
+    run(tmp_path, "id,at,day\n3,2024-01-04T03:04:00,2024-01-04\n", "append", columns=columns)  # fmt: skip
+    assert sorted(table(tmp_path)["id"].to_list()) == [2, 3]

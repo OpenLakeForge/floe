@@ -19,8 +19,10 @@ _UNSUPPORTED = ("Unsupported table features", "is not supported", "catalog-manag
 
 
 def _plain(kind: pa.DataType) -> pa.DataType:
-    """Polars writes `large_string`; Delta stores `string`."""
-    return pa.string() if pa.types.is_large_string(kind) else kind
+    """The form Delta stores: `string` for Polars' `large_string`, microseconds for a timestamp (Floe casts to `ms`); a zone stays, so naive vs zoned is still a change."""
+    if pa.types.is_large_string(kind):
+        return pa.string()
+    return pa.timestamp("us", kind.tz) if pa.types.is_timestamp(kind) else kind
 
 
 def _files(table: DeltaTable) -> dict[str, int]:
