@@ -111,13 +111,16 @@ def compact(table: Table, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         return {"rewritten_data_files": 0, "removed_delete_files": 0, "added_data_files": 0}  # fmt: skip
     if not table.spec().is_unpartitioned() or table.format_version != 2:
         # ponytail: PyIceberg 0.12 streams unpartitioned v2 writes only; partitioned needs an ordered per-partition flush
-        raise FloeRunError(f"iceberg compaction supports unpartitioned format v2 tables only ({'.'.join(table.name())})")  # fmt: skip
+        raise FloeRunError(f"iceberg compaction supports unpartitioned format v2 tables only ({'.'.join(table.name())})", code="run_not_supported")  # fmt: skip
     with run_error("iceberg compaction plan failed"):
         tasks = list(table.scan(snapshot_id=base.snapshot_id).plan_files())
     data = {t.file for t in tasks}
     deletes = {d for t in tasks for d in t.delete_files}
     if any(d.content == DataFileContent.EQUALITY_DELETES for d in deletes):
-        raise FloeRunError("iceberg compaction does not support equality deletes")
+        raise FloeRunError(
+            "iceberg compaction does not support equality deletes",
+            code="run_not_supported",
+        )
     source = f"{_target(table)} AT (VERSION => {base.snapshot_id})"
     schema = table.schema().as_arrow()
     with run_error("iceberg compaction rewrite failed"):
@@ -126,7 +129,7 @@ def compact(table: Table, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         new = list(_dataframe_to_data_files(table.metadata, pa.RecordBatchReader.from_batches(schema, batches), table.io))  # fmt: skip
         live = con.execute(f"SELECT count(*) FROM {source}").fetchone()
     if live is None or live[0] != sum(f.record_count for f in new):
-        raise FloeRunError(f"iceberg compaction wrote {sum(f.record_count for f in new)} rows, expected {live and live[0]}; nothing was committed")  # fmt: skip
+        raise FloeRunError(f"iceberg compaction wrote {sum(f.record_count for f in new)} rows, expected {live and live[0]}; nothing was committed", code="run_commit_failed")  # fmt: skip
     with run_error("iceberg compaction commit failed"):
         table.refresh()  # the head may have moved: its manifests are the ones carried over
         tx = table.transaction()
