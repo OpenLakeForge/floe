@@ -507,6 +507,10 @@ def _run_entity(
     files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
     inc.committed = files  # #915: from here on a failure promotes the written files
     # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source
+    meta = {m.source_uri: m for m in inputs.files}
+    for r in files:  # #1362: the listed size and mtime, the values `input_hash` uses; null for an entry not listed
+        m = meta.get(r["input_file"])
+        r["input_size"], r["input_mtime"] = (m.source_size, m.source_mtime) if m else (None, None)  # fmt: skip
     by_uri = {r["input_file"]: r for r in files}
     order = {f.source_uri: i for i, f in enumerate(inputs.files)}
     _write_mtime_index(plan)

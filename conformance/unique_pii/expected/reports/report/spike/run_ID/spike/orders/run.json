@@ -217,7 +217,9 @@
             ]
           }
         ]
-      }
+      },
+      "input_size": 396,
+      "input_mtime": "<volatile>"
     },
     {
       "input_file": "local://<ROOT>/in/b.csv",
@@ -258,7 +260,9 @@
             ]
           }
         ]
-      }
+      },
+      "input_size": 260,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"

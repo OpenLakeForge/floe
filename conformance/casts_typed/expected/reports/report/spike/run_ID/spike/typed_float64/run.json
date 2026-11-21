@@ -94,7 +94,9 @@
         "errors": 0,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 2725,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"
