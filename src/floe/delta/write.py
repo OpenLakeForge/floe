@@ -17,6 +17,7 @@ _SMALL_FILE_BYTES = 16 * 1024 * 1024
 _REPORTED_FILES = 50
 # what delta-rs says when a table needs a feature it cannot write (`Unsupported table features required: [...]`)
 _UNSUPPORTED = ("Unsupported table features", "is not supported", "catalog-managed")
+_PARTITIONING = "Specified table partitioning does not match table partitioning"
 
 
 def _plain(kind: pa.DataType) -> pa.DataType:
@@ -47,10 +48,12 @@ def named(who: str, uri: str, err: DeltaError | OSError) -> FloeRunError:
     text = str(err)
     if any(s in text for s in _UNSUPPORTED):
         return FloeRunError(f"{who} cannot write the delta table at {uri}: it uses a table feature delta-rs cannot write ({text}); disable the feature or write another table", code="run_not_supported")  # fmt: skip
+    if _PARTITIONING in text:  # fmt: skip
+        return FloeRunError(f"{who} sink.accepted.partition_by does not match the partitioning of the delta table at {uri} ({text.removeprefix('Generic error: ')}); the partition columns of an existing table cannot change", code="run_schema_evolution")  # fmt: skip
     return FloeRunError(f"{who} delta write failed: {text}", code="run_commit_failed")
 
 
-def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBatchReader, mode: str, run_id: str, input_hash: str | None, table: DeltaTable | None = None) -> tuple[AcceptedWrite, int, bool]:  # fmt: skip
+def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBatchReader, mode: str, run_id: str, input_hash: str | None, table: DeltaTable | None = None, partition_by: list[str] | None = None) -> tuple[AcceptedWrite, int, bool]:  # fmt: skip
     """Write `reader` as one commit; returns the files it added, the version of that commit and whether a rival had committed this batch.
 
     Overwrite removes every live file in the same commit. A table Floe creates keeps delta-rs's minimal protocol; an
@@ -74,7 +77,7 @@ def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBa
         base = table.version() if table is not None else -1
         seen = table is not None and input_hash is not None and committed(table, input_hash)  # fmt: skip
         try:
-            write_deltalake(uri if table is None else table, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options, commit_properties=stamp(run_id, input_hash))  # fmt: skip
+            write_deltalake(uri if table is None else table, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options, partition_by=partition_by, commit_properties=stamp(run_id, input_hash))  # fmt: skip
         except CommitFailedError as err:
             current = DeltaTable(uri, storage_options=options)
             if (
