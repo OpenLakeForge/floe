@@ -910,6 +910,17 @@
               "abort"
             ]
           },
+          "policy_rule_severity": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "warn",
+                "reject",
+                "abort"
+              ]
+            }
+          },
           "write_mode": {
             "type": "string",
             "enum": [
@@ -965,6 +976,17 @@
                         "boolean",
                         "null"
                       ]
+                    },
+                    "rule_severity": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "enum": [
+                          "warn",
+                          "reject",
+                          "abort"
+                        ]
+                      }
                     }
                   }
                 }
