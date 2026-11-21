@@ -1,2 +1,2 @@
-id,card,ssn,ip,email,__floe_row_index,__floe_errors
-,4111****2222,***,,[REDACTED],3,"[{""rule"":""not_null"",""column"":""id"",""message"":""required value missing""}]"
+id,card,ssn,ip,email,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+,4111****2222,***,,[REDACTED],3,"[{""rule"":""not_null"",""column"":""id"",""message"":""required value missing""}]",<run_id>,local://<ROOT>/in/people.csv
