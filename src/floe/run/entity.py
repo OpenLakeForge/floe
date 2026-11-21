@@ -139,7 +139,7 @@ def _archive(plan: Plan, file: InputFile) -> str | None:
     return uri.removeprefix("local://")
 
 
-def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batch: str) -> pl.LazyFrame | None:  # fmt: skip
+def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batch: str, delta: Any = False) -> pl.LazyFrame | None:  # fmt: skip
     """Append mode: the key columns of the target's existing data, written once to local disk (#1057).
 
     Each chunk then joins its keys against this cache, so the target is read once per entity and
@@ -147,7 +147,14 @@ def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batch: 
     """
     cache = temp / "unique-keys"
     cache.mkdir()
-    if plan.table is not None:
+    if (
+        delta is not False
+    ):  # the Delta table the retry guard loaded, None before the first write
+        if delta is not None:
+            from floe.delta.unique import cache_table_keys as cache_delta_keys
+
+            cache_delta_keys(delta, plan.tracker.keys, plan.out_map, cache / "table.parquet")  # fmt: skip
+    elif plan.table is not None:
         from floe.iceberg.unique import cache_table_keys
 
         cache_table_keys(plan.table, plan.tracker.keys, plan.out_map, cache / "table.parquet")  # fmt: skip
@@ -402,7 +409,7 @@ def _run_entity(
                 closing(localized_inputs(queue, downloader, Path(temp_dir))) as inputs,
             ):
                 if pending and sink.write_mode == "append" and plan.tracker.keys and (target is None or plan.table is not None):  # fmt: skip
-                    plan.history = _key_cache(plan, accepted_client, base, Path(temp_dir), input_hash(entity, pending))  # fmt: skip
+                    plan.history = _key_cache(plan, accepted_client, base, Path(temp_dir), input_hash(entity, pending), guarded if delta else False)  # fmt: skip
                 for f in queue:
                     emit("file_started", entity=entity.name, input=f.source_uri)
                     timer = time.monotonic()
