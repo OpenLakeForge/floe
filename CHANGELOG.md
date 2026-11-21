@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- `floe maintain` lists Iceberg table locations on `gs://` and `abfss://` storages through obstore (#1390), so orphan file removal works on a GCS table and no longer refuses a config that defines an ADLS or GCS storage; a `gs://` or `abfss://` location without a matching storage fails with `run_invalid_setup`. Iceberg on ADLS stays refused at validate (#1344), and `--compact` on GCS stays unsupported.
 - CSV rejected rows carry `__floe_run_id` and `__floe_source_uri` after `__floe_errors` (#1384), in the same order and with the same values as Parquet, so all three rejected formats have the same four envelope columns. A reader of rejected CSV that indexes columns by position past `__floe_errors` must account for the two new columns.
 - `floe manifest generate` and `floe run --manifest` support `type: adls` and `type: gcs` storages (#1388): the manifest records the `abfss://` and `gs://` URIs the run writes, and a replayed run writes its report to the storage matching `report_base_uri` (`config_invalid_value` when none matches). `floe maintain` still refuses them.
 - Iceberg sinks work on ADLS storage (#1344): `floe validate` accepts an `adls` accepted or rejected storage (and a catalog `warehouse_storage` on ADLS), and PyIceberg writes through its fsspec FileIO at the `abfss://<container>@<account>.dfs.core.windows.net/...` location Floe generates. The `adls` extra now installs `adlfs` (`pip install floe-python[adls]`).

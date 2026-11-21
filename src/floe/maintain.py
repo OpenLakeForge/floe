@@ -16,8 +16,8 @@ from floe.config.validate import validate_config
 from floe.errors import FloeConfigError, FloeRunError
 from floe.extras import require
 from floe.run import select_entities
-from floe.storage.paths import normalize_local_path, parse_s3_uri
-from floe.storage.resolve import refuse_unsupported_storages
+from floe.storage.paths import normalize_local_path, parse_s3_uri, split_uri
+from floe.storage.resolve import storage_client
 from floe.storage.s3 import S3Client
 
 if TYPE_CHECKING:
@@ -58,10 +58,30 @@ def _key(uri: str) -> str:
 
 def _list(location: str, storage: StorageDefinition | None) -> list[tuple[str, float | None, int]]:  # fmt: skip
     """(uri, mtime, size) of every object under the table location."""
-    if location.startswith("s3://"):
-        bucket, key = parse_s3_uri(location)
-        s3 = storage if storage and storage.type == "s3" else None
-        client = S3Client(bucket, s3 and s3.region, s3 and s3.endpoint, s3 and s3.path_style_access)  # fmt: skip
+    scheme, _, _ = location.partition("://")
+    if scheme in ("s3", "gs", "abfss"):
+        kind = {"s3": "s3", "gs": "gcs", "abfss": "adls"}[scheme]
+        if scheme != "s3" and not (
+            storage and storage.type == kind
+        ):  # the local fallback would list nothing
+            raise FloeRunError(f"table location {location} needs a storage of type {kind}", code="run_invalid_setup")  # fmt: skip
+        if scheme == "s3":
+            bucket, key = parse_s3_uri(location)
+            s3 = storage if storage and storage.type == "s3" else None
+            client = S3Client(bucket, s3 and s3.region, s3 and s3.endpoint, s3 and s3.path_style_access)  # fmt: skip
+        else:
+            root, key = split_uri(location)
+            assert storage is not None  # checked above
+            own = (
+                storage.bucket
+                if kind == "gcs"
+                else f"{storage.container}@{storage.account}.dfs.core.windows.net"
+            )
+            if (
+                root != own
+            ):  # listing another bucket or container would report every file there as an orphan
+                raise FloeRunError(f"table location {location} is outside storage {storage.name} ({own})", code="run_invalid_setup")  # fmt: skip
+            client = storage_client(storage)
         return [
             (r.uri, datetime.fromisoformat(r.last_modified).timestamp() if r.last_modified else None,r.size or 0)
             for r in client.list(f"{key.strip('/')}/" if key.strip("/") else "")  # a bucket root lists every key
@@ -126,7 +146,6 @@ def maintain(path: Path, root: RootConfig, entities: Sequence[str], older_than_d
     if compact_tables:
         require("merge", "duckdb", "--compact")
     validate_config(root)
-    refuse_unsupported_storages(root.storages, "floe maintain")
     config_dir = normalize_local_path(path.resolve().parent)
     results: list[dict[str, Any]] = []
     for entity in select_entities(root, entities):
