@@ -40,6 +40,7 @@ from floe.config.types import (
 from floe.config.validate import FLOE_VERSION
 from floe.errors import NOT_SUPPORTED, FloeConfigError, FloeIoError
 from floe.storage.paths import normalize_local_path, parse_s3_uri
+from floe.storage.resolve import refuse_unsupported_storages
 from floe.storage.s3 import read_s3
 
 Json = dict[str, Any]
@@ -323,7 +324,9 @@ def load_manifest(location: str | Path) -> tuple[RootConfig, list[EntityConfig],
     if not supported:
         floe = f"{FLOE_VERSION[0]}.{FLOE_VERSION[1]}"
         raise FloeConfigError(f"manifest spec_version={spec} is unsupported (newer than Floe {floe})", code="config_version")  # fmt: skip
-    report, storages = _report(report_base, m.get("report_formatter"), _section(StoragesConfig, m, "storages", _storage_def))  # fmt: skip
+    storages = _section(StoragesConfig, m, "storages", _storage_def)
+    refuse_unsupported_storages(storages, "floe manifest replay")
+    report, storages = _report(report_base, m.get("report_formatter"), storages)
     root = RootConfig(
         version=spec,
         metadata=metadata,

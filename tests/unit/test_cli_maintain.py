@@ -311,3 +311,21 @@ def test_compaction_runs_first_on_its_own_duckdb_connection(tmp_path: Path, cata
     assert (code, err) == (0, ""), err
     assert calls == [15] and len(table.metadata.snapshots) == 10
     assert "  Compaction: 15 data files and 2 delete files rewritten into 1 data file(s)\n" in out  # fmt: skip
+
+
+@pytest.mark.parametrize("kind", ["adls", "gcs"])
+def test_maintain_refuses_adls_and_gcs_storages(kind: str, tmp_path: Path) -> None:  # fmt: skip
+    """#1323: the orphan listing would walk an `abfss://` or `gs://` location as a local directory."""
+    from floe.config.parse import parse_config
+    from floe.config.storage import StorageDefinition, StoragesConfig
+    from floe.errors import FloeConfigError
+    from floe.maintain import maintain
+
+    (tmp_path / "config.yml").write_text(CONFIG)
+    root = parse_config(tmp_path / "config.yml", {})
+    lake = StorageDefinition(name="cold", type=kind, bucket=None, region=None, account=None, container=None, prefix=None, endpoint=None, path_style_access=None)  # fmt: skip
+    root = root.model_copy(update={"storages": StoragesConfig(default="local", definitions=[*(root.storages.definitions if root.storages else []), lake])})  # fmt: skip
+    with pytest.raises(FloeConfigError) as e:
+        maintain(tmp_path / "config.yml", root, [], 7, 10, 3, True, False, False)
+    assert e.value.code == "config_not_supported"
+    assert str(e.value) == f"floe maintain: storage cold (type {kind}) is not supported yet"  # fmt: skip

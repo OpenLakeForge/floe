@@ -26,6 +26,7 @@ from floe.errors import FloeConfigError, FloeError
 from floe.pii import PiiColumn
 from floe.run import select_entities
 from floe.storage.paths import normalize_local_path
+from floe.storage.resolve import refuse_unsupported_storages
 from floe.storage.s3 import read_s3
 
 Json = dict[str, Any]
@@ -450,6 +451,7 @@ def build_manifest(
             f"unknown --manifest-path-mode value '{options.path_mode}'; expected 'default' or 'resolved-uri'",
             code="config_invalid_value",
         )
+    refuse_unsupported_storages(root.storages, "floe manifest generate")
     runtime = options.runtime or detect_runtime()
     work_root = None
     if runtime == "image":
