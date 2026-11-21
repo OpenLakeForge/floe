@@ -237,13 +237,65 @@ def storage(kind: str, endpoint: str | None = None) -> StorageDefinition:
     return StorageDefinition(name="lake", type=kind, bucket="b", region=None, account="acct", container="c", prefix=None, endpoint=endpoint, path_style_access=None)  # fmt: skip
 
 
-def test_duckdb_setup_adls_secret() -> None:
-    statements = _duckdb_setup(rest_catalog("id:secret"), storage("adls"))
-    assert (
-        "CREATE SECRET (TYPE azure, PROVIDER 'credential_chain', ACCOUNT_NAME 'acct')"
-        in statements
-    )
+ADLS_ENV = ("AZURE_STORAGE_ACCOUNT_KEY", "AZURE_STORAGE_SAS_TOKEN", "AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET")  # fmt: skip
+
+
+@pytest.fixture
+def no_azure_env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
+    for env in ADLS_ENV:
+        monkeypatch.delenv(env, raising=False)
+    return monkeypatch
+
+
+def azure_secret(kind: str = "adls", endpoint: str | None = None) -> str:
+    statements = _duckdb_setup(rest_catalog("id:secret"), storage(kind, endpoint))
+    (secret,) = (s for s in statements if "TYPE azure" in s)
     assert not any("TYPE s3" in s for s in statements)
+    return secret
+
+
+def test_duckdb_setup_adls_secret(no_azure_env: pytest.MonkeyPatch) -> None:
+    assert (
+        azure_secret()
+        == "CREATE SECRET (TYPE azure, PROVIDER 'credential_chain', ACCOUNT_NAME 'acct')"
+    )
+
+
+def test_duckdb_adls_secret_uses_the_account_key_from_the_environment(
+    no_azure_env: pytest.MonkeyPatch,
+) -> None:
+    no_azure_env.setenv("AZURE_STORAGE_ACCOUNT_KEY", "k3y")
+    assert (
+        azure_secret()
+        == "CREATE SECRET (TYPE azure, CONNECTION_STRING 'AccountName=acct;BlobEndpoint=https://acct.blob.core.windows.net;AccountKey=k3y')"
+    )
+
+
+def test_duckdb_adls_secret_uses_the_sas_token_and_endpoint(
+    no_azure_env: pytest.MonkeyPatch,
+) -> None:
+    no_azure_env.setenv("AZURE_STORAGE_SAS_TOKEN", "?sv=1&sig=x")
+    assert (
+        azure_secret(endpoint="http://127.0.0.1:10000/acct/")
+        == "CREATE SECRET (TYPE azure, CONNECTION_STRING 'AccountName=acct;BlobEndpoint=http://127.0.0.1:10000/acct;SharedAccessSignature=sv=1&sig=x')"
+    )
+
+
+def test_duckdb_setup_failures_do_not_echo_the_account_key(
+    no_azure_env: pytest.MonkeyPatch,
+) -> None:
+    no_azure_env.setenv("AZURE_STORAGE_ACCOUNT_KEY", "k3y-not-base64")
+
+    def broken_statement(*_: object) -> list[str]:
+        return ["CREATE SECRET ((( 'AccountKey=k3y-not-base64'"]
+
+    no_azure_env.setattr("floe.iceberg.catalog._duckdb_setup", broken_statement)
+    with pytest.raises(FloeRunError) as e:
+        open_duckdb(rest_catalog("id:secret"), storage("adls"))
+    assert "k3y-not-base64" not in str(e.value) and "***" in str(
+        e.value
+    )  # DuckDB echoed the statement
+    assert e.value.code == "run_catalog_error"
 
 
 def test_duckdb_refuses_gcs_storage() -> None:
@@ -271,15 +323,41 @@ def fileio_props(
 
 
 def test_adls_fileio_props_take_credentials_from_the_environment(
-    monkeypatch: pytest.MonkeyPatch,
+    no_azure_env: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("AZURE_STORAGE_ACCOUNT_KEY", "key")
-    monkeypatch.delenv("AZURE_STORAGE_SAS_TOKEN", raising=False)
-    props = fileio_props(monkeypatch, "adls")
+    no_azure_env.setenv("AZURE_STORAGE_ACCOUNT_KEY", "key")
+    props = fileio_props(no_azure_env, "adls")
     assert props["adls.account-name"] == "acct"
     assert props["adls.account-key"] == "key"
     assert "adls.sas-token" not in props
     assert not any(k.startswith("s3.") for k in props)
+
+
+def test_adls_fileio_props_forward_the_service_principal_only_whole(
+    no_azure_env: pytest.MonkeyPatch,
+) -> None:
+    no_azure_env.setenv("AZURE_STORAGE_ACCOUNT_KEY", "key")
+    no_azure_env.setenv(
+        "AZURE_CLIENT_ID", "stray"
+    )  # PyIceberg raises on a partial trio
+    props = fileio_props(no_azure_env, "adls")
+    assert props["adls.account-key"] == "key"
+    assert not {"adls.client-id", "adls.client-secret", "adls.tenant-id"} & props.keys()
+    no_azure_env.setenv("AZURE_CLIENT_SECRET", "secret")
+    no_azure_env.setenv("AZURE_TENANT_ID", "tenant")
+    props = fileio_props(no_azure_env, "adls")
+    assert (props["adls.client-id"], props["adls.client-secret"], props["adls.tenant-id"]) == ("stray", "secret", "tenant")  # fmt: skip
+
+
+def test_adls_fileio_props_translate_the_endpoint(
+    no_azure_env: pytest.MonkeyPatch,
+) -> None:
+    props = fileio_props(no_azure_env, "adls", "http://127.0.0.1:10000/acct")
+    assert props["adls.blob-storage-authority"] == "127.0.0.1:10000"
+    assert props["adls.dfs-storage-authority"] == "127.0.0.1:10000"
+    assert props["adls.blob-storage-scheme"] == "http"
+    assert props["adls.dfs-storage-scheme"] == "http"
+    assert not any("authority" in k for k in fileio_props(no_azure_env, "adls"))
 
 
 def test_gcs_fileio_props_use_the_endpoint_for_a_fake_server(

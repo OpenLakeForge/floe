@@ -151,13 +151,47 @@ def open_catalog(
         return _CATALOGS[key]
 
 
-_ADLS_ENV = {
-    "adls.account-key": "AZURE_STORAGE_ACCOUNT_KEY",
-    "adls.sas-token": "AZURE_STORAGE_SAS_TOKEN",
+_ADLS_KEY, _ADLS_SAS = "AZURE_STORAGE_ACCOUNT_KEY", "AZURE_STORAGE_SAS_TOKEN"
+_ADLS_PRINCIPAL = {
     "adls.tenant-id": "AZURE_TENANT_ID",
     "adls.client-id": "AZURE_CLIENT_ID",
     "adls.client-secret": "AZURE_CLIENT_SECRET",
 }
+
+
+def _adls_props(storage: StorageDefinition) -> dict[str, str]:
+    """FileIO props; credentials come from the environment, never from config."""
+    props = {"adls.account-name": storage.account or ""}
+    for prop, env in (("adls.account-key", _ADLS_KEY), ("adls.sas-token", _ADLS_SAS)):
+        if value := os.environ.get(env):
+            props[prop] = value
+    principal = {prop: os.environ.get(env) for prop, env in _ADLS_PRINCIPAL.items()}
+    if all(principal.values()):  # PyIceberg raises on a partial trio
+        props |= {k: v for k, v in principal.items() if v}
+    if storage.endpoint is not None:  # a path-style service such as Azurite
+        endpoint = urlsplit(storage.endpoint)
+        for kind in ("blob", "dfs"):
+            props[f"adls.{kind}-storage-authority"] = endpoint.netloc
+            props[f"adls.{kind}-storage-scheme"] = endpoint.scheme
+    return props
+
+
+def _azure_connection_string(storage: StorageDefinition) -> str | None:
+    """Account key or SAS from the environment; None means identity-based auth."""
+    key, sas = os.environ.get(_ADLS_KEY), os.environ.get(_ADLS_SAS)
+    if not (key or sas):
+        return None
+    endpoint = (storage.endpoint or f"https://{storage.account}.blob.core.windows.net").rstrip("/")  # fmt: skip
+    parts = [f"AccountName={storage.account}", f"BlobEndpoint={endpoint}"]
+    parts.append(f"AccountKey={key}" if key else f"SharedAccessSignature={(sas or '').lstrip('?')}")  # fmt: skip
+    return ";".join(parts)
+
+
+def _mask_secrets(text: str) -> str:
+    for env in (_ADLS_KEY, _ADLS_SAS):
+        if value := os.environ.get(env):
+            text = text.replace(value, "***")
+    return text
 
 
 def _open_catalog(
@@ -182,10 +216,7 @@ def _open_catalog(
     if definition.scope is not None:
         props["scope"] = definition.scope
     if storage is not None and storage.type == "adls":
-        props["adls.account-name"] = storage.account or ""
-        for prop, env in _ADLS_ENV.items():  # credentials never come from config
-            if value := os.environ.get(env):
-                props[prop] = value
+        props |= _adls_props(storage)
     elif storage is not None and storage.type == "gcs":
         if storage.endpoint is not None:  # fake-gcs-server; otherwise ADC
             props["gcs.service.host"] = storage.endpoint
@@ -247,7 +278,8 @@ def _duckdb_setup(
             code="config_not_supported",
         )
     if storage is not None and storage.type == "adls":
-        azure = {"PROVIDER": "credential_chain", "ACCOUNT_NAME": storage.account or ""}
+        connection = _azure_connection_string(storage)
+        azure = {"CONNECTION_STRING": connection} if connection else {"PROVIDER": "credential_chain", "ACCOUNT_NAME": storage.account or ""}  # fmt: skip
         statements.append(f"CREATE SECRET (TYPE azure, {_sql_options(azure)})")
     if storage is not None and storage.type == "s3":
         s3 = {"PROVIDER": "credential_chain"}
@@ -290,7 +322,10 @@ def open_duckdb(
         # the spill directory lives as long as the connection (also on `with` exit and at interpreter exit)
         weakref.finalize(con, shutil.rmtree, spill, True)
         for statement in statements:
-            con.execute(statement)
+            try:
+                con.execute(statement)
+            except _RUN_ERRORS as e:  # DuckDB may echo the statement, secrets included
+                raise FloeRunError(f"duckdb catalog attach failed: {_mask_secrets(str(e))}", code="run_catalog_error") from None  # fmt: skip
     return con
 
 
