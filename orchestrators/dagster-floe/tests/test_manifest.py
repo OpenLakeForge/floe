@@ -312,6 +312,31 @@ def test_load_manifest_remote_uri_uses_fsspec(monkeypatch) -> None:
     assert result.manifest_id
 
 
+def test_load_manifest_abfss_uri_uses_fsspec(monkeypatch) -> None:
+    import io
+    import types
+
+    fixture = Path(__file__).parent / "fixtures" / "manifest.json"
+    opened = []
+
+    def fake_open(uri, *args, **kwargs):
+        opened.append(uri)
+        return io.StringIO(fixture.read_text(encoding="utf-8"))
+
+    fake_fsspec = types.ModuleType("fsspec")
+    fake_fsspec.open = fake_open
+    monkeypatch.setitem(__import__("sys").modules, "fsspec", fake_fsspec)
+
+    uri = "abfss://c@a.dfs.core.windows.net/m.json"
+    assert load_manifest(uri).manifest_id
+    assert opened == [uri]
+
+
+def test_resolve_config_uri_abfss_manifest_resolves_relative() -> None:
+    result = resolve_config_uri("abfss://c@a.dfs.core.windows.net/manifests/m.json", "../configs/c.yml")
+    assert result == "abfss://c@a.dfs.core.windows.net/configs/c.yml"
+
+
 def test_load_manifest_remote_uri_honors_endpoint_env(monkeypatch) -> None:
     import io
     import types
