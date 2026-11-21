@@ -187,7 +187,7 @@ def write_table(
             continue
         break
     else:
-        raise FloeRunError(f"rest iceberg commit failed: conflicted {COMMIT_ATTEMPTS} times in a row")  # fmt: skip
+        raise FloeRunError(f"rest iceberg commit failed: conflicted {COMMIT_ATTEMPTS} times in a row", code="run_commit_failed")  # fmt: skip
     return write_result(table, data_files, small_file_threshold_bytes)
 
 
@@ -255,7 +255,7 @@ def _revalidate_unique(
             None,
         )
     if clash:
-        raise FloeRunError(f"unique key ({', '.join(clash)}) already committed by a concurrent run; nothing was committed, rerun to revalidate")  # fmt: skip
+        raise FloeRunError(f"unique key ({', '.join(clash)}) already committed by a concurrent run; nothing was committed, rerun to revalidate", code="run_merge_key")  # fmt: skip
 
 
 def write_result(
