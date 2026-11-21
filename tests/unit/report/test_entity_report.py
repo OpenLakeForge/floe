@@ -117,7 +117,7 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
             if c.column_type != "string"
         ]  # fmt: skip
         checks += tracker.check(typed)
-        good, bad = split_rows(typed, checks)
+        good, bad, _ = split_rows(typed, checks)
         accepted.append(good)
         rejected_path = None
         if bad.height:

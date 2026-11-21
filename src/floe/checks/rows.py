@@ -106,15 +106,25 @@ def error_column(
     )[ERRORS]
 
 
+def reject_mask(checks: Sequence[RowCheck], height: int) -> pl.Series:
+    """True where a reject- or abort-level check fails: the most severe failure decides the row."""
+    masks = [c.mask for c in checks if c.severity != "warn"]
+    if not masks:
+        return pl.repeat(False, height, eager=True)
+    return pl.select(pl.any_horizontal(masks).fill_null(False)).to_series()
+
+
 def split_rows(
     df: pl.DataFrame,
     checks: Sequence[RowCheck],
     formatter: Formatter = "json",
     sources: Mapping[str, str] | None = None,
     raw: pl.DataFrame | None = None,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """`(accepted, rejected)`; rejected adds `__floe_row_index` (UInt64, row position in `df`) and `__floe_errors`.
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    """`(accepted, rejected, warned)`; rejected adds `__floe_row_index` (UInt64, row position in `df`) and `__floe_errors`.
 
+    A row is rejected when a reject- or abort-level check fails on it. `__floe_errors` lists every failed check, warn
+    included. `warned` holds `__floe_row_index` and `__floe_errors` of the accepted rows that failed a warn-level check.
     `raw` is the row-aligned frame before the casts: the rejected rows are taken from it, so a failed cast keeps its source value.
     """
     src = df if raw is None else raw
@@ -122,9 +132,11 @@ def split_rows(
     if not any(c.mask.any() for c in checks):
         none = [pl.Series(ROW_INDEX, [], pl.UInt64), pl.Series(ERRORS, [], pl.String)]
         # with_columns replaces a clashing column, as below
-        return df, src.clear().with_columns(none)
+        return df, src.clear().with_columns(none), pl.DataFrame(none)
     errors = error_column(df.height, checks, formatter, sources)
-    rejected = src.with_columns(
+    rejects = reject_mask(checks, df.height)
+    indexed = src.with_columns(
         pl.int_range(pl.len(), dtype=pl.UInt64).alias(ROW_INDEX), errors
-    ).filter(errors.is_not_null())
-    return df.filter(errors.is_null()), rejected
+    )
+    warned = indexed.filter(~rejects & errors.is_not_null()).select(ROW_INDEX, ERRORS)
+    return df.filter(~rejects), indexed.filter(rejects), warned

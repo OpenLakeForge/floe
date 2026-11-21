@@ -13,7 +13,7 @@ from deltalake import DeltaTable
 from deltalake.exceptions import DeltaError, TableNotFoundError
 
 from floe.config.storage import StorageDefinition
-from floe.config.types import EntityConfig, WriteMode
+from floe.config.types import EntityConfig, WriteMode, max_level
 from floe.delta.write import named, write_table
 from floe.errors import FloeRunError
 from floe.write.outputs import AcceptedWrite
@@ -33,8 +33,13 @@ def check_supported(entity: EntityConfig) -> None:
     if entity.sink.write_mode not in ("overwrite", "append"):
         raise FloeRunError(f"{who} sink.write_mode={entity.sink.write_mode} is not supported with sink.accepted.format=delta yet", code="run_not_supported")  # fmt: skip
     # an aborted file leaves a smaller batch committed than the hash the retry guard stamps names
-    if entity.sink.write_mode == "append" and entity.policy.severity == "abort":
-        raise FloeRunError(f"{who} policy.severity=abort on a delta append is not supported yet: the retry guard cannot cover it", code="run_not_supported")  # fmt: skip
+    if entity.sink.write_mode == "append" and max_level(entity) == "abort":
+        cause = (
+            "policy.severity=abort"
+            if entity.policy.severity == "abort"
+            else "a rule_severity of abort"
+        )
+        raise FloeRunError(f"{who} {cause} on a delta append is not supported yet: the retry guard cannot cover it", code="run_not_supported")  # fmt: skip
 
 
 def storage_options(storage: StorageDefinition | None) -> dict[str, str]:
