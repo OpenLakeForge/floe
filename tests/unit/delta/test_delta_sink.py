@@ -28,7 +28,7 @@ entities:
     source: {{format: csv, path: ./in, options: {{header: true, separator: ","}}}}
     sink:
       write_mode: {mode}
-      accepted: {{format: delta, path: ./out/accepted}}
+      accepted: {{format: delta, path: ./out/accepted{part}}}
     policy: {{severity: reject}}
     schema:
       {extra}
@@ -39,13 +39,13 @@ report: {{path: ./report}}
 COLUMNS = ("id", "int64"), ("name", "string")
 
 
-def run(tmp_path: Path, rows: str, mode: str = "overwrite", columns: Any = COLUMNS, extra: str = "") -> dict[str, Any]:  # fmt: skip
+def run(tmp_path: Path, rows: str, mode: str = "overwrite", columns: Any = COLUMNS, extra: str = "", part: str = "") -> dict[str, Any]:  # fmt: skip
     (tmp_path / "in").mkdir(exist_ok=True)
     for old in (tmp_path / "in").glob("*.csv"):
         old.unlink()
     (tmp_path / "in" / "orders.csv").write_text(rows)
     cols = "\n".join(f"        - {{name: {n}, type: {t}}}" for n, t in columns)
-    (tmp_path / "config.yml").write_text(CONFIG.format(mode=mode, columns=cols, extra=extra))  # fmt: skip
+    (tmp_path / "config.yml").write_text(CONFIG.format(mode=mode, columns=cols, extra=extra, part=part))  # fmt: skip
     entity = parse_config(tmp_path / "config.yml").entities[0]
     return run_entity(entity, tmp_path, "0.3").report
 
@@ -129,3 +129,27 @@ def test_repeated_writes_with_datetime_and_date_columns_match_the_table(tmp_path
     run(tmp_path, "id,at,day\n2,2024-01-03T03:04:00,2024-01-03\n", columns=columns)
     run(tmp_path, "id,at,day\n3,2024-01-04T03:04:00,2024-01-04\n", "append", columns=columns)  # fmt: skip
     assert sorted(table(tmp_path)["id"].to_list()) == [2, 3]
+
+
+def test_partition_by_creates_a_partitioned_table_and_appends_to_it(tmp_path: Path) -> None:  # fmt: skip
+    by = ", partition_by: [name]"
+    run(tmp_path, "id,name\n1,a\n2,b\n", "append", part=by)
+    root = tmp_path / "out" / "accepted"
+    assert DeltaTable(str(root)).metadata().partition_columns == ["name"]
+    assert sorted(p.name for p in root.iterdir() if p.name != "_delta_log") == ["name=a", "name=b"]  # fmt: skip
+    run(tmp_path, "id,name\n3,a\n", "append", part=by)
+    assert sorted(table(tmp_path)["id"].to_list()) == [1, 2, 3]
+
+
+def test_partition_by_differing_from_the_table_is_refused(tmp_path: Path) -> None:
+    run(tmp_path, "id,name\n1,a\n", part=", partition_by: [name]")
+    with pytest.raises(FloeRunError) as e:
+        run(tmp_path, "id,name\n2,b\n", part=", partition_by: [id]")
+    assert e.value.code == "run_schema_evolution"
+    assert str(e.value).endswith(
+        "sink.accepted.partition_by does not match the partitioning of the delta table at "
+        f'{tmp_path / "out" / "accepted"} (Specified table partitioning does not match table partitioning: expected: ["name"], got: ["id"]. '
+        "To change partition columns, use full table overwrite with schema overwrite and no replaceWhere predicate.); "
+        "the partition columns of an existing table cannot change"
+    )
+    assert DeltaTable(str(tmp_path / "out" / "accepted")).version() == 0
