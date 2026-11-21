@@ -69,7 +69,8 @@ def die_after_commit(entity: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     doc = json.loads(state.read_text())
     for claim in doc["claims"].values():
         claim["expires_at"] = "2000-01-01T00:00:00Z"
-        claim["acquired_at"] = (datetime.now(UTC) - timedelta(days=age_days)).isoformat().replace("+00:00", "Z")  # fmt: skip
+        if age_days:  # else the claim keeps its real time, which is before the commit
+            claim["acquired_at"] = (datetime.now(UTC) - timedelta(days=age_days)).isoformat().replace("+00:00", "Z")  # fmt: skip
     state.write_text(json.dumps(doc))
 
 
@@ -136,7 +137,7 @@ def test_a_retention_in_microseconds_fails_the_retry_closed(tmp_path: Path, monk
     write_deltalake(path, pa.table({"id": pa.array([0], pa.int64()), "name": ["seed"]}), configuration={"delta.setTransactionRetentionDuration": "interval 86400000000 microseconds"})  # fmt: skip
 
     def unstamped(
-        run_id: str, _hash: str | None
+        run_id: str, _hash: str | None, _at: int | None
     ) -> CommitProperties:  # the dead run's `txn` is gone, as if expired
         return CommitProperties(custom_metadata={"floe.run_id": run_id})
 
@@ -179,7 +180,8 @@ def test_a_commit_reports_its_own_version_and_carries_the_stamp(tmp_path: Path) 
     table = DeltaTable(str(tmp_path / "out" / "accepted"))
     last = table.history(1)[0]
     assert (last["floe.run_id"], len(last["floe.input_hash"])) == ("r2", 64)
-    assert table.transaction_version(f"floe:{last['floe.input_hash']}") == 1
+    stamped = table.transaction_version(f"floe:{last['floe.input_hash']}") or 0
+    assert stamped > 10**12  # the claim's epoch ms
 
 
 @pytest.mark.parametrize("mode", ["append", "overwrite"])
@@ -286,3 +288,30 @@ def test_concurrent_runs_of_one_batch_commit_it_once(tmp_path: Path, monkeypatch
     assert ids(tmp_path) == [0, 1, 2]
     assert [f["status"] for f in files].count("success") == 1
     assert [f.get("skip_reason") for f in files].count("already_committed") == n - 1
+
+
+def test_a_commit_from_before_the_dead_runs_claim_is_not_its_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#1354: run 1 commits, the state is reset, run 2 dies after its claim and before its commit; run 3 reloads the batch."""
+    entity = project(tmp_path, "incremental_mode: file")
+    run_entity(entity, tmp_path, "0.3")
+    assert reset_entity_state(str(tmp_path / "config.yml"), "orders")
+
+    def killed(*_: object, **__: object) -> None:
+        raise FloeRunError("killed", code="run_commit_failed")
+
+    def kept(*_: object, **__: object) -> None:
+        pass
+
+    with monkeypatch.context() as dead:
+        dead.setattr("floe.delta.sink.write_table", killed)
+        dead.setattr(incremental_module, "release", kept)  # the claim outlives the run
+        with pytest.raises(FloeRunError, match="killed"):
+            run_entity(entity, tmp_path, "0.3", emit=Emitter(None, "dead"))
+    (state,) = (tmp_path / "in").rglob("state.json")
+    doc = json.loads(state.read_text())
+    for claim in doc["claims"].values():
+        claim["expires_at"] = "2000-01-01T00:00:00Z"
+    state.write_text(json.dumps(doc))
+    (file,) = run_entity(entity, tmp_path, "0.3", emit=Emitter(None, "retry")).report["files"]  # fmt: skip
+    assert file["status"] == "success"
+    assert ids(tmp_path) == [1, 1, 2, 2]
