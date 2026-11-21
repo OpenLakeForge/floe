@@ -11,10 +11,14 @@ checks, so checks see the raw values, and the written rows hold masked ones.
   written to `sink.rejected`: a hashed `email` holds the same digest in the accepted and the
   rejected output. Rejected rows hold the source values (#1152), so a non-string column hashes the
   source text, which can differ from the digest of its typed value in the accepted rows. The `__floe_errors` column names the rule and column, not the value.
-- **Raw files are never written.** A config that would copy an input file unmasked to
-  `sink.rejected` or an archive fails `floe validate` when `pii` is set: `policy.severity: abort`,
-  `sink.archive`, and `schema.mismatch.missing_columns` or `extra_columns` set to `reject_file`.
+- **Raw files are never written to `sink.rejected`.** A config that would copy an input file
+  unmasked there fails `floe validate` when `pii` is set: `policy.severity: abort`, and
+  `schema.mismatch.missing_columns` or `extra_columns` set to `reject_file`.
   A file Floe cannot read is reported as failed without the raw copy it would otherwise get.
+- **`sink.archive` is allowed.** The archive moves the original file within the source's storage
+  (`sink.archive.storage` must match `source.storage`), so it adds no unmasked copy: the bytes were
+  already unmasked at the source. The archive may sit under a different prefix than the source, and
+  prefix ACLs are yours to set: give the archive prefix the same access as the source.
 
 ## Configuration
 
@@ -126,7 +130,7 @@ config-load time.
   a primary-key column with `merge_scd1` / `merge_scd2` (it would corrupt the merge key).
 - Any strategy is rejected on a unique-key column: `drop`, `nullify`, `redact` and `mask` collapse
   values, and `hash` would leak raw values through the uniqueness samples in the run report.
-- `pii` is rejected with `policy.severity: abort`, `sink.archive`, or a `reject_file` mismatch
+- `pii` is rejected with `policy.severity: abort` or a `reject_file` mismatch
   policy (see [What is masked](#what-is-masked)).
 - `strategy: tokenize` is rejected at config validation (not yet implemented).
 - `redact_value` and `mask_pattern` are ignored for strategies that do not use them.
