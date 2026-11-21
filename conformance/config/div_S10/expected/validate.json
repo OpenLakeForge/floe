@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entity.name=orders sink.accepted.format=delta is not supported in 0.8"
+  "error": "entity.name=orders sink.accepted.partition_by has duplicate column id"
 }
