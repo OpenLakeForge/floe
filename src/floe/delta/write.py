@@ -43,7 +43,7 @@ def _refuse_drift(who: str, table: DeltaTable, schema: pa.Schema) -> None:
             raise FloeRunError(f"{who} delta schema evolution failed: column {name} is {have[name]} in the table, {kind} in the batch", code="run_schema_evolution")  # fmt: skip
 
 
-def _named(who: str, uri: str, err: DeltaError | OSError) -> FloeRunError:
+def named(who: str, uri: str, err: DeltaError | OSError) -> FloeRunError:
     text = str(err)
     if any(s in text for s in _UNSUPPORTED):
         return FloeRunError(f"{who} cannot write the delta table at {uri}: it uses a table feature delta-rs cannot write ({text}); disable the feature or write another table", code="run_not_supported")  # fmt: skip
@@ -69,18 +69,24 @@ def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBa
             _refuse_drift(who, table, reader.schema)
         before = _files(table) if table is not None else {}
         base = table.version() if table is not None else -1
+        if (
+            table is not None
+            and input_hash is not None
+            and committed(table, input_hash)
+        ):  # a run that committed since the guard looked
+            return AcceptedWrite(0, [], 0, 0.0, 0), base, True
         try:
-            write_deltalake(uri, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options, commit_properties=stamp(run_id, input_hash))  # fmt: skip
+            write_deltalake(uri if table is None else table, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options, commit_properties=stamp(run_id, input_hash))  # fmt: skip
         except CommitFailedError as err:
             if input_hash is None or not committed(raced := DeltaTable(uri, storage_options=options), input_hash):  # fmt: skip
-                raise _named(who, uri, err) from err
+                raise named(who, uri, err) from err
             return AcceptedWrite(0, [], 0, 0.0, 0), raced.version(), True
         after = DeltaTable(uri, storage_options=options)
         added = {p: s for p, s in _files(after).items() if p not in before}
         # the commit's own version: the newest of the commits since `base` that carries this run's id
         version = next(h["version"] for h in after.history(limit=after.version() - base) if h.get("floe.run_id") == run_id)  # fmt: skip
     except (DeltaError, OSError) as err:
-        raise _named(who, uri, err) from err
+        raise named(who, uri, err) from err
     sizes = list(added.values())
     return (
         AcceptedWrite(

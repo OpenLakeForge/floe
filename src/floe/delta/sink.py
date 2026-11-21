@@ -10,12 +10,12 @@ from typing import Any
 import polars as pl
 import pyarrow as pa
 from deltalake import DeltaTable
-from deltalake.exceptions import TableNotFoundError
+from deltalake.exceptions import DeltaError, TableNotFoundError
 
 from floe.checks.unique import resolve_unique_keys
 from floe.config.storage import StorageDefinition
 from floe.config.types import EntityConfig, WriteMode
-from floe.delta.write import write_table
+from floe.delta.write import named, write_table
 from floe.errors import FloeRunError
 from floe.write.outputs import AcceptedWrite
 
@@ -35,6 +35,9 @@ def check_supported(entity: EntityConfig) -> None:
     # the existing table's keys are not read yet, so an append could not tell a duplicate from a first write
     if entity.sink.write_mode == "append" and resolve_unique_keys(entity.schema_.unique_keys, entity.schema_.primary_key):  # fmt: skip
         raise FloeRunError(f"{who} unique keys on a delta append are not supported yet", code="run_not_supported")  # fmt: skip
+    # an aborted file leaves a smaller batch committed than the hash the retry guard stamps names
+    if entity.sink.write_mode == "append" and entity.policy.severity == "abort":
+        raise FloeRunError(f"{who} policy.severity=abort on a delta append is not supported yet: the retry guard cannot cover it", code="run_not_supported")  # fmt: skip
 
 
 def storage_options(storage: StorageDefinition | None) -> dict[str, str]:
@@ -72,12 +75,16 @@ def _reader(entity: EntityConfig, frames: Iterator[pl.DataFrame], names: list[st
     return pa.RecordBatchReader.from_batches(schema, batches())
 
 
-def existing_table(uri: str, storage: StorageDefinition | None) -> DeltaTable | None:
+def existing_table(
+    entity: EntityConfig, uri: str, storage: StorageDefinition | None
+) -> DeltaTable | None:
     """The table at `uri`, None before the first write; the retry guard reads its `txn` actions."""
     try:
         return DeltaTable(uri.removeprefix("local://"), storage_options=storage_options(storage))  # delta-rs takes a plain path for local storage  # fmt: skip
     except TableNotFoundError:
         return None
+    except (DeltaError, OSError) as err:
+        raise named(f"entity.name={entity.name}", uri, err) from err
 
 
 def write_delta(entity: EntityConfig, uri: str, storage: StorageDefinition | None, frames: Iterator[pl.DataFrame], names: list[str], mode: WriteMode, run_id: str, input_hash: str | None) -> tuple[AcceptedWrite, dict[str, Any], bool]:  # fmt: skip

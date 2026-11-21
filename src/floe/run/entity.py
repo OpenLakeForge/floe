@@ -370,7 +370,7 @@ def _run_entity(
     if delta and sink.write_mode == "append":
         from floe.delta.sink import existing_table as delta_table
 
-        guarded = delta_table(base, accepted)
+        guarded = delta_table(entity, base, accepted)
     if done := inc.skip_committed(guarded, pending, emit):
         files += done
         skip = {r["input_file"] for r in done}
@@ -456,12 +456,15 @@ def _run_entity(
             if delta:
                 from floe.delta.sink import write_delta
 
-                # ponytail: an `abort` entity can commit fewer files than `pending`, which the hash names, so it is not stamped: a retry of its append can write the batch twice
-                stamp = input_hash(entity, pending) if sink.write_mode == "append" and entity.policy.severity != "abort" else None  # fmt: skip
+                stamp = (
+                    input_hash(entity, pending) if sink.write_mode == "append" else None
+                )
                 write, table, raced = write_delta(entity, base, accepted, frames, [plan.out_map.get(n, n) for n in names], sink.write_mode, emit.run_id, stamp)  # fmt: skip
                 if raced:  # #1308: the commit conflicted and the guard found this batch in the table
-                    done = {f.source_uri for f in complete}
-                    files[:] = [skipped_report(r["input_file"], "already_committed") if r["input_file"] in done else r for r in files]  # fmt: skip
+                    done = {
+                        f.source_uri for f in pending
+                    }  # the stream may not have been read at all
+                    files[:] = [r for r in files if r["input_file"] not in done] + [skipped_report(u, "already_committed") for u in sorted(done)]  # fmt: skip
             elif target is None:
                 write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options, input_hash(entity, pending) if plan.tracker.keys and entity.incremental_mode == "file" else None)  # fmt: skip
             else:

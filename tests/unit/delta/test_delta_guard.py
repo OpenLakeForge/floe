@@ -14,7 +14,9 @@ import pytest
 from deltalake import DeltaTable, write_deltalake
 
 from floe.config.parse import parse_config
+from floe.delta import write as write_module
 from floe.delta.guard import committed, stamp
+from floe.delta.write import write_table
 from floe.errors import FloeRunError
 from floe.run import incremental as incremental_module
 from floe.run.entity import run_entity
@@ -107,3 +109,81 @@ def test_a_transaction_older_than_its_retention_is_unknown(tmp_path: Path) -> No
     assert committed(table, "other") is False
     assert committed(table, "other", datetime.now(UTC) - timedelta(hours=1)) is False
     assert committed(table, "other", since) is None
+
+
+def test_an_abort_severity_append_is_refused_before_anything_is_claimed(tmp_path: Path) -> None:  # fmt: skip
+    project(tmp_path, "incremental_mode: file")
+    path = tmp_path / "config.yml"
+    path.write_text(path.read_text().replace("severity: reject", "severity: abort"))
+    entity = parse_config(path).entities[0]
+    with pytest.raises(FloeRunError) as e:
+        run_entity(entity, tmp_path, "0.3")
+    assert str(e.value) == "entity.name=orders policy.severity=abort on a delta append is not supported yet: the retry guard cannot cover it"  # fmt: skip
+    assert e.value.code == "run_not_supported"
+    assert not list(tmp_path.rglob("state.json"))
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_competing_commit_after_the_table_was_loaded_is_not_duplicated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """The commit is based on the loaded snapshot, so a same-batch commit that lands after it conflicts (#1308)."""
+    path = str(tmp_path / "t")
+    batch = pa.table({"id": pa.array([1], pa.int64())})
+    write_deltalake(path, pa.table({"id": pa.array([0], pa.int64())}))
+    real, rivals = write_module.committed, []
+
+    def rival(*args: Any) -> bool | None:
+        found = real(
+            *args
+        )  # the guard looks, then a rival commits the same batch (once)
+        if not rivals:
+            rivals.append(1)
+            write_deltalake(
+                path, batch, mode="append", commit_properties=stamp("rival", "h")
+            )
+        return found
+
+    monkeypatch.setattr(write_module, "committed", rival)
+    reader = pa.RecordBatchReader.from_batches(batch.schema, batch.to_batches())
+    written, version, raced = write_table("w", path, {}, reader, "append", "mine", "h")
+    assert (written.files_written, version, raced) == (0, 1, True)
+    assert sorted(DeltaTable(path).to_pyarrow_table()["id"].to_pylist()) == [0, 1]
+
+
+def test_a_commit_already_in_the_loaded_snapshot_is_not_repeated(
+    tmp_path: Path,
+) -> None:
+    path = str(tmp_path / "t")
+    batch = pa.table({"id": pa.array([1], pa.int64())})
+    write_deltalake(path, batch, commit_properties=stamp("rival", "h"))
+    reader = pa.RecordBatchReader.from_batches(batch.schema, batch.to_batches())
+    assert write_table("w", path, {}, reader, "append", "mine", "h")[1:] == (0, True)
+    assert DeltaTable(path).version() == 0
+
+
+def test_a_preflight_failure_of_an_append_is_a_coded_error(tmp_path: Path) -> None:
+    project(tmp_path)
+    run_entity(parse_config(tmp_path / "config.yml").entities[0], tmp_path, "0.3")
+    first = tmp_path / "out" / "accepted" / "_delta_log" / "00000000000000000000.json"
+    lines = [json.loads(line) for line in first.read_text().splitlines()]
+    for line in lines:
+        if "protocol" in line:
+            line["protocol"] = {"minReaderVersion": 1, "minWriterVersion": 7, "writerFeatures": ["identityColumns"]}  # fmt: skip
+    first.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n3,c\n")
+    with pytest.raises(FloeRunError, match="table feature delta-rs cannot write") as e:
+        run_entity(parse_config(tmp_path / "config.yml").entities[0], tmp_path, "0.3")
+    assert e.value.code == "run_not_supported"
+
+
+@pytest.mark.parametrize("mode", ["append", "overwrite"])
+def test_an_entity_whose_rows_are_all_rejected_reports_normally(
+    tmp_path: Path, mode: str
+) -> None:
+    project(tmp_path)
+    (tmp_path / "in" / "orders.csv").write_text("id,name\nx,a\n")
+    path = tmp_path / "config.yml"
+    text = path.read_text().replace("write_mode: append", f"write_mode: {mode}")
+    path.write_text(text.replace("      accepted:", "      rejected: {format: csv, path: ./out/rejected}\n      accepted:"))  # fmt: skip
+    report = run_entity(parse_config(path).entities[0], tmp_path, "0.3").report
+    assert report["accepted_output"]["accepted_rows"] == 0
+    assert report["accepted_output"]["files_written"] == 0
