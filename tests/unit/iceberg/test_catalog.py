@@ -327,6 +327,7 @@ def test_adls_fileio_props_take_credentials_from_the_environment(
 ) -> None:
     no_azure_env.setenv("AZURE_STORAGE_ACCOUNT_KEY", "key")
     props = fileio_props(no_azure_env, "adls")
+    assert props["py-io-impl"] == "pyiceberg.io.pyarrow.PyArrowFileIO"
     assert props["adls.account-name"] == "acct"
     assert props["adls.account-key"] == "key"
     assert "adls.sas-token" not in props
@@ -364,6 +365,7 @@ def test_gcs_fileio_props_use_the_endpoint_for_a_fake_server(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     props = fileio_props(monkeypatch, "gcs", "http://127.0.0.1:4443")
+    assert props["py-io-impl"] == "pyiceberg.io.pyarrow.PyArrowFileIO"
     assert props["gcs.service.host"] == "http://127.0.0.1:4443"
     assert "gcs.service.host" not in fileio_props(monkeypatch, "gcs")
 

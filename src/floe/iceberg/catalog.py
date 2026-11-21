@@ -215,6 +215,9 @@ def _open_catalog(
         props["oauth2-server-uri"] = definition.oauth2_server_uri
     if definition.scope is not None:
         props["scope"] = definition.scope
+    if storage is not None and storage.type in ("adls", "gcs"):
+        # abfss defaults to fsspec (adlfs) and gs to PyArrow; pin PyArrow, which needs no extra package
+        props["py-io-impl"] = "pyiceberg.io.pyarrow.PyArrowFileIO"
     if storage is not None and storage.type == "adls":
         props |= _adls_props(storage)
     elif storage is not None and storage.type == "gcs":

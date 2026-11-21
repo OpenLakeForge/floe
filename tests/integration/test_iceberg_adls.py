@@ -23,8 +23,8 @@ from pyiceberg.catalog.sql import SqlCatalog
 
 from floe.config.storage import CatalogDefinition, StorageDefinition
 from floe.iceberg.catalog import (
-    _adls_props,  # pyright: ignore[reportPrivateUsage] -- the props are what is under test
     _duckdb_setup,  # pyright: ignore[reportPrivateUsage] -- the secret statement is what is under test
+    _open_catalog,  # pyright: ignore[reportPrivateUsage] -- the props it builds are what is under test
 )
 
 ENDPOINT = os.environ.get("FLOE_ADLS_ENDPOINT")
@@ -73,25 +73,31 @@ def storage(monkeypatch: pytest.MonkeyPatch) -> StorageDefinition:
     return StorageDefinition(name="lake", type="adls", bucket=None, region=None, account=ACCOUNT, container=CONTAINER, prefix=None, endpoint=ENDPOINT, path_style_access=None)  # fmt: skip
 
 
-def test_an_iceberg_table_round_trips_through_the_adls_fileio_props(
-    storage: StorageDefinition, tmp_path: Path
+def test_an_iceberg_table_round_trips_through_floes_catalog_props(
+    storage: StorageDefinition, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    props = {
-        "uri": f"sqlite:///{tmp_path}/catalog.db",
-        # PyArrow's FileIO reads `abfs://<container>/...`; it cannot parse `abfss://<container>@<account>...`, and
-        # PyIceberg picks fsspec for that scheme, which needs adlfs (not a dependency of Floe)
-        "warehouse": f"abfs://{CONTAINER}/{tmp_path.name}",
-        "py-io-impl": "pyiceberg.io.pyarrow.PyArrowFileIO",
-        **_adls_props(storage),
-    }
-    first = SqlCatalog("local", **props)
-    first.create_namespace("ns")
+    """`_open_catalog` builds the props; only the catalog itself is swapped for a local sqlite one."""
+    opened: list[SqlCatalog] = []
+
+    def local_catalog(name: str, **props: str) -> SqlCatalog:
+        local = {k: v for k, v in props.items() if k != "type" and not k.startswith("header.")}  # fmt: skip
+        # PyArrow's FileIO reads `abfs://<container>/...`, not `abfss://<container>@<account>...`
+        local |= {"uri": f"sqlite:///{tmp_path}/catalog.db", "warehouse": f"abfs://{CONTAINER}/{tmp_path.name}"}  # fmt: skip
+        opened.append(SqlCatalog(name, **local))
+        return opened[-1]
+
+    monkeypatch.setattr("floe.iceberg.catalog.load_catalog", local_catalog)
+    first = _open_catalog(CATALOG, storage)
+    first.create_namespace("ns")  # pyright: ignore[reportUnknownMemberType] -- PyIceberg's own typing
     data = pa.table({"id": pa.array([1, 2, 3], pa.int64()), "name": ["a", "b", "c"]})
     first.create_table("ns.t", schema=data.schema).append(data)
 
-    again = SqlCatalog("local", **props)  # a new FileIO, nothing cached from the write
+    again = _open_catalog(
+        CATALOG, storage
+    )  # a new FileIO, nothing cached from the write
     read = again.load_table("ns.t").scan().to_arrow().sort_by("id")
     assert read.to_pydict() == {"id": [1, 2, 3], "name": ["a", "b", "c"]}
+    assert len(opened) == 2
 
 
 def test_duckdb_reaches_azurite_through_the_connection_string_secret(
