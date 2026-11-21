@@ -82,9 +82,11 @@ reported as skipped with `skip_reason: already_committed` and no rows are added.
 
 ## Unique keys
 
-Unique keys (`schema.unique_keys`, `schema.primary_key`) on a Delta `append` are refused at run
-time with `run_not_supported`: the existing table's keys are not read yet (#1309). On `overwrite`
-they are checked within the batch as usual.
+`schema.unique_keys` and `schema.primary_key` are enforced on an `append` against the rows already
+in the table: a row repeating an existing key is rejected. The existing keys are seeded by a
+streamed `DeltaTable.scan` of the key columns to a local cache, so memory does not grow with the
+table and column-mapped tables work. A key whose column the table lacks is skipped, as for
+Iceberg. On `overwrite` the keys are checked within the batch only.
 
 ## Partitioning
 
