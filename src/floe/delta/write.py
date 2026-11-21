@@ -53,7 +53,7 @@ def named(who: str, uri: str, err: DeltaError | OSError) -> FloeRunError:
     return FloeRunError(f"{who} delta write failed: {text}", code="run_commit_failed")
 
 
-def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBatchReader, mode: str, run_id: str, input_hash: str | None, table: DeltaTable | None = None, partition_by: list[str] | None = None) -> tuple[AcceptedWrite, int, bool]:  # fmt: skip
+def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBatchReader, mode: str, run_id: str, input_hash: str | None, table: DeltaTable | None = None, partition_by: list[str] | None = None, claimed_ms: int | None = None) -> tuple[AcceptedWrite, int, bool]:  # fmt: skip
     """Write `reader` as one commit; returns the files it added, the version of that commit and whether a rival had committed this batch.
 
     Overwrite removes every live file in the same commit. A table Floe creates keeps delta-rs's minimal protocol; an
@@ -77,7 +77,7 @@ def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBa
         base = table.version() if table is not None else -1
         seen = table is not None and input_hash is not None and committed(table, input_hash)  # fmt: skip
         try:
-            write_deltalake(uri if table is None else table, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options, partition_by=partition_by, commit_properties=stamp(run_id, input_hash))  # fmt: skip
+            write_deltalake(uri if table is None else table, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options, partition_by=partition_by, commit_properties=stamp(run_id, input_hash, claimed_ms))  # fmt: skip
         except CommitFailedError as err:
             current = DeltaTable(uri, storage_options=options)
             if (

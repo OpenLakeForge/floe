@@ -464,7 +464,7 @@ def _run_entity(
                 from floe.delta.sink import write_delta
 
                 stamp = input_hash(entity, pending) if sink.write_mode == "append" else None  # fmt: skip
-                write, table, raced = write_delta(entity, base, accepted, frames, [plan.out_map.get(n, n) for n in names], sink.write_mode, emit.run_id, stamp, guarded)  # fmt: skip
+                write, table, raced = write_delta(entity, base, accepted, frames, [plan.out_map.get(n, n) for n in names], sink.write_mode, emit.run_id, stamp, guarded, inc.claimed_ms(pending))  # fmt: skip
                 if raced:  # #1341: a rival committed this batch after the guard looked; settle every input, the unread too
                     done = {f.source_uri for f in pending}
                     files[:] = [r for r in files if r["input_file"] not in done] + [skipped_report(u, "already_committed") for u in sorted(done)]  # fmt: skip

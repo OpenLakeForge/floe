@@ -224,6 +224,12 @@ class Incremental:
             promote(self.client, self.uri, self.run_id, self.claimed, only=committed, advance=self.advance)  # fmt: skip
         return self._skipped([f for f in pending if f.source_uri in committed], emit)
 
+    def claimed_ms(self, pending: list[InputFile]) -> int | None:
+        """The oldest claim of `pending` in epoch ms, the version of a Delta commit's `txn` (#1354); None without claims."""
+        claims = self.claimed.state.claims if self.claimed else {}
+        at = [datetime.fromisoformat(c.acquired_at) for f in pending if (c := claims.get(f.source_uri))]  # fmt: skip
+        return int(min(at).timestamp() * 1000) if at else None
+
     def _skipped(self, files: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:
         reports = [skipped_report(f.source_uri, "already_committed") for f in files]
         _emit_skipped(emit, self.entity.name, reports)
