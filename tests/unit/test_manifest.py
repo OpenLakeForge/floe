@@ -92,23 +92,48 @@ def test_non_s3_remote_output_is_refused(
     assert "remote manifest output is not supported yet" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("kind", ["adls", "gcs"])
-def test_manifest_refuses_adls_storage(tmp_path: Path, kind: str) -> None:
-    """#1323: `type: adls|gcs` is refused at parse today; a definition that reaches generate must not read as local."""
-    from floe.config.parse import parse_config
-    from floe.config.storage import StorageDefinition, StoragesConfig
-    from floe.errors import FloeConfigError
-    from floe.manifest import Options, build_manifest
+ADLS = "{name: lake, type: adls, account: acct, container: cont, prefix: base}"
+GCS = "{name: lake, type: gcs, bucket: b, prefix: base}"
 
-    (tmp_path / "config.yml").write_text(CONFIG)
-    root = parse_config(tmp_path / "config.yml", {})
-    lake = StorageDefinition(name="lake", type=kind, bucket=None, region=None, account=None, container=None, prefix=None, endpoint=None, path_style_access=None)  # fmt: skip
-    root = root.model_copy(update={"storages": StoragesConfig(default=None, definitions=[lake])})  # fmt: skip
-    options = Options(str(tmp_path / "config.yml"), True, None, None, "default", "host")
-    with pytest.raises(FloeConfigError) as e:
-        build_manifest(root, tmp_path / "config.yml", options, [])
-    assert e.value.code == "config_not_supported"
-    assert str(e.value) == f"floe manifest generate: storage lake (type {kind}) is not supported yet"  # fmt: skip
+
+@pytest.mark.parametrize(
+    ("definition", "root"),
+    [(ADLS, "abfss://cont@acct.dfs.core.windows.net"), (GCS, "gs://b")],
+)
+def test_manifest_resolves_adls_and_gcs_uris(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, definition: str, root: str) -> None:  # fmt: skip
+    config = f"""\
+version: "0.3"
+storages: {{default: lake, definitions: [{definition}]}}
+domains: [{{name: d}}]
+entities:
+  - name: a
+    domain: d
+    source: {{format: csv, path: in/a.csv}}
+    sink: {{accepted: {{format: parquet, path: out/a}}, archive: {{path: arch}}}}
+    policy: {{severity: warn}}
+    schema: {{columns: [{{name: id, type: int64}}]}}
+report: {{path: rep}}
+"""
+    out = tmp_path / "m.json"
+    assert generate(tmp_path, monkeypatch, "-o", str(out), config=config) == 0
+    doc: dict[str, Any] = json.loads(out.read_text())
+    entity = doc["entities"][0]
+    assert entity["accepted_sink_uri"] == f"{root}/base/out/a"
+    assert entity["source"]["uri"] == f"{root}/base/in/a.csv"
+    assert entity["source"]["resolved"] is True
+    assert doc["report_base_uri"] == f"{root}/base/rep"
+
+
+def test_manifest_adls_uri_naming_another_container_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:  # fmt: skip
+    config = CONFIG.replace(
+        "./in/a.csv", "abfss://other@acct.dfs.core.windows.net/a.csv"
+    )
+    config = config.replace("domains:", f"storages: {{default: lake, definitions: [{ADLS}]}}\ndomains:")  # fmt: skip
+    assert (
+        generate(tmp_path, monkeypatch, "-o", str(tmp_path / "m.json"), config=config)
+        == 1
+    )
+    assert "storage lake container or account mismatch" in capsys.readouterr().err
 
 
 def test_s3_output_is_put_through_the_s3_client_and_baked_into_base_args(

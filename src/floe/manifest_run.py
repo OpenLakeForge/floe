@@ -40,8 +40,7 @@ from floe.config.types import (
 )
 from floe.config.validate import FLOE_VERSION
 from floe.errors import NOT_SUPPORTED, FloeConfigError, FloeIoError
-from floe.storage.paths import normalize_local_path, parse_s3_uri
-from floe.storage.resolve import refuse_unsupported_storages
+from floe.storage.paths import normalize_local_path, parse_s3_uri, split_uri
 from floe.storage.s3 import read_s3
 
 Json = dict[str, Any]
@@ -227,7 +226,13 @@ def _catalog_def(d: Json) -> Json:
 
 
 def _report(base: str, formatter: str | None, storages: StoragesConfig | None) -> tuple[ReportConfig, StoragesConfig | None]:  # fmt: skip
-    """An `s3://` base uses the storage on its bucket, else a synthetic one."""
+    """An `s3://` base uses the storage on its bucket, else a synthetic one; `abfss://` and `gs://` need a matching storage."""
+    if base.startswith(("abfss://", "gs://")):
+        authority = split_uri(base)[0]
+        found = next((d.name for d in storages.definitions if (d.type == "adls" and f"{d.container}@{d.account}.dfs.core.windows.net" == authority) or (d.type == "gcs" and d.bucket == authority)) if storages else iter(()), None)  # fmt: skip
+        if found is None:
+            raise FloeConfigError(f"manifest report_base_uri {base} matches no storage", code="config_invalid_value")  # fmt: skip
+        return ReportConfig(path=base, formatter=formatter, storage=found), storages
     if not base.startswith("s3://"):
         local = storages and next((d.name for d in storages.definitions if d.type == "local"), None)  # fmt: skip
         return ReportConfig(path=base.removeprefix("local://"), formatter=formatter, storage=local), storages  # fmt: skip
@@ -330,7 +335,6 @@ def load_manifest(location: str | Path) -> tuple[RootConfig, list[EntityConfig],
         floe = f"{FLOE_VERSION[0]}.{FLOE_VERSION[1]}"
         raise FloeConfigError(f"manifest spec_version={spec} is unsupported (newer than Floe {floe})", code="config_version")  # fmt: skip
     storages = _section(StoragesConfig, m, "storages", _storage_def)
-    refuse_unsupported_storages(storages, "floe manifest replay")
     report, storages = _report(report_base, m.get("report_formatter"), storages)
     root = RootConfig(
         version=spec,
