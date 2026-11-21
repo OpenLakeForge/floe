@@ -327,7 +327,7 @@ def test_adls_fileio_props_take_credentials_from_the_environment(
 ) -> None:
     no_azure_env.setenv("AZURE_STORAGE_ACCOUNT_KEY", "key")
     props = fileio_props(no_azure_env, "adls")
-    assert props["py-io-impl"] == "pyiceberg.io.pyarrow.PyArrowFileIO"
+    assert props["py-io-impl"] == "pyiceberg.io.fsspec.FsspecFileIO"
     assert props["adls.account-name"] == "acct"
     assert props["adls.account-key"] == "key"
     assert "adls.sas-token" not in props
@@ -350,15 +350,13 @@ def test_adls_fileio_props_forward_the_service_principal_only_whole(
     assert (props["adls.client-id"], props["adls.client-secret"], props["adls.tenant-id"]) == ("stray", "secret", "tenant")  # fmt: skip
 
 
-def test_adls_fileio_props_translate_the_endpoint(
+def test_adls_fileio_props_carry_the_endpoint_in_a_connection_string(
     no_azure_env: pytest.MonkeyPatch,
 ) -> None:
+    no_azure_env.setenv("AZURE_STORAGE_ACCOUNT_KEY", "key")
     props = fileio_props(no_azure_env, "adls", "http://127.0.0.1:10000/acct")
-    assert props["adls.blob-storage-authority"] == "127.0.0.1:10000"
-    assert props["adls.dfs-storage-authority"] == "127.0.0.1:10000"
-    assert props["adls.blob-storage-scheme"] == "http"
-    assert props["adls.dfs-storage-scheme"] == "http"
-    assert not any("authority" in k for k in fileio_props(no_azure_env, "adls"))
+    assert props["adls.connection-string"] == "AccountName=acct;BlobEndpoint=http://127.0.0.1:10000/acct;AccountKey=key"  # fmt: skip
+    assert "adls.connection-string" not in fileio_props(no_azure_env, "adls")
 
 
 def test_gcs_fileio_props_use_the_endpoint_for_a_fake_server(
