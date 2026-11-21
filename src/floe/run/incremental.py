@@ -119,7 +119,8 @@ def skipped_reports(
             continue
         msg = (
             f"entity.name={entity.name} incremental_mode=file skipping previously ingested file with changed metadata: {f.source_uri} "
-            f"(recorded size={rec.size}, mtime={rec.mtime}; current size={f.source_size}, mtime={f.source_mtime})"
+            f"(recorded size={rec.size}, mtime={rec.mtime}; current size={f.source_size}, mtime={f.source_mtime}); "
+            f"run `floe state forget --entity {entity.name} --file {f.source_uri}` to re-ingest it"
         )  # fmt: skip
         out.append(skipped_report(f.source_uri, "already_ingested_changed", msg))
     out += [

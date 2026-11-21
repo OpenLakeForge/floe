@@ -351,3 +351,46 @@ def reset(client: StorageClient, uri: str, entity: str) -> bool:
             code="run_state_conflict",
         )
     return True
+
+
+def forget(
+    client: StorageClient,
+    uri: str,
+    entity: str,
+    files: list[str],
+    unlisted: Callable[[EntityState, str], bool] | None = None,
+) -> dict[str, FileState]:
+    """Drop the named `files` entries so the next run claims them again; all or nothing, one conditional write.
+
+    Refuses a URI that is not tracked, is under a live claim, or `unlisted` (the next run would not list it).
+    """
+    for attempt in range(CAS_RETRIES):
+        if attempt:
+            _backoff(attempt - 1)
+        loaded = _load(client, uri, entity)
+        state, now = loaded.state, datetime.now(UTC)
+        for u in files:
+            if (claim := state.claims.get(u)) and _is_live(claim, now):
+                raise FloeConfigError(
+                    f"entity.name={entity} cannot forget {u}: claimed by run {claim.run_id} until {claim.expires_at}",
+                    code="config_invalid_value",
+                )
+            if u not in state.files:
+                retried = " (it has an expired claim: the next run retries it anyway)" if u in state.claims else ""  # fmt: skip
+                raise FloeConfigError(
+                    f"entity.name={entity} cannot forget {u}: not in the incremental state{retried}; use the exact URI `floe state inspect` prints",
+                    code="config_invalid_value",
+                )
+            if unlisted and unlisted(state, u):
+                raise FloeConfigError(
+                    f"entity.name={entity} cannot forget {u}: its partition date is before the listing window, so the next run would not list it; use --full-refresh",
+                    code="config_invalid_value",
+                )
+        removed = {u: state.files.pop(u) for u in files}
+        state.updated_at = _now()
+        if _persist(client, uri, loaded) is not None:
+            return removed
+    raise FloeRunError(
+        f"entity.name={entity} incremental state update conflicted after {CAS_RETRIES} retries",
+        code="run_state_conflict",
+    )
