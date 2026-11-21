@@ -168,11 +168,8 @@ def _adls_props(storage: StorageDefinition) -> dict[str, str]:
     principal = {prop: os.environ.get(env) for prop, env in _ADLS_PRINCIPAL.items()}
     if all(principal.values()):  # PyIceberg raises on a partial trio
         props |= {k: v for k, v in principal.items() if v}
-    if storage.endpoint is not None:  # a path-style service such as Azurite
-        endpoint = urlsplit(storage.endpoint)
-        for kind in ("blob", "dfs"):
-            props[f"adls.{kind}-storage-authority"] = endpoint.netloc
-            props[f"adls.{kind}-storage-scheme"] = endpoint.scheme
+    if storage.endpoint is not None and (connection := _azure_connection_string(storage)):  # fmt: skip  # a path-style service such as Azurite
+        props["adls.connection-string"] = connection
     return props
 
 
@@ -215,8 +212,11 @@ def _open_catalog(
         props["oauth2-server-uri"] = definition.oauth2_server_uri
     if definition.scope is not None:
         props["scope"] = definition.scope
-    if storage is not None and storage.type in ("adls", "gcs"):
-        # abfss defaults to fsspec (adlfs) and gs to PyArrow; pin PyArrow, which needs no extra package
+    if storage is not None and storage.type == "adls":
+        # PyArrowFileIO reads abfss://<container>@<account> as a path (InvalidResourceName); adlfs takes that form
+        props["py-io-impl"] = "pyiceberg.io.fsspec.FsspecFileIO"
+    elif storage is not None and storage.type == "gcs":
+        # gs defaults to fsspec (gcsfs); pin PyArrow, which needs no extra package
         props["py-io-impl"] = "pyiceberg.io.pyarrow.PyArrowFileIO"
     if storage is not None and storage.type == "adls":
         props |= _adls_props(storage)

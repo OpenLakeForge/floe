@@ -97,8 +97,9 @@ wildcard. Listing is recursive and sorted by key.
 
 ## Limitations
 
-- Iceberg on ADLS is refused: validation fails for an Iceberg accepted or rejected sink on an
-  `adls` storage, and for a catalog `warehouse_storage` that is `adls` (#1344).
+- Iceberg on ADLS writes through PyIceberg's fsspec FileIO (`adlfs`, installed with the `adls`
+  extra). Merges and compaction attach DuckDB with an Azure secret; only `overwrite` and `append`
+  are tested against Azurite.
 - Delta on ADLS is refused with `config_not_supported`.
 - `floe manifest generate` and `floe manifest replay` refuse a config that defines
   any `adls` (or `gcs`) storage, even an unused one.
