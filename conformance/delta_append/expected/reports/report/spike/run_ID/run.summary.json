@@ -14,7 +14,7 @@
     "exit_code": 0
   },
   "config": {
-    "path": "<ROOT>/config.yml",
+    "path": "<ROOT>/config2.yml",
     "version": "0.3"
   },
   "report": {
@@ -24,8 +24,8 @@
   "results": {
     "files_total": 1,
     "files_skipped": 0,
-    "rows_total": 3,
-    "accepted_total": 2,
+    "rows_total": 2,
+    "accepted_total": 1,
     "rejected_total": 1,
     "warnings_total": 0,
     "errors_total": 1
@@ -37,8 +37,8 @@
       "results": {
         "files_total": 1,
         "files_skipped": 0,
-        "rows_total": 3,
-        "accepted_total": 2,
+        "rows_total": 2,
+        "accepted_total": 1,
         "rejected_total": 1,
         "warnings_total": 0,
         "errors_total": 1

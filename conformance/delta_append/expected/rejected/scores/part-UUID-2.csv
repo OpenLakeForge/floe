@@ -1,0 +1,2 @@
+id,name,qty,score,__floe_row_index,__floe_errors
+5,,1,1.0,1,"[{""rule"":""not_null"",""column"":""name"",""message"":""required value missing""}]"
