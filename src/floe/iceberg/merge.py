@@ -238,7 +238,7 @@ def _merge(
                 continue
             break
         else:
-            raise FloeRunError(f"duckdb merge failed: conflicted {MERGE_ATTEMPTS} times in a row")  # fmt: skip
+            raise FloeRunError(f"duckdb merge failed: conflicted {MERGE_ATTEMPTS} times in a row", code="run_commit_failed")  # fmt: skip
     with run_error("rest catalog load_table failed"):
         table.refresh()
         added = added_data_files(table, None if before is None else before.snapshot_id)
