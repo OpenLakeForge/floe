@@ -932,3 +932,68 @@ def test_manifest_refuses_a_unity_catalog_instead_of_reading_it_back_as_rest(
     )
     assert generate(tmp_path, monkeypatch, "-o", "-", config=config) == 1
     assert "Error: a unity catalog is not supported in a manifest yet\n" == capsys.readouterr().err  # fmt: skip
+
+
+def with_rule_severity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Config parsing of `rule_severity` is #1359: set it on the loaded models."""
+    import floe._cli as cli
+
+    load = cli._load  # pyright: ignore[reportPrivateUsage] -- the loader `build_manifest` goes through
+
+    def patched(path: Any, profile: Any) -> Any:
+        root = load(path, profile)
+        entity = root.entities[0]
+        column = entity.schema_.columns[0].model_copy(update={"rule_severity": {"not_null": "warn"}})  # fmt: skip
+        schema = entity.schema_.model_copy(update={"columns": [column]})
+        policy = entity.policy.model_copy(update={"rule_severity": {"unique": "abort", "cast_error": "warn"}})  # fmt: skip
+        entity = entity.model_copy(update={"schema_": schema, "policy": policy})
+        return root.model_copy(update={"entities": [entity]})
+
+    monkeypatch.setattr(cli, "_load", patched)
+
+
+def test_1358_rule_severity_round_trips_and_validates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from jsonschema import Draft202012Validator
+
+    from floe.manifest_run import load_manifest
+
+    with_rule_severity(monkeypatch)
+    manifest = manifest_of(tmp_path, monkeypatch, CONFIG)
+    entity = manifest["entities"][0]
+    assert entity["policy_rule_severity"] == {"cast_error": "warn", "unique": "abort"}
+    assert entity["schema"]["columns"][0]["rule_severity"] == {"not_null": "warn"}
+    schema = Path(__file__).parents[2] / "orchestrators/schemas/floe.manifest.schema.json"  # fmt: skip
+    Draft202012Validator(json.loads(schema.read_text())).validate(manifest)  # pyright: ignore[reportUnknownMemberType] -- jsonschema ships no types
+    _, [back], _ = load_manifest(tmp_path / "manifest.json")
+    assert back.policy.rule_severity == {"cast_error": "warn", "unique": "abort"}
+    assert back.schema_.columns[0].rule_severity == {"not_null": "warn"}
+
+
+def test_1358_manifest_without_overrides_carries_neither_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entity = manifest_of(tmp_path, monkeypatch, CONFIG)["entities"][0]
+    assert "policy_rule_severity" not in entity
+    assert "rule_severity" not in entity["schema"]["columns"][0]
+
+
+@pytest.mark.parametrize("where", ["policy", "column"])
+def test_1358_invalid_level_is_refused_on_read_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str
+) -> None:
+    from floe.errors import FloeConfigError
+    from floe.manifest_run import load_manifest
+
+    with_rule_severity(monkeypatch)
+    manifest = manifest_of(tmp_path, monkeypatch, CONFIG)
+    entity = manifest["entities"][0]
+    if where == "policy":
+        entity["policy_rule_severity"]["unique"] = "explode"
+    else:
+        entity["schema"]["columns"][0]["rule_severity"]["not_null"] = "explode"
+    (tmp_path / "bad.json").write_text(json.dumps(manifest))
+    with pytest.raises(FloeConfigError) as e:
+        load_manifest(tmp_path / "bad.json")
+    assert e.value.code == "config_invalid_value"
