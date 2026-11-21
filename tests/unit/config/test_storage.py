@@ -150,28 +150,6 @@ def test_parse_storages_uses_the_given_context() -> None:
         str(err.value)
         == "profile.storages.definitions[1]: missing required field profile.storages.definitions.type"
     )
-    with pytest.raises(FloeConfigError) as err:
-        parse_storages(storages([{"name": "a", "type": "gcs"}]), "profile.storages")
-    assert (
-        str(err.value)
-        == "profile.storages.definitions name=a type=gcs is not supported in 0.8"
-    )
-
-
-@pytest.mark.parametrize(
-    ("value", "message"),
-    [
-        # d1_storage_gcs
-        (
-            storages([{"name": "g", "type": "gcs", "bucket": "b"}]),
-            "storages.definitions name=g type=gcs is not supported in 0.8",
-        ),
-    ],
-)
-def test_d1_storages_are_rejected(value: object, message: str) -> None:
-    with pytest.raises(FloeConfigError) as err:
-        parse_storages(value)
-    assert str(err.value) == message
 
 
 @pytest.mark.parametrize(

@@ -7,7 +7,7 @@ from obstore.store import MemoryStore
 
 from floe.config.storage import StorageDefinition
 from floe.errors import FloeConfigError, FloeStorageError
-from floe.storage.object_store import ObjectStoreClient, azure_store
+from floe.storage.object_store import ObjectStoreClient, azure_store, gcs_store
 from floe.storage.types import Downloader
 
 ROOT = "abfss://c@a.dfs.core.windows.net"
@@ -104,4 +104,30 @@ def test_azure_store_builds_a_client() -> None:
     assert client.resolve_uri("k") == "abfss://box@acct.dfs.core.windows.net/k"
     with pytest.raises(FloeConfigError) as e:
         azure_store(d.model_copy(update={"container": None}))
+    assert e.value.code == "config_missing_key"
+
+
+def test_gcs_conditional_put_uses_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    modes: list[object] = []
+
+    class Obs:
+        @staticmethod
+        def put(_store: object, _key: str, _body: bytes, mode: object) -> dict[str, str]:  # fmt: skip
+            modes.append(mode)
+            return {"e_tag": "etag", "version": "gen2"}
+
+    monkeypatch.setattr("floe.storage.object_store.obs", Obs)
+    client = ObjectStoreClient(MemoryStore(), "gs://b", None, "version")
+    assert client.write_conditional("gs://b/s.json", "gen1", b"x") == "gen2"
+    assert client.write_conditional("gs://b/s.json", None, b"x") == "gen2"
+    assert modes == [{"version": "gen1"}, "create"]
+
+
+def test_gcs_store_builds_a_client() -> None:
+    d = StorageDefinition(name="g", type="gcs", bucket="box", region=None, account=None, container=None, prefix=None, endpoint="http://127.0.0.1:4443/", path_style_access=None)  # fmt: skip
+    client = gcs_store(d)
+    assert client.endpoint == "http://127.0.0.1:4443"
+    assert client.resolve_uri("k") == "gs://box/k"
+    with pytest.raises(FloeConfigError) as e:
+        gcs_store(d.model_copy(update={"bucket": None}))
     assert e.value.code == "config_missing_key"

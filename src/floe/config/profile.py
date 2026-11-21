@@ -417,7 +417,6 @@ def _check_storages(storages: StoragesConfig) -> None:
         )
     seen: set[str] = set()
     for d in storages.definitions:
-        # ponytail: gcs requirements are unreachable here; gcs is rejected at parse (D1)
         if not d.name.strip():
             raise FloeConfigError(
                 f"{ctx}.definitions.name must not be empty", code="config_invalid_value"
@@ -434,7 +433,7 @@ def _check_storages(storages: StoragesConfig) -> None:
                 "(allowed: local, s3, adls, gcs)",
                 code="config_invalid_value",
             )
-        fields = {"s3": ("bucket", "region"), "adls": ("account", "container")}.get(d.type, ())  # fmt: skip
+        fields = {"s3": ("bucket", "region"), "adls": ("account", "container"), "gcs": ("bucket",)}.get(d.type, ())  # fmt: skip
         for field in fields:
             if getattr(d, field) is None:
                 raise FloeConfigError(

@@ -208,8 +208,8 @@ def test_s3_requires_a_client() -> None:
 
 def test_unsupported_scheme_and_format() -> None:
     with pytest.raises(FloeConfigError) as err:
-        resolve_inputs(Path("."), "gs://b/k", "csv", "orders", "gcs", None)
-    assert str(err.value) == "unsupported storage uri: gs://b/k"
+        resolve_inputs(Path("."), "gcs://b/k", "csv", "orders", "gcs", None)
+    assert str(err.value) == "unsupported storage uri: gcs://b/k"
     with pytest.raises(FloeConfigError) as err:
         resolve_inputs(
             Path("."), "s3://b/k", "fixed", "orders", "s3_raw", FakeClient([])

@@ -244,12 +244,12 @@ def resolve_inputs(
     exclude: str | None = None,
     after: str = "",
 ) -> ResolvedInputs:
-    """`path` is the source path, or a full `s3://` or `abfss://` URI for a remote storage; nothing under the `exclude` URI is listed (D31).
+    """`path` is the source path, or a full `s3://`, `abfss://` or `gs://` URI for a remote storage; nothing under the `exclude` URI is listed (D31).
 
     D30: `after`, a URI, skips what sorts before it: S3 `StartAfter`, or local directories never walked.
     """
     files: list[InputFile] = []
-    if path.startswith(("s3://", "abfss://")):
+    if path.startswith(("s3://", "abfss://", "gs://")):
         if client is None:
             raise FloeRunError("cloud storage client missing", code="run_invalid_setup")
         bucket, key = split_uri(path)
@@ -259,7 +259,9 @@ def resolve_inputs(
             suffixes_for_format(fmt),
             entity,
             storage,
-            f"bucket={bucket}" if path.startswith("s3://") else f"container={bucket}",
+            f"container={bucket}"
+            if path.startswith("abfss://")
+            else f"bucket={bucket}",
             exclude,
             split_uri(after)[1] if after else "",
         )

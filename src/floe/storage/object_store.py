@@ -1,4 +1,4 @@
-"""obstore-backed storage client (Azure now; GCS plugs in through `token_field`)."""
+"""obstore-backed storage client (Azure with the `e_tag` CAS token, GCS with the object `version`)."""
 
 from datetime import UTC
 from pathlib import Path
@@ -160,3 +160,25 @@ def azure_store(definition: StorageDefinition) -> ObjectStoreClient:
     except (oe.BaseError, ValueError) as e:
         raise _fail(f"azure store for {account}/{container}", e) from e
     return ObjectStoreClient(store, f"abfss://{container}@{account}.dfs.core.windows.net", endpoint, "e_tag")  # fmt: skip
+
+
+def gcs_store(definition: StorageDefinition) -> ObjectStoreClient:
+    """Credentials come from the environment (`GOOGLE_*`, Application Default Credentials). The CAS token is the object generation."""
+    try:
+        from obstore.store import GCSStore
+    except ImportError as e:
+        raise missing("gcs", "a gcs storage") from e
+    if not definition.bucket:
+        raise FloeConfigError(f"storage {definition.name} requires bucket for type gcs", code="config_missing_key")  # fmt: skip
+    endpoint = definition.endpoint.rstrip("/") if definition.endpoint else None
+    try:
+        store = GCSStore(
+            definition.bucket,
+            config={"base_url": endpoint} if endpoint else None,
+            client_options={"allow_http": True}
+            if endpoint and endpoint.startswith("http://")
+            else None,
+        )
+    except (oe.BaseError, ValueError) as e:
+        raise _fail(f"gcs store for {definition.bucket}", e) from e
+    return ObjectStoreClient(store, f"gs://{definition.bucket}", endpoint, "version")

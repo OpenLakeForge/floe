@@ -402,6 +402,10 @@ def _check_iceberg(
         raise _fail(entity, f"sink.write_mode={entity.sink.write_mode} requires a rest catalog (glue supports overwrite and append)", code="config_not_supported")  # fmt: skip
     if definition.warehouse_storage is None:
         type_ = _storage_type(config, storage)
+        if (
+            type_ == "gcs"
+        ):  # ponytail: drop with the Iceberg/DuckDB settings for gcs (#1326)
+            raise _fail(entity, f"sink.{kind}.iceberg is not supported on gcs storage yet", code="config_not_supported")  # fmt: skip
         if type_ not in ("s3", "gcs"):
             raise _fail(
                 entity,
@@ -476,8 +480,11 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
     _check_iceberg(entity, config, accepted_storage)
     if sink.rejected is not None:
         _check_iceberg(entity, config, _storage_ref(config, sink.rejected.storage, "sink.rejected.storage", who), "rejected")  # fmt: skip
-    if accepted.format == "delta" and _storage_type(config, accepted_storage) == "adls":
-        raise _fail(entity, "sink.accepted.format=delta is not supported on adls storage yet", code="config_not_supported")  # fmt: skip
+    if accepted.format == "delta" and _storage_type(config, accepted_storage) in (
+        "adls",
+        "gcs",
+    ):
+        raise _fail(entity, f"sink.accepted.format=delta is not supported on {_storage_type(config, accepted_storage)} storage yet", code="config_not_supported")  # fmt: skip
     _check_partitioning(entity)
     _check_write_mode(entity)
     archive = sink.archive
@@ -844,6 +851,12 @@ def _check_storages(config: RootConfig) -> None:
                 for field in ("account", "container"):
                     if getattr(d, field) is None:
                         raise FloeConfigError(f"storages.definitions name={d.name} requires {field} for type adls", code="config_missing_key")  # fmt: skip
+            if d.type == "gcs":
+                require(
+                    "gcs", "obstore", f"storages.definitions name={d.name} type=gcs"
+                )
+                if d.bucket is None:
+                    raise FloeConfigError(f"storages.definitions name={d.name} requires bucket for type gcs", code="config_missing_key")  # fmt: skip
             if d.name in names:
                 raise FloeConfigError(
                     f"storages.definitions name={d.name} is duplicated",
@@ -878,6 +891,10 @@ def _check_storages(config: RootConfig) -> None:
                     f"reference s3 storage for glue catalog (got {kind})",
                     code="config_conflict",
                 )
+            if (
+                kind == "gcs"
+            ):  # ponytail: drop with the Iceberg/DuckDB settings for gcs (#1326)
+                raise FloeConfigError(f"catalogs.definitions name={c.name} warehouse_storage on gcs storage is not supported yet", code="config_not_supported")  # fmt: skip
             if kind not in ("s3", "gcs"):
                 raise FloeConfigError(
                     f"catalogs.definitions name={c.name} warehouse_storage must "

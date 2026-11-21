@@ -6,7 +6,7 @@ from threading import Lock
 from floe.config.storage import StorageDefinition, StoragesConfig
 from floe.errors import FloeConfigError, FloeRunError
 from floe.storage.local import LocalClient
-from floe.storage.object_store import ObjectStoreClient, azure_store
+from floe.storage.object_store import ObjectStoreClient, azure_store, gcs_store
 from floe.storage.paths import normalize_local_path, parse_s3_uri, split_uri
 from floe.storage.s3 import S3Client
 
@@ -40,7 +40,7 @@ def resolve_path(
     raw: str,
     field: str,
 ) -> tuple[str, StorageDefinition | None]:
-    """`raw` as a `local://`, `s3://` or `abfss://` URI, with its storage definition."""
+    """`raw` as a `local://`, `s3://`, `abfss://` or `gs://` URI, with its storage definition."""
     definition = _definition(storages, name, field)
     if definition is None or definition.type == "local":
         if "://" in raw:
@@ -61,6 +61,18 @@ def resolve_path(
             if found != authority:
                 raise FloeConfigError(f"storage {definition.name} container or account mismatch: {found}", code="config_invalid_value")  # fmt: skip
         return f"abfss://{authority}/{key}" if key else f"abfss://{authority}", definition  # fmt: skip
+    if definition.type == "gcs":
+        if not definition.bucket:
+            raise FloeConfigError(f"storage {definition.name} requires bucket for type gcs", code="config_missing_key")  # fmt: skip
+        if "://" not in raw:
+            key = "/".join(p for p in ((definition.prefix or "").strip("/"), raw.lstrip("/")) if p)  # fmt: skip
+        elif not raw.startswith("gs://"):
+            raise FloeConfigError(f"{field} must use a gs:// uri for gcs storage {definition.name} (got {raw})", code="config_invalid_value")  # fmt: skip
+        else:
+            found, key = split_uri(raw)
+            if found != definition.bucket:
+                raise FloeConfigError(f"storage {definition.name} bucket mismatch: {found}", code="config_invalid_value")  # fmt: skip
+        return f"gs://{definition.bucket}/{key}" if key else f"gs://{definition.bucket}", definition  # fmt: skip
     if definition.type != "s3":
         raise FloeRunError(f"{field}={definition.name} (type {definition.type}) is not supported", code="run_not_supported")  # fmt: skip
     if definition.bucket is None:
@@ -87,12 +99,12 @@ def clear_storage_clients() -> None:
 def storage_client(
     definition: StorageDefinition | None,
 ) -> LocalClient | S3Client | ObjectStoreClient:
-    """S3 and Azure credentials come from the environment. One shared client per definition between `clear_storage_clients` calls."""
+    """S3, Azure and GCS credentials come from the environment. One shared client per definition between `clear_storage_clients` calls."""
     if definition is None or definition.type == "local":
         return LocalClient()
     with (
         _clients_lock
     ):  # boto3 clients are thread-safe; the lock only stops a duplicate build
         if definition not in _clients:
-            _clients[definition] = azure_store(definition) if definition.type == "adls" else S3Client(definition.bucket or "", definition.region, definition.endpoint, definition.path_style_access)  # fmt: skip
+            _clients[definition] = {"adls": azure_store, "gcs": gcs_store}[definition.type](definition) if definition.type in ("adls", "gcs") else S3Client(definition.bucket or "", definition.region, definition.endpoint, definition.path_style_access)  # fmt: skip
         return _clients[definition]
