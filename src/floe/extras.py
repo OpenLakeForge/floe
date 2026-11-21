@@ -6,7 +6,7 @@ from floe.errors import FloeConfigError
 
 
 def missing(extra: str, needed_by: str) -> FloeConfigError:
-    return FloeConfigError(f"{needed_by} needs the floe[{extra}] extra: pip install 'floe-python[{extra}]'")  # fmt: skip
+    return FloeConfigError(f"{needed_by} needs the floe[{extra}] extra: pip install 'floe-python[{extra}]'", code="config_not_supported")  # fmt: skip
 
 
 def require(extra: str, module: str, needed_by: str) -> None:

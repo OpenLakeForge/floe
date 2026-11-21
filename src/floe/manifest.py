@@ -147,7 +147,8 @@ def _pii_key(entity: EntityConfig, column: PiiColumn) -> str | None:
     raise FloeConfigError(
         f"entity.name={entity.name} pii.columns[name={column.name}].key: a manifest never "
         "carries secrets, so a literal hash key cannot be written to it; "
-        "set key to a ${ENV_VAR} reference"
+        "set key to a ${ENV_VAR} reference",
+        code="config_invalid_value",
     )
 
 
@@ -446,7 +447,8 @@ def build_manifest(
 ) -> Json:
     if options.path_mode not in ("default", "resolved-uri"):
         raise FloeError(
-            f"unknown --manifest-path-mode value '{options.path_mode}'; expected 'default' or 'resolved-uri'"
+            f"unknown --manifest-path-mode value '{options.path_mode}'; expected 'default' or 'resolved-uri'",
+            code="config_invalid_value",
         )
     runtime = options.runtime or detect_runtime()
     work_root = None

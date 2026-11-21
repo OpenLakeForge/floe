@@ -216,7 +216,7 @@ def test_a_missing_config_logs_no_run_started(
     code, out, _ = floe(monkeypatch, capsys, *args)
     assert code == 1
     assert out.splitlines()[0] == (
-        "log level=error code=error No such file or directory (os error 2)"
+        "log level=error code=error error_code=io_read_error No such file or directory (os error 2)"
     )
 
 

@@ -45,7 +45,9 @@ def declared_names(entity: EntityConfig) -> list[str]:
     ]
     if len(set(names)) != len(names):
         dup = next(n for n in names if names.count(n) > 1)
-        raise FloeConfigError(f"duplicate top-level column selector: {dup}")
+        raise FloeConfigError(
+            f"duplicate top-level column selector: {dup}", code="config_duplicate"
+        )
     return names
 
 
@@ -128,7 +130,8 @@ def json_probe(
     """
     if mode not in ("array", "ndjson"):
         raise FloeIoError(
-            f"unsupported source.options.json_mode={mode} (allowed: array, ndjson)"
+            f"unsupported source.options.json_mode={mode} (allowed: array, ndjson)",
+            code="io_invalid_option",
         )
     keys: set[str] | None = None
     head: list[tuple[str, Any]] | None = []

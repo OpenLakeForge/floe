@@ -141,7 +141,9 @@ def _profile(
     try:
         profile = parse_profile(path)
     except FloeError as e:
-        raise FloeConfigError(f"failed to load profile {_debug(path)}: {e}") from e
+        raise FloeConfigError(
+            f"failed to load profile {_debug(path)}: {e}", code=e.code
+        ) from e
     return replace(profile, variables=profile.variables | (variables or {}))
 
 

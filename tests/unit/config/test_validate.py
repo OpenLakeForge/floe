@@ -204,6 +204,7 @@ def test_output_column_name_collision_fails_validation(tmp_path: Path) -> None:
         str(err.value)
         == "entity.name=orders output column name collision: a and A -> a"
     )
+    assert err.value.code == "config_duplicate"
 
 
 def test_valid_spellings(tmp_path: Path) -> None:
