@@ -19,6 +19,7 @@ from floe.state import (
     claim_all,
     claim_inputs,
     dump_state,
+    forget,
     parse_state,
     promote,
     read_state,
@@ -543,3 +544,103 @@ def test_949_an_invalid_pruned_before_is_a_state_error() -> None:
     body = dump_state(EntityState("sales", None, {}, {}, None, "yesterday"))
     with pytest.raises(FloeConfigError, match="invalid state file: pruned_before"):
         parse_state("sales", body)
+
+
+def _seed(client: LocalClient, uri: str) -> EntityState:
+    state = EntityState(
+        "sales",
+        "t0",
+        {"a": FileState("t", 1, "m"), "b": FileState("t", 2, "m")},
+        {"c": _claim("run-x", "2999-01-01T00:00:00Z")},
+        "2026-01-02",
+        "2026-01-01",
+    )
+    client.write_conditional(uri, None, dump_state(state))
+    return state
+
+
+def test_forget_drops_only_the_named_files(tmp_path: Path) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    before = _seed(client, uri)
+    assert forget(client, uri, "sales", ["a"]) == {"a": FileState("t", 1, "m")}
+    after = read_state(client, uri, "sales")
+    assert after is not None
+    assert after.files == {"b": before.files["b"]}
+    assert after.claims == before.claims
+    assert (after.watermark, after.pruned_before) == ("2026-01-02", "2026-01-01")
+
+
+def test_forget_names_a_repeated_file_once(tmp_path: Path) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    _seed(client, uri)
+    assert forget(client, uri, "sales", ["a", "a"]) == {"a": FileState("t", 1, "m")}
+
+
+def test_forget_refuses_a_live_claim_an_unknown_uri_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    _seed(client, uri)
+    body = (tmp_path / "state.json").read_bytes()
+    with pytest.raises(FloeConfigError, match="claimed by run run-x until 2999"):
+        forget(client, uri, "sales", ["a", "c"])
+    with pytest.raises(FloeConfigError, match="not in the incremental state"):
+        forget(client, uri, "sales", ["a", "zzz"])
+    with pytest.raises(FloeConfigError, match="before the listing window"):
+        forget(client, uri, "sales", ["a"], lambda _s, u: u == "a")
+    assert (tmp_path / "state.json").read_bytes() == body
+
+
+def test_forget_of_an_expired_claim_says_the_next_run_retries_it(
+    tmp_path: Path,
+) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    expired = EntityState("sales", None, {}, {"c": _claim("r", "2000-01-01T00:00:00Z")})
+    client.write_conditional(uri, None, dump_state(expired))
+    with pytest.raises(FloeConfigError, match="the next run retries it anyway"):
+        forget(client, uri, "sales", ["c"])
+
+
+def test_forget_retries_a_changed_state_and_keeps_both_changes(tmp_path: Path) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    _seed(client, uri)
+
+    class Racing(LocalClient):
+        raced = False
+
+        def write_conditional(
+            self, uri: str, expected_version: str | None, body: bytes
+        ) -> str | None:
+            if not self.raced:  # another writer lands between our read and write
+                self.raced = True
+                other = read_state(client, uri, "sales")
+                assert other is not None
+                other.files["d"] = FileState("t", 4, "m")
+                client.write_conditional(uri, expected_version, dump_state(other))
+            return super().write_conditional(uri, expected_version, body)
+
+    forget(Racing(), uri, "sales", ["a"])
+    after = read_state(client, uri, "sales")
+    assert after is not None
+    assert sorted(after.files) == ["b", "d"]
+
+
+def test_forget_fails_after_retries(tmp_path: Path) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    _seed(client, uri)
+    with pytest.raises(FloeRunError) as e:
+        forget(Flaky(99), uri, "sales", ["a"])
+    assert e.value.code == "run_state_conflict"
+
+
+def test_a_stale_promote_does_not_bring_back_a_forgotten_file(tmp_path: Path) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    seeded = EntityState("sales", None, {"a": FileState("t", 1, "m")}, {})
+    client.write_conditional(uri, None, dump_state(seeded))
+    outcome = claim_inputs(client, uri, "sales", "run-a", [_input("b")])
+    assert outcome.claimed is not None  # holds a state that still lists "a"
+    forget(client, uri, "sales", ["a"])
+    promote(client, uri, "run-a", outcome.claimed)
+    after = read_state(client, uri, "sales")
+    assert after is not None
+    assert list(after.files) == ["b"]

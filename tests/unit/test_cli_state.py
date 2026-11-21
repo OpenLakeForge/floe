@@ -169,3 +169,63 @@ def test_state_inspect_applies_the_profile_variables(
     code, out, _ = floe(monkeypatch, capsys, *args)
     assert code == 0
     assert f"State path: local://{state}\n" in out
+
+
+def run_floe(monkeypatch: pytest.MonkeyPatch, config: Path) -> int:
+    monkeypatch.setattr(sys, "argv", ["floe", "run", "-c", str(config)])
+    return main()
+
+
+def reports(tmp_path: Path) -> str:
+    return "".join(p.read_text() for p in tmp_path.rglob("run*.json"))
+
+
+def test_state_forget_requeues_a_changed_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config, state = write_config(tmp_path)
+    config.write_text(
+        config.read_text().replace(
+            "sink: {accepted", 'sink: {write_mode: "append", accepted'
+        )
+    )
+    csv = tmp_path / "incoming/sales.csv"
+    csv.write_text("id\n1\n")
+    assert run_floe(monkeypatch, config) == 0
+    csv.write_text("id\n1\n2\n3\n")
+    assert run_floe(monkeypatch, config) == 0
+    assert "already_ingested_changed" in reports(tmp_path)
+    uri = f"local://{csv}"
+    capsys.readouterr()
+    args = ("forget", "-c", str(config), "--entity", "sales", "--file", uri, "--yes")
+    code, out, _ = floe(monkeypatch, capsys, *args)
+    assert code == 0
+    assert f"Forgot: {uri} (size=5," in out
+    assert "old rows stay" in out
+    assert json.loads(state.read_text())["files"] == {}
+    assert run_floe(monkeypatch, config) == 0
+    assert json.loads(state.read_text())["files"][uri]["size"] == 9
+
+
+def test_state_forget_requires_yes_and_a_file_mode_entity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config, _ = write_config(tmp_path)
+    base = ("forget", "-c", str(config), "--entity", "sales", "--file", "x")
+    code, _, err = floe(monkeypatch, capsys, *base)
+    assert code == 1 and "rerun with --yes to confirm" in err
+    config.write_text(config.read_text().replace('"file"', '"none"'))
+    code, _, err = floe(monkeypatch, capsys, *base, "--yes")
+    assert code == 1 and "needs incremental_mode: file (is none)" in err
+
+
+def test_state_forget_refuses_an_unknown_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config, state = write_config(tmp_path)
+    state.parent.mkdir(parents=True)
+    state.write_text(V1_STATE)
+    args = ("forget", "-c", str(config), "--entity", "sales", "--yes", "--file")
+    code, _, err = floe(monkeypatch, capsys, *args, "sales.csv")
+    assert code == 1 and "not in the incremental state" in err
+    assert "local:///tmp/incoming/sales.csv" in state.read_text()
