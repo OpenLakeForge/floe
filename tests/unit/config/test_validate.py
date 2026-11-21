@@ -265,6 +265,10 @@ def test_empty_iceberg_catalog_is_not_defaulted(tmp_path: Path) -> None:
             "sink.accepted.partition_by[0]=nope references unknown schema column",
         ),
         (
+            "{accepted: {format: delta, path: out, partition_by: [id, id]}}",
+            "sink.accepted.partition_by has duplicate column id",
+        ),
+        (
             "{accepted: {format: delta, path: out, partition_spec: [{column: id}]}}",
             "sink.accepted.partition_spec is only supported for sink.accepted.format=iceberg",
         ),

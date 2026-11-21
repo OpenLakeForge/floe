@@ -270,6 +270,8 @@ def _check_partitioning(entity: EntityConfig) -> None:
                     f"sink.accepted.partition_by[{index}]={column} references unknown schema column",
                     code="config_unknown_reference",
                 )
+            if accepted.partition_by.count(column) > 1:
+                raise _fail(entity, f"sink.accepted.partition_by has duplicate column {column}", code="config_duplicate")  # fmt: skip
     elif accepted.partition_by is not None:
         raise _fail(
             entity,
