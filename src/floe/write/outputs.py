@@ -33,7 +33,7 @@ def _os_errors() -> Generator[None]:
         os = e if isinstance(e, OSError) else e.__cause__
         if not isinstance(os, OSError):
             raise
-        raise FloeError(f"{os.strerror} (os error {os.errno})" if os.errno is not None else str(os)) from os  # fmt: skip
+        raise FloeError(f"{os.strerror} (os error {os.errno})" if os.errno is not None else str(os), code="storage_error") from os  # fmt: skip
 
 
 @dataclass(frozen=True)

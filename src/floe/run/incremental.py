@@ -207,7 +207,8 @@ class Incremental:
                 raise FloeRunError(
                     f"entity.name={e.name} cannot tell whether a run that died after claiming its inputs at {since} "
                     "committed them: the table's snapshots since then were expired (retention floor: 7 days and at least "
-                    "10 snapshots); run `floe state reset` for the entity, then rerun"
+                    "10 snapshots); run `floe state reset` for the entity, then rerun",
+                    code="run_state_conflict",
                 )  # fmt: skip
             if found:
                 committed |= claims.keys() & ours

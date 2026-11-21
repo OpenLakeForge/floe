@@ -203,7 +203,7 @@ def test_a_failed_run_logs_the_error_and_a_failed_run_finished(
     assert code == 1
     assert out == (
         f"run_started run_id=r1 config={config} report_base=disabled\n"
-        "log level=error code=config_error entities not found: zz\n"
+        "log level=error code=config_error error_code=config_unknown_reference entities not found: zz\n"
         "run_finished status=failed exit_code=1 summary=disabled\n"
     )
     assert err == "Error: entities not found: zz\n"

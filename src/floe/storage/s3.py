@@ -109,7 +109,8 @@ class S3Client:
             ]
         except (ClientError, BotoCoreError) as e:
             raise FloeStorageError(
-                f"s3 list objects failed for bucket {self.bucket}: {e}"
+                f"s3 list objects failed for bucket {self.bucket}: {e}",
+                code="storage_error",
             ) from e
 
     def download(self, uri: str, temp_dir: Path) -> Path:
@@ -121,7 +122,9 @@ class S3Client:
             with dest.open("wb") as f:
                 shutil.copyfileobj(body, f)
         except (ClientError, BotoCoreError, OSError) as e:
-            raise FloeStorageError(f"s3 get object failed: {e}") from e
+            raise FloeStorageError(
+                f"s3 get object failed: {e}", code="storage_error"
+            ) from e
         return dest
 
     def write(self, uri: str, body: bytes) -> None:
@@ -129,7 +132,9 @@ class S3Client:
         try:
             self._client.put_object(Bucket=bucket, Key=key, Body=body)
         except (ClientError, BotoCoreError) as e:
-            raise FloeStorageError(f"s3 put object failed: {e}") from e
+            raise FloeStorageError(
+                f"s3 put object failed: {e}", code="storage_error"
+            ) from e
 
     def copy(self, src_uri: str, dst_uri: str) -> None:
         (sb, sk), (db, dk) = parse_s3_uri(src_uri), parse_s3_uri(dst_uri)
@@ -138,7 +143,9 @@ class S3Client:
                 Bucket=db, Key=dk, CopySource={"Bucket": sb, "Key": sk}
             )
         except (ClientError, BotoCoreError) as e:
-            raise FloeStorageError(f"s3 copy object failed: {e}") from e
+            raise FloeStorageError(
+                f"s3 copy object failed: {e}", code="storage_error"
+            ) from e
 
     def source_mtime(self, uri: str) -> str | None:
         """#939: the source mtime in the metadata of an archive copy made before the sidecar (#1271); None otherwise."""
@@ -150,14 +157,18 @@ class S3Client:
                 (v for k, v in meta.items() if k.lower() == _SOURCE_MTIME), None
             )
         except (ClientError, BotoCoreError) as e:
-            raise FloeStorageError(f"s3 head object failed for {uri}: {e}") from e
+            raise FloeStorageError(
+                f"s3 head object failed for {uri}: {e}", code="storage_error"
+            ) from e
 
     def delete(self, uri: str) -> None:
         bucket, key = parse_s3_uri(uri)
         try:
             self._client.delete_object(Bucket=bucket, Key=key)
         except (ClientError, BotoCoreError) as e:
-            raise FloeStorageError(f"s3 delete object failed: {e}") from e
+            raise FloeStorageError(
+                f"s3 delete object failed: {e}", code="storage_error"
+            ) from e
 
     def read(self, uri: str) -> StoredObject | None:
         bucket, key = parse_s3_uri(uri)
@@ -167,9 +178,13 @@ class S3Client:
         except ClientError as e:
             if _is(e, _NOT_FOUND):
                 return None
-            raise FloeStorageError(f"s3 get object failed: {e}") from e
+            raise FloeStorageError(
+                f"s3 get object failed: {e}", code="storage_error"
+            ) from e
         except BotoCoreError as e:
-            raise FloeStorageError(f"s3 get object failed: {e}") from e
+            raise FloeStorageError(
+                f"s3 get object failed: {e}", code="storage_error"
+            ) from e
 
     def write_conditional(
         self, uri: str, expected_version: str | None, body: bytes
@@ -188,14 +203,18 @@ class S3Client:
         except ClientError as e:
             if _is(e, _CONFLICT):
                 return None
-            raise FloeStorageError(f"s3 put object failed: {e}") from e
+            raise FloeStorageError(
+                f"s3 put object failed: {e}", code="storage_error"
+            ) from e
         except BotoCoreError as e:
-            raise FloeStorageError(f"s3 put object failed: {e}") from e
+            raise FloeStorageError(
+                f"s3 put object failed: {e}", code="storage_error"
+            ) from e
 
 
 def read_s3(uri: str, what: str) -> bytes:
     # S3 settings come from the environment (AWS_ENDPOINT_URL, ...), as for `-o s3://`
     found = S3Client(parse_s3_uri(uri)[0]).read(uri)
     if found is None:
-        raise FloeIoError(f"{what} not found: {uri}")
+        raise FloeIoError(f"{what} not found: {uri}", code="io_not_found")
     return found.body
