@@ -101,6 +101,7 @@ Format-specific metadata:
   - Delta: the table version after the run's commit
 - `snapshot_id`: Iceberg snapshot id (when a snapshot exists)
 - `iceberg_catalog_name`, `iceberg_namespace`, `iceberg_table`: present for Iceberg runs
+- `delta_catalog_name`, `delta_schema`, `delta_table`: present for Delta runs with a `sink.accepted.delta` Unity block
 
 Write-time file sizing metrics (optional):
 - `total_bytes_written`
