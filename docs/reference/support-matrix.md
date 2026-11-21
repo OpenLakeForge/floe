@@ -22,7 +22,7 @@ These 0.7 features are rejected by `floe validate` with a "not supported in 0.8"
 | Dropped | Instead |
 |---|---|
 | Fixed-width input (`source.format: fixed`) | Convert to CSV upstream |
-| Delta Lake `merge_*` modes and Unity Catalog (#1266); Delta `overwrite` and `append` are supported | Iceberg |
+| Delta Lake `merge_*` modes and Unity Catalog (#1266); Delta `overwrite` and `append` are supported, see [Delta sink](../sinks/delta.md) | Iceberg |
 | DuckDB / MotherDuck accepted sink | Iceberg (merges run through DuckDB) |
 | Catalog-less Iceberg tables (filesystem catalog) | Iceberg REST catalog |
 
@@ -103,7 +103,7 @@ Notes:
 | Sources, Parquet and CSV sinks, reports, archive, incremental state | ✅ | ✅ | ✅ |
 | Iceberg `overwrite` and `append` | ✅ | ❌ (#1344) | ✅ |
 | Iceberg merges and compaction | ✅ | ❌ | ❌ (DuckDB's GCS secret takes HMAC keys only) |
-| Delta | ✅ | ❌ | ❌ |
+| Delta `overwrite` and `append` (path-based, no catalog) | ✅ | ❌ | ❌ |
 | `floe maintain`, `floe manifest generate` and `replay` | ✅ | refused | refused |
 | Manifest and profile read from a URI | ✅ | ❌ | ❌ |
 

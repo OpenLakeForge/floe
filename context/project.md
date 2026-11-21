@@ -34,7 +34,7 @@ It is designed for data platform teams who need reliable, auditable file ingesti
 | Direction | Formats |
 |---|---|
 | Input | CSV · TSV · JSON · Parquet · ORC · Avro · XLSX · XML |
-| Accepted output | Parquet · Apache Iceberg |
+| Accepted output | Parquet · Apache Iceberg · Delta Lake (path-based) |
 | Rejected output | CSV · Parquet · Apache Iceberg (quarantine table) |
 
 ## Supported storage
@@ -46,7 +46,7 @@ Local · AWS S3 (and S3-compatible stores) · Azure ADLS Gen2 and Google Cloud S
 Iceberg REST (Polaris) and AWS Glue (restored in 0.8.1; overwrite and append only)
 
 Floe 0.8 dropped Delta, DuckDB/MotherDuck, fixed-width, Unity, ADLS and GCS (D1, D26 in
-#619); ADLS and GCS are back (see Supported storage). The Rust implementation that had them is archived at
+#619); ADLS, GCS and Delta (path-based, `overwrite` and `append`, local and S3) are back; Unity and Delta merges are not. The Rust implementation that had them is archived at
 [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
 
 ## Versioning

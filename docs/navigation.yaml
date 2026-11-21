@@ -33,6 +33,7 @@ sections:
   - label: Sinks and storage
     items:
       - docs/sinks/iceberg.md
+      - docs/sinks/delta.md
       - docs/sinks/parquet.md
       - docs/sinks/options.md
       - docs/storages/s3.md

@@ -54,7 +54,7 @@ gates below pass.
 
 | Keep | Drop / freeze |
 |---|---|
-| Iceberg via Polaris REST | Delta + Unity, DuckDB/MotherDuck sinks, Glue |
+| Iceberg via Polaris REST | Delta + Unity, DuckDB/MotherDuck sinks, Glue (D1; Delta `overwrite`/`append` returned in #1263, Glue in 0.8.1) |
 | CSV rejected output, Parquet accepted output (parity with Rust 0.7) | Parquet rejected output (post-0.8 feature) |
 | CSV, Parquet, JSON, Avro, ORC, XLSX readers (native Polars/pyarrow), XML (stdlib streaming parser) | Fixed-width (port on demand) |
 | S3 + local storage | ADLS, GCS |
