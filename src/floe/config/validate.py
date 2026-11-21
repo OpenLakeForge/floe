@@ -812,6 +812,7 @@ def _check_storages(config: RootConfig) -> None:
                 )
             if d.type == "s3":
                 require("s3", "obstore", f"storages.definitions name={d.name} type=s3")
+                require("s3", "boto3", f"storages.definitions name={d.name} type=s3")
             if d.type == "s3" and (d.bucket is None or d.region is None):
                 missing = "bucket" if d.bucket is None else "region"
                 raise FloeConfigError(

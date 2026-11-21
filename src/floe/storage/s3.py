@@ -1,9 +1,10 @@
 """S3 storage client on obstore, ported from `io/storage/providers/s3.rs` (`S3Client`)."""
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from floe.errors import FloeIoError, FloeStorageError
 from floe.extras import missing
@@ -13,13 +14,14 @@ from floe.storage.types import ObjectRef, StoredObject
 if TYPE_CHECKING:
     import obstore as obs
     from obstore import PutMode
+    from obstore.auth.boto3 import Boto3CredentialProvider
     from obstore.exceptions import (
         AlreadyExistsError,
         PermissionDeniedError,
         PreconditionError,
         UnauthenticatedError,
     )
-    from obstore.store import ObjectStore, S3Config
+    from obstore.store import ClientConfig, ObjectStore, S3Config
 else:
     try:
         import obstore as obs
@@ -61,6 +63,26 @@ def _fail(what: str, e: Exception, where: str = "") -> FloeStorageError:
     return FloeStorageError(msg, code="storage_error")
 
 
+def _aws_credentials() -> "Boto3CredentialProvider | None":
+    """With boto3 installed, the AWS default chain (`~/.aws` profiles, `AWS_PROFILE`, SSO); else None, and obstore's own
+    environment, web identity and container or instance role chain applies. No credentials at all also falls to that chain;
+    any other failure (an expired SSO token, an unknown profile) is raised, not hidden behind an instance-role lookup."""
+    try:
+        from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+        from obstore.auth.boto3 import Boto3CredentialProvider
+    except ImportError:
+        return None
+    try:
+        # ponytail: the ttl is fixed, not the credentials' own expiry; botocore renews SSO and assumed roles behind it, so
+        # a role shorter than 5 minutes would be sent expired. Upgrade: a provider that returns botocore's `_expiry_time`.
+        return Boto3CredentialProvider(ttl=timedelta(minutes=5))
+    except (NoCredentialsError, ValueError):  # ValueError: boto3 found no credentials
+        return None
+    except (BotoCoreError, ClientError) as e:
+        profile = os.environ.get("AWS_PROFILE", "default")
+        raise FloeStorageError(f"aws credentials for profile {profile} failed: {e}", code="storage_access_denied") from e  # fmt: skip
+
+
 def _iso(ts: datetime) -> str:
     return ts.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
@@ -76,7 +98,7 @@ def temp_path_for_key(temp_dir: Path, key: str) -> Path:
 class S3Client:
     """The `bucket` is the only one a client reaches: URIs are reduced to their key.
 
-    Threads: one client is shared by the entity threads (`resolve.py`). An obstore store holds no mutable state (a Rust
+    Threads: one client is shared by the entity threads (`resolve.py`). An obstore store, like a boto3 client, holds no mutable state (a Rust
     `object_store` handle over a pooled HTTP client, `Send + Sync`) and its calls release the GIL, so it needs no lock.
     """
 
@@ -92,54 +114,84 @@ class S3Client:
         except ImportError as e:
             raise missing("s3", "an s3 storage") from e
         self.bucket = bucket
+        self._list_args = (
+            region,
+            endpoint,
+            resolve_path_style_access(path_style_access),
+        )
         env = os.environ
         custom = endpoint or env.get("AWS_ENDPOINT_URL_S3") or env.get("AWS_ENDPOINT_URL")  # fmt: skip
         # identifies the store behind a bucket name
         self.endpoint: str = (custom or f"https://s3.{region or env.get('AWS_REGION') or env.get('AWS_DEFAULT_REGION') or 'us-east-1'}.amazonaws.com").rstrip("/")  # fmt: skip
-        # credentials and the rest (AWS_ACCESS_KEY_ID, ...) are read from the environment by obstore
-        config: S3Config = {
-            # boto3's `auto`: virtual-hosted on AWS (a dotted bucket name breaks its TLS name), else path style
-            "virtual_hosted_style_request": not resolve_path_style_access(
-                path_style_access
-            )
-            and custom is None
-            and "." not in bucket,
-        }
+        credentials = _aws_credentials()
+        # without boto3 the credentials and the rest (AWS_ACCESS_KEY_ID, ...) are read from the environment by obstore
+        config: S3Config = (
+            credentials.config.copy() if credentials else {}
+        )  # the session's region; ours wins
+        # boto3's `auto`: virtual-hosted on AWS (a dotted bucket name breaks its TLS name), else path style
+        config["virtual_hosted_style_request"] = not resolve_path_style_access(path_style_access) and custom is None and "." not in bucket  # fmt: skip
         if region:
             config["region"] = region
         if custom:
             config["endpoint"] = custom
+        options: ClientConfig = {"connect_timeout": timedelta(seconds=10)}
+        if self.endpoint.startswith("http://"):
+            options["allow_http"] = True
         self._store: ObjectStore = S3Store(
             bucket,
             config=config,
-            client_options={"allow_http": True}
-            if self.endpoint.startswith("http://")
-            else None,
+            client_options=options,
+            # near boto3's old 5 attempts and 60 s timeouts (obstore: 10 retries, 180 s)
+            retry_config={"max_retries": 4, "retry_timeout": timedelta(seconds=60)},
+            credential_provider=credentials,
         )
 
     def resolve_uri(self, path: str) -> str:
         key = path.lstrip("/")
         return f"s3://{self.bucket}/{key}" if key else f"s3://{self.bucket}"
 
+    @cached_property
+    def _lister(self) -> Any:
+        """boto3 lists with the raw prefix; obstore only lists directories (`in/data_` becomes `in/data_/`), which an IAM
+        `s3:prefix` condition on `in/data_*` refuses. Built on first use: a boto3 session costs 55-120 ms."""
+        import boto3
+        from botocore.config import Config
+
+        region, endpoint, path_style = self._list_args
+        config = Config(
+            s3={"addressing_style": "path"} if path_style else None,
+            # boto3 >= 1.36 adds CRC checksums that S3-compatible services may reject.
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
+        )
+        make = boto3.session.Session().client  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]  # stubs cover s3 only
+        return make("s3", region_name=region, endpoint_url=endpoint, config=config)
+
     def list(self, prefix: str, start_after: str = "") -> list[ObjectRef]:
         """Keys under `prefix`; D30: only those after `start_after`."""
-        # obstore lists whole directories (`in/data_` would mean `in/data_/`): list the directory, keep the raw prefix
-        directory, key_prefix = prefix.rpartition("/")[0], prefix.lstrip("/")
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        args: dict[str, str] = {"Bucket": self.bucket, "Prefix": prefix}
+        if start_after:
+            args["StartAfter"] = start_after
         try:
-            batches = obs.list(self._store, directory, offset=start_after or None)  # pyright: ignore[reportUnknownMemberType]  # the `return_arrow` overload names arro3, which is not installed
+            pages = self._lister.get_paginator("list_objects_v2").paginate(**args)
             return [
-                ObjectRef(
-                    f"s3://{self.bucket}/{m['path']}",
-                    m["path"],
-                    _iso(m["last_modified"]),
-                    m["size"],
-                )
-                for batch in batches
-                for m in batch
-                if m["path"].startswith(key_prefix)
-            ]
-        except Exception as e:
-            raise _fail("list objects", e, f" for bucket {self.bucket}") from e
+                ObjectRef(f"s3://{self.bucket}/{o['Key']}", o["Key"], _iso(o["LastModified"]), o["Size"])
+                for page in pages
+                for o in page.get("Contents", [])
+            ]  # fmt: skip
+        except ClientError as e:
+            code = str(e.response.get("Error", {}).get("Code", ""))
+            msg = f"s3 list objects failed for bucket {self.bucket}: {e}"
+            if code in ("AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch"):
+                raise FloeStorageError(msg, code="storage_access_denied") from e
+            if code == "NoSuchBucket":
+                raise FloeStorageError(msg, code="storage_not_found") from e
+            raise FloeStorageError(msg, code="storage_error") from e
+        except BotoCoreError as e:
+            msg = f"s3 list objects failed for bucket {self.bucket}: {e}"
+            raise FloeStorageError(msg, code="storage_error") from e
 
     def download(self, uri: str, temp_dir: Path) -> Path:
         key = parse_s3_uri(uri)[1]

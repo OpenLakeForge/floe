@@ -63,7 +63,7 @@ The CLI and the Python API share the same functions: `_cli.py` parses arguments 
 | pyarrow | Arrow exchange between the three, ORC reads |
 | fastexcel | XLSX |
 | obstore | S3 storage client (conditional writes make the incremental state CAS) |
-| boto3 | Glue catalog credentials and errors (PyIceberg needs it) |
+| boto3 | S3 listing (raw prefixes), the AWS credential chain, Glue (PyIceberg needs it) |
 | pydantic, PyYAML | Config models and strict YAML decoding |
 
 They exchange data through the Arrow C Data Interface, so there is no version lockstep between

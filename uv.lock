@@ -469,7 +469,6 @@ all = [
     { name = "pyiceberg-core" },
 ]
 iceberg = [
-    { name = "boto3" },
     { name = "pyiceberg" },
     { name = "pyiceberg-core" },
 ]
@@ -477,6 +476,7 @@ merge = [
     { name = "duckdb" },
 ]
 s3 = [
+    { name = "boto3" },
     { name = "obstore" },
 ]
 xlsx = [
@@ -500,7 +500,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "boto3", marker = "extra == 'iceberg'", specifier = ">=1.36.0" },
+    { name = "boto3", marker = "extra == 's3'", specifier = ">=1.36.0" },
     { name = "duckdb", marker = "extra == 'merge'", specifier = "==1.5.6" },
     { name = "fastexcel", marker = "extra == 'xlsx'", specifier = ">=0.21.0" },
     { name = "floe-python", extras = ["s3", "iceberg", "merge", "xlsx"], marker = "extra == 'all'" },
