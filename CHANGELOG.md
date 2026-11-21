@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- `floe manifest generate` and `floe run --manifest` support `type: adls` and `type: gcs` storages (#1388): the manifest records the `abfss://` and `gs://` URIs the run writes, and a replayed run writes its report to the storage matching `report_base_uri` (`config_invalid_value` when none matches). `floe maintain` still refuses them.
 - Iceberg sinks work on ADLS storage (#1344): `floe validate` accepts an `adls` accepted or rejected storage (and a catalog `warehouse_storage` on ADLS), and PyIceberg writes through its fsspec FileIO at the `abfss://<container>@<account>.dfs.core.windows.net/...` location Floe generates. The `adls` extra now installs `adlfs` (`pip install floe-python[adls]`).
 - `dagster-floe` loads manifests from `abfss://` URIs (#1391), and resolves a relative `config_uri` against them; `abfss://` was read as a local path and failed with `FileNotFoundError`.
 - `docs/reference/stability.md` is the 1.0 stability policy (#1262): what is frozen until 2.0, what a minor release may add, what is not promised, what `version` and `spec_version` mean, how the connectors pair with Floe, and how a frozen item is deprecated. `docs/reference/errors.md` no longer says some errors have no `error_code`: every raise has one.

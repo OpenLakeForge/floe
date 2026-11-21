@@ -101,8 +101,9 @@ wildcard. Listing is recursive and sorted by key.
   extra). Merges and compaction attach DuckDB with an Azure secret; only `overwrite` and `append`
   are tested against Azurite.
 - Delta on ADLS is refused with `config_not_supported`.
-- `floe maintain`, `floe manifest generate` and `floe manifest replay` refuse a config that defines
-  any `adls` (or `gcs`) storage, even an unused one.
+- `floe maintain` refuses a config that defines any `adls` (or `gcs`) storage, even an unused one.
+  `floe manifest generate` and `floe manifest replay` support `adls`: the manifest records the
+  `abfss://` URIs the run writes, and a replay writes its report there.
 - A manifest (`--manifest`, `manifest generate -o`) and a profile (`-p`) are read and written from
   local paths or `s3://` only, not `abfss://`.
 - Parquet and ORC inputs use a temp download plus a local read, as on S3.
