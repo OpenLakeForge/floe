@@ -44,6 +44,45 @@ def test_local_and_s3_uris() -> None:
         resolve_path(config, Path("/c"), "lake", "s3://x/k", "f")
 
 
+def adls(prefix: str | None = None, endpoint: str | None = None) -> StorageDefinition:
+    return StorageDefinition(
+        name="az", type="adls", bucket=None, region=None, account="acc",
+        container="c", prefix=prefix, endpoint=endpoint, path_style_access=None,
+    )  # fmt: skip
+
+
+def test_resolve_adls_path() -> None:
+    config = StoragesConfig(default="az", definitions=[adls("/p/")])
+    root = "abfss://c@acc.dfs.core.windows.net"
+    assert resolve_path(config, Path("/c"), None, "in/*.csv", "f")[0] == f"{root}/p/in/*.csv"  # fmt: skip
+    assert resolve_path(config, Path("/c"), None, f"{root}/k", "f")[0] == f"{root}/k"
+    assert resolve_path(config, Path("/c"), None, "", "f")[0] == f"{root}/p"
+    for raw, message in (
+        (
+            "abfss://x@acc.dfs.core.windows.net/k",
+            "storage az container or account mismatch: x@acc.dfs.core.windows.net",
+        ),
+        ("az://c/k", "f must use an abfss:// uri for adls storage az (got az://c/k)"),
+        (
+            "abfs://c@acc.dfs.core.windows.net/k",
+            "f must use an abfss:// uri for adls storage az (got abfs://c@acc.dfs.core.windows.net/k)",
+        ),
+    ):
+        with pytest.raises(FloeConfigError) as err:
+            resolve_path(config, Path("/c"), None, raw, "f")
+        assert str(err.value) == message and err.value.code == "config_invalid_value"
+
+
+def test_adls_clients_are_cached_per_storage(monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    monkeypatch.setenv("AZURE_STORAGE_ACCOUNT_KEY", "a2V5")
+    clear_storage_clients()
+    http = adls(endpoint="http://127.0.0.1:10000/acc")
+    assert storage_client(adls()) is storage_client(adls())
+    assert storage_client(adls()) is not storage_client(http)
+    assert storage_client(http).endpoint == "http://127.0.0.1:10000/acc"
+    clear_storage_clients()
+
+
 @pytest.fixture
 def built(monkeypatch: pytest.MonkeyPatch) -> list[S3Client]:
     """The real `S3Client`, recording each construction."""

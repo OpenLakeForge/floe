@@ -476,6 +476,8 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
     _check_iceberg(entity, config, accepted_storage)
     if sink.rejected is not None:
         _check_iceberg(entity, config, _storage_ref(config, sink.rejected.storage, "sink.rejected.storage", who), "rejected")  # fmt: skip
+    if accepted.format == "delta" and _storage_type(config, accepted_storage) == "adls":
+        raise _fail(entity, "sink.accepted.format=delta is not supported on adls storage yet", code="config_not_supported")  # fmt: skip
     _check_partitioning(entity)
     _check_write_mode(entity)
     archive = sink.archive
@@ -835,6 +837,13 @@ def _check_storages(config: RootConfig) -> None:
                     f"storages.definitions name={d.name} requires {missing} for type s3",
                     code="config_missing_key",
                 )
+            if d.type == "adls":
+                require(
+                    "adls", "obstore", f"storages.definitions name={d.name} type=adls"
+                )
+                for field in ("account", "container"):
+                    if getattr(d, field) is None:
+                        raise FloeConfigError(f"storages.definitions name={d.name} requires {field} for type adls", code="config_missing_key")  # fmt: skip
             if d.name in names:
                 raise FloeConfigError(
                     f"storages.definitions name={d.name} is duplicated",

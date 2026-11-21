@@ -11,6 +11,7 @@ from floe.state import read_state
 from floe.storage.archive import read_source_mtime_index
 from floe.storage.inputs import NoInputsError, ResolvedInputs, resolve_inputs
 from floe.storage.local import LocalClient
+from floe.storage.object_store import ObjectStoreClient
 from floe.storage.partitioning import (
     in_load_order,
     listing_start,
@@ -22,7 +23,7 @@ from floe.storage.s3 import S3Client
 from floe.storage.types import StorageClient
 
 
-def resolve_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None) -> tuple[str, LocalClient | S3Client]:  # fmt: skip
+def resolve_source(entity: EntityConfig, config_dir: Path, storages: StoragesConfig | None) -> tuple[str, LocalClient | S3Client | ObjectStoreClient]:  # fmt: skip
     """`source.path` as a URI, and the client of its storage."""
     src = entity.source
     uri, definition = resolve_path(storages, config_dir, src.storage, src.path, f"entity.name={entity.name} source.storage")  # fmt: skip

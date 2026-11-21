@@ -151,23 +151,16 @@ def test_parse_storages_uses_the_given_context() -> None:
         == "profile.storages.definitions[1]: missing required field profile.storages.definitions.type"
     )
     with pytest.raises(FloeConfigError) as err:
-        parse_storages(storages([{"name": "a", "type": "adls"}]), "profile.storages")
+        parse_storages(storages([{"name": "a", "type": "gcs"}]), "profile.storages")
     assert (
         str(err.value)
-        == "profile.storages.definitions name=a type=adls is not supported in 0.8"
+        == "profile.storages.definitions name=a type=gcs is not supported in 0.8"
     )
 
 
 @pytest.mark.parametrize(
     ("value", "message"),
     [
-        # d1_storage_adls
-        (
-            storages(
-                [{"name": "a", "type": "adls", "account": "acc", "container": "c"}]
-            ),
-            "storages.definitions name=a type=adls is not supported in 0.8",
-        ),
         # d1_storage_gcs
         (
             storages([{"name": "g", "type": "gcs", "bucket": "b"}]),
