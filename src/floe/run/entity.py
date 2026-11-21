@@ -366,7 +366,7 @@ def _run_entity(
         if target is None and accepted_client.endpoint == plan.rejected[1].endpoint and _real(base).rstrip("/") in shared:  # fmt: skip
             raise FloeConfigError(f"{who} sink.accepted.path must differ from sink.rejected.path" + (f" and its rows directory {rows}" if parquet else ""), code="config_conflict")  # fmt: skip
     pending, files = inc.claim(inputs.files, emit)
-    guarded = plan.table
+    guarded: Any = plan.table  # the Iceberg or Delta table the retry guard reads
     if delta and sink.write_mode == "append":
         from floe.delta.sink import existing_table as delta_table
 
@@ -457,7 +457,14 @@ def _run_entity(
                 from floe.delta.sink import write_delta
 
                 stamp = input_hash(entity, pending) if sink.write_mode == "append" else None  # fmt: skip
-                write, table = write_delta(entity, base, accepted, frames, [plan.out_map.get(n, n) for n in names], sink.write_mode, emit.run_id, stamp)  # fmt: skip
+                write, table, raced = write_delta(entity, base, accepted, frames, [plan.out_map.get(n, n) for n in names], sink.write_mode, emit.run_id, stamp, guarded)  # fmt: skip
+                if raced:  # #1341: a rival committed this batch after the guard looked; settle every input, the unread too
+                    done = {f.source_uri for f in pending}
+                    files[:] = [r for r in files if r["input_file"] not in done] + [skipped_report(u, "already_committed") for u in sorted(done)]  # fmt: skip
+                    queued = {f.source_uri for f in plan.to_archive}
+                    plan.to_archive += [
+                        f for f in pending if f.source_uri not in queued
+                    ]
             elif target is None:
                 write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options, input_hash(entity, pending) if plan.tracker.keys and entity.incremental_mode == "file" else None)  # fmt: skip
             else:

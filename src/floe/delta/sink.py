@@ -85,9 +85,9 @@ def existing_table(entity: EntityConfig, uri: str, storage: StorageDefinition | 
         raise named(f"entity.name={entity.name}", uri, err) from err
 
 
-def write_delta(entity: EntityConfig, uri: str, storage: StorageDefinition | None, frames: Iterator[pl.DataFrame], names: list[str], mode: WriteMode, run_id: str, input_hash: str | None) -> tuple[AcceptedWrite, dict[str, Any]]:  # fmt: skip
-    """`frames` (at least one) hold the output columns `names`; returns the commit's files and the `accepted_output` table fields."""
+def write_delta(entity: EntityConfig, uri: str, storage: StorageDefinition | None, frames: Iterator[pl.DataFrame], names: list[str], mode: WriteMode, run_id: str, input_hash: str | None, table: DeltaTable | None) -> tuple[AcceptedWrite, dict[str, Any], bool]:  # fmt: skip
+    """`frames` (at least one) hold the output columns `names`, `table` is the snapshot the retry guard checked; returns the commit's files, the `accepted_output` table fields and whether a rival had committed this batch."""
     reader = _reader(entity, frames, names)
     path = uri.removeprefix("local://")  # delta-rs takes a plain path for local storage
-    written, version = write_table(f"entity.name={entity.name}", path, storage_options(storage), reader, mode, run_id, input_hash)  # fmt: skip
-    return written, {"table_version": version}
+    written, version, raced = write_table(f"entity.name={entity.name}", path, storage_options(storage), reader, mode, run_id, input_hash, table)  # fmt: skip
+    return written, {"table_version": version}, raced
