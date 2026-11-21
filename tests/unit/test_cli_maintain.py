@@ -197,6 +197,9 @@ def test_public_api(tmp_path: Path, catalog: StubCatalog) -> None:
     assert floe.maintain("config.yml", None, 7, 10, {}) == [expected]
     with pytest.raises(floe.FloeConfigError, match="retention floor"):
         floe.maintain("config.yml", older_than_days=6)
+    with pytest.raises(floe.FloeConfigError) as e:
+        floe.maintain("config.yml", older_than_days=6)
+    assert e.value.code == "config_invalid_value"
 
 
 def age_files(tmp_path: Path, days: float) -> None:

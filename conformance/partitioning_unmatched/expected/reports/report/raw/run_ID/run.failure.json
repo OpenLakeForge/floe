@@ -14,7 +14,7 @@
   },
   "error": {
     "type": "FloeRunError",
-    "code": null,
+    "code": "run_invalid_input",
     "message": "entity.name=orders input local://<ROOT>/in/2026/10/24/orders.csv does not match source.partitioning.pattern={yyyy}/{MM}/{dd}/{batch}"
   },
   "entities": [

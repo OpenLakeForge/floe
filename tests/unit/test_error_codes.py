@@ -25,10 +25,6 @@ ALLOWLIST = {
     "checks/normalize.py",
     "config/entity.py",
     "config/include.py",
-    "config/parse.py",
-    "config/profile.py",
-    "config/project.py",
-    "config/storage.py",
     "config/vars.py",
     "config/yaml.py",
     "extras.py",
@@ -38,20 +34,12 @@ ALLOWLIST = {
     "iceberg/merge.py",
     "iceberg/sink.py",
     "iceberg/write.py",
-    "maintain.py",
     "manifest.py",
     "pii.py",
     "run/__init__.py",
     "run/entity.py",
     "run/file.py",
     "run/incremental.py",
-    "state.py",
-    "storage/archive.py",
-    "storage/inputs.py",
-    "storage/local.py",
-    "storage/partitioning.py",
-    "storage/paths.py",
-    "storage/resolve.py",
     "storage/s3.py",
     "write/outputs.py",
 }
@@ -102,6 +90,14 @@ def test_every_raise_site_passes_a_code_whose_prefix_matches_its_class() -> None
             code = _code(call)
             if code is None:
                 uncoded.add(rel)
+                continue
+            if (
+                isinstance(code, ast.Attribute)
+                and code.attr == "code"
+                and isinstance(code.value, ast.Name)
+            ):
+                # A wrapper that re-raises a caught error keeps its code (`code=e.code`); the
+                # prefix of a code that is not known statically is not checked.
                 continue
             assert isinstance(code, ast.Constant), f"{rel}:{line} code is not a literal"
             assert code.value in codes, f"{rel}:{line} unknown code {code.value!r}"

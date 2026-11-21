@@ -105,3 +105,9 @@ def test_archive_fnv1a_hash_matches_rust() -> None:
 def test_archive_filename_counts_extension_bytes() -> None:
     rel = archive_relative_path_for_run("", "a" * 180 + "." + "é" * 30, "run-1", "u")
     assert len(rel.encode()) <= 255
+
+
+def test_bad_s3_uri_carries_a_code() -> None:
+    with pytest.raises(FloeConfigError) as e:
+        parse_s3_uri("s3://")
+    assert e.value.code == "config_invalid_value"

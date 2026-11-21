@@ -89,7 +89,7 @@ def remove_orphans(table: "Table", storage: StorageDefinition | None, delay_days
     listed = _list(table.location(), storage)
     if _key(table.metadata_location) not in {_key(uri) for uri, _, _ in listed}:
         # a listing that misses the current metadata would make every file look orphaned
-        raise FloeRunError(f"orphan scan of {table.location()} did not list the current metadata {table.metadata_location}; nothing was deleted")  # fmt: skip
+        raise FloeRunError(f"orphan scan of {table.location()} did not list the current metadata {table.metadata_location}; nothing was deleted", code="run_aborted")  # fmt: skip
     keep, cutoff = _reachable(table), time.time() - delay_days * DAY
     orphans = [(uri, size) for uri, mtime, size in listed if _key(uri) not in keep and mtime is not None and mtime < cutoff]  # fmt: skip
     if not dry_run:
@@ -106,17 +106,22 @@ def maintain(path: Path, root: RootConfig, entities: Sequence[str], older_than_d
     """
     if compact_tables and not experimental:
         raise FloeConfigError(
-            "--compact is experimental: pass --experimental to run it"
+            "--compact is experimental: pass --experimental to run it",
+            code="config_invalid_value",
         )
     if compact_tables and dry_run:
-        raise FloeConfigError("--compact has no dry run: drop --dry-run or --compact")
+        raise FloeConfigError(
+            "--compact has no dry run: drop --dry-run or --compact",
+            code="config_conflict",
+        )
     if older_than_days < FLOOR_DAYS or retain_last < FLOOR_SNAPSHOTS:
         raise FloeConfigError(
             f"snapshot expiry below the retention floor: --older-than-days must be at least {FLOOR_DAYS} "
-            f"and --retain-last at least {FLOOR_SNAPSHOTS} (got {older_than_days} and {retain_last})"
+            f"and --retain-last at least {FLOOR_SNAPSHOTS} (got {older_than_days} and {retain_last})",
+            code="config_invalid_value",
         )
     if orphan_delay_days < ORPHAN_FLOOR_DAYS:
-        raise FloeConfigError(f"orphan delay below the floor: --orphan-delay-days must be at least {ORPHAN_FLOOR_DAYS} (got {orphan_delay_days})")  # fmt: skip
+        raise FloeConfigError(f"orphan delay below the floor: --orphan-delay-days must be at least {ORPHAN_FLOOR_DAYS} (got {orphan_delay_days})", code="config_invalid_value")  # fmt: skip
     if compact_tables:
         require("merge", "duckdb", "--compact")
     validate_config(root)

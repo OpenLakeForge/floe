@@ -57,7 +57,10 @@ class ResolvedInputs:
 
 def suffixes_for_format(fmt: str) -> list[str]:
     if fmt not in _SUFFIXES:
-        raise FloeConfigError(f"unsupported source format for input resolution: {fmt}")
+        raise FloeConfigError(
+            f"unsupported source format for input resolution: {fmt}",
+            code="config_not_supported",
+        )
     return _SUFFIXES[fmt]
 
 
@@ -71,9 +74,13 @@ def _glob_files(pattern: str) -> list[Path]:
     try:
         found = glob(pattern)
     except PatternError as e:
-        raise FloeConfigError(f'invalid glob pattern "{pattern}": {e}') from e
+        raise FloeConfigError(
+            f'invalid glob pattern "{pattern}": {e}', code="config_invalid_value"
+        ) from e
     except FloeError as e:
-        raise FloeConfigError(f'glob match failed for "{pattern}": {e}') from e
+        raise FloeConfigError(
+            f'glob match failed for "{pattern}": {e}', code="config_invalid_value"
+        ) from e
     return [normalize_local_path(Path(p)) for p in found if Path(p).is_file()]
 
 
@@ -191,15 +198,19 @@ def _cloud_refs(
             if not prefix.strip("/"):
                 raise FloeRunError(
                     "glob patterns for cloud sources must include a non-empty "
-                    "literal prefix before the first wildcard"
+                    "literal prefix before the first wildcard",
+                    code="run_invalid_input",
                 )
             try:
                 matcher = Pattern(key)
             except PatternError as e:
-                raise FloeRunError(f'invalid cloud glob pattern "{key}": {e}') from e
+                raise FloeRunError(
+                    f'invalid cloud glob pattern "{key}": {e}', code="run_invalid_input"
+                ) from e
         except FloeRunError as e:
             raise FloeRunError(
-                f"{where} invalid cloud source path ({location}, path={key}): {e}"
+                f"{where} invalid cloud source path ({location}, path={key}): {e}",
+                code="run_invalid_input",
             ) from e
     lowered = tuple(s.lower() for s in suffixes)
     refs = [
@@ -240,7 +251,7 @@ def resolve_inputs(
     files: list[InputFile] = []
     if path.startswith("s3://"):
         if client is None:
-            raise FloeRunError("s3 storage client missing")
+            raise FloeRunError("s3 storage client missing", code="run_invalid_setup")
         bucket, key = parse_s3_uri(path)
         refs = _cloud_refs(
             client,
@@ -266,7 +277,9 @@ def resolve_inputs(
                 )
         return ResolvedInputs(files, [r.uri for r in refs], "directory")
     if "://" in path:
-        raise FloeConfigError(f"unsupported storage uri: {path}")
+        raise FloeConfigError(
+            f"unsupported storage uri: {path}", code="config_not_supported"
+        )
     skip = Path(exclude.removeprefix("local://")) if exclude and exclude.startswith("local://") else None  # fmt: skip
     start = Path(after.removeprefix("local://")) if after.startswith("local://") else None  # fmt: skip
     base = normalize_local_path(config_dir / path)
@@ -300,9 +313,14 @@ def localize_input(
             file, Path(file.source_uri.removeprefix("local://")), False
         )
     if client is None:
-        raise FloeRunError(f"storage client required to download {file.source_uri}")
+        raise FloeRunError(
+            f"storage client required to download {file.source_uri}",
+            code="run_invalid_setup",
+        )
     if temp_dir is None:
-        raise FloeRunError(f"temp_dir required to download {file.source_uri}")
+        raise FloeRunError(
+            f"temp_dir required to download {file.source_uri}", code="run_invalid_setup"
+        )
     return LocalInputFile(file, client.download(file.source_uri, temp_dir), True)
 
 

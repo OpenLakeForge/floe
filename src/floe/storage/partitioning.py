@@ -33,7 +33,7 @@ def partition_of(p: SourcePartitioning, entity: str, root: str, uri: str) -> Par
     folder = uri.removeprefix(f"{root}/").rpartition("/")[0] if uri.startswith(f"{root}/") else None  # fmt: skip
     match = None if folder is None else re.fullmatch(regex, folder)
     if match is None:
-        raise FloeRunError(f"entity.name={entity} input {uri} does not match source.partitioning.pattern={p.pattern}")  # fmt: skip
+        raise FloeRunError(f"entity.name={entity} input {uri} does not match source.partitioning.pattern={p.pattern}", code="run_invalid_input")  # fmt: skip
     hour = match.groupdict().get("HH")
     try:
         when = datetime(int(match["yyyy"]), int(match["MM"]), int(match["dd"]), int(hour or 0))  # fmt: skip
@@ -41,7 +41,7 @@ def partition_of(p: SourcePartitioning, entity: str, root: str, uri: str) -> Par
         ValueError
     ) as err:  # the date as written: Python's own wording varies by version
         written = f"{match['yyyy']}-{match['MM']}-{match['dd']}" + (f"T{hour}" if hour is not None else "")  # fmt: skip
-        raise FloeRunError(f"entity.name={entity} input {uri} has an invalid source.partitioning date: {written}") from err  # fmt: skip
+        raise FloeRunError(f"entity.name={entity} input {uri} has an invalid source.partitioning date: {written}", code="run_invalid_input") from err  # fmt: skip
     return Partition(when if hour is not None else when.date(), match.groupdict().get("batch"))  # fmt: skip
 
 
