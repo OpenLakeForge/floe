@@ -37,3 +37,4 @@ Errors raised before their migration to a typed code have no `error_code`.
 | `run_not_supported` | a format, sink or table feature is not supported at run time |
 | `run_invalid_input` | an input cannot be processed: for example a path that does not match the partitioning, or a value that cannot be cast |
 | `run_invalid_setup` | something the run needs is missing: for example an environment variable, a storage client or a namespace |
+| `run_archive_failed` | an input file was copied to the archive but deleting the original failed |
