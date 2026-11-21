@@ -96,21 +96,26 @@ def parse_state(entity: str, body: bytes) -> EntityState:
             doc.get("pruned_before"),
         )
     except (ValueError, KeyError, TypeError, AttributeError) as e:
-        raise FloeConfigError(f"entity.name={entity} invalid state file: {e}") from e
+        raise FloeConfigError(
+            f"entity.name={entity} invalid state file: {e}", code="config_invalid_value"
+        ) from e
     if schema not in (SCHEMA_V1, SCHEMA_V2):
         raise FloeConfigError(
-            f"entity.name={entity} state schema mismatch: expected {SCHEMA_V1} or {SCHEMA_V2}, got {schema}"
+            f"entity.name={entity} state schema mismatch: expected {SCHEMA_V1} or {SCHEMA_V2}, got {schema}",
+            code="config_invalid_value",
         )
     if state.pruned_before is not None:  # #949: compared as an ISO date string
         try:
             date.fromisoformat(state.pruned_before)
         except (ValueError, TypeError) as e:
             raise FloeConfigError(
-                f"entity.name={entity} invalid state file: pruned_before: {e}"
+                f"entity.name={entity} invalid state file: pruned_before: {e}",
+                code="config_invalid_value",
             ) from e
     if state.entity != entity:
         raise FloeConfigError(
-            f"entity.name={entity} state entity mismatch: expected {entity}, got {state.entity}"
+            f"entity.name={entity} state entity mismatch: expected {entity}, got {state.entity}",
+            code="config_invalid_value",
         )
     return state
 
@@ -207,7 +212,8 @@ def claim_inputs(
                 pending, Loaded(state, version), active, processed, expired
             )
     raise FloeConfigError(
-        f"entity.name={entity} incremental state update conflicted after {CAS_RETRIES} retries"
+        f"entity.name={entity} incremental state update conflicted after {CAS_RETRIES} retries",
+        code="config_conflict",
     )
 
 
@@ -235,7 +241,8 @@ def claim_all(
             replaced = {u: c for u, c in loaded.state.claims.items() if u in claims}
             return Loaded(fresh.state, version), replaced
     raise FloeConfigError(
-        f"entity.name={entity} full-refresh state write conflicted after {CAS_RETRIES} retries"
+        f"entity.name={entity} full-refresh state write conflicted after {CAS_RETRIES} retries",
+        code="config_conflict",
     )
 
 
@@ -259,7 +266,8 @@ def _mutate(
         if _persist(client, uri, loaded) is not None:  # an emptied state is written too
             return
     raise FloeConfigError(
-        f"entity.name={entity} incremental state update conflicted after {CAS_RETRIES} retries"
+        f"entity.name={entity} incremental state update conflicted after {CAS_RETRIES} retries",
+        code="config_conflict",
     )
 
 
@@ -339,6 +347,7 @@ def reset(client: StorageClient, uri: str, entity: str) -> bool:
     empty = dump_state(EntityState(entity, None, {}, {}))
     if client.write_conditional(uri, stored.version, empty) is None:
         raise FloeConfigError(
-            f"entity.name={entity} remote state changed while resetting: {uri}"
+            f"entity.name={entity} remote state changed while resetting: {uri}",
+            code="config_conflict",
         )
     return True

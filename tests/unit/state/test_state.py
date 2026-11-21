@@ -437,6 +437,12 @@ def test_claim_all_fails_after_retries(tmp_path: Path) -> None:
         claim_all(Flaky(99), str(tmp_path / "state.json"), "sales", "run-a", [_input()])
 
 
+def test_claim_all_conflict_carries_a_code(tmp_path: Path) -> None:
+    with pytest.raises(FloeConfigError) as e:
+        claim_all(Flaky(99), str(tmp_path / "state.json"), "sales", "run-a", [_input()])
+    assert e.value.code == "config_conflict"
+
+
 @pytest.mark.parametrize(
     "body",
     [

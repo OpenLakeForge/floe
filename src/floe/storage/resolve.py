@@ -19,7 +19,9 @@ def _definition(
         return None
     found = storages and next((d for d in storages.definitions if d.name == where), None)  # fmt: skip
     if not found:
-        raise FloeRunError(f"{field}={where} references unknown storage")
+        raise FloeRunError(
+            f"{field}={where} references unknown storage", code="run_invalid_setup"
+        )
     return found
 
 
@@ -34,16 +36,18 @@ def resolve_path(
     definition = _definition(storages, name, field)
     if definition is None or definition.type == "local":
         if "://" in raw:
-            raise FloeConfigError(f"{field} must be a local path (got {raw})")
+            raise FloeConfigError(
+                f"{field} must be a local path (got {raw})", code="config_invalid_value"
+            )
         return f"local://{normalize_local_path(config_dir / raw)}", definition
     if definition.type != "s3":
-        raise FloeRunError(f"{field}={definition.name} (type {definition.type}) is not supported")  # fmt: skip
+        raise FloeRunError(f"{field}={definition.name} (type {definition.type}) is not supported", code="run_not_supported")  # fmt: skip
     if definition.bucket is None:
-        raise FloeConfigError(f"storage {definition.name} requires bucket for type s3")  # fmt: skip
+        raise FloeConfigError(f"storage {definition.name} requires bucket for type s3", code="config_missing_key")  # fmt: skip
     if raw.startswith("s3://"):
         bucket, key = parse_s3_uri(raw)
         if bucket != definition.bucket:
-            raise FloeConfigError(f"storage {definition.name} bucket mismatch: {bucket}")  # fmt: skip
+            raise FloeConfigError(f"storage {definition.name} bucket mismatch: {bucket}", code="config_invalid_value")  # fmt: skip
     else:
         key = "/".join(p for p in ((definition.prefix or "").strip("/"), raw.lstrip("/")) if p)  # fmt: skip
     return f"s3://{definition.bucket}/{key}" if key else f"s3://{definition.bucket}", definition  # fmt: skip

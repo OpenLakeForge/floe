@@ -67,7 +67,8 @@ def _file_lock(base: Path) -> Generator[None]:
                 continue
             if time.monotonic() >= deadline:
                 raise FloeStorageError(
-                    f"timed out acquiring local state lock {lock}"
+                    f"timed out acquiring local state lock {lock}",
+                    code="storage_conflict",
                 ) from None
             time.sleep(0.01)
             continue
@@ -109,7 +110,9 @@ class LocalClient:
             with src.open("rb") as fin, os.fdopen(fd, "wb") as fout:
                 shutil.copyfileobj(fin, fout)
         except OSError as e:
-            raise FloeStorageError(f"local copy failed from {src} to {dst}: {e}") from e
+            raise FloeStorageError(
+                f"local copy failed from {src} to {dst}: {e}", code="storage_error"
+            ) from e
 
     def source_mtime(self, uri: str) -> str | None:
         return None
@@ -120,14 +123,18 @@ class LocalClient:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(body)
         except OSError as e:
-            raise FloeStorageError(f"local write failed for {path}: {e}") from e
+            raise FloeStorageError(
+                f"local write failed for {path}: {e}", code="storage_error"
+            ) from e
 
     def delete(self, uri: str) -> None:
         path = _path(uri)
         try:
             path.unlink(missing_ok=True)
         except OSError as e:
-            raise FloeStorageError(f"local delete failed for {path}: {e}") from e
+            raise FloeStorageError(
+                f"local delete failed for {path}: {e}", code="storage_error"
+            ) from e
 
     def read(self, uri: str) -> StoredObject | None:
         path = _path(uri)
@@ -139,7 +146,9 @@ class LocalClient:
                     return None
                 return StoredObject(path.read_bytes(), _version(path))
         except OSError as e:
-            raise FloeStorageError(f"local read failed for {path}: {e}") from e
+            raise FloeStorageError(
+                f"local read failed for {path}: {e}", code="storage_error"
+            ) from e
 
     def write_conditional(
         self, uri: str, expected_version: str | None, body: bytes
@@ -164,4 +173,6 @@ class LocalClient:
                     tmp.unlink(missing_ok=True)
                 return _version(path)
         except OSError as e:
-            raise FloeStorageError(f"local write failed for {path}: {e}") from e
+            raise FloeStorageError(
+                f"local write failed for {path}: {e}", code="storage_error"
+            ) from e
