@@ -190,8 +190,8 @@ implementation exists yet; each is derived as its row says.
 | `d1_catalog_glue` | D1 | `ok` | Glue was dropped in 0.8.0 (D1) and restored in 0.8.1: the 0.7 config validates again, as in Rust. |
 | `parse_catalogs_type_unsupported` | D1 | `catalogs.definitions[0]: catalogs.definitions name=c has unsupported type=hive (supported: glue, rest)` | Hand-derived, not recorded: Rust's message with `unity` dropped from the supported list, since Unity is a dropped feature (D1). |
 | `prof_catalogs_definition_type_unsupported` | D1 | `profile.catalogs.definitions[0]: profile.catalogs.definitions name=r has unsupported type=hive (supported: glue, rest)` | Hand-derived, not recorded: Rust's message with `unity` dropped from the supported list, since Unity is a dropped feature (D1). |
-| `d1_storage_adls` | D1 | `storages.definitions name=a type=adls is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
-| `d1_storage_gcs` | D1 | `storages.definitions name=g type=gcs is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
+| `d1_storage_adls` | D1 | `ok` | ADLS was restored in #1334: the 0.7 config validates again, as in Rust. Not recorded from Rust. |
+| `d1_storage_gcs` | D1 | `ok` | GCS was restored in #1337: the 0.7 config validates again, as in Rust. Not recorded from Rust. |
 | `d1_source_fixed` | D1 | `entity.name=orders source.format=fixed is not supported in 0.8` | D1 (dropped feature, OLF scope): Python rejects it at validate. Not recorded from Rust. |
 | `example_config_yml` | D1 | `entity.name=customer_warehouse sink.accepted.format=duckdb is not supported in 0.8` | D1 (dropped feature): example/config.yml writes the `customer` entity to a Delta table and `customer_warehouse` to DuckDB. Not recorded from Rust. |
 | `parse_yaml_tab_indent` | D11 | `while scanning for the next token, found character '\t' that cannot start any token at byte 25 line 3 column 1` | PyYAML scanner wording and byte offset; derived by running floe.config.yaml.load_yaml (#684) on this file |

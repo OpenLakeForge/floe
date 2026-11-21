@@ -338,9 +338,9 @@ for Python only, because Rust 0.7 rejects that config earlier, at the write-mode
 | 1682 | storages.definitions name={} type={} is unsupported (allowed: {}) | `val2_storage_type_unsupported` |
 | 1692 | storages.definitions name={} requires bucket for type s3 | `val2_storage_s3_no_bucket` |
 | 1699 | storages.definitions name={} requires region for type s3 | `val2_storage_s3_no_region` |
-| 1708 | storages.definitions name={} requires account for type adls | not recorded: D1: adls storage -> `d1_storage_adls` |
-| 1715 | storages.definitions name={} requires container for type adls | not recorded: D1: adls storage -> `d1_storage_adls` |
-| 1723 | storages.definitions name={} requires bucket for type gcs | not recorded: D1: gcs storage -> `d1_storage_gcs` |
+| 1708 | storages.definitions name={} requires account for type adls | not recorded: no case yet; `d1_storage_adls` is the valid shape, the message is covered by `tests/unit/config/test_validate.py` |
+| 1715 | storages.definitions name={} requires container for type adls | not recorded: no case yet; `d1_storage_adls` is the valid shape, the message is covered by `tests/unit/config/test_validate.py` |
+| 1723 | storages.definitions name={} requires bucket for type gcs | not recorded: no case yet; `d1_storage_gcs` is the valid shape, the message is covered by `tests/unit/config/test_validate.py` |
 | 1733 | storages.definitions name={} is duplicated | `val2_storage_duplicate` |
 | 1743 | storages.default={} does not match any definition | `val2_storage_default_unknown` |
 | 1750 | storages.default is required when storages is set | `val2_storage_default_missing` |
@@ -436,9 +436,9 @@ for Python only, because Rust 0.7 rejects that config earlier, at the write-mode
 | 105 | profile.storages.definitions name={} type={} is unsupported (allowed: {}) | `prof_storages_type_unsupported` |
 | 115 | profile.storages.definitions name={} requires bucket for type s3 | `prof_storages_s3_bucket_missing` |
 | 122 | profile.storages.definitions name={} requires region for type s3 | `prof_storages_s3_region_missing` |
-| 131 | profile.storages.definitions name={} requires account for type adls | not recorded: D1: adls storage -> `d1_storage_adls` |
-| 138 | profile.storages.definitions name={} requires container for type adls | not recorded: D1: adls storage -> `d1_storage_adls` |
-| 146 | profile.storages.definitions name={} requires bucket for type gcs | not recorded: D1: gcs storage -> `d1_storage_gcs` |
+| 131 | profile.storages.definitions name={} requires account for type adls | not recorded: no case yet; `d1_storage_adls` is the valid shape, the message is covered by `tests/unit/config/test_validate.py` |
+| 138 | profile.storages.definitions name={} requires container for type adls | not recorded: no case yet; `d1_storage_adls` is the valid shape, the message is covered by `tests/unit/config/test_validate.py` |
+| 146 | profile.storages.definitions name={} requires bucket for type gcs | not recorded: no case yet; `d1_storage_gcs` is the valid shape, the message is covered by `tests/unit/config/test_validate.py` |
 | 154 | profile.storages.default is required when storages is set | `prof_storages_default_missing` |
 | 160 | profile.storages.default={default_name} does not match any definition | `prof_storages_default_unknown` |
 | 170 | profile.lineage.url must not be empty | `prof_lineage_url_empty`, `prof_lineage_url_blank` |

@@ -95,8 +95,8 @@ in a container, in a Kubernetes job or inside a Dagster or Airflow task.
   and `merge_scd2`. Floe does not maintain tables during a run: `floe maintain`
   expires old snapshots and removes orphan files as a separate command.
 - Floe uses static storage credentials, not catalog-vended credentials.
-- Floe 0.8 dropped the Delta, DuckDB and fixed-width formats, the Unity
-  catalog, and ADLS and GCS storage. The Rust implementation that supported
+- Floe 0.8 dropped the DuckDB and fixed-width formats and the Unity
+  catalog (Delta, ADLS and GCS are back). The Rust implementation that supported
   them (0.7 and earlier) is archived at
   [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
 

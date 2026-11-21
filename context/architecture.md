@@ -36,7 +36,7 @@ src/floe/
 ├── write/           ← accepted Parquet parts and rejected CSV parts
 ├── iceberg/         ← Polaris REST catalog, overwrite/append in one commit, DuckDB merges,
 │                      unique keys from table history, experimental compaction
-├── storage/         ← StorageClient protocol, local and S3 clients, input resolution,
+├── storage/         ← StorageClient protocol, local, S3 and obstore (ADLS, GCS) clients, input resolution,
 │                      archiving, `source.partitioning`
 ├── state.py         ← incremental file state (CAS claim / promote / release / renew / reset)
 ├── report/          ← entity `run.json` and `run.summary.json`, exit codes
@@ -63,6 +63,7 @@ The CLI and the Python API share the same functions: `_cli.py` parses arguments 
 | pyarrow | Arrow exchange between the three, ORC reads |
 | fastexcel | XLSX |
 | boto3 | S3 storage client |
+| obstore (`adls`, `gcs` extras) | ADLS and GCS storage client; the CAS token is the ETag on Azure and the object generation on GCS |
 | pydantic, PyYAML | Config models and strict YAML decoding |
 
 They exchange data through the Arrow C Data Interface, so there is no version lockstep between
@@ -72,7 +73,7 @@ them (see `context/decisions/polars-and-arrow.md`).
 
 ```
 1. Resolve inputs
-   source.path → local glob or S3 prefix listing → drop `.floe/` and the archive (D23, D31)
+   source.path → local glob or cloud prefix listing → drop `.floe/` and the archive (D23, D31)
    → incremental state: claim pending files, skip processed or claimed ones
 
 2. File-level checks (per file)

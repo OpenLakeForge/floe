@@ -7,9 +7,9 @@ from pathlib import PurePosixPath
 
 import pyarrow as pa
 from deltalake import DeltaTable, write_deltalake
-from deltalake.exceptions import DeltaError, TableNotFoundError
+from deltalake.exceptions import CommitFailedError, DeltaError, TableNotFoundError
 
-from floe.delta.guard import stamp
+from floe.delta.guard import committed, stamp
 from floe.errors import FloeRunError
 from floe.write.outputs import AcceptedWrite
 
@@ -53,27 +53,40 @@ def named(who: str, uri: str, err: DeltaError | OSError) -> FloeRunError:
     return FloeRunError(f"{who} delta write failed: {text}", code="run_commit_failed")
 
 
-def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBatchReader, mode: str, run_id: str, input_hash: str | None, partition_by: list[str] | None = None) -> tuple[AcceptedWrite, int]:  # fmt: skip
-    """Write `reader` as one commit; returns the files it added and the version of that commit.
+def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBatchReader, mode: str, run_id: str, input_hash: str | None, table: DeltaTable | None = None, partition_by: list[str] | None = None) -> tuple[AcceptedWrite, int, bool]:  # fmt: skip
+    """Write `reader` as one commit; returns the files it added, the version of that commit and whether a rival had committed this batch.
 
     Overwrite removes every live file in the same commit. A table Floe creates keeps delta-rs's minimal protocol; an
     existing table is never altered. The commit carries `run_id` and, with an `input_hash`, the retry guard's `txn` (#1340).
+    `table` is the snapshot the guard checked: the write is based on it, so a rival's commit of the same `txn` after
+    that raises `CommitFailedError` (#1341). A `txn` already in that snapshot is this batch's own earlier commit (a
+    reload after `floe state reset`) and appends again; one that is new after it is a rival's: nothing is written.
 
     ponytail: `write_deltalake` is not memory-bounded: peak memory is about twice the entity's compressed size
     (measured in context/decisions/delta-sink.md). Upgrade path: chunked data files plus `DeltaTable.create_write_transaction`.
-    ponytail: the guard is checked once, before the write (preflight); a run committing the same batch while this one
-    writes is not detected, so both append it. Upgrade path: #1341 (check the guarded snapshot, handle the conflict).
     """
     try:
-        try:
-            table = DeltaTable(uri, storage_options=options)
-        except TableNotFoundError:
-            table = None
+        if table is None:
+            try:
+                table = DeltaTable(uri, storage_options=options)
+            except TableNotFoundError:
+                pass
         if table is not None:
             _refuse_drift(who, table, reader.schema)
         before = _files(table) if table is not None else {}
         base = table.version() if table is not None else -1
-        write_deltalake(uri, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options, partition_by=partition_by, commit_properties=stamp(run_id, input_hash))  # fmt: skip
+        seen = table is not None and input_hash is not None and committed(table, input_hash)  # fmt: skip
+        try:
+            write_deltalake(uri if table is None else table, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options, partition_by=partition_by, commit_properties=stamp(run_id, input_hash))  # fmt: skip
+        except CommitFailedError as err:
+            current = DeltaTable(uri, storage_options=options)
+            if (
+                seen is not False
+                or input_hash is None
+                or not committed(current, input_hash)
+            ):
+                raise named(who, uri, err) from err
+            return AcceptedWrite(0, [], 0, 0.0, 0), current.version(), True
         after = DeltaTable(uri, storage_options=options)
         added = {p: s for p, s in _files(after).items() if p not in before}
         # the commit's own version: the newest commit since `base` that carries this run's id; no commit (nothing to write) leaves the current version
@@ -81,10 +94,14 @@ def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBa
     except (DeltaError, OSError) as err:
         raise named(who, uri, err) from err
     sizes = list(added.values())
-    return AcceptedWrite(
-        len(added),
-        [PurePosixPath(p).name for p in added][:_REPORTED_FILES],
-        sum(sizes),
-        sum(sizes) / len(sizes) / (1024 * 1024) if sizes else None,
-        sum(s < _SMALL_FILE_BYTES for s in sizes),
-    ), version
+    return (
+        AcceptedWrite(
+            len(added),
+            [PurePosixPath(p).name for p in added][:_REPORTED_FILES],
+            sum(sizes),
+            sum(sizes) / len(sizes) / (1024 * 1024) if sizes else None,
+            sum(s < _SMALL_FILE_BYTES for s in sizes),
+        ),
+        version,
+        False,
+    )

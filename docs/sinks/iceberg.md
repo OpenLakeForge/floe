@@ -58,8 +58,9 @@ location is, in order:
 - otherwise `sink.accepted.path` on `sink.accepted.storage`.
 
 The namespace defaults to `entity.domain`, then `default`; the table name to `entity.name`.
-The storage must be S3: `floe validate` rejects a local accepted storage unless the catalog's
-`warehouse_storage` points at S3.
+The storage must be S3 or GCS: `floe validate` rejects a local or ADLS accepted storage unless the
+catalog's `warehouse_storage` points at S3 or GCS. On GCS, `overwrite` and `append` work; merges
+and compaction fail the run (see [GCS](../storages/gcs.md)).
 
 ## AWS credentials for S3 writes
 

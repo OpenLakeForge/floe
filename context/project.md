@@ -14,7 +14,7 @@ It is designed for data platform teams who need reliable, auditable file ingesti
 - **No JVM, no cluster.** A lightweight runtime. Runs on a laptop, a Lambda function, or a Kubernetes job.
 - **Declarative contracts.** Schema, quality rules, and routing are expressed in YAML — not code.
 - **Audit trail by default.** Every run produces a JSON report with row counts, rejected file paths, schema evolution info, and timing.
-- **Cloud-native storage.** S3 (and S3-compatible stores) and local, treated uniformly.
+- **Cloud-native storage.** S3 (and S3-compatible stores), ADLS, GCS and local, treated uniformly.
 - **Open table targets.** Accepted rows land in Parquet or Apache Iceberg through a REST catalog (Polaris), including SCD1 merges.
 
 ## What it is NOT
@@ -39,14 +39,14 @@ It is designed for data platform teams who need reliable, auditable file ingesti
 
 ## Supported storage
 
-Local · AWS S3 (and S3-compatible stores)
+Local · AWS S3 (and S3-compatible stores) · Azure ADLS Gen2 and Google Cloud Storage (`adls` and `gcs` extras; no Iceberg on ADLS, no Iceberg merges on GCS, no manifests, `floe maintain` or remote profiles)
 
 ## Supported catalogs
 
 Iceberg REST (Polaris) and AWS Glue (restored in 0.8.1; overwrite and append only)
 
 Floe 0.8 dropped Delta, DuckDB/MotherDuck, fixed-width, Unity, ADLS and GCS (D1, D26 in
-#619). The Rust implementation that had them is archived at
+#619); ADLS and GCS are back (see Supported storage). The Rust implementation that had them is archived at
 [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
 
 ## Versioning

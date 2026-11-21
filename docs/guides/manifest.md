@@ -303,7 +303,7 @@ floe manifest generate \
   --output s3://my-code-bucket/floe/sales/sales.manifest.json
 ```
 
-Floe 0.10 writes remote manifests to `s3://` only (GCS and ADLS storages are dropped, D1), in one
+Floe 0.10 writes remote manifests to `s3://` only (`gs://` and `abfss://` outputs are refused, and so are configs that define a GCS or ADLS storage), in one
 `PutObject` with the AWS default credential chain (`AWS_ENDPOINT_URL_S3` and
 `AWS_S3_FORCE_PATH_STYLE` for S3-compatible stores).
 
