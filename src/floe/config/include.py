@@ -40,7 +40,8 @@ def _entity_files(domain: Hash, domain_file: Path) -> list[Path]:
         files = [Path(m) for m in glob(os.path.join(glob_base(directory), pattern))]
         if not files:
             raise FloeConfigError(
-                f"domains.entities pattern {pattern!r} matched no file"
+                f"domains.entities pattern {pattern!r} matched no file",
+                code="config_invalid_value",
             )
     return sorted(p for p in files if p.resolve() != domain_file.resolve())
 
@@ -59,14 +60,17 @@ def assemble_includes(
     except FloeConfigError:
         supported = False
     if not supported:
-        raise FloeConfigError('root.include requires root.version >= "0.3"')
+        raise FloeConfigError(
+            'root.include requires root.version >= "0.3"', code="config_version"
+        )
     include = yaml_hash(include, "include")
     validate_known_keys(include, "include", ("domains", "sources"))
     sources_path = None
     if "sources" in include:
         if "sources" in root:
             raise FloeConfigError(
-                "root.sources and include.sources are mutually exclusive"
+                "root.sources and include.sources are mutually exclusive",
+                code="config_conflict",
             )
         sources_path = resolve_local_path(
             config_dir, yaml_string(include["sources"], "include.sources")
@@ -81,7 +85,9 @@ def assemble_includes(
     elif sources_path is not None:
         patterns = []
     else:
-        raise FloeConfigError("missing required field include.domains")
+        raise FloeConfigError(
+            "missing required field include.domains", code="config_missing_key"
+        )
     domains: list[tuple[object, Path]] = []
     entities: list[tuple[object, Path]] = []
     for raw in patterns:
@@ -90,7 +96,8 @@ def assemble_includes(
         if not matches:
             raise FloeConfigError(
                 f"include.domains pattern {pattern!r} matched no file "
-                "(includes resolve against local files only; a remote project cannot include)"
+                "(includes resolve against local files only; a remote project cannot include)",
+                code="config_invalid_value",
             )
         for match in matches:
             domain_file = Path(match)
@@ -105,7 +112,9 @@ def assemble_includes(
                 with at_file(entity_file):
                     loaded = load_single_doc(entity_file)
                     if not isinstance(loaded, dict):
-                        raise FloeConfigError("expected map at entity")
+                        raise FloeConfigError(
+                            "expected map at entity", code="config_invalid_value"
+                        )
                     entity = cast(Hash, loaded)
                     declared = opt_string(entity, "domain", "entity")
                 if declared is None:
@@ -113,7 +122,8 @@ def assemble_includes(
                     entity["domain"] = name
                 elif declared != name:
                     raise FloeConfigError(
-                        f"{entity_file} has domain {declared!r} but its _domain.yml names {name!r}"
+                        f"{entity_file} has domain {declared!r} but its _domain.yml names {name!r}",
+                        code="config_conflict",
                     )
                 config_files.append(entity_file)
                 entities.append((entity, entity_file))
@@ -124,7 +134,9 @@ def assemble_includes(
     ):
         array = root.setdefault(key, [])
         if not isinstance(array, list):
-            raise FloeConfigError(f"expected array at {key}")
+            raise FloeConfigError(
+                f"expected array at {key}", code="config_invalid_value"
+            )
         item_origins += [None] * len(cast("list[object]", array))
         for item, file in items:
             cast("list[object]", array).append(item)

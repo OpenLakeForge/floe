@@ -65,7 +65,9 @@ def _build(node: Node, active: tuple[int, ...] = ()) -> object:
     for key_node, value_node in cast("list[tuple[Node, Node]]", node.value):
         key = _build(key_node, active)
         if isinstance(key, (list, dict)):
-            raise FloeError("unsupported complex mapping key")
+            raise FloeError(
+                "unsupported complex mapping key", code="config_invalid_yaml"
+            )
         value = _build(value_node, active)
         # yaml-rust2 keeps `true`, `1`, `1.0`, `1.00` apart. ponytail: `result` still merges `true` and `1`
         identity = (type(key), key_node.value if isinstance(key, float) else key)
@@ -75,7 +77,9 @@ def _build(node: Node, active: tuple[int, ...] = ()) -> object:
             mark = value_node.end_mark if collection else value_node.start_mark
             back = int(collection and bool(value_node.flow_style))
             where = _where(mark.line, mark.column - back)
-            raise FloeError(f"duplicated key {key!r} in mapping {where}")
+            raise FloeError(
+                f"duplicated key {key!r} in mapping {where}", code="config_duplicate"
+            )
         seen.add(identity)
         result[key] = value
     return result
@@ -85,11 +89,17 @@ def load_yaml(path: Path) -> list[object]:
     try:
         text = path.read_bytes().decode()
     except OSError as e:
-        raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
+        raise FloeIoError(
+            f"{e.strerror} (os error {e.errno})", code="io_read_error"
+        ) from e
     except UnicodeDecodeError as e:
-        raise FloeIoError("stream did not contain valid UTF-8") from e
+        raise FloeIoError(
+            "stream did not contain valid UTF-8", code="io_read_error"
+        ) from e
     except ValueError as e:  # an embedded NUL in the path
-        raise FloeIoError("file name contained an unexpected NUL byte") from e
+        raise FloeIoError(
+            "file name contained an unexpected NUL byte", code="io_read_error"
+        ) from e
     return parse_yaml(text)
 
 
@@ -106,35 +116,39 @@ def parse_yaml(text: str) -> list[object]:
         problem = e.problem or ""
         mark = e.problem_mark
         where = _where(mark.line, mark.column) if mark else ""
-        raise FloeError(f"{context}{problem} {where}".strip()) from e
+        raise FloeError(
+            f"{context}{problem} {where}".strip(), code="config_invalid_yaml"
+        ) from e
     except yaml.YAMLError as e:
-        raise FloeError(str(e)) from e
+        raise FloeError(str(e), code="config_invalid_yaml") from e
 
 
 def load_single_doc(path: Path) -> object:
     docs = load_yaml(path)
     if not docs:
-        raise FloeConfigError("YAML is empty")
+        raise FloeConfigError("YAML is empty", code="config_invalid_yaml")
     if len(docs) > 1:
-        raise FloeConfigError("YAML contains multiple documents; expected one")
+        raise FloeConfigError(
+            "YAML contains multiple documents; expected one", code="config_invalid_yaml"
+        )
     return docs[0]
 
 
 def yaml_hash(value: object, ctx: str) -> dict[object, object]:
     if not isinstance(value, dict):
-        raise FloeConfigError(f"expected map at {ctx}")
+        raise FloeConfigError(f"expected map at {ctx}", code="config_invalid_value")
     return cast("dict[object, object]", value)
 
 
 def yaml_string(value: object, ctx: str) -> str:
     if not isinstance(value, str):
-        raise FloeConfigError(f"expected string at {ctx}")
+        raise FloeConfigError(f"expected string at {ctx}", code="config_invalid_value")
     return value
 
 
 def yaml_array(value: object, ctx: str) -> list[object]:
     if not isinstance(value, list):
-        raise FloeConfigError(f"expected array at {ctx}")
+        raise FloeConfigError(f"expected array at {ctx}", code="config_invalid_value")
     return cast("list[object]", value)
 
 
@@ -143,9 +157,13 @@ def validate_known_keys(
 ) -> None:
     for key in hash:
         if not isinstance(key, str):
-            raise FloeConfigError(f"expected string key at {ctx}")
+            raise FloeConfigError(
+                f"expected string key at {ctx}", code="config_invalid_value"
+            )
         if key not in allowed:
-            raise FloeConfigError(f"unknown field {ctx}.{key}")
+            raise FloeConfigError(
+                f"unknown field {ctx}.{key}", code="config_unknown_key"
+            )
 
 
 # Ports of the field readers in `config/parse.rs`; `None` is an absent or null value.
@@ -153,7 +171,9 @@ def validate_known_keys(
 
 def get_value(hash: dict[object, object], key: str, ctx: str) -> object:
     if key not in hash:
-        raise FloeConfigError(f"missing required field {ctx}.{key}")
+        raise FloeConfigError(
+            f"missing required field {ctx}.{key}", code="config_missing_key"
+        )
     return hash[key]
 
 
@@ -194,7 +214,9 @@ def opt_vec_vec_string(
 def opt_bool(hash: dict[object, object], key: str, ctx: str) -> bool | None:
     value = hash.get(key)
     if value is not None and not isinstance(value, bool):
-        raise FloeConfigError(f"expected boolean at {ctx}.{key}")
+        raise FloeConfigError(
+            f"expected boolean at {ctx}.{key}", code="config_invalid_value"
+        )
     return value
 
 
@@ -203,16 +225,23 @@ def opt_u64(hash: dict[object, object], key: str, ctx: str) -> int | None:
     if value is None:
         return None
     if not isinstance(value, int) or isinstance(value, bool):
-        raise FloeConfigError(f"expected integer at {ctx}.{key}")
+        raise FloeConfigError(
+            f"expected integer at {ctx}.{key}", code="config_invalid_value"
+        )
     if value < 0:
-        raise FloeConfigError(f"expected positive integer at {ctx}.{key}")
+        raise FloeConfigError(
+            f"expected positive integer at {ctx}.{key}", code="config_invalid_value"
+        )
     return value
 
 
 def opt_u32(hash: dict[object, object], key: str, ctx: str) -> int | None:
     value = opt_u64(hash, key, ctx)
     if value is not None and value > 0xFFFFFFFF:
-        raise FloeConfigError(f"value at {ctx}.{key} exceeds maximum allowed value")
+        raise FloeConfigError(
+            f"value at {ctx}.{key} exceeds maximum allowed value",
+            code="config_invalid_value",
+        )
     return value
 
 
