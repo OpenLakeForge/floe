@@ -386,7 +386,9 @@ def forget(
                     f"entity.name={entity} cannot forget {u}: its partition date is before the listing window, so the next run would not list it; use --full-refresh",
                     code="config_invalid_value",
                 )
-        removed = {u: state.files.pop(u) for u in files}
+        removed = {
+            u: state.files.pop(u) for u in dict.fromkeys(files)
+        }  # a repeated --file names it once
         state.updated_at = _now()
         if _persist(client, uri, loaded) is not None:
             return removed

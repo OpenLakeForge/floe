@@ -570,6 +570,12 @@ def test_forget_drops_only_the_named_files(tmp_path: Path) -> None:
     assert (after.watermark, after.pruned_before) == ("2026-01-02", "2026-01-01")
 
 
+def test_forget_names_a_repeated_file_once(tmp_path: Path) -> None:
+    uri, client = str(tmp_path / "state.json"), LocalClient()
+    _seed(client, uri)
+    assert forget(client, uri, "sales", ["a", "a"]) == {"a": FileState("t", 1, "m")}
+
+
 def test_forget_refuses_a_live_claim_an_unknown_uri_and_writes_nothing(
     tmp_path: Path,
 ) -> None:
