@@ -14,6 +14,7 @@ import polars.selectors as cs
 import pyarrow as pa
 
 from floe.checks.rows import RowCheck
+from floe.config.types import PolicySeverity
 
 SAMPLE_LIMIT = 5
 _SEEN = "__floe_seen"
@@ -93,7 +94,8 @@ class _Constraint:
 class UniqueTracker:
     """Keeps the keys seen so far, so a key repeated in a later file is a duplicate too."""
 
-    def __init__(self, keys: Sequence[Sequence[str]]) -> None:
+    def __init__(self, keys: Sequence[Sequence[str]], severity: PolicySeverity) -> None:
+        self._severity: PolicySeverity = severity
         self._constraints = [_Constraint(list(k), pl.DataFrame()) for k in keys]
 
     @property
@@ -181,7 +183,7 @@ class UniqueTracker:
         single = len(c.columns) == 1
         name = c.columns[0] if single else f"[{','.join(c.columns)}]"
         message = "duplicate value" if single else "duplicate key"
-        return RowCheck("unique", name, message, dup)
+        return RowCheck("unique", name, message, dup, self._severity)
 
     def results(self) -> list[UniqueResult]:
         """Per constraint, the top `SAMPLE_LIMIT` keys by count, ties by the key values (numbers numerically, strings by code point)."""

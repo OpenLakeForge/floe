@@ -7,6 +7,7 @@ from typing import Literal
 import polars as pl
 
 from floe.checks.cast import json_escape
+from floe.config.types import PolicySeverity
 
 NOT_NULL_MESSAGE = "required value missing"
 ROW_INDEX = "__floe_row_index"
@@ -37,11 +38,14 @@ class RowCheck:
     column: str
     message: str
     mask: pl.Series
+    severity: PolicySeverity
 
 
-def not_null_check(df: pl.DataFrame, column: str) -> RowCheck:
+def not_null_check(df: pl.DataFrame, column: str, severity: PolicySeverity) -> RowCheck:
     """A required column. `df` holds the typed values, so a failed cast also violates it."""
-    return RowCheck("not_null", column, NOT_NULL_MESSAGE, df[column].is_null())
+    return RowCheck(
+        "not_null", column, NOT_NULL_MESSAGE, df[column].is_null(), severity
+    )
 
 
 def error_entry(rule: str, column: str, message: str, source: str | None = None) -> str:
