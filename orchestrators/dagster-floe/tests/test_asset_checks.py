@@ -139,6 +139,29 @@ def test_build_asset_check_results_uses_warn_severity_for_warn_only_outcomes() -
     assert file_status_check.severity == AssetCheckSeverity.WARN
 
 
+def test_abort_severity_violations_count_as_reject_violations() -> None:
+    checks = build_asset_check_results(
+        asset_key=["hr", "employees"],
+        entity_name="employees",
+        finished=FloeRunFinished(run_id="run-1", status="success", exit_code=0, summary_uri=None),
+        entity_report={
+            "files": [
+                {
+                    "status": "rejected",
+                    "mismatch": {"mismatch_action": "none", "missing_columns": [], "extra_columns": []},
+                    "validation": {
+                        "rules": [{"rule": "not_null", "severity": "abort", "violations": 1}],
+                    },
+                }
+            ]
+        },
+    )
+    metadata = {check.check_name: check for check in checks}["floe_not_null"].metadata
+    assert metadata["violations_total"].value == 1
+    assert metadata["reject_violations"].value == 1
+    assert metadata["warn_violations"].value == 0
+
+
 def test_build_asset_check_results_fallbacks_when_entity_report_fields_missing() -> None:
     checks = build_asset_check_results(
         asset_key=["sales", "orders"],

@@ -313,7 +313,7 @@ def _summarize_rules(files: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, 
             violations = _as_int(rule_item.get("violations")) or 0
             severity = _as_str(rule_item.get("severity"))
             bucket["violations_total"] = (bucket.get("violations_total") or 0) + violations
-            if severity == "reject":
+            if severity in {"reject", "abort"}:
                 bucket["reject_violations"] = (bucket.get("reject_violations") or 0) + violations
             elif severity in {"warn", "warning"}:
                 bucket["warn_violations"] = (bucket.get("warn_violations") or 0) + violations
