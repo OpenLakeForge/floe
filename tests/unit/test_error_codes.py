@@ -16,18 +16,6 @@ PREFIX = {
     "FloeStorageError": "storage_",
 }
 
-# Files with a raise site that has no `code=` yet. Each of #1260's PRs 2-7 removes its files;
-# the last one deletes this set and the `uncoded == ALLOWLIST` check.
-ALLOWLIST = {
-    "__init__.py",
-    "_cli.py",
-    "checks/mismatch.py",
-    "checks/normalize.py",
-    "extras.py",
-    "glob.py",
-    "manifest.py",
-}
-
 
 def _sites(path: Path) -> list[tuple[int, str, ast.Call]]:
     """Every `Floe…Error(...)` call, and every `_fail(...)` call in config/validate.py (it builds a FloeConfigError)."""
@@ -67,14 +55,11 @@ def test_the_errors_page_lists_exactly_the_error_codes() -> None:
 
 def test_every_raise_site_passes_a_code_whose_prefix_matches_its_class() -> None:
     codes = set(get_args(ErrorCode))
-    uncoded: set[str] = set()
     for path in sorted(SRC.rglob("*.py")):
         rel = path.relative_to(SRC).as_posix()
         for line, cls, call in _sites(path):
             code = _code(call)
-            if code is None:
-                uncoded.add(rel)
-                continue
+            assert code is not None, f"{rel}:{line} {cls} has no code="
             if (
                 isinstance(code, ast.Attribute)
                 and code.attr == "code"
@@ -89,6 +74,3 @@ def test_every_raise_site_passes_a_code_whose_prefix_matches_its_class() -> None
                 assert str(code.value).startswith(PREFIX[cls]), (
                     f"{rel}:{line} {cls} with {code.value}"
                 )
-    assert uncoded == ALLOWLIST, (
-        f"missing code=: {sorted(uncoded - ALLOWLIST)}; migrated, remove from ALLOWLIST: {sorted(ALLOWLIST - uncoded)}"
-    )

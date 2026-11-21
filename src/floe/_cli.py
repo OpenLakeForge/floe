@@ -34,12 +34,15 @@ from floe.storage.s3 import S3Client
 def _realpath(path: str) -> Path:
     if path.startswith("s3://"):
         raise FloeConfigError(
-            f"{path}: a config must be a local path; download it first"
+            f"{path}: a config must be a local path; download it first",
+            code="config_invalid_value",
         )
     try:
         return Path(os.path.realpath(path, strict=True))
     except OSError as e:
-        raise FloeIoError(f"{e.strerror} (os error {e.errno})") from e
+        raise FloeIoError(
+            f"{e.strerror} (os error {e.errno})", code="io_read_error"
+        ) from e
 
 
 def _profile(location: str | None) -> ProfileConfig | None:
@@ -69,7 +72,8 @@ def _validate(args: argparse.Namespace) -> int:
     if args.config is None:
         if profile is None:
             raise FloeConfigError(
-                "floe validate requires --config unless --profile is provided"
+                "floe validate requires --config unless --profile is provided",
+                code="config_missing_key",
             )
         print(f"Profile valid: {profile.name}")
         print(f"Schema: {API_VERSION}/{KIND}")
@@ -101,7 +105,9 @@ def _selectors(root: RootConfig, args: argparse.Namespace) -> list[str]:
     if not args.domain:
         return args.entities
     if args.entities:
-        raise FloeConfigError("--domain cannot be combined with --entities")
+        raise FloeConfigError(
+            "--domain cannot be combined with --entities", code="config_conflict"
+        )
     return domain_entities(root, args.domain)
 
 
@@ -112,7 +118,7 @@ def _run(args: argparse.Namespace) -> int:
         try:  # a manifest that fails to load is logged after a `run_started`
             root, observed, path = load_manifest(args.manifest)
         except FloeIoError as e:  # a bare io error, logged with code `error`
-            console.failed(FloeError(str(e)), args.manifest)
+            console.failed(FloeError(str(e), code=e.code), args.manifest)
             raise
         except FloeError as e:
             console.failed(e, args.manifest)
@@ -120,7 +126,9 @@ def _run(args: argparse.Namespace) -> int:
         config_uri = shown(args.manifest)  # as typed
         job = ""  # the lineage job is named `floe-run` (or `job_name`)
     elif args.config is None:
-        raise FloeConfigError("one of --config or --manifest is required")
+        raise FloeConfigError(
+            "one of --config or --manifest is required", code="config_missing_key"
+        )
     else:
         profile = _profile(args.profile)
         try:  # a missing config is logged without `run_started`
@@ -152,7 +160,7 @@ def _run(args: argparse.Namespace) -> int:
 def _manifest(args: argparse.Namespace) -> int:
     remote = "://" in args.output
     if remote and not args.output.startswith("s3://"):  # D1: gcs and adls are dropped
-        raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}")  # fmt: skip
+        raise FloeConfigError(f"remote manifest output is not supported yet: {args.output}", code="config_not_supported")  # fmt: skip
     manifest = build_manifest(
         args.config, args.profile, deterministic=args.deterministic,
         manifest_name=args.manifest_name, default_domain=args.default_domain,
@@ -201,7 +209,10 @@ def _add_entity(args: argparse.Namespace) -> int:
 
 def _state(args: argparse.Namespace) -> int:
     if args.state_command == "reset" and not args.yes:
-        raise FloeConfigError("state reset is destructive, rerun with --yes to confirm")
+        raise FloeConfigError(
+            "state reset is destructive, rerun with --yes to confirm",
+            code="config_invalid_value",
+        )
     profile = _profile(args.profile)
     path = _realpath(args.config)
     root = _load(path, profile, check_runners=False)

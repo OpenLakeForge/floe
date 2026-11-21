@@ -515,7 +515,9 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
         source_names(schema.columns, resolved)
         output_column_mapping(schema.columns, resolved)
     except FloeConfigError as err:
-        raise _fail(entity, str(err), code="config_invalid_value") from err
+        raise FloeConfigError(
+            f"entity.name={entity.name} {err}", code=err.code
+        ) from err  # the inner code
     mismatch = schema.mismatch
     if mismatch is not None:
         for field, policy, allowed in (
