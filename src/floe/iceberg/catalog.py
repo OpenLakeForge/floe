@@ -88,7 +88,7 @@ def run_error(context: str) -> Generator[None]:
     ):  # already worded for the user, e.g. raised by the stream a write reads
         raise
     except _RUN_ERRORS as e:
-        raise FloeRunError(f"{context}: {e}") from e
+        raise FloeRunError(f"{context}: {e}", code="run_catalog_error") from e
 
 
 def _expand_env_part(part: str, catalog: str) -> str:
@@ -96,17 +96,20 @@ def _expand_env_part(part: str, catalog: str) -> str:
         return part
     if not part.endswith("}"):
         raise FloeRunError(
-            f"rest iceberg catalog {catalog} credential has unclosed env placeholder"
+            f"rest iceberg catalog {catalog} credential has unclosed env placeholder",
+            code="run_invalid_setup",
         )
     name = part[2:-1]
     if not name or "{" in name or "}" in name:
         raise FloeRunError(
-            f"rest iceberg catalog {catalog} credential has invalid env placeholder"
+            f"rest iceberg catalog {catalog} credential has invalid env placeholder",
+            code="run_invalid_setup",
         )
     value = os.environ.get(name)
     if value is None:
         raise FloeRunError(
-            f"rest iceberg catalog {catalog} credential references env var {name} which is not set"
+            f"rest iceberg catalog {catalog} credential references env var {name} which is not set",
+            code="run_invalid_setup",
         )
     return value
 
@@ -209,7 +212,8 @@ def _duckdb_setup(
             ):  # PyIceberg sends it as a secret alone; DuckDB requires a client id
                 raise FloeConfigError(
                     f"rest iceberg catalog {definition.name} credential needs client_id:client_secret "
-                    "for merges (DuckDB has no secret-only OAuth2)"
+                    "for merges (DuckDB has no secret-only OAuth2)",
+                    code="config_invalid_value",
                 )
             auth |= {
                 "CLIENT_ID": client_id,
@@ -252,7 +256,7 @@ def open_duckdb(
         raise missing("merge", "iceberg merges and compaction") from None
     # validation rejects Glue merges; compaction lands here too
     if definition.type != "rest":
-        raise FloeConfigError(f"iceberg catalog {definition.name}: merges and compaction require a rest catalog (got {definition.type})")  # fmt: skip
+        raise FloeConfigError(f"iceberg catalog {definition.name}: merges and compaction require a rest catalog (got {definition.type})", code="config_not_supported")  # fmt: skip
     statements = _duckdb_setup(definition, storage)
     with run_error("duckdb catalog attach failed"):
         spill = tempfile.mkdtemp(prefix="floe-duckdb-")
@@ -274,13 +278,15 @@ def build_partition_spec(
             source = schema.find_field(column)
         except ValueError:
             raise FloeRunError(
-                f"entity.name={entity} iceberg partition_spec column {column} was not found in runtime schema"
+                f"entity.name={entity} iceberg partition_spec column {column} was not found in runtime schema",
+                code="run_invalid_input",
             ) from None
         transform = transform.strip().lower()
         bucket = re.fullmatch(r"bucket\[[1-9][0-9]*\]", transform)
         if bucket is None and transform not in _TRANSFORMS:
             raise FloeRunError(
-                f"entity.name={entity} iceberg partition_spec column {column} has unsupported runtime transform {transform}"
+                f"entity.name={entity} iceberg partition_spec column {column} has unsupported runtime transform {transform}",
+                code="run_not_supported",
             )
         spec_fields.append(
             PartitionField(
@@ -305,7 +311,8 @@ def check_schema_matches(existing: Schema, expected: Schema, entity: str) -> Non
     if len(existing.fields) != len(expected.fields):
         raise FloeRunError(
             f"entity.name={entity} iceberg schema evolution is not supported "
-            f"(column count differs: existing={len(existing.fields)}, incoming={len(expected.fields)})"
+            f"(column count differs: existing={len(existing.fields)}, incoming={len(expected.fields)})",
+            code="run_schema_evolution",
         )
     for index, (old, new) in enumerate(zip(existing.fields, expected.fields)):
         if (old.name, old.required, old.field_type) != (
@@ -315,7 +322,8 @@ def check_schema_matches(existing: Schema, expected: Schema, entity: str) -> Non
         ):
             raise FloeRunError(
                 f"entity.name={entity} iceberg schema evolution is not supported "
-                f"(column {index} differs: existing={_describe_field(old)} incoming={_describe_field(new)})"
+                f"(column {index} differs: existing={_describe_field(old)} incoming={_describe_field(new)})",
+                code="run_schema_evolution",
             )
 
 
@@ -341,7 +349,8 @@ def additive_columns(
     if incompatible:
         raise FloeRunError(
             f"entity.name={entity} iceberg schema evolution failed: add_columns supports additive changes only; "
-            f"incompatible changes detected: {'; '.join(incompatible)}"
+            f"incompatible changes detected: {'; '.join(incompatible)}",
+            code="run_schema_evolution",
         )
     known = {f.name for f in existing.fields}
     return [f for f in expected.fields if f.name not in known]
@@ -367,7 +376,8 @@ def check_partition_spec_matches(
     if _key(existing) != _key(expected):
         raise FloeRunError(
             f"entity.name={entity} iceberg partition spec evolution is not supported "
-            f"(existing={_describe_spec(existing)} incoming={_describe_spec(expected)})"
+            f"(existing={_describe_spec(existing)} incoming={_describe_spec(expected)})",
+            code="run_schema_evolution",
         )
 
 
@@ -401,7 +411,7 @@ def ensure_table(
             namespace_exists = catalog.namespace_exists(ident)
         if not namespace_exists:
             if not create_namespace:
-                raise FloeRunError(f"entity.name={entity} iceberg namespace {namespace} does not exist and create_database_if_missing is false")  # fmt: skip
+                raise FloeRunError(f"entity.name={entity} iceberg namespace {namespace} does not exist and create_database_if_missing is false", code="run_invalid_setup")  # fmt: skip
             with (
                 run_error("rest catalog namespace create failed"),
                 suppress(NamespaceAlreadyExistsError),

@@ -70,6 +70,7 @@ def test_schema_match_rejects_any_difference(incoming: Schema, message: str) -> 
     with pytest.raises(FloeRunError) as e:
         check_schema_matches(schema(ID, NAME), incoming, "e")
     assert str(e.value) == message
+    assert e.value.code == "run_schema_evolution"
 
 
 def test_partition_spec_names_and_transforms() -> None:
@@ -204,6 +205,7 @@ def test_credential_errors(
     with pytest.raises(FloeRunError) as e:
         _credential_props("polaris", credential)
     assert str(e.value) == message
+    assert e.value.code == "run_invalid_setup"
     assert "literal-secret" not in str(e.value)
 
 
@@ -330,7 +332,8 @@ def test_a_missing_table_or_namespace_is_created(missing: type[Exception]) -> No
 
 
 def test_run_error_wraps_io_families_and_lets_bugs_propagate() -> None:
-    with pytest.raises(FloeRunError, match="^ctx: disk full"), run_error("ctx"):
+    with pytest.raises(FloeRunError, match="^ctx: disk full") as e, run_error("ctx"):
         raise OSError("disk full")
+    assert e.value.code == "run_catalog_error"
     with pytest.raises(KeyError), run_error("ctx"):
         raise KeyError("bug")
