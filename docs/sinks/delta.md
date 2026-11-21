@@ -116,6 +116,9 @@ or write another table.
 `create_schema_if_missing`) registers the table as an **external** Delta table, on S3 storage only. `token` is
 an environment reference such as `${DATABRICKS_TOKEN}`, expanded when the table is registered.
 
+> **Tested against a stub only.** Registration is tested against a local stub of the Unity Catalog REST API
+> (`/api/2.1/unity-catalog`), not yet against a live Databricks workspace. Expect to verify it in yours.
+
 - Floe commits the Delta table first, then registers it (`GET`, then `POST /api/2.1/unity-catalog/tables` with
   `table_type: EXTERNAL`, `data_source_format: DELTA`, the table's `s3://` location and its columns as Spark types).
   It does this on every successful run, so a run that died between the commit and the registration is registered
@@ -125,10 +128,15 @@ an environment reference such as `${DATABRICKS_TOKEN}`, expanded when the table 
   location, else the run fails with `run_state_conflict`. Its columns are never updated, since Unity reads an
   external table's schema from the Delta log. Other API errors fail with `run_catalog_error`.
 - With `create_schema_if_missing` (the default) the schema is created when absent; the catalog must exist.
-- Unity needs an **external location** covering the table's `s3://` path, created by you in Databricks, and the
-  token's principal needs `CREATE EXTERNAL TABLE` and `EXTERNAL USE LOCATION` on it.
 - The report's `accepted_output` carries `delta_catalog_name`, `delta_schema` and `delta_table`.
 - Managed tables and credential vending are not supported.
+
+Workspace setup you do in Databricks before the first run:
+
+- An **external location** covering the table's `s3://` path (and its storage credential).
+- A token whose principal has `USE CATALOG` and `USE SCHEMA` on the schema, `CREATE TABLE` on it, and
+  `CREATE EXTERNAL TABLE` on the external location.
+- With `create_schema_if_missing`, `CREATE SCHEMA` on the catalog as well. The catalog itself must already exist.
 
 ## Memory
 

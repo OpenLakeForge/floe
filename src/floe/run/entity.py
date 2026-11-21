@@ -502,11 +502,11 @@ def _run_entity(
         raise failure[0] from failure[0].__cause__
     finally:
         stream.close()
+    registered: dict[str, str] = {}  # fmt: skip  # not in `table`: its presence reports byte metrics as 0, not null, for a run that wrote nothing
     if delta:  # after the commit and before the state is promoted: a failure here is retried, and the guard then finds the commit
         from floe.delta.sink import register_unity
 
-        if registered := register_unity(entity, catalogs, base, accepted):
-            table = (table or {}) | registered
+        registered = register_unity(entity, catalogs, base, accepted)
     if latest_first:  # the report lists the files in file order
         files[skipped:] = files[skipped:][::-1]
     files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
@@ -539,5 +539,6 @@ def _run_entity(
         merge=merge,
         added_columns=added,
     )
+    report["accepted_output"] |= registered
     report["timings_ms"] = {k: int(plan.spent[k] * 1000) if k in plan.spent else None for k in PHASES}  # fmt: skip
     return EntityRun(report, entity_outcome(report)[0] == "aborted")

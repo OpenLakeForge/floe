@@ -283,4 +283,5 @@ def test_a_retry_that_finds_the_commit_still_registers(
         "sales",
         "orders",
     )
+    assert (out["total_bytes_written"], out["avg_file_size_mb"], out["small_files_count"]) == (None, None, None)  # nothing was written: the registered fields do not make these 0  # fmt: skip
     assert isinstance(config.catalogs, CatalogsConfig)
