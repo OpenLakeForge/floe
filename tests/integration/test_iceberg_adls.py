@@ -1,7 +1,7 @@
 """Floe's ADLS settings for PyIceberg and DuckDB against Azurite (the blob service, no Polaris).
 
-Skipped unless `FLOE_ADLS_ENDPOINT` is set, e.g. `http://127.0.0.1:10000/devstoreaccount1`; Azurite's public dev account
-and key are used. The catalog is a local sqlite `SqlCatalog`: DuckDB merges attach to REST catalogs only, so the DuckDB
+Skipped unless `FLOE_AZURITE_ENDPOINT` is set (the `object-stores` job), e.g. `http://127.0.0.1:10000/devstoreaccount1`;
+Azurite's public dev account and key are used, the container is `FLOE_AZURITE_CONTAINER` (default `warehouse`). The catalog is a local sqlite `SqlCatalog`: DuckDB merges attach to REST catalogs only, so the DuckDB
 test checks the azure secret Floe builds, not a merge.
 """
 
@@ -27,15 +27,18 @@ from floe.iceberg.catalog import (
     _open_catalog,  # pyright: ignore[reportPrivateUsage] -- the props it builds are what is under test
 )
 
-ENDPOINT = os.environ.get("FLOE_ADLS_ENDPOINT")
+ENDPOINT = os.environ.get("FLOE_AZURITE_ENDPOINT")
 ACCOUNT = "devstoreaccount1"
-KEY = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
-CONTAINER = "floe-iceberg"
+KEY = (
+    os.environ.get("AZURE_STORAGE_ACCOUNT_KEY")
+    or "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
+)
+CONTAINER = os.environ.get("FLOE_AZURITE_CONTAINER", "warehouse")
 CATALOG = CatalogDefinition(name="rest", uri="http://localhost:1", credential=None, warehouse="w", oauth2_server_uri=None, scope=None, warehouse_storage=None, warehouse_prefix=None)  # fmt: skip
 
 pytestmark = [
     pytest.mark.adls,
-    pytest.mark.skipif(ENDPOINT is None, reason="FLOE_ADLS_ENDPOINT is not set"),
+    pytest.mark.skipif(ENDPOINT is None, reason="FLOE_AZURITE_ENDPOINT is not set"),
 ]
 
 
