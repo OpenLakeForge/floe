@@ -71,9 +71,11 @@ of letting the store name another object.
 
 ## Emulators
 
-`endpoint` points Floe at a GCS-compatible service such as fake-gcs-server, for example
-`http://127.0.0.1:4443`. Plain `http://` is allowed for an endpoint. For Iceberg, Floe passes it to
+`endpoint` points Floe at a GCS-compatible service, for example `http://127.0.0.1:4443`. Plain `http://` is allowed for an endpoint. For Iceberg, Floe passes it to
 PyIceberg as `gcs.service.host`; without `endpoint`, PyIceberg uses Application Default Credentials.
+
+fake-gcs-server does not work with Floe today: its latest release (1.56.1) has no XML-API upload
+route and ignores the generation-precondition header that `obstore` sends (#1342).
 
 ## Supported behavior
 
