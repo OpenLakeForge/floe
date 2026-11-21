@@ -12,7 +12,6 @@ import pyarrow as pa
 from deltalake import DeltaTable
 from deltalake.exceptions import DeltaError, TableNotFoundError
 
-from floe.checks.unique import resolve_unique_keys
 from floe.config.storage import StorageDefinition
 from floe.config.types import EntityConfig, WriteMode
 from floe.delta.write import named, write_table
@@ -32,9 +31,6 @@ def check_supported(entity: EntityConfig) -> None:
         raise FloeRunError(f"{who} sink.write_mode={entity.sink.write_mode} is not supported with sink.accepted.format=delta yet", code="run_not_supported")  # fmt: skip
     if accepted.partition_by:
         raise FloeRunError(f"{who} sink.accepted.partition_by is not supported with sink.accepted.format=delta yet", code="run_not_supported")  # fmt: skip
-    # the existing table's keys are not read yet, so an append could not tell a duplicate from a first write
-    if entity.sink.write_mode == "append" and resolve_unique_keys(entity.schema_.unique_keys, entity.schema_.primary_key):  # fmt: skip
-        raise FloeRunError(f"{who} unique keys on a delta append are not supported yet", code="run_not_supported")  # fmt: skip
     # an aborted file leaves a smaller batch committed than the hash the retry guard stamps names
     if entity.sink.write_mode == "append" and entity.policy.severity == "abort":
         raise FloeRunError(f"{who} policy.severity=abort on a delta append is not supported yet: the retry guard cannot cover it", code="run_not_supported")  # fmt: skip
