@@ -19,6 +19,12 @@ checks, so checks see the raw values, and the written rows hold masked ones.
   (`sink.archive.storage` must match `source.storage`), so it adds no unmasked copy: the bytes were
   already unmasked at the source. The archive may sit under a different prefix than the source, and
   prefix ACLs are yours to set: give the archive prefix the same access as the source.
+- **Masked rejects cannot be replayed.** The rejected output of a PII entity is diagnostic and holds only masked
+  values, with no unmasked quarantine. The replay input is the original source file: `files[].output.archived_path`
+  in the run report when set, otherwise `files[].input_file`. Read it with the same `source.options` and select the
+  rows by `__floe_row_index`. Access to that file, and how long it is kept, is up to your storage ACLs and
+  retention, so keep the source files for as long as you may need to repair rejects
+  ([decision](https://github.com/OpenLakeForge/floe/blob/main/context/decisions/pii-rejected-replay.md)).
 
 ## Configuration
 

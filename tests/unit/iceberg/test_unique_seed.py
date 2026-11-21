@@ -183,7 +183,7 @@ def check(
     table: Table, incoming: Sequence[Row], cols: Sequence[str]
 ) -> tuple[list[int], int]:
     """The flagged rows and how many of them hit the target, as `UniqueTracker` reports them."""
-    tracker = UniqueTracker([list(cols)])
+    tracker = UniqueTracker([list(cols)], "reject")
     batch = frame(incoming)
     seed_from_table(tracker, table, batch, {})
     mask = tracker.check(batch)[0].mask
@@ -232,7 +232,7 @@ def test_random_fixtures_match_the_brute_force(tmp_path: Path, seed: int) -> Non
 
 def test_stored_names_are_scanned_and_renamed_back(tmp_path: Path) -> None:
     table = local_table(tmp_path, HISTORY, partitioned=False)
-    tracker = UniqueTracker([["ID"]])
+    tracker = UniqueTracker([["ID"]], "reject")
     batch = frame(INCOMING).rename({"id": "ID"})
     seed_from_table(tracker, table, batch, {"ID": "id"})
     assert tracker.check(batch)[0].mask.arg_true().to_list() == [0, 3, 4, 8]
@@ -323,7 +323,7 @@ def test_an_equality_delete_fails_instead_of_seeding_deleted_keys(tmp_path: Path
 def test_unsigned_batch_keys_meet_the_signed_table_keys(tmp_path: Path) -> None:
     """The sink widens unsigned keys (Iceberg has none); the hits come back in the batch's dtype."""
     table = local_table(tmp_path, HISTORY, partitioned=False)
-    tracker = UniqueTracker([["id"]])
+    tracker = UniqueTracker([["id"]], "reject")
     batch = frame(INCOMING).drop_nulls("id").with_columns(pl.col("id").cast(pl.UInt32))
     seed_from_table(tracker, table, batch, {})
     assert tracker.check(batch)[0].mask.arg_true().to_list() == [0, 2, 3, 5]
@@ -333,7 +333,7 @@ def test_unsigned_batch_keys_meet_the_signed_table_keys(tmp_path: Path) -> None:
 def test_a_key_column_the_table_lacks_seeds_nothing(tmp_path: Path) -> None:
     """`add_columns` adds the column on write: historical rows hold NULL there, never a duplicate."""
     table = local_table(tmp_path, HISTORY, partitioned=False)
-    tracker = UniqueTracker([["qty"], ["id"]])
+    tracker = UniqueTracker([["qty"], ["id"]], "reject")
     batch = frame(INCOMING).with_columns(qty=pl.Series([1, 1] + [None] * 8, dtype=pl.Int32))  # fmt: skip
     seed_from_table(tracker, table, batch, {})
     qty, ident = tracker.check(batch)
@@ -343,7 +343,7 @@ def test_a_key_column_the_table_lacks_seeds_nothing(tmp_path: Path) -> None:
 
 class _Recording(UniqueTracker):
     def __init__(self, keys: list[list[str]]) -> None:
-        super().__init__(keys)
+        super().__init__(keys, "reject")
         self.seeded: list[pl.DataFrame] = []
 
     def seed(self, df: pl.DataFrame) -> None:
@@ -365,7 +365,7 @@ def test_millisecond_batch_keys_meet_the_microsecond_table_keys(tmp_path: Path) 
     table = local_table(tmp_path, [], partitioned=False, schema=schema)
     days = pl.Series("ts", ["2024-01-01", "2024-01-02"]).str.to_datetime(time_unit="us")
     table.append(days.to_frame().to_arrow().cast(schema.as_arrow()))
-    tracker = UniqueTracker([["ts"]])
+    tracker = UniqueTracker([["ts"]], "reject")
     batch = pl.Series("ts", ["2024-01-02", "2024-01-03"]).str.to_datetime(time_unit="ms").to_frame()  # fmt: skip
     seed_from_table(tracker, table, batch, {})
     assert tracker.check(batch)[0].mask.to_list() == [True, False]
@@ -375,7 +375,7 @@ def test_a_float_key_named_like_a_temporary_is_seeded(tmp_path: Path) -> None:
     schema = Schema(*SCHEMA.fields[:3], NestedField(4, "_bits0", DoubleType()))
     table = local_table(tmp_path, [], partitioned=False, schema=schema)
     table.append(frame(HISTORY).rename({"f": "_bits0"}).to_arrow().cast(schema.as_arrow()))  # fmt: skip
-    tracker = UniqueTracker([["_bits0"]])
+    tracker = UniqueTracker([["_bits0"]], "reject")
     batch = frame(INCOMING).rename({"f": "_bits0"})
     seed_from_table(tracker, table, batch, {})
     flagged = expect(EXPECTED[("f",)])

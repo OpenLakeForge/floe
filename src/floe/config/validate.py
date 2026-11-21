@@ -22,6 +22,7 @@ from floe.config.types import (
     EntityConfig,
     WriteMode,
     catalog_ident,
+    rule_level,
     with_partition_columns,
 )
 from floe.errors import NOT_SUPPORTED, ErrorCode, FloeConfigError
@@ -477,7 +478,7 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
                     code="config_invalid_value",
                 )
     # D39 (#1007): abort writes the failing file to sink.rejected too
-    if entity.policy.severity in ("reject", "abort") and sink.rejected is None:
+    if rule_level(entity, "row_check") in ("reject", "abort") and sink.rejected is None:
         raise _fail(entity, f"sink.rejected is required when policy.severity={entity.policy.severity}", code="config_missing_key")  # fmt: skip
     if sink.rejected is not None and sink.rejected.format not in ("csv", "parquet", "iceberg"):  # fmt: skip
         raise _fail(
@@ -718,7 +719,7 @@ def _check_pii(entity: EntityConfig) -> None:
     pii = entity.pii
     if pii is None:
         return
-    if entity.policy.severity == "abort":
+    if rule_level(entity, "row_check") == "abort":
         raise _fail(
             entity,
             "pii: masking is not applied when policy.severity=abort because the raw "

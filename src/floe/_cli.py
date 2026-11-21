@@ -18,6 +18,7 @@ from floe.config.profile import (
     validate_runners,
 )
 from floe.config.project import RootConfig
+from floe.config.types import EntityConfig
 from floe.config.validate import validate_config
 from floe.config.vars import extract_config_env_vars, resolve_vars
 from floe.errors import FloeConfigError, FloeError, FloeIoError
@@ -26,9 +27,12 @@ from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, ORPHAN_DELAY_DAYS, mainta
 from floe.manifest_run import load_manifest, shown
 from floe.run import domain_entities, select_entities
 from floe.run.incremental import state_uri
-from floe.state import dump_state, read_state, reset
+from floe.run.sources import resolve_source
+from floe.state import EntityState, dump_state, forget, read_state, reset
+from floe.storage.partitioning import partition_date, source_root, window
 from floe.storage.paths import normalize_local_path, parse_s3_uri
 from floe.storage.s3 import S3Client
+from floe.storage.types import StorageClient
 
 
 def _realpath(path: str) -> Path:
@@ -207,10 +211,37 @@ def _add_entity(args: argparse.Namespace) -> int:
     return 0
 
 
-def _state(args: argparse.Namespace) -> int:
-    if args.state_command == "reset" and not args.yes:
+def _forget(args: argparse.Namespace, entity: EntityConfig, root: RootConfig, path: Path, uri: str, client: StorageClient) -> int:  # fmt: skip
+    if entity.incremental_mode != "file":
         raise FloeConfigError(
-            "state reset is destructive, rerun with --yes to confirm",
+            f"entity.name={entity.name} state forget needs incremental_mode: file (is {entity.incremental_mode})",
+            code="config_invalid_value",
+        )  # fmt: skip
+    p, config_dir = entity.source.partitioning, normalize_local_path(path.parent)
+    src_root = source_root(resolve_source(entity, config_dir, root.storages)[0])
+
+    def unlisted(state: EntityState, u: str) -> bool:
+        start, day = p and window(p, entity.name, src_root, state), p and partition_date(p, entity.name, src_root, u)  # fmt: skip
+        return bool(start and day and day < start)
+
+    removed = forget(client, uri, entity.name, args.file, unlisted)
+    print(f"Entity: {entity.name}\nState path: {uri}")
+    for u, f in removed.items():
+        print(
+            f"Forgot: {u} (size={f.size}, mtime={f.mtime}, processed_at={f.processed_at})"
+        )
+    mode = entity.sink.write_mode
+    if mode == "append":
+        print("Note: old rows stay: duplicated, or rejected by the unique key, unless you removed them")  # fmt: skip
+    elif mode != "overwrite":
+        print("Note: re-sent rows become current over newer files' values")
+    return 0
+
+
+def _state(args: argparse.Namespace) -> int:
+    if args.state_command in ("reset", "forget") and not args.yes:
+        raise FloeConfigError(
+            f"state {args.state_command} is destructive, rerun with --yes to confirm",
             code="config_invalid_value",
         )
     profile = _profile(args.profile)
@@ -218,6 +249,8 @@ def _state(args: argparse.Namespace) -> int:
     root = _load(path, profile, check_runners=False)
     [entity] = select_entities(root, [args.entity])
     uri, client = state_uri(entity, normalize_local_path(path.parent), root.storages)
+    if args.state_command == "forget":
+        return _forget(args, entity, root, path, uri, client)
     if args.state_command == "reset":
         removed = reset(client, uri, entity.name)
         print(f"Entity: {entity.name}\nState path: {uri}")
@@ -299,13 +332,15 @@ def _parser() -> argparse.ArgumentParser:
     add.add_argument("--source", dest="source_ref")
     add.add_argument("--dry-run", action="store_true")
     state = commands.add_parser("state").add_subparsers(dest="state_command", required=True)  # fmt: skip
-    for name in ("inspect", "reset"):
+    for name in ("inspect", "reset", "forget"):
         command = state.add_parser(name)
         command.add_argument("-c", "--config", required=True)
         command.add_argument("--entity", required=True)
         command.add_argument("-p", "--profile")
-        if name == "reset":
+        if name != "inspect":
             command.add_argument("--yes", action="store_true")
+        if name == "forget":
+            command.add_argument("--file", action="append", required=True)
     maintain = commands.add_parser("maintain")
     maintain.add_argument("-c", "--config", required=True)
     maintain.add_argument("-p", "--profile")

@@ -65,6 +65,12 @@
   - Remote resets write the empty state conditionally (version or ETag), as remote incremental state does.
   - See [docs/incremental.md](../concepts/incremental.md) for reset behavior and permissions.
 
+- `floe state forget -c <config> --entity <name> --file <uri> [--file <uri> ...] --yes [-p <profile>]`
+  - Remove the named files from an `incremental_mode: file` entity's state so the next run ingests them again, for example a corrected file a partner re-sent. The other files, claims and watermark are untouched.
+  - `--file` is the exact URI `floe state inspect` prints, no normalization. Refused, with nothing written, when a URI is not tracked, is under a live claim, or (with `source.partitioning`) falls before the listing window (use `--full-refresh`), and when the entity is not in `file` mode.
+  - Requires `--yes`. The state is written conditionally, as for `reset`.
+  - See [docs/incremental.md](../concepts/incremental.md#re-ingest-a-changed-file).
+
 - `floe maintain -c <config> [-p <profile>] [--entities <name[,name...]>] [--older-than-days <n>] [--retain-last <n>] [--orphan-delay-days <n>] [--dry-run] [--compact --experimental]`
   - Expire old snapshots of each selected entity's Iceberg accepted table, then remove its orphan files; entities with other sinks are skipped.
   - A snapshot is expired only if it is older than `--older-than-days` (default 7) **and** outside the newest `--retain-last` (default 10). Branch and tag heads are never expired.
