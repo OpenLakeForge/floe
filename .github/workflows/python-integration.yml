@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - "src/floe/iceberg/**"
+      - "src/floe/delta/**"
       - "src/floe/storage/**"
       - "src/floe/run/**"
       - "tests/integration/**"
