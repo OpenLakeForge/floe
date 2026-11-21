@@ -68,7 +68,7 @@ class ProfileConfig:
 def _string(hash: Hash, key: str, ctx: str, required: bool = False) -> str | None:
     if key not in hash:
         if required:
-            raise FloeConfigError(f"{ctx}.{key} is required")
+            raise FloeConfigError(f"{ctx}.{key} is required", code="config_missing_key")
         return None
     return yaml_string(hash[key], f"{ctx}.{key}")
 
@@ -92,7 +92,9 @@ def _u64(hash: Hash, key: str, ctx: str) -> int | None:
         return None
     value = hash[key]
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise FloeConfigError(f"{ctx}.{key} must be a non-negative integer")
+        raise FloeConfigError(
+            f"{ctx}.{key} must be a non-negative integer", code="config_invalid_value"
+        )
     return value
 
 
@@ -129,10 +131,14 @@ def _resources(
         "memory_mb": _u64(resources, "memory_mb", where),
     }
     if per_domain and read["memory_mb"] == 0:  # the manifest schema requires >= 1
-        raise FloeConfigError(f"{where}.memory_mb: must be >= 1")
+        raise FloeConfigError(
+            f"{where}.memory_mb: must be >= 1", code="config_invalid_value"
+        )
     memory_limit = _u64(resources, "memory_limit_mb", where)
     if memory_limit == 0:  # the schemas require >= 1
-        raise FloeConfigError(f"{where}.memory_limit_mb: must be >= 1")
+        raise FloeConfigError(
+            f"{where}.memory_limit_mb: must be >= 1", code="config_invalid_value"
+        )
     limits = {  # the limits are Python-only: carried only when set, so manifests without limits stay identical
         "cpu_limit": _string(resources, "cpu_limit", where),
         "memory_limit_mb": memory_limit,
@@ -158,7 +164,8 @@ def _job_scope(hash: Hash, key: str, ctx: str) -> str | None:
     scope = _string(hash, key, ctx)
     if scope not in (None, "entity", "domain"):
         raise FloeConfigError(
-            f'{ctx}.{key}: expected "entity" or "domain", got "{scope}"'
+            f'{ctx}.{key}: expected "entity" or "domain", got "{scope}"',
+            code="config_invalid_value",
         )
     return scope
 
@@ -218,7 +225,9 @@ def _json(value: object, where: str) -> object:
     if isinstance(value, list):
         return [_json(v, f"{where}[]") for v in cast(list[object], value)]
     if isinstance(value, float) and not math.isfinite(value):
-        raise FloeConfigError(f"{where} must be a finite number")
+        raise FloeConfigError(
+            f"{where} must be a finite number", code="config_invalid_value"
+        )
     return value
 
 
@@ -245,11 +254,14 @@ def _orchestration(value: object) -> dict[str, object]:
     validate_known_keys(hash, ctx, ("max_concurrent_entities", "strategy"))
     max_concurrent = _u64(hash, "max_concurrent_entities", ctx)
     if max_concurrent == 0:
-        raise FloeConfigError(f"{ctx}.max_concurrent_entities: must be >= 1")
+        raise FloeConfigError(
+            f"{ctx}.max_concurrent_entities: must be >= 1", code="config_invalid_value"
+        )
     strategy = _string(hash, "strategy", ctx)
     if strategy not in (None, "sequential", "parallel"):
         raise FloeConfigError(
-            f'{ctx}.strategy: expected "sequential" or "parallel", got "{strategy}"'
+            f'{ctx}.strategy: expected "sequential" or "parallel", got "{strategy}"',
+            code="config_invalid_value",
         )
     read = {"max_concurrent_entities": max_concurrent, "strategy": strategy}
     return {k: v for k, v in read.items() if v is not None}
@@ -271,7 +283,9 @@ def _validation(value: object) -> None:
     ctx = "profile.validation"
     hash = yaml_hash(value, ctx)
     if "strict" in hash:
-        raise FloeConfigError(f"{ctx}.strict {NOT_SUPPORTED}")
+        raise FloeConfigError(
+            f"{ctx}.strict {NOT_SUPPORTED}", code="config_not_supported"
+        )
     validate_known_keys(hash, ctx, ())
 
 
@@ -297,9 +311,12 @@ def _parse_doc(doc: object) -> ProfileConfig:
     for key, expected in (("apiVersion", API_VERSION), ("kind", KIND)):
         got = _string(root, key, "profile", True)
         if got != expected:
-            raise FloeConfigError(f'profile.{key}: expected "{expected}", got "{got}"')
+            raise FloeConfigError(
+                f'profile.{key}: expected "{expected}", got "{got}"',
+                code="config_invalid_value",
+            )
     if "metadata" not in root:
-        raise FloeConfigError("profile.metadata is required")
+        raise FloeConfigError("profile.metadata is required", code="config_missing_key")
     name = _metadata(root["metadata"])
     runner: dict[str, object] = {}
     orchestration = None
@@ -309,7 +326,9 @@ def _parse_doc(doc: object) -> ProfileConfig:
         execution = yaml_hash(root["execution"], ctx)
         validate_known_keys(execution, ctx, ("runner", "runners", "orchestration"))
         if "runner" not in execution:
-            raise FloeConfigError(f"{ctx}.runner is required")
+            raise FloeConfigError(
+                f"{ctx}.runner is required", code="config_missing_key"
+            )
         runner = _runner(execution["runner"])
         if "runners" in execution:
             named = yaml_hash(execution["runners"], f"{ctx}.runners")
@@ -317,7 +336,8 @@ def _parse_doc(doc: object) -> ProfileConfig:
                 runner_name = yaml_string(key, f"{ctx}.runners name")
                 if not runner_name.strip() or runner_name in ("default", "local"):
                     raise FloeConfigError(
-                        f"{ctx}.runners: invalid runner name {runner_name!r}"
+                        f"{ctx}.runners: invalid runner name {runner_name!r}",
+                        code="config_invalid_value",
                     )
                 runners[runner_name] = _runner(merge_yaml(execution["runner"], value))
         if "orchestration" in execution:
@@ -367,59 +387,82 @@ def _malformed(value: str) -> str | None:
 def _check_catalogs(catalogs: CatalogsConfig) -> None:
     ctx = "profile.catalogs"
     if not catalogs.definitions:
-        raise FloeConfigError(f"{ctx}.definitions must not be empty")
+        raise FloeConfigError(
+            f"{ctx}.definitions must not be empty", code="config_invalid_value"
+        )
     seen: set[str] = set()
     for d in catalogs.definitions:
         if not d.name.strip():
-            raise FloeConfigError(f"{ctx}.definitions.name must not be empty")
+            raise FloeConfigError(
+                f"{ctx}.definitions.name must not be empty", code="config_invalid_value"
+            )
         if d.name in seen:
-            raise FloeConfigError(f"{ctx}.definitions name={d.name} is duplicated")
+            raise FloeConfigError(
+                f"{ctx}.definitions name={d.name} is duplicated",
+                code="config_duplicate",
+            )
         seen.add(d.name)
     if catalogs.default is not None and catalogs.default not in seen:
         raise FloeConfigError(
-            f"{ctx}.default={catalogs.default} does not match any definition"
+            f"{ctx}.default={catalogs.default} does not match any definition",
+            code="config_unknown_reference",
         )
 
 
 def _check_storages(storages: StoragesConfig) -> None:
     ctx = "profile.storages"
     if not storages.definitions:
-        raise FloeConfigError(f"{ctx}.definitions must not be empty")
+        raise FloeConfigError(
+            f"{ctx}.definitions must not be empty", code="config_invalid_value"
+        )
     seen: set[str] = set()
     for d in storages.definitions:
         # ponytail: adls/gcs requirements are unreachable here; both types are rejected at parse (D1)
         if not d.name.strip():
-            raise FloeConfigError(f"{ctx}.definitions.name must not be empty")
+            raise FloeConfigError(
+                f"{ctx}.definitions.name must not be empty", code="config_invalid_value"
+            )
         if d.name in seen:
-            raise FloeConfigError(f"{ctx}.definitions name={d.name} is duplicated")
+            raise FloeConfigError(
+                f"{ctx}.definitions name={d.name} is duplicated",
+                code="config_duplicate",
+            )
         seen.add(d.name)
         if d.type not in ("local", "s3", "adls", "gcs"):
             raise FloeConfigError(
                 f"{ctx}.definitions name={d.name} type={d.type} is unsupported "
-                "(allowed: local, s3, adls, gcs)"
+                "(allowed: local, s3, adls, gcs)",
+                code="config_invalid_value",
             )
         for field in ("bucket", "region") if d.type == "s3" else ():
             if getattr(d, field) is None:
                 raise FloeConfigError(
-                    f"{ctx}.definitions name={d.name} requires {field} for type s3"
+                    f"{ctx}.definitions name={d.name} requires {field} for type s3",
+                    code="config_missing_key",
                 )
     if storages.default is None:
-        raise FloeConfigError(f"{ctx}.default is required when storages is set")
+        raise FloeConfigError(
+            f"{ctx}.default is required when storages is set", code="config_missing_key"
+        )
     if storages.default not in seen:
         raise FloeConfigError(
-            f"{ctx}.default={storages.default} does not match any definition"
+            f"{ctx}.default={storages.default} does not match any definition",
+            code="config_unknown_reference",
         )
 
 
 def validate_profile(profile: ProfileConfig) -> None:
     ctx = "profile.execution.runner"
     if not profile.name.strip():
-        raise FloeConfigError("profile.metadata.name must not be empty")
+        raise FloeConfigError(
+            "profile.metadata.name must not be empty", code="config_invalid_value"
+        )
     if profile.runner:
         kind = profile.runner["type"]
         if kind not in RUNNERS:
             raise FloeConfigError(
-                f'{ctx}.type: unknown runner "{kind}"; known runners: {", ".join(RUNNERS)}'
+                f'{ctx}.type: unknown runner "{kind}"; known runners: {", ".join(RUNNERS)}',
+                code="config_invalid_value",
             )
         for field in CONTRACT.get(kind, ()):
             key, _, sub = field.partition(".")
@@ -427,13 +470,16 @@ def validate_profile(profile: ProfileConfig) -> None:
             if sub and isinstance(value, dict):
                 value = cast(dict[str, object], value).get(sub)
             if not isinstance(value, str) or not value.strip():
-                raise FloeConfigError(f"{ctx}.{field} is required for {kind}")
+                raise FloeConfigError(
+                    f"{ctx}.{field} is required for {kind}", code="config_missing_key"
+                )
     for name, runner in (profile.runners or {}).items():
         validate_profile(ProfileConfig(name, runner, {}, None, None, None))
     for key, value in profile.variables.items():
         if (placeholder := _malformed(value)) is not None:
             raise FloeConfigError(
-                f'profile variable "{key}" contains malformed placeholder: {placeholder}'
+                f'profile variable "{key}" contains malformed placeholder: {placeholder}',
+                code="config_invalid_value",
             )
     if profile.catalogs is not None:
         _check_catalogs(profile.catalogs)
@@ -462,20 +508,23 @@ def validate_runners(config: RootConfig, profile: ProfileConfig | None) -> None:
         if entity.runner is not None and entity.runner not in declared:
             available = ", ".join(sorted(declared))
             raise FloeConfigError(
-                f"entity {entity.id} runner {entity.runner!r} is not declared; available: {available}"
+                f"entity {entity.id} runner {entity.runner!r} is not declared; available: {available}",
+                code="config_unknown_reference",
             )
 
 
 def _report_under(report: ReportConfig, fixed: ProfileReport) -> ReportConfig:
     if report.storage not in (None, fixed.storage):
         raise FloeConfigError(
-            f"report.storage={report.storage} differs from the profile's report.storage={fixed.storage}"
+            f"report.storage={report.storage} differs from the profile's report.storage={fixed.storage}",
+            code="config_conflict",
         )
     # Windows path rules split on `/` and `\` and see drives, so they also cover POSIX paths
     path = PureWindowsPath(report.path)
     if "://" in report.path or path.anchor or ".." in path.parts:
         raise FloeConfigError(
-            f"report.path must be a relative path under the profile's report prefix (got {report.path})"
+            f"report.path must be a relative path under the profile's report prefix (got {report.path})",
+            code="config_invalid_value",
         )
     path = "/".join(p for p in ((fixed.prefix or "").rstrip("/"), report.path) if p)
     return report.model_copy(update={"path": path, "storage": fixed.storage})
@@ -499,7 +548,10 @@ def read_env_profile(location: str) -> str:
     """`env:NAME`: the profile YAML held in environment variable `NAME`."""
     name = location.removeprefix(ENV_PREFIX)
     if not (text := os.environ.get(name, "")).strip():
-        raise FloeConfigError(f"profile environment variable {name} is unset or empty")
+        raise FloeConfigError(
+            f"profile environment variable {name} is unset or empty",
+            code="config_unknown_reference",
+        )
     return text
 
 
@@ -511,15 +563,20 @@ def _docs(location: str | Path) -> list[object]:
     try:
         return parse_yaml(read_s3(location, "profile").decode())
     except UnicodeDecodeError as e:
-        raise FloeIoError("stream did not contain valid UTF-8") from e
+        raise FloeIoError(
+            "stream did not contain valid UTF-8", code="io_read_error"
+        ) from e
 
 
 def parse_profile(location: str | Path) -> ProfileConfig:
     docs = _docs(location)
     if not docs:
-        raise FloeConfigError("profile YAML is empty")
+        raise FloeConfigError("profile YAML is empty", code="config_invalid_yaml")
     if len(docs) > 1:
-        raise FloeConfigError("profile YAML contains multiple documents; expected one")
+        raise FloeConfigError(
+            "profile YAML contains multiple documents; expected one",
+            code="config_invalid_yaml",
+        )
     profile = _parse_doc(docs[0])
     validate_profile(profile)
     return profile

@@ -36,6 +36,9 @@ ErrorCode = Literal[
 class FloeError(Exception):
     """`code` is a stable snake_case tag for machines; `rule` names the check or reader rule that failed."""
 
+    code: ErrorCode | None
+    rule: str | None
+
     def __init__(
         self,
         *args: object,
