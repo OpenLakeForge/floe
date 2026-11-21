@@ -179,8 +179,8 @@ mode a run lists only the new files, so the output holds just the latest batch: 
 `append` or a merge mode. Either way the claims are settled
 before the next entity starts, which runs as usual (D36).
 
-If a file URI is already in `files` but its size or mtime changed, Floe emits an
-`incremental_file_changed` warning and still skips it. The URI is the identity;
+If a file URI is already in `files` but its size or mtime changed, Floe reports it as
+`skipped` with `skip_reason: already_ingested_changed` and a warning, and still skips it. The URI is the identity;
 Floe does not automatically reprocess changed files.
 
 ## Retries Of An Append
