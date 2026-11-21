@@ -36,6 +36,8 @@ sections:
       - docs/sinks/parquet.md
       - docs/sinks/options.md
       - docs/storages/s3.md
+      - docs/storages/adls.md
+      - docs/storages/gcs.md
   - label: Reference
     items:
       - docs/reference/config.md

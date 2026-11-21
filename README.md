@@ -46,11 +46,11 @@ against a local cache of the table's key columns.
 
 - **Inputs:** CSV · TSV · JSON · Parquet · ORC · Avro · XLSX · XML
 - **Accepted outputs:** Parquet · Apache Iceberg
-- **Storage:** local · S3 (and S3-compatible stores)
+- **Storage:** local · S3 (and S3-compatible stores) · ADLS · GCS
 - **Catalogs:** Iceberg REST (Polaris) · AWS Glue
 
-Floe 0.8 dropped the Delta, DuckDB and fixed-width formats, the Unity
-catalog, and ADLS and GCS storage. The Rust implementation that supported them
+Floe 0.8 dropped the DuckDB and fixed-width formats and the Unity
+catalog (Delta, ADLS and GCS are back). The Rust implementation that supported them
 (0.7 and earlier) is archived at
 [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
 
@@ -67,6 +67,7 @@ catalog, and ADLS and GCS storage. The Rust implementation that supported them
 | Write modes: `overwrite`, `append`, `merge_scd1`, `merge_scd2` | [docs/concepts/write-modes.md](docs/concepts/write-modes.md) |
 | Parquet and Iceberg sinks | [docs/sinks/parquet.md](docs/sinks/parquet.md), [docs/sinks/iceberg.md](docs/sinks/iceberg.md) |
 | S3 storage | [docs/storages/s3.md](docs/storages/s3.md) |
+| ADLS and GCS storage | [docs/storages/adls.md](docs/storages/adls.md), [docs/storages/gcs.md](docs/storages/gcs.md) |
 | Incremental file state | [docs/concepts/incremental.md](docs/concepts/incremental.md) |
 | Profiles and variables | [docs/guides/profiles.md](docs/guides/profiles.md), [docs/guides/variables.md](docs/guides/variables.md) |
 | PII masking | [docs/guides/pii.md](docs/guides/pii.md) |
