@@ -44,7 +44,7 @@ MISMATCH_MISSING = ("reject_file", "fill_nulls")
 MISMATCH_EXTRA = ("reject_file", "ignore")
 # D10 (#619): `time` is not supported.
 COLUMN_TYPES = ("string", "number", "boolean", "datetime", "date")
-SINK_FORMATS = ("parquet", "iceberg")
+SINK_FORMATS = ("parquet", "iceberg", "delta")
 PARQUET_COMPRESSIONS = ("snappy", "gzip", "zstd", "uncompressed")
 PARTITION_TRANSFORMS = ("identity", "year", "month", "day", "hour", "bucket")  # D12
 PARTITION_TOKENS = ("yyyy", "MM", "dd", "HH", "batch")  # D28
@@ -53,6 +53,7 @@ PARTITION_TOKEN = re.compile(r"\{([^{}]*)\}")
 SINK_WRITE_MODES: dict[str, tuple[WriteMode, ...]] = {
     "parquet": ("overwrite", "append"),
     "iceberg": ("overwrite", "append", "merge_scd1", "merge_scd2"),
+    "delta": ("overwrite", "append"),
 }
 SCD2_DEFAULTS = {
     "current_flag_column": "__floe_is_current",
@@ -260,8 +261,18 @@ def _check_partitioning(entity: EntityConfig) -> None:
             "sink.accepted.partition_by and sink.accepted.partition_spec are mutually exclusive",
             code="config_conflict",
         )
-    # ponytail: `partition_by` is Delta-only (D1), so its per-column checks are unreachable.
-    if accepted.partition_by is not None:
+    if accepted.partition_by is not None and accepted.format == "delta":
+        names = {c.name for c in entity.schema_.columns}
+        for index, column in enumerate(accepted.partition_by):
+            if column not in names:
+                raise _fail(
+                    entity,
+                    f"sink.accepted.partition_by[{index}]={column} references unknown schema column",
+                    code="config_unknown_reference",
+                )
+            if accepted.partition_by.count(column) > 1:
+                raise _fail(entity, f"sink.accepted.partition_by has duplicate column {column}", code="config_duplicate")  # fmt: skip
+    elif accepted.partition_by is not None:
         raise _fail(
             entity,
             "sink.accepted.partition_by is not supported in 0.8; "
@@ -412,12 +423,16 @@ def _check_iceberg(
 
 def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
     sink, accepted = entity.sink, entity.sink.accepted
-    if accepted.format in ("delta", "duckdb"):  # D1 (#619): reported first
+    if accepted.format == "duckdb":  # D1 (#619): reported first
         raise _fail(
             entity,
             f"sink.accepted.format={accepted.format} is not supported in 0.8",
             code="config_not_supported",
         )
+    if accepted.format == "delta":
+        if accepted.delta is not None:  # the Unity catalog block opens in #1266
+            raise _fail(entity, "sink.accepted.delta is not supported yet", code="config_not_supported")  # fmt: skip
+        require("delta", "deltalake", f"entity.name={entity.name} sink.accepted.format=delta")  # fmt: skip
     if accepted.format not in SINK_FORMATS:
         raise _fail(entity, f"sink.accepted.format={accepted.format} is unsupported", code="config_invalid_value")  # fmt: skip
     options = accepted.options

@@ -19,11 +19,6 @@ PREFIX = {
 # Files with a raise site that has no `code=` yet. Each of #1260's PRs 2-7 removes its files;
 # the last one deletes this set and the `uncoded == ALLOWLIST` check.
 ALLOWLIST = {
-    "iceberg/catalog.py",
-    "iceberg/compact.py",
-    "iceberg/merge.py",
-    "iceberg/sink.py",
-    "iceberg/write.py",
     "pii.py",
     "run/__init__.py",
     "run/entity.py",

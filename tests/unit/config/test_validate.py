@@ -262,8 +262,28 @@ def test_empty_iceberg_catalog_is_not_defaulted(tmp_path: Path) -> None:
     ("sink", "message"),
     [
         (
-            "{accepted: {format: delta, path: out}}",
-            "sink.accepted.format=delta is not supported in 0.8",
+            "{accepted: {format: delta, path: out, partition_by: [nope]}}",
+            "sink.accepted.partition_by[0]=nope references unknown schema column",
+        ),
+        (
+            "{accepted: {format: delta, path: out, partition_by: [id, id]}}",
+            "sink.accepted.partition_by has duplicate column id",
+        ),
+        (
+            "{accepted: {format: delta, path: out, partition_spec: [{column: id}]}}",
+            "sink.accepted.partition_spec is only supported for sink.accepted.format=iceberg",
+        ),
+        (
+            "{accepted: {format: delta, path: out, partition_by: [id], partition_spec: [{column: id}]}}",
+            "sink.accepted.partition_by and sink.accepted.partition_spec are mutually exclusive",
+        ),
+        (
+            "{write_mode: merge_scd2, accepted: {format: delta, path: out}}",
+            "sink.write_mode=merge_scd2 is not supported by sink.accepted.format=delta",
+        ),
+        (
+            "{accepted: {format: delta, path: out, delta: {table: t}}}",
+            "sink.accepted.delta is not supported yet",
         ),
         (
             "{accepted: {format: duckdb, duckdb: {connection: 'md:x'}}}",
@@ -313,6 +333,18 @@ def test_sink_errors(tmp_path: Path, sink: str, message: str) -> None:
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, f"{{{COLS}, primary_key: [id]}}", sink=sink)
     assert str(err.value) == f"entity.name=orders {message}"
+
+
+def test_delta_accepted(tmp_path: Path) -> None:
+    sink = "{accepted: {format: delta, path: out, partition_by: [id]}}"
+    check(tmp_path, f"{{{COLS}}}", sink=sink)
+
+
+def test_delta_rejects_add_columns(tmp_path: Path) -> None:
+    schema = f"{{{COLS}, schema_evolution: {{mode: add_columns}}}}"
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, schema, sink="{accepted: {format: delta, path: out}}")
+    assert str(err.value) == "entity.name=orders schema.schema_evolution.mode=add_columns requires sink.accepted.format=iceberg"  # fmt: skip
 
 
 def test_scd2_column_collides_with_normalised_schema_name(tmp_path: Path) -> None:

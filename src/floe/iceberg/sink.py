@@ -64,11 +64,11 @@ def resolve_target(storages: StoragesConfig | None, catalogs: CatalogsConfig | N
     )  # a rejected sink needs no `iceberg` block, only a default catalog
     if options is None:
         # ponytail: catalog-less filesystem tables are unsupported; PyIceberg has no such catalog without sqlalchemy
-        raise FloeRunError(f"entity.name={entity.name} sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8")  # fmt: skip
+        raise FloeRunError(f"entity.name={entity.name} sink.accepted.format=iceberg requires sink.accepted.iceberg with a catalog in 0.8", code="run_invalid_setup")  # fmt: skip
     name = options.catalog or (catalogs and catalogs.default)
     catalog = next((c for c in (catalogs.definitions if catalogs else []) if c.name == name), None)  # fmt: skip
     if catalog is None:  # validated; kept for callers that skip validation
-        raise FloeConfigError(f"entity.name={entity.name} sink.{kind}.iceberg.catalog references unknown catalog {name}")  # fmt: skip
+        raise FloeConfigError(f"entity.name={entity.name} sink.{kind}.iceberg.catalog references unknown catalog {name}", code="config_unknown_reference")  # fmt: skip
     # what `{domain}` in the database stands for (validated: set when the database has the token)
     scope = options.namespace or entity.domain
     database = catalog.database
@@ -121,7 +121,7 @@ def _reader(entity: EntityConfig, frames: Iterator[pl.DataFrame], names: list[st
     def checked(df: pl.DataFrame) -> pl.DataFrame:
         for name, c in zip(names, columns, strict=True):
             if c.nullable is False and df[name].null_count():
-                raise FloeRunError(f"iceberg write rejected nulls for non-nullable column {name}")  # fmt: skip
+                raise FloeRunError(f"iceberg write rejected nulls for non-nullable column {name}", code="run_invalid_input")  # fmt: skip
         return df
 
     first = checked(
@@ -182,7 +182,7 @@ def write_iceberg(
             except (NoSuchTableError, NoSuchNamespaceError):
                 existing = None
         if existing is not None and (added := [k for k in key if k not in existing]):
-            raise FloeRunError(f"entity.name={entity.name} iceberg schema evolution failed: merge key columns cannot be added: {', '.join(added)}")  # fmt: skip
+            raise FloeRunError(f"entity.name={entity.name} iceberg schema evolution failed: merge key columns cannot be added: {', '.join(added)}", code="run_schema_evolution")  # fmt: skip
     table, added = ensure_table(
         catalog, target.namespace, target.table, schema, entity.name, target.location.removeprefix("local://"),
         partition_fields(entity), evolution.mode if evolution else "strict", target.catalog.create_database_if_missing,

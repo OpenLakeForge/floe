@@ -1,4 +1,1 @@
-{
-  "ok": false,
-  "error": "entity.name=orders sink.accepted.format=delta is not supported in 0.8"
-}
+{"ok": true}
