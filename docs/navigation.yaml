@@ -42,4 +42,5 @@ sections:
       - docs/reference/cli.md
       - docs/reference/report.md
       - docs/reference/logging.md
+      - docs/reference/errors.md
       - docs/reference/support-matrix.md

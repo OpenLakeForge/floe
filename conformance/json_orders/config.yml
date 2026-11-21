@@ -26,8 +26,9 @@ entities:
       normalize_columns:
         enabled: true
         strategy: snake_case
+      unique_keys: [[order_id]]
       columns:
-        - { name: order_id, source: order.id, type: string, nullable: false, unique: true }
+        - { name: order_id, source: order.id, type: string, nullable: false }
         - { name: customer_id, source: customer.id, type: string, nullable: false }
         - { name: order_total, source: totals.amount, type: number, nullable: false }
         - { name: currency, source: totals.currency, type: string }

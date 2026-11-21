@@ -143,15 +143,15 @@ report:
       enabled: true
       strategy: "snake_case"   # rename source columns to snake_case automatically
 
+    unique_keys: [["customer_id"], ["email"]]   # duplicates across all accepted rows → rejected
+
     columns:
       - name: "customer_id"
         type: "string"
         nullable: false
-        unique: true            # duplicate customer_ids across all accepted rows → rejected
       - name: "email"
         type: "string"
         nullable: true
-        unique: true
 ```
 
 ### Entity: `orders`

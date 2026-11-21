@@ -190,7 +190,6 @@ class Plan:
     required: list[str]
     tracker: UniqueTracker
     pii_map: dict[str, str]
-    rejected_writes: int = 0
     sinks: dict[str, str] = field(default_factory=lambda: {"rejected": "not_started", "accepted": "not_started"})  # fmt: skip  # #1155: `run()` passes its own, to report a failure
     spent: dict[str, float] = field(
         default_factory=dict[str, float]
@@ -402,10 +401,6 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
         ]  # one commit for the run
         rejected_path = _rejected(plan, "reject")[0].rstrip("/")
     elif bad_total and severity == "reject":
-        mode = entity.sink.write_mode
-        if mode == "overwrite" and plan.rejected_writes:
-            mode = "append"
-        plan.rejected_writes += 1
         target, client = _rejected(plan, "reject")
         key = input_hash(
             entity, [file]
@@ -414,9 +409,11 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
             if _parquet_rejected(plan):
                 frames = (output(plan, unspill(p)).with_columns(source_columns(plan, uri)) for p in spilled_rejected)  # fmt: skip
                 written = f"{target.rstrip('/')}/rows"  # apart from the raw copies in the rejected directory; a file can have many parts  # fmt: skip
-                write_rejected_parquet(frames, client, written, mode, key)
+                write_rejected_parquet(
+                    frames, client, written, "append", key
+                )  # always append, whatever the write_mode (#1254)
             else:
-                written = write_rejected(output(plan, pl.concat(rejected)), client, target, mode, key)  # fmt: skip
+                written = write_rejected(output(plan, pl.concat(rejected)), client, target, "append", key)  # fmt: skip
         rejected_path = written.removeprefix("local://")
     elif bad_total and severity == "abort":
         rejected_path = _copy_raw(plan, path, "abort", file.source_name)

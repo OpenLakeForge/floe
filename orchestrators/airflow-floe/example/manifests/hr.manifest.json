@@ -133,8 +133,7 @@
           {
             "name": "employee_id",
             "column_type": "string",
-            "nullable": false,
-            "unique": true
+            "nullable": false
           },
           {
             "name": "start_date",
@@ -148,7 +147,11 @@
           }
         ],
         "primary_key": [],
-        "unique_keys": []
+        "unique_keys": [
+          [
+            "employee_id"
+          ]
+        ]
       }
     }
   ],

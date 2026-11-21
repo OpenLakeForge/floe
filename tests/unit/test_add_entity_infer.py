@@ -227,3 +227,19 @@ def test_input_errors_match_rust(
     with pytest.raises(error) as e:
         infer_entity(input, fmt, name, None, None, None)
     assert str(e.value) == message.format(cwd=tmp_path)
+
+
+def test_errors_carry_codes(tmp_path: Path) -> None:
+    empty = tmp_path / "empty.json"
+    empty.write_text("")
+    with pytest.raises(FloeConfigError) as e:
+        infer_entity(str(empty), None, None, None, None, None)
+    assert e.value.code == "config_invalid_value"
+    csv = tmp_path / "x.csv"
+    csv.write_text("a\n1\n")
+    with pytest.raises(FloeConfigError) as e:
+        infer_entity(str(csv), "xml", None, None, None, None)
+    assert e.value.code == "config_invalid_value"
+    with pytest.raises(FloeIoError) as io:
+        infer_entity(str(tmp_path / "gone.csv"), None, None, None, None, None)
+    assert io.value.code == "io_read_error"

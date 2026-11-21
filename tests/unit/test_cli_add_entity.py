@@ -143,8 +143,8 @@ def test_add_entity_writes_included_domain_sibling_and_omits_defaults(
         f"  path: {input}\n"
         '  options:\n    separator: ","\nsink:\n  rejected:\n    format: csv\n'
         "    path: out/rejected/orders/\nschema:\n  columns:\n"
-        "    - name: id\n      source: id\n      type: number\n      nullable: false\n      unique: false\n"
-        "    - name: total\n      source: total\n      type: number\n      nullable: false\n      unique: false\n"
+        "    - name: id\n      source: id\n      type: number\n      nullable: false\n"
+        "    - name: total\n      source: total\n      type: number\n      nullable: false\n"
     )
     assert floe("validate", "-c", config)[0] == 0
     [entity] = entities(config)
@@ -592,12 +592,10 @@ entities:
           source: Id
           type: number
           nullable: false
-          unique: false
         - name: Price
           source: Price
           type: number
           nullable: false
-          unique: false
 
 """
 
@@ -623,7 +621,7 @@ def test_add_entity_sniffs_the_csv_separator(
     )
     assert add(floe, Path("cfg.yml"), "cust.csv")[0] == 0
     columns = "".join(
-        f"        - name: {n}\n          source: {n}\n          type: {t}\n          nullable: {u}\n          unique: false\n"
+        f"        - name: {n}\n          source: {n}\n          type: {t}\n          nullable: {u}\n"
         for n, t, u in (
             ("id", "number", "false"),
             ("name", "string", "true"),
@@ -675,7 +673,7 @@ def test_add_entity_maps_parquet_types_as_rust_does(
     }
     types |= dict.fromkeys(("l", "st", "dur", "cat", "nul"), "string")
     columns = "".join(
-        f"        - name: {n}\n          source: {n}\n          type: {t}\n          nullable: true\n          unique: false\n"
+        f"        - name: {n}\n          source: {n}\n          type: {t}\n          nullable: true\n"
         for n, t in types.items()
     )
     assert code == 0
@@ -727,7 +725,7 @@ def test_add_entity_infers_json_top_level_keys_only(floe: Run, tmp_path: Path) -
 def json_columns(*cols: tuple[str, str, bool]) -> str:
     return "".join(
         f"        - name: {n}\n          source: {n}\n          type: {t}\n"
-        f"          nullable: {str(u).lower()}\n          unique: false\n"
+        f"          nullable: {str(u).lower()}\n"
         for n, t, u in cols
     )
 

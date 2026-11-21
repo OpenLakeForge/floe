@@ -54,11 +54,11 @@ entities:
       schema_evolution:
         mode: "strict"
         on_incompatible: "fail"
+      unique_keys: [["customer_id"]]
       columns:
         - name: "customer_id"
           type: "string"
           nullable: false
-          unique: true
 ```
 
 ## Top-level fields
@@ -372,6 +372,12 @@ state file shape, and CAS behavior.
   - In archive mode, an input is archived under its partition path:
     `<archive>/<entity>/yyyy/MM/dd/<batch>/<stem>__run-…__src-….<ext>` (D29). A `--full-refresh`
     reads the archive recursively and derives the same date and batch from those paths.
+    On object stores (S3), each run also writes one index, `<archive>/<entity>/.floe/source_mtime/<run_id>.json`,
+    before it archives: a JSON object from each archived file's path under `<entity>/` to the source's modification
+    time. A full refresh merges the indexes to order same-day batches (#939, #1271), since the copy's own time is its
+    archive time. Archives from before the index keep the time in the copy's object metadata `floe-source-mtime`,
+    which is still read for a file the indexes do not list. A local archive has no index: the copy's own nanosecond
+    modification time already follows the load order.
   - With `incremental_mode: file` (D30), the state also keeps a **watermark**: the latest
     partition date ingested. A run lists only from `watermark - lookback_days` (default `1`): S3
     starts the listing after the previous day's prefix, a local source skips older directories. Inside
@@ -602,7 +608,7 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - Array of unique constraints, each constraint being an array of schema column names.
   - Supports single-column and multi-column uniqueness:
     - `unique_keys: [["email"], ["id","country_code"]]`
-  - If `unique_keys` is present, legacy `columns[].unique` flags are ignored.
+  - Migration: the per-column `unique: true` flag was removed in 1.0 and now fails validation; replace each flagged column `c` with an entry `["c"]` here.
   - Null semantics: a row is ignored for a constraint if any key component is null.
 - `columns` (required)
   - Array of column definitions.
@@ -620,8 +626,6 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - `type` (required): logical type. Accepted values are case-insensitive and
     normalized by removing `-` and `_`.
   - `nullable` (optional): default `true`.
-  - `unique` (optional, legacy): default `false`.
-    - Legacy single-column unique. Prefer `schema.unique_keys`.
 
 ## Supported column types
 

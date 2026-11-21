@@ -118,11 +118,17 @@ def snapshot(work: Path) -> Snapshot:
         for name, values in (("__floe_run_id", ["<run_id>"] * n), ("__floe_source_uri", [normalize(v, root) for v in table["__floe_source_uri"].to_pylist()])):  # fmt: skip
             table = table.set_column(table.schema.get_field_index(name), name, pa.array(values, pa.string()))  # fmt: skip
         out[f"rejected/{d.relative_to(work / 'out/rejected').as_posix()}.parquet"] = table  # fmt: skip
-    for path in sorted(work.glob("out/rejected/**/*.csv")):
+    same_name: dict[
+        str, list[str]
+    ] = {}  # rejected output appends: a run can leave several keyed parts in one directory
+    for path in work.glob("out/rejected/**/*.csv"):
         key = f"rejected/{UUID_PART.sub('part-UUID', path.relative_to(work / 'out/rejected').as_posix())}"
-        if key in out:
-            raise SystemExit(f"{key}: two rejected files with the same normalized name")
-        out[key] = path.read_text()
+        same_name.setdefault(key, []).append(path.read_text())
+    for key, texts in sorted(same_name.items()):
+        for i, text in enumerate(
+            sorted(texts)
+        ):  # by content: the part names are not stable
+            out[key if i == 0 else key.replace(".csv", f"-{i + 1}.csv")] = text
     return out
 
 

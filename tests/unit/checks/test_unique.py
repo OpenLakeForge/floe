@@ -44,7 +44,7 @@ def run_case() -> tuple[list[pl.DataFrame], UniqueTracker]:
 
 def test_unique_pii_case_matches_rust_rejected_rows() -> None:
     rejected, _ = run_case()
-    for frame, name in zip(rejected, ("part-00000.csv", "part-UUID.csv"), strict=True):
+    for frame, name in zip(rejected, ("part-UUID.csv", "part-UUID-2.csv"), strict=True):
         expected = pl.read_csv(
             CASE / "expected" / "rejected" / "orders" / name, infer_schema=False
         )
@@ -91,12 +91,8 @@ def test_null_keys_are_skipped_and_ties_sort_on_the_typed_key() -> None:
 
 
 def test_resolve_unique_keys_matches_rust() -> None:
-    assert resolve_unique_keys(None, [" a ", "b"], [" b", ""]) == [
-        ["a"],
-        ["b"],
-        ["b", ""],
-    ]
-    assert resolve_unique_keys([["a", "b"], [" a", "b "], []], ["z"], ["a", "b"]) == [
+    assert resolve_unique_keys(None, [" b", ""]) == [["b", ""]]
+    assert resolve_unique_keys([["a", "b"], [" a", "b "], []], ["a", "b"]) == [
         ["a", "b"]
     ]
 

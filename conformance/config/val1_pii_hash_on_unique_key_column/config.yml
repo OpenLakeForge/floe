@@ -14,11 +14,10 @@ entities:
     columns:
     - name: id
       type: string
-      unique: true
     - name: amt
       type: number
     unique_keys:
-    - - amt
+    - - id
   pii:
     columns:
     - name: id

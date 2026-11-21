@@ -164,7 +164,9 @@ def test_append_runs_reject_keys_already_in_the_sink(tmp_path: Path) -> None:
     config = CONFIG.format(severity="reject", mismatch="").replace(
         "    sink:\n", "    sink:\n      write_mode: append\n"
     )
-    config = config.replace("type: int64, nullable: false", "type: int64, unique: true")
+    config = config.replace(
+        "      columns:\n", "      unique_keys: [[id]]\n      columns:\n"
+    )
     (tmp_path / "in").mkdir()
     (tmp_path / "config.yml").write_text(config)
     entity = parse_config(tmp_path / "config.yml").entities[0]
@@ -185,7 +187,9 @@ def test_append_seeds_only_the_history_keys_a_chunk_holds(
     config = CONFIG.format(severity="reject", mismatch="").replace(
         "    sink:\n", "    sink:\n      write_mode: append\n"
     )
-    config = config.replace("type: int64, nullable: false", "type: int64, unique: true")
+    config = config.replace(
+        "      columns:\n", "      unique_keys: [[id]]\n      columns:\n"
+    )
     (tmp_path / "in").mkdir()
     (tmp_path / "config.yml").write_text(config)
     entity = parse_config(tmp_path / "config.yml").entities[0]
@@ -214,7 +218,7 @@ def test_append_seeds_only_the_history_keys_a_chunk_holds(
 def test_append_checks_history_for_a_unique_column_named_like_a_pattern(tmp_path: Path) -> None:  # fmt: skip
     """#1057 review: `pl.col("*")` expanded every cached column; the name is selected literally."""
     config = CONFIG.format(severity="reject", mismatch="").replace("    sink:\n", "    sink:\n      write_mode: append\n")  # fmt: skip
-    config = config.replace("{name: id, type: int64, nullable: false}", '{name: "*", source: id, type: int64, unique: true}')  # fmt: skip
+    config = config.replace("{name: id, type: int64, nullable: false}", '{name: "*", source: id, type: int64}').replace("      columns:\n", '      unique_keys: [["*"]]\n      columns:\n')  # fmt: skip
     (tmp_path / "in").mkdir()
     (tmp_path / "config.yml").write_text(config)
     entity = parse_config(tmp_path / "config.yml").entities[0]
@@ -229,7 +233,7 @@ def test_append_fails_when_a_sink_part_lacks_a_unique_key_column(tmp_path: Path)
     config = CONFIG.format(severity="reject", mismatch="").replace("    sink:\n", "    sink:\n      write_mode: append\n")  # fmt: skip
     (tmp_path / "in").mkdir()
     (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n")
-    (tmp_path / "config.yml").write_text(config.replace("type: int64, nullable: false", "type: int64, unique: true"))  # fmt: skip
+    (tmp_path / "config.yml").write_text(config.replace("      columns:\n", "      unique_keys: [[id]]\n      columns:\n"))  # fmt: skip
     entity = parse_config(tmp_path / "config.yml").entities[0]
     run_entity(entity, tmp_path, "0.3")
     (part,) = (tmp_path / "out" / "accepted").glob("part-*.parquet")
@@ -250,7 +254,9 @@ def test_an_unreadable_file_leaves_no_unique_keys_behind(
     config = config.replace(
         'options: {header: true, separator: ","}', "options: {row_tag: item}"
     )
-    config = config.replace("type: int64, nullable: false", "type: int64, unique: true")
+    config = config.replace(
+        "      columns:\n", "      unique_keys: [[id]]\n      columns:\n"
+    )
     (tmp_path / "in").mkdir()
     (tmp_path / "config.yml").write_text(config)
     # the parser sees the rows of the first 64 KiB block before it meets the damage after them
@@ -281,8 +287,8 @@ def test_primary_key_names_are_trimmed_before_they_become_required(
 
 def test_unique_samples_use_the_schema_column_names(tmp_path: Path) -> None:
     config = CONFIG.format(severity="reject", mismatch="").replace(
-        "{name: id, type: int64, nullable: false}",
-        "{name: id, source: external_id, type: int64, unique: true}",
+        "      columns:\n        - {name: id, type: int64, nullable: false}",
+        "      unique_keys: [[id]]\n      columns:\n        - {name: id, source: external_id, type: int64}",
     )
     (tmp_path / "in").mkdir()
     (tmp_path / "in" / "orders.csv").write_text("external_id,name\n1,a\n1,b\n")
@@ -672,7 +678,7 @@ def test_json_late_key_and_late_errors_are_the_same_in_every_chunking(
 PII_CONFIG = CONFIG.replace(
     "    schema:\n",
     "    pii: {{columns: [{{name: name, strategy: {strategy}}}]}}\n    schema:\n",
-).replace("{{name: id, type: int64, nullable: false}}", "{{name: id, type: int64, unique: true}}")  # fmt: skip
+).replace("      columns:\n", "      unique_keys: [[id]]\n      columns:\n")  # fmt: skip
 
 
 def _rejected_csv(tmp_path: Path) -> pl.DataFrame:
@@ -733,8 +739,7 @@ def test_rejected_row_indices_follow_the_file_across_chunks(
 ) -> None:
     """#1152: null, cast and unique failures land on the same whole-file rows in any chunking."""
     config = CONFIG.format(severity="reject", mismatch="").replace(
-        "{name: id, type: int64, nullable: false}",
-        "{name: id, type: int64, nullable: false, unique: true}",
+        "      columns:\n", "      unique_keys: [[id]]\n      columns:\n"
     )
     (tmp_path / "in").mkdir()
     (tmp_path / "config.yml").write_text(config)
@@ -788,7 +793,7 @@ def _run_pq(tmp_path: Path, text: str, config: str = PQ_CONFIG, **fmt: str) -> A
 def test_1154_rejected_parquet_holds_raw_values_and_metadata(tmp_path: Path) -> None:
     config = (
         PQ_CONFIG.replace("{{name: name, type: string}}", "{{name: amount, type: 'decimal(10,2)'}}")
-        .replace("{{name: id, type: int64, nullable: false}}", "{{name: id, type: int64, nullable: false, unique: true}}")
+        .replace("      columns:\n", "      unique_keys: [[id]]\n      columns:\n")
         .replace("        - {{name: amount", "        - {{name: day, type: date}}\n        - {{name: amount")
     )  # fmt: skip
     report = _run_pq(tmp_path, "id,day,amount\n1,2024-01-01,1.50\n2,2024-13-45,abc\n1,2024-01-02,2.00\n,2024-01-03,3.00\n", config)  # fmt: skip
@@ -891,7 +896,8 @@ def test_1166_raw_copies_and_row_parts_do_not_overwrite_each_other(tmp_path: Pat
     files = {Path(f["input_file"]).name: f["output"]["rejected_path"] for f in run_entity(entity, tmp_path, "0.3").report["files"]}  # fmt: skip
     rejected = tmp_path / "out" / "rejected"
     assert pl.read_parquet(rejected / "part-00000.parquet")["id"].to_list() == [1]
-    assert pl.read_parquet(rejected / "rows" / "part-00000.parquet")["id"].to_list() == ["x"]  # fmt: skip
+    [row_part] = (rejected / "rows").glob("part-*.parquet")
+    assert pl.read_parquet(row_part)["id"].to_list() == ["x"]
     assert files == {"part-00000.parquet": str(rejected / "part-00000.parquet"), "z.parquet": str(rejected / "rows")}  # fmt: skip
 
 

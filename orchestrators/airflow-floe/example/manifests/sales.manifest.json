@@ -133,8 +133,7 @@
           {
             "name": "order_id",
             "column_type": "string",
-            "nullable": false,
-            "unique": true
+            "nullable": false
           },
           {
             "name": "created_at",
@@ -148,7 +147,11 @@
           }
         ],
         "primary_key": [],
-        "unique_keys": []
+        "unique_keys": [
+          [
+            "order_id"
+          ]
+        ]
       }
     }
   ],

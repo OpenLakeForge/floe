@@ -25,6 +25,9 @@ VOLATILE = {
     "spec_version",
     "version",
 }
+PART_NAME = re.compile(
+    r"part-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)  # a keyed part, named from the file's size and mtime
 ARCHIVE_NAME = re.compile(
     r"__run-.+?__src-[0-9a-f]{16}"
 )  # hashes the absolute source URI
@@ -42,7 +45,7 @@ def _mask(value: Any, root: str) -> Any:
     if isinstance(value, list):
         return [_mask(v, root) for v in cast(list[Any], value)]
     if isinstance(value, str):
-        return ARCHIVE_NAME.sub("__run-<id>", value.replace(root, "<ROOT>"))
+        return PART_NAME.sub("part-<uuid>", ARCHIVE_NAME.sub("__run-<id>", value.replace(root, "<ROOT>")))  # fmt: skip
     return value
 
 
@@ -163,7 +166,10 @@ def test_events_and_output_match_the_config_run(
         timing = re.compile(
             r'((?:ts_ms|elapsed_ms|report_write_ms)(?:":|=))\d+|("timings_ms":)\{[^}]*\}'
         )
-        return code, timing.sub(r"\1\2T", out), timing.sub(r"\1\2T", err)
+        out, err = (
+            PART_NAME.sub("part-<uuid>", timing.sub(r"\1\2T", x)) for x in (out, err)
+        )
+        return code, out, err
 
     by_config = copy_case(case, tmp_path / "c")
     expected = console(by_config, "-c", "config.yml")
@@ -606,6 +612,7 @@ def test_1153_domain_default_rejected_parquet_survives_the_manifest(
         ({"incremental_mode": "row"}, "incremental_mode=row is not supported"),
         ({"trim": True}, "schema.columns.trim is not supported"),
         ({"width": 3}, "schema.columns.width is not supported"),
+        ({"unique": True}, "schema.columns.unique is not supported (see CHANGELOG); use schema.unique_keys"),
         ({"merge": {"compare_columns": ["id"]}}, "compare_columns with sink.write_mode=merge_scd1 is not supported"),
     ],
 )  # fmt: skip
@@ -615,7 +622,7 @@ def test_1009_a_manifest_carrying_a_refused_option_fails_before_the_run(
     path = manifest(tmp_path, monkeypatch, QUALIFIED)
     doc = json.loads(path.read_text())
     entity = doc["entities"][0]
-    if "trim" in edit or "width" in edit:
+    if "trim" in edit or "width" in edit or "unique" in edit:
         entity["schema"]["columns"][0].update(edit)
     elif "merge" in edit:
         entity["write_mode"] = "merge_scd1"
@@ -648,3 +655,20 @@ def test_a_manifest_run_enforces_max_rejection_rate(
     assert load_manifest("m.json")[1][0].policy.max_rejection_rate == 0.25
     assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 2
     assert list((work / "out/accepted/orders").glob("*.parquet"))
+
+
+def test_manifest_errors_carry_codes(tmp_path: Path) -> None:
+    from floe.errors import FloeConfigError, FloeIoError
+    from floe.manifest_run import load_manifest
+
+    bad = tmp_path / "m.json"
+    bad.write_text("{}")
+    with pytest.raises(FloeConfigError) as e:
+        load_manifest(bad)
+    assert e.value.code == "config_invalid_value"
+    with pytest.raises(FloeConfigError) as e:
+        load_manifest("gs://b/m.json")
+    assert e.value.code == "config_not_supported"
+    with pytest.raises(FloeIoError) as io:
+        load_manifest(tmp_path / "gone.json")
+    assert io.value.code == "io_read_error"

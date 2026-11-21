@@ -53,11 +53,11 @@ entities:
     policy:
       severity: reject     # reject the bad rows, keep the good ones
     schema:
+      unique_keys: [[order_id]]   # no duplicates
       columns:
         - name: order_id
           type: string
           nullable: false   # required
-          unique: true      # no duplicates
         - name: amount
           type: "decimal(10,2)"
 ```

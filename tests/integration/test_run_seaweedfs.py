@@ -7,6 +7,7 @@ import io
 import json
 import os
 import threading
+import time
 import uuid
 from datetime import date
 from pathlib import Path
@@ -168,3 +169,39 @@ def test_1102_more_inputs_than_the_prefetch_window_are_each_ingested_once(
         f"s3://{BUCKET}/{prefix}/in/f{i:02}.csv" for i in range(count)
     ]
     assert not [t for t in threading.enumerate() if t.name.startswith("floe-prefetch")]
+
+
+def test_1271_the_archive_run_index_orders_a_full_refresh_on_real_s3(
+    s3: S3Client, tmp_path: Path
+) -> None:
+    """#1271: the per-run source mtime index is written next to the archive and replays same-day batches in source order.
+
+    Batch `ff00` is uploaded first (older source mtime) but sorts after `a1b2`. The archive copies of one run usually
+    share a `LastModified` second, so only the index keeps `ff00` first, and its row wins the unique key.
+    """
+    prefix = f"it-{uuid.uuid4().hex}"
+    s3.write(s3.resolve_uri(f"{prefix}/in/2026/10/24/ff00/x.csv"), b"id,v\n1,old\n")
+    time.sleep(1.1)  # S3 `LastModified` is to the second
+    s3.write(s3.resolve_uri(f"{prefix}/in/2026/10/24/a1b2/y.csv"), b"id,v\n1,new\n")
+    partitioning = 'partitioning: {{pattern: "{{yyyy}}/{{MM}}/{{dd}}/{{batch}}", date_column: day}}, '  # fmt: skip
+    config = tmp_path / "config.yml"
+    config.write_text(
+        CONFIG.replace("incremental_mode: file", "incremental_mode: archive")
+        .replace("storage: lake, options:", f"storage: lake, {partitioning}options:")
+        .replace("      accepted:", "      archive: {{path: archive/, storage: lake}}\n      rejected: {{format: csv, path: out/rejected, storage: lake}}\n      accepted:")
+        .replace("        - {{name: id, type: int64}}\n", "        - {{name: id, type: int64}}\n        - {{name: v, type: string}}\n      unique_keys: [[id]]\n")
+        .format(bucket=BUCKET, endpoint=os.environ["FLOE_S3_ENDPOINT"], prefix=prefix)
+    )  # fmt: skip
+    # the second batch repeats key 1, so one row is rejected
+    assert run(config, parse_config(config), run_id="r1").summary["run"]["status"] in ("success", "rejected")  # fmt: skip
+    stored = s3.read(s3.resolve_uri(f"{prefix}/archive/orders/.floe/source_mtime/r1.json"))  # fmt: skip
+    assert stored is not None
+    index = json.loads(stored.body)
+    assert sorted(k.split("/")[3] for k in index) == ["a1b2", "ff00"]
+    assert index[next(k for k in index if "/ff00/" in k)] < index[next(k for k in index if "/a1b2/" in k)]  # fmt: skip
+    out = run(config, parse_config(config), run_id="r2", full_refresh=True)
+    assert out.summary["run"]["status"] in ("success", "rejected")
+    report = s3.read(s3.resolve_uri(f"{prefix}/runs/d/run_r2/d/orders/run.json"))
+    assert report is not None
+    loaded = [f["input_file"].split("/")[-2] for f in json.loads(report.body)["files"]]
+    assert loaded == ["ff00", "a1b2"]

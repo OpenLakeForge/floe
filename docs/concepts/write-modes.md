@@ -67,8 +67,6 @@ it ephemeral disk for the spill.
 
 ## Rejected output behavior
 
-`sink.write_mode` is shared with rejected output:
-- `overwrite`: first rejected write in a run starts fresh, subsequent rejected files append.
-- `append`: rejected files append.
-- `merge_scd1`: rejected files append (merge logic applies only to the accepted sink).
-- `merge_scd2`: rejected files append (merge logic applies only to the accepted sink).
+Rejected CSV and Parquet output always appends, whatever `sink.write_mode`: a later run never deletes an earlier run's rejected rows, so they stay available to inspect or replay. This matches the append-only Iceberg quarantine. `write_mode` applies to the accepted sink only (merge logic too).
+
+A rejected part is named from the entity and its input file (name, size and modification time). A retry of the same input rewrites its own part instead of duplicating it.
