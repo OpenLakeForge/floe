@@ -51,7 +51,7 @@
     "part_files": [
       "part-<uuid>-c000.snappy.parquet"
     ],
-    "table_version": 1,
+    "table_version": 0,
     "total_bytes_written": 1329,
     "avg_file_size_mb": 0.0012674331665039062,
     "small_files_count": 1
