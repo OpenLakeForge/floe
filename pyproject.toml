@@ -36,7 +36,6 @@ dev = [
     "pytest",
     "pytest-cov>=7.1.0",
     "ruff",
-    "sqlalchemy>=2.0",
 ]
 conformance = ["pyarrow"]
 

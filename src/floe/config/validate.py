@@ -402,10 +402,11 @@ def _check_iceberg(
         raise _fail(entity, f"sink.write_mode={entity.sink.write_mode} requires a rest catalog (glue supports overwrite and append)", code="config_not_supported")  # fmt: skip
     if definition.warehouse_storage is None:
         type_ = _storage_type(config, storage)
-        if type_ not in ("s3", "adls", "gcs"):
+        # ponytail: adls is refused; PyIceberg's FileIO cannot read abfss://<container>@<account> locations without adlfs (#1326)
+        if type_ not in ("s3", "gcs"):
             raise _fail(
                 entity,
-                f"sink.{kind}.iceberg.catalog requires sink.{kind} storage type s3, adls or gcs (got {type_})",
+                f"sink.{kind}.iceberg.catalog requires sink.{kind} storage type s3 or gcs (got {type_})",
                 code="config_conflict",
             )
     if kind == "rejected" and iceberg.location is not None and definition.warehouse_storage in (None, storage) and iceberg.location.rstrip("/") == target.path.rstrip("/"):  # fmt: skip  # one string names one place only in one storage
@@ -887,10 +888,10 @@ def _check_storages(config: RootConfig) -> None:
                     f"reference s3 storage for glue catalog (got {kind})",
                     code="config_conflict",
                 )
-            if kind not in ("s3", "adls", "gcs"):
+            if kind not in ("s3", "gcs"):
                 raise FloeConfigError(
                     f"catalogs.definitions name={c.name} warehouse_storage must "
-                    f"reference s3, adls or gcs storage for rest catalog (got {kind})",
+                    f"reference s3 or gcs storage for rest catalog (got {kind})",
                     code="config_conflict",
                 )
         if c.name in seen:
