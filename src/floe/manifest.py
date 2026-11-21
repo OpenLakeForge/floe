@@ -26,7 +26,7 @@ from floe.errors import FloeConfigError, FloeError
 from floe.pii import PiiColumn
 from floe.run import select_entities
 from floe.storage.paths import normalize_local_path
-from floe.storage.resolve import refuse_unsupported_storages
+from floe.storage.resolve import resolve_path
 from floe.storage.s3 import read_s3
 
 Json = dict[str, Any]
@@ -122,6 +122,9 @@ class _Target:
             uri = f"local://{normalize_local_path(ctx.config_dir / self.raw)}"
         elif kind == "s3" and definition and definition.bucket is not None:
             uri = _s3_uri(definition.bucket, definition.prefix, self.raw)
+        elif definition and definition.type in ("adls", "gcs"):
+            # the run's own resolver: a manifest URI is the location the run writes
+            uri = resolve_path(ctx.storages, ctx.config_dir, name, self.raw, "path")[0]
         self.resolved = uri is not None
         self.storage = name if uri else target.storage or "local"
         self.uri = uri or self.raw
@@ -463,7 +466,6 @@ def build_manifest(
             f"unknown --manifest-path-mode value '{options.path_mode}'; expected 'default' or 'resolved-uri'",
             code="config_invalid_value",
         )
-    refuse_unsupported_storages(root.storages, "floe manifest generate")
     runtime = options.runtime or detect_runtime()
     work_root = None
     if runtime == "image":

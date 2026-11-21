@@ -674,29 +674,42 @@ def test_manifest_errors_carry_codes(tmp_path: Path) -> None:
     assert io.value.code == "io_read_error"
 
 
-@pytest.mark.parametrize("kind", ["adls", "gcs"])
-def test_manifest_replay_refuses_adls_and_gcs_storages(kind: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
-    """#1323: a replayed storage block with another remote type would resolve its paths as local."""
-    from floe.errors import FloeConfigError
+GCS_CONFIG = """\
+version: "0.3"
+storages: {default: lake, definitions: [{name: lake, type: gcs, bucket: b, prefix: base}]}
+domains: [{name: d}]
+entities:
+  - name: orders
+    domain: d
+    source: {format: csv, path: in/, options: {header: true, separator: ","}}
+    sink: {accepted: {format: parquet, path: out/accepted}}
+    policy: {severity: warn}
+    schema: {columns: [{name: id, type: int64}]}
+report: {path: runs}
+"""
 
-    path = manifest(tmp_path, monkeypatch, QUALIFIED)
-    doc = json.loads(path.read_text())
-    doc["storages"]["definitions"].append(
-        {"name": "lake", "fs_type": kind}
-        | dict.fromkeys(
-            (
-                "bucket",
-                "region",
-                "account",
-                "container",
-                "prefix",
-                "endpoint",
-                "path_style_access",
-            )
-        )
-    )
-    path.write_text(json.dumps(doc))
+
+def test_a_gcs_manifest_replays_onto_gcs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    from obstore.store import MemoryStore
+
+    store = MemoryStore()
+
+    def gcs(*_: object, **__: object) -> MemoryStore:
+        return store
+
+    monkeypatch.setattr("obstore.store.GCSStore", gcs)
+    store.put("base/in/a.csv", b"id\n1\n")
+    path = manifest(tmp_path, monkeypatch, GCS_CONFIG)
+    assert json.loads(path.read_text())["report_base_uri"] == "gs://b/base/runs"
+    assert floe(monkeypatch, "run", "--manifest", str(path), "--run-id", "r1") == 0
+    assert store.get("base/runs/d/run_r1/d/orders/run.json").bytes()
+    assert not (tmp_path / "gs:").exists()
+
+
+def test_a_gcs_report_base_matching_no_storage_fails() -> None:
+    from floe.errors import FloeConfigError
+    from floe.manifest_run import _report  # pyright: ignore[reportPrivateUsage]
+
     with pytest.raises(FloeConfigError) as e:
-        load_manifest(path)
-    assert e.value.code == "config_not_supported"
-    assert str(e.value) == f"floe manifest replay: storage lake (type {kind}) is not supported yet"  # fmt: skip
+        _report("gs://nope/runs", None, None)
+    assert e.value.code == "config_invalid_value"
