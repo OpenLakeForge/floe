@@ -100,7 +100,9 @@
         "errors": 1,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 870,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"

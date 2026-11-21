@@ -102,7 +102,9 @@
         "errors": 1,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 5,
+      "input_mtime": "<volatile>"
     },
     {
       "input_file": "local://<ROOT>/in/b.csv",
@@ -140,7 +142,9 @@
             ]
           }
         ]
-      }
+      },
+      "input_size": 16,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"

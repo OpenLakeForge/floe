@@ -122,7 +122,9 @@
             ]
           }
         ]
-      }
+      },
+      "input_size": 52,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"

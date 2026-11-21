@@ -51,8 +51,8 @@
     "part_files": [
       "part-00000.parquet"
     ],
-    "total_bytes_written": 1146,
-    "avg_file_size_mb": 0.0010929107666015625,
+    "total_bytes_written": 1234,
+    "avg_file_size_mb": 0.0011768341064453125,
     "small_files_count": 1
   },
   "schema_evolution": {
@@ -149,7 +149,9 @@
             ]
           }
         ]
-      }
+      },
+      "input_size": 41,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"

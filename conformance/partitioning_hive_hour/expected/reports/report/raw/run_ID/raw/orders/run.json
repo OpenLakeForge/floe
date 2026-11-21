@@ -107,7 +107,9 @@
         "errors": 0,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 12,
+      "input_mtime": "<volatile>"
     },
     {
       "input_file": "local://<ROOT>/in/year=2026/month=10/day=24/hour=13/orders.csv",
@@ -132,7 +134,9 @@
         "errors": 0,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 12,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"

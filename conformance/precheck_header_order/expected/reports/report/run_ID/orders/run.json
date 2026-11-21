@@ -52,8 +52,8 @@
     "part_files": [
       "part-00000.parquet"
     ],
-    "total_bytes_written": 310,
-    "avg_file_size_mb": 0.0002956390380859375,
+    "total_bytes_written": 382,
+    "avg_file_size_mb": 0.0003643035888671875,
     "small_files_count": 1
   },
   "schema_evolution": {
@@ -99,7 +99,9 @@
         "errors": 1,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 0,
+      "input_mtime": "<volatile>"
     },
     {
       "input_file": "local://<ROOT>/in/b.csv",
@@ -130,7 +132,9 @@
         "errors": 1,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 5,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"

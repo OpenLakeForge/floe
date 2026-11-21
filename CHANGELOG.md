@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- Each `files[]` entry of the run report has `input_size` (bytes) and `input_mtime` (string), the size and modification time Floe listed for the input file (#1362); both are `null` when the storage does not report them. A later replay can use them to check that the file behind `input_file` is still the one that was validated.
 - A `type: unity` catalog (`host`, `catalog`, `schema`, `token`, `create_schema_if_missing`) and `sink.accepted.delta: {catalog, schema, table}` validate (#1313), for Delta tables on S3 storage. Registering the table is not implemented yet (#1314): a run with a `delta:` block fails with `run_not_supported`, and `floe manifest generate` refuses it, rather than writing an unregistered table.
 - A `sink.accepted.format: delta` append now enforces `unique_keys` and `primary_key` against the table's existing rows (#1309): the key columns are streamed from the table to a local cache (`DeltaTable.scan`, so column-mapped tables work and memory does not grow with the table), and a row repeating an existing key is rejected. The run-time refusal is gone.
 - A Delta append whose batch a concurrent run commits while it writes is no longer written twice (#1341): the write is based on the snapshot the retry guard checked, so the conflict is detected and the run reports `already_committed` for every pending input. An intentional reload after `floe state reset` still appends.

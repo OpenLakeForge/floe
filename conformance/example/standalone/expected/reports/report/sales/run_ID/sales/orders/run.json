@@ -106,7 +106,9 @@
             ]
           }
         ]
-      }
+      },
+      "input_size": 33,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"

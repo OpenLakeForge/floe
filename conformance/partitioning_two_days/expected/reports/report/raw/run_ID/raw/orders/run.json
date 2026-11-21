@@ -129,7 +129,9 @@
             ]
           }
         ]
-      }
+      },
+      "input_size": 20,
+      "input_mtime": "<volatile>"
     },
     {
       "input_file": "local://<ROOT>/in/2026/10/25/a1b2/orders.csv",
@@ -154,7 +156,9 @@
         "errors": 0,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 16,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"
