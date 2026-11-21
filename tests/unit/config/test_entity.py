@@ -5,6 +5,7 @@ import copy
 import pytest
 
 from floe.config.entity import parse_entity
+from floe.config.types import rule_level
 from floe.errors import FloeConfigError
 from floe.pii import PiiColumn
 
@@ -456,3 +457,14 @@ _ERRORS: list[tuple[dict[str, object], str]] = [
 @pytest.mark.parametrize(("overrides", "expected"), _ERRORS)
 def test_source_and_sink_errors(overrides: dict[str, object], expected: str) -> None:
     assert message(entity(**overrides)) == expected
+
+
+@pytest.mark.parametrize("severity", ["warn", "reject", "abort"])
+def test_rule_level_is_the_policy_severity(severity: str) -> None:
+    parsed = parse_entity(entity(policy={"severity": severity}))
+    for rule, column in [
+        ("not_null", "id"),
+        ("unique", None),
+        ("schema_mismatch", None),
+    ]:
+        assert rule_level(parsed, rule, column) == severity
