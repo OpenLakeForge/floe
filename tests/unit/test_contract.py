@@ -86,6 +86,7 @@ FROZEN_CLI: dict[str, frozenset[str]] = {
     }),
     "state inspect": frozenset({"-c", "--config", "--entity", "-p", "--profile"}),
     "state reset": frozenset({"-c", "--config", "--entity", "-p", "--profile", "--yes"}),
+    "state forget": frozenset({"-c", "--config", "--entity", "-p", "--profile", "--yes", "--file"}),
     "maintain": frozenset({
         "-c", "--config", "-p", "--profile", "--entities", "--older-than-days", "--retain-last",
         "--orphan-delay-days", "--dry-run", "--compact", "--experimental",
