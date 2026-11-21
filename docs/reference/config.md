@@ -507,6 +507,8 @@ state file shape, and CAS behavior.
     - The columns are added, but 0.8 does not report it yet: the entity report's `schema_evolution` block stays `applied: false` and no `schema_evolution_applied` event is emitted (#994).
 - `rejected` (required when `policy.severity` is `reject` or `abort`; D39)
   - `format`: `csv` (default), `parquet` or `iceberg`.
+  - The `__floe_*` columns of each format and the `__floe_errors` format are a versioned contract: see
+    [Rejected row envelope](rejected.md).
 - `path`: output directory for rejected rows.
   - Supports `{{var}}` templating (see "Templating & domains").
   - Rejected outputs are written as dataset parts (`part-*.csv` or `part-*.parquet`).

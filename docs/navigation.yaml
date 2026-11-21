@@ -44,6 +44,7 @@ sections:
       - docs/reference/config.md
       - docs/reference/cli.md
       - docs/reference/report.md
+      - docs/reference/rejected.md
       - docs/reference/logging.md
       - docs/reference/errors.md
       - docs/reference/support-matrix.md
