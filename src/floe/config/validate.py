@@ -760,13 +760,6 @@ def _check_pii(entity: EntityConfig) -> None:
             "file is written to sink.rejected without DataFrame processing",
             code="config_conflict",
         )
-    if entity.sink.archive is not None:
-        raise _fail(
-            entity,
-            "pii: sink.archive copies the original unmasked source file to the archive "
-            "sink; remove sink.archive or disable pii masking",
-            code="config_conflict",
-        )
     schema = entity.schema_
     mismatch = schema.mismatch
     for field, policy, fix in (

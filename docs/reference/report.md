@@ -61,6 +61,7 @@ Golden example files live under `example/report/run_2026-01-19T10-23-45Z/`.
 - `schema_evolution`: Entity-level schema-evolution summary for the accepted write path.
 - `results`: Totals for files, rows, accepted/rejected rows, warnings, errors.
 - `files`: Per-file outcomes and validation summary.
+  - `input_size` (integer or `null`) and `input_mtime` (string or `null`): the size in bytes and modification time listed for `input_file`, the values that feed the incremental state and `input_hash`. `null` when the storage does not report them. Use them to check that the file behind `input_file` is still the one that was validated.
 - `timings_ms`: Where the entity spent wall-clock time (see below).
 
 ### `timings_ms` (entity report)

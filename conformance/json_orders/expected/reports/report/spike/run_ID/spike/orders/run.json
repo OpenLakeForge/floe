@@ -191,7 +191,9 @@
             ]
           }
         ]
-      }
+      },
+      "input_size": 1745,
+      "input_mtime": "<volatile>"
     },
     {
       "input_file": "local://<ROOT>/in/orders_valid.json",
@@ -224,7 +226,9 @@
         "errors": 0,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 1065,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"

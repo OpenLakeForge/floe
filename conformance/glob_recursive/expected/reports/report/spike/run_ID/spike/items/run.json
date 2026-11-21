@@ -96,7 +96,9 @@
         "errors": 0,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 15,
+      "input_mtime": "<volatile>"
     },
     {
       "input_file": "local://<ROOT>/in/a/x.csv",
@@ -121,7 +123,9 @@
         "errors": 0,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 12,
+      "input_mtime": "<volatile>"
     },
     {
       "input_file": "local://<ROOT>/in/top.csv",
@@ -146,7 +150,9 @@
         "errors": 0,
         "warnings": 0,
         "rules": []
-      }
+      },
+      "input_size": 14,
+      "input_mtime": "<volatile>"
     }
   ],
   "timings_ms": "<volatile>"
