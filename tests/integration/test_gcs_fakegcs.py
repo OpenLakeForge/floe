@@ -8,6 +8,8 @@ throwaway key: the self-signed token needs no Google endpoint, and fake-gcs-serv
 import io
 import json
 import os
+import urllib.parse
+import urllib.request
 import uuid
 from pathlib import Path
 
@@ -16,6 +18,7 @@ import pytest
 
 from floe.config.parse import parse_config
 from floe.config.storage import StorageDefinition
+from floe.errors import FloeStorageError
 from floe.run import run
 from floe.storage.object_store import ObjectStoreClient, gcs_store
 
@@ -27,6 +30,15 @@ pytestmark = [
     ),
 ]
 BUCKET = os.environ.get("FLOE_FAKEGCS_BUCKET", "warehouse")
+# obstore writes through the XML API (`PUT /<bucket>/<object>` with `x-goog-if-generation-match`). fake-gcs-server
+# v1.56.1 routes that request to its JSON `insertObject`, which answers 400 `invalid uploadType`, and it reads
+# generation preconditions only from the `ifGenerationMatch` query parameter. So every obstore write fails here;
+# reads and lists go through the XML API it does serve. The real-bucket check is recorded on #1268.
+XML_PUT_UNSUPPORTED = pytest.mark.xfail(
+    strict=True,
+    raises=FloeStorageError,
+    reason="fake-gcs-server 1.56.1 answers obstore's XML PUT with 400 `invalid uploadType`",
+)
 
 CONFIG = """\
 version: "0.3"
@@ -52,6 +64,13 @@ report: {{path: runs, storage: lake}}
 """
 
 
+def _seed(key: str, body: bytes) -> None:
+    """Put an object through fake-gcs-server's JSON upload API, the one write it serves."""
+    name = urllib.parse.quote(key, safe="")
+    url = f"{os.environ['FLOE_FAKEGCS_ENDPOINT']}/upload/storage/v1/b/{BUCKET}/o?uploadType=media&name={name}"
+    urllib.request.urlopen(urllib.request.Request(url, body, method="POST")).close()
+
+
 @pytest.fixture
 def gcs() -> ObjectStoreClient:
     return gcs_store(
@@ -69,6 +88,7 @@ def gcs() -> ObjectStoreClient:
     )
 
 
+@XML_PUT_UNSUPPORTED
 def test_conditional_create_replace_and_stale(gcs: ObjectStoreClient) -> None:
     uri = gcs.resolve_uri(f"it-{uuid.uuid4().hex}/state.json")
     created = gcs.write_conditional(uri, None, b"1")
@@ -85,7 +105,7 @@ def test_list_matches_the_raw_prefix_not_a_directory(gcs: ObjectStoreClient) -> 
     """The #1302 bug class: S3-style listing matches `in/data_` and `in` by key prefix, as S3 does."""
     p = f"it-{uuid.uuid4().hex}"
     for name in ("in/data_1.csv", "in/data_2.csv", "in/other.csv", "in/sub/data_3.csv", "inbox/x.csv"):  # fmt: skip
-        gcs.write(gcs.resolve_uri(f"{p}/{name}"), b"id\n1\n")
+        _seed(f"{p}/{name}", b"id\n1\n")
     assert [r.key for r in gcs.list(f"{p}/in/data_")] == [
         f"{p}/in/data_1.csv",
         f"{p}/in/data_2.csv",
@@ -102,6 +122,7 @@ def test_list_matches_the_raw_prefix_not_a_directory(gcs: ObjectStoreClient) -> 
     assert all(r.size and r.last_modified for r in after)
 
 
+@XML_PUT_UNSUPPORTED
 def test_csv_on_gcs_to_parquet_on_gcs_then_an_incremental_skip(
     gcs: ObjectStoreClient, tmp_path: Path
 ) -> None:
@@ -128,6 +149,7 @@ def test_csv_on_gcs_to_parquet_on_gcs_then_an_incremental_skip(
     assert gcs.read(gcs.resolve_uri(f"{prefix}/in/.floe/state/d/orders/state.json"))
 
 
+@XML_PUT_UNSUPPORTED
 def test_archive_mode_moves_the_source_into_the_archive(
     gcs: ObjectStoreClient, tmp_path: Path
 ) -> None:
