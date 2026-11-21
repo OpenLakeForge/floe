@@ -68,6 +68,42 @@ The configured `policy.severity` applies uniformly across all checks:
 All modes avoid logging raw row values; only rule, column, row index, and
 message are emitted in reports.
 
+### Severity per check
+
+`policy.severity` is the default. A rule can override it, on one column
+(`schema.columns[].rule_severity`: `not_null`, `cast_error`) or for the whole
+entity (`policy.rule_severity`: the column rules as defaults, plus `unique` and
+`schema_mismatch`). The level of a check is the column's entry, else the
+entity's, else `policy.severity`.
+
+```yaml
+policy:
+  severity: reject              # default for every check
+  rule_severity:
+    schema_mismatch: warn       # a requested reject_file only warns and fills nulls
+    unique: abort               # a duplicate key aborts the entity
+schema:
+  mismatch:
+    missing_columns: reject_file
+  primary_key: [order_id]
+  columns:
+    - name: order_id
+      type: int64
+    - name: amount
+      type: decimal(18,2)       # cast_error -> reject (the default)
+    - name: email
+      type: string
+      nullable: false
+      rule_severity:
+        not_null: warn          # a missing email keeps the row and counts a warning
+```
+
+A row is rejected if any failed check resolves to `reject` or `abort`; a row
+that only fails `warn` checks is kept and counted as a warning. Any
+`abort`-level failure aborts the file. `sink.rejected` is required as soon as
+any rule can resolve to `reject` or `abort`, and `abort` is refused with `pii`.
+`unique` is one rule for every key: severity per key is not supported.
+
 ## Design notes
 
 - Row-level rejection is the default because it preserves good data while isolating bad rows.

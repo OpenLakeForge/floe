@@ -125,9 +125,38 @@ def _rate(h: dict[object, object], key: str, ctx: str) -> float | None:
     return float(value)
 
 
+def _rule_severity(
+    h: dict[object, object], ctx: str, allowed: tuple[str, ...]
+) -> dict[str, PolicySeverity] | None:
+    """A `rule_severity` map (rule to level) under `ctx`; `None` when absent."""
+    if "rule_severity" not in h:
+        return None
+    ctx = f"{ctx}.rule_severity"
+    levels = yaml_hash(h["rule_severity"], ctx)
+    validate_known_keys(levels, ctx, allowed)
+    out: dict[str, PolicySeverity] = {}
+    for rule in levels:
+        value = get_string(levels, str(rule), ctx)
+        picked = _pick(value, get_args(PolicySeverity))
+        if picked is None:
+            raise FloeConfigError(
+                f"{ctx}.{rule}={value} is unsupported (allowed: warn, reject, abort)",
+                code="config_invalid_value",
+            )
+        out[str(rule)] = picked
+    return out
+
+
+# ponytail: `unique` is one rule for every `unique_keys` entry and the primary key; severity per key
+# is not expressible. Upgrade path: an object form of `unique_keys` entries (`{columns, severity}`), additive.
+_COLUMN_RULES = ("not_null", "cast_error")
+
+
 def _policy(value: object) -> PolicyConfig:
     h = yaml_hash(value, "policy")
-    validate_known_keys(h, "policy", ("severity", "max_rejection_rate"))
+    validate_known_keys(
+        h, "policy", ("severity", "max_rejection_rate", "rule_severity")
+    )
     severity = get_string(h, "severity", "policy")
     picked = _pick(severity, get_args(PolicySeverity))
     if picked is None:
@@ -141,7 +170,8 @@ def _policy(value: object) -> PolicyConfig:
             f"policy.max_rejection_rate requires policy.severity=reject (got {picked})",
             code="config_conflict",
         )
-    return PolicyConfig(severity=picked, max_rejection_rate=rate)
+    rules = _rule_severity(h, "policy", (*_COLUMN_RULES, "unique", "schema_mismatch"))
+    return PolicyConfig(severity=picked, max_rejection_rate=rate, rule_severity=rules)
 
 
 def _normalize_columns(value: object) -> NormalizeColumnsConfig:
@@ -198,12 +228,13 @@ def _column(value: object) -> ColumnConfig:
             f"{ctx}.unique {NOT_SUPPORTED}; use schema.unique_keys",
             code="config_not_supported",
         )
-    validate_known_keys(h, ctx, ("name", "source", "type", "nullable"))
+    validate_known_keys(h, ctx, ("name", "source", "type", "nullable", "rule_severity"))
     return ColumnConfig(
         name=get_string(h, "name", ctx),
         source=opt_string(h, "source", ctx),
         column_type=get_string(h, "type", ctx),
         nullable=opt_bool(h, "nullable", ctx),
+        rule_severity=_rule_severity(h, ctx, _COLUMN_RULES),
     )
 
 

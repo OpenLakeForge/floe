@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders schema.columns[name=id].rule_severity.not_null is not applicable: the column is not required (set nullable=false or add it to schema.primary_key)"
+}

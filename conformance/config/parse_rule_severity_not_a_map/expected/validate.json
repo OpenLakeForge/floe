@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entities[0] (entity.name=orders): schema.columns[0]: expected map at schema.columns.rule_severity"
+}
