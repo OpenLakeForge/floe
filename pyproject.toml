@@ -20,7 +20,9 @@ iceberg = ["pyiceberg>=0.12.0", "pyiceberg-core>=0.10.1"]
 merge = ["duckdb==1.5.6"]
 xlsx = ["fastexcel>=0.21.0"]
 delta = ["deltalake>=1.6.6,<1.7"]
-all = ["floe-python[s3,iceberg,merge,xlsx,delta]"]
+adls = ["obstore>=0.12.1,<0.13"]
+gcs = ["obstore>=0.12.1,<0.13"]
+all = ["floe-python[s3,iceberg,merge,xlsx,delta,adls,gcs]"]
 
 [project.scripts]
 floe = "floe._cli:main"
