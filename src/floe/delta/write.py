@@ -73,8 +73,8 @@ def write_table(who: str, uri: str, options: dict[str, str], reader: pa.RecordBa
         write_deltalake(uri, reader, mode="overwrite" if mode == "overwrite" else "append", storage_options=options, commit_properties=stamp(run_id, input_hash))  # fmt: skip
         after = DeltaTable(uri, storage_options=options)
         added = {p: s for p, s in _files(after).items() if p not in before}
-        # the commit's own version: the newest commit since `base` that carries this run's id
-        version = next(h["version"] for h in after.history(limit=after.version() - base) if h.get("floe.run_id") == run_id)  # fmt: skip
+        # the commit's own version: the newest commit since `base` that carries this run's id; no commit (nothing to write) leaves the current version
+        version = next((h["version"] for h in after.history(limit=after.version() - base) if h.get("floe.run_id") == run_id), after.version())  # fmt: skip
     except (DeltaError, OSError) as err:
         raise named(who, uri, err) from err
     sizes = list(added.values())

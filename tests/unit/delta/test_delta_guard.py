@@ -178,3 +178,32 @@ def test_a_commit_reports_its_own_version_and_carries_the_stamp(tmp_path: Path) 
     last = table.history(1)[0]
     assert (last["floe.run_id"], len(last["floe.input_hash"])) == ("r2", 64)
     assert table.transaction_version(f"floe:{last['floe.input_hash']}") == 1
+
+
+@pytest.mark.parametrize("mode", ["append", "overwrite"])
+def test_an_entity_whose_rows_are_all_rejected_reports_normally(tmp_path: Path, mode: str) -> None:  # fmt: skip
+    entity = project(tmp_path)
+    run_entity(entity, tmp_path, "0.3", emit=Emitter(None, "first"))  # the table exists
+    (tmp_path / "in" / "orders.csv").write_text("id,name\nx,a\n")
+    path = tmp_path / "config.yml"
+    text = path.read_text().replace("write_mode: append", f"write_mode: {mode}")
+    path.write_text(text.replace("      accepted:", "      rejected: {format: csv, path: ./out/rejected}\n      accepted:"))  # fmt: skip
+    report = run_entity(parse_config(path).entities[0], tmp_path, "0.3", emit=Emitter(None, "second")).report  # fmt: skip
+    assert report["accepted_output"]["accepted_rows"] == 0
+    assert report["accepted_output"]["files_written"] == 0
+
+
+def test_an_unreadable_file_is_settled_with_its_batch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """An unreadable input is rejected (its raw copy is written) and consumed like any rejected file, so the batch's txn may name it: the retry skips both."""
+    project(tmp_path, "incremental_mode: file")
+    path = tmp_path / "config.yml"
+    path.write_text(path.read_text().replace("      accepted:", "      rejected: {format: csv, path: ./out/rejected}\n      accepted:"))  # fmt: skip
+    entity = parse_config(path).entities[0]
+    (tmp_path / "in" / "bad.csv").write_bytes(b'id,name\n\xff\xfe\x00,"unterminated\n')
+    die_after_commit(entity, tmp_path, monkeypatch)
+    files = run_entity(entity, tmp_path, "0.3", emit=Emitter(None, "retry")).report["files"]  # fmt: skip
+    assert {f["skip_reason"] for f in files} == {"already_committed"} and len(
+        files
+    ) == 2
+    assert ids(tmp_path) == [1, 2]
+    assert [p.name for p in (tmp_path / "out" / "rejected").rglob("*.csv")] == ["bad.csv"]  # fmt: skip
