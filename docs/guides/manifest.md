@@ -303,7 +303,7 @@ floe manifest generate \
   --output s3://my-code-bucket/floe/sales/sales.manifest.json
 ```
 
-Floe 0.10 writes remote manifests to `s3://` only (`gs://` and `abfss://` outputs are refused). A config with `adls` or `gcs` storages generates and replays: entity, sink, archive and report URIs are recorded as `abfss://` and `gs://` URIs, resolved as the run resolves them,, in one
+`--output` takes `s3://`, `gs://` or `abfss://<container>@<account>.dfs.core.windows.net/<key>` and writes the manifest in one put. A bare `gs://` or `abfss://` location has no storage definition, so its credentials and endpoint come from the environment: `GOOGLE_*` (Application Default Credentials) for `gs://`, and `AZURE_STORAGE_ACCOUNT_KEY`, `AZURE_CLIENT_*` and the like for `abfss://`. An Azure-compatible emulator such as Azurite is reached with obstore's own `AZURE_STORAGE_ENDPOINT` (plus `AZURE_ALLOW_HTTP=true` for plain `http://`); Floe adds no variable of its own. `floe run --manifest` reads the same three schemes. A config with `adls` or `gcs` storages generates and replays: entity, sink, archive and report URIs are recorded as `abfss://` and `gs://` URIs, resolved as the run resolves them,, in one
 `PutObject` with the AWS default credential chain (`AWS_ENDPOINT_URL_S3` and
 `AWS_S3_FORCE_PATH_STYLE` for S3-compatible stores).
 

@@ -21,13 +21,12 @@ from floe.config.profile import ENV_PREFIX, ProfileConfig, read_env_profile
 from floe.config.project import ReportConfig, RootConfig
 from floe.config.storage import StoragesConfig
 from floe.config.types import ArchiveTarget, EntityConfig, SinkTarget, SourceConfig
-from floe.config.validate import FLOE_VERSION
+from floe.config.validate import FLOE_VERSION, REMOTE_URIS
 from floe.errors import FloeConfigError, FloeError
 from floe.pii import PiiColumn
 from floe.run import select_entities
 from floe.storage.paths import normalize_local_path
-from floe.storage.resolve import resolve_path
-from floe.storage.s3 import read_s3
+from floe.storage.resolve import read_object, resolve_path
 
 Json = dict[str, Any]
 _REMOTE = ("s3://", "gs://", "gcs://", "abfs://", "abfss://", "az://")
@@ -501,13 +500,13 @@ def build_manifest(
     report = _Target(ctx, root.report)
     profile_uri = profile_checksum = None
     if options.profile_arg is not None:  # recorded like `config_uri` and its checksum
-        # an s3 profile is read from there by the run, so it is recorded as typed
+        # a remote profile is read from there by the run, so it is recorded as typed
         if options.profile_arg.startswith(ENV_PREFIX):  # the Job reads the variable too
             profile_uri = options.profile_arg
             profile_checksum = _sha256(read_env_profile(profile_uri).encode())
-        elif options.profile_arg.startswith("s3://"):
+        elif options.profile_arg.startswith(REMOTE_URIS):
             profile_uri = options.profile_arg
-            profile_checksum = _sha256(read_s3(profile_uri, "profile"))
+            profile_checksum = _sha256(read_object(profile_uri, "profile"))
         else:
             profile = Path(os.path.realpath(options.profile_arg))
             profile_uri = _config_uri(options.profile_arg, profile, work_root)

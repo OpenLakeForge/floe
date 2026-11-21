@@ -41,7 +41,7 @@ from floe.config.types import (
 from floe.config.validate import FLOE_VERSION
 from floe.errors import NOT_SUPPORTED, FloeConfigError, FloeIoError
 from floe.storage.paths import normalize_local_path, parse_s3_uri, split_uri
-from floe.storage.s3 import read_s3
+from floe.storage.resolve import read_object
 
 Json = dict[str, Any]
 _M = TypeVar("_M", bound=BaseModel)
@@ -273,12 +273,8 @@ def _named_local(m: Json) -> bool:
 
 
 def _read(location: str) -> bytes:
-    if location.startswith("s3://"):
-        return read_s3(location, "manifest")
-    if "://" in location:  # D1: gcs and adls are dropped
-        raise FloeConfigError(
-            f"remote manifest is not supported: {location}", code="config_not_supported"
-        )
+    if "://" in location:
+        return read_object(location, "manifest")
     try:
         return Path(location).read_bytes()
     except OSError as e:  # as the CLI's `_realpath`
@@ -297,7 +293,7 @@ def _replay_base(location: str, m: Json) -> Path:
 
     A local one resolves them beside `config_uri`, where `manifest generate` resolved them (#1008).
     """
-    if not location.startswith("s3://"):
+    if "://" not in location:
         config = m.get("config_uri")
         if isinstance(config, str) and config.startswith("local:///"):
             return Path(config.removeprefix("local://"))

@@ -4,7 +4,7 @@ from pathlib import Path
 from threading import Lock
 
 from floe.config.storage import StorageDefinition, StoragesConfig
-from floe.errors import FloeConfigError, FloeRunError
+from floe.errors import FloeConfigError, FloeIoError, FloeRunError
 from floe.storage.local import LocalClient
 from floe.storage.object_store import ObjectStoreClient, azure_store, gcs_store
 from floe.storage.paths import normalize_local_path, parse_s3_uri, split_uri
@@ -101,3 +101,31 @@ def storage_client(
         if definition not in _clients:
             _clients[definition] = {"adls": azure_store, "gcs": gcs_store}[definition.type](definition) if definition.type in ("adls", "gcs") else S3Client(definition.bucket or "", definition.region, definition.endpoint, definition.path_style_access)  # fmt: skip
         return _clients[definition]
+
+
+def _object_client(uri: str) -> S3Client | ObjectStoreClient:
+    """A bare `s3://`, `abfss://` or `gs://` URI has no storage definition: the endpoint and credentials come from the environment (`AWS_*`, `AZURE_*`, `GOOGLE_*`)."""
+    if uri.startswith("s3://"):
+        return S3Client(parse_s3_uri(uri)[0])
+    root, _ = split_uri(uri)
+    none = dict.fromkeys(("region", "prefix", "endpoint", "path_style_access"))
+    if uri.startswith("gs://"):
+        return gcs_store(StorageDefinition(name="gs", type="gcs", bucket=root, account=None, container=None, **none))  # fmt: skip
+    container, _, host = root.partition("@")
+    account, _, suffix = host.partition(".")
+    if not (uri.startswith("abfss://") and container and account and suffix == "dfs.core.windows.net"):  # fmt: skip
+        raise FloeConfigError(f"remote location must be s3://, gs:// or abfss://<container>@<account>.dfs.core.windows.net/ (got {uri})", code="config_not_supported")  # fmt: skip
+    adls = StorageDefinition(name="abfss", type="adls", bucket=None, account=account, container=container, **none)  # fmt: skip
+    return azure_store(adls, env_endpoint=True)
+
+
+def read_object(uri: str, what: str) -> bytes:
+    found = _object_client(uri).read(uri)
+    if found is None:
+        raise FloeIoError(f"{what} not found: {uri}", code="io_not_found")
+    return found.body
+
+
+def write_object(uri: str, body: bytes) -> None:
+    """One put: readers see the old or the new object, never a partial one."""
+    _object_client(uri).write(uri, body)

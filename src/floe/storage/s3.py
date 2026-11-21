@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from floe.errors import FloeIoError, FloeStorageError
+from floe.errors import FloeStorageError
 from floe.extras import missing
 from floe.storage.paths import fnv1a_hex, parse_s3_uri
 from floe.storage.types import ObjectRef, StoredObject
@@ -210,11 +210,3 @@ class S3Client:
             raise FloeStorageError(
                 f"s3 put object failed: {e}", code="storage_error"
             ) from e
-
-
-def read_s3(uri: str, what: str) -> bytes:
-    # S3 settings come from the environment (AWS_ENDPOINT_URL, ...), as for `-o s3://`
-    found = S3Client(parse_s3_uri(uri)[0]).read(uri)
-    if found is None:
-        raise FloeIoError(f"{what} not found: {uri}", code="io_not_found")
-    return found.body
