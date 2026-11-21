@@ -648,7 +648,7 @@ def test_an_adls_storage_requires_account_and_container(tmp_path: Path, fields: 
     assert str(err.value) == message and err.value.code == "config_missing_key"
 
 
-def test_adls_is_accepted_for_parquet_and_refused_for_delta_and_iceberg(tmp_path: Path) -> None:  # fmt: skip
+def test_adls_is_accepted_for_parquet_and_iceberg_and_refused_for_delta(tmp_path: Path) -> None:  # fmt: skip
     adls = ADLS.format(fields=", account: a, container: c")
     sink = "{accepted: {format: parquet, path: out, storage: s}}"
     check(tmp_path, f"{{{COLS}}}", sink=sink, catalogs=adls)
@@ -656,9 +656,7 @@ def test_adls_is_accepted_for_parquet_and_refused_for_delta_and_iceberg(tmp_path
         check(tmp_path, f"{{{COLS}}}", sink=sink.replace("parquet", "delta"), catalogs=adls)  # fmt: skip
     assert str(err.value) == "entity.name=orders sink.accepted.format=delta is not supported on adls storage yet"  # fmt: skip
     catalogs = adls + "catalogs: {default: c, definitions: [{name: c, type: rest, uri: u}]}\n"  # fmt: skip
-    with pytest.raises(FloeConfigError) as err:
-        check(tmp_path, f"{{{COLS}}}", sink=sink.replace("parquet", "iceberg").replace("}}", ", iceberg: {}}}"), catalogs=catalogs)  # fmt: skip
-    assert str(err.value) == "entity.name=orders sink.accepted.iceberg.catalog requires sink.accepted storage type s3 or gcs (got adls)"  # fmt: skip
+    check(tmp_path, f"{{{COLS}}}", sink=sink.replace("parquet", "iceberg").replace("}}", ", iceberg: {}}}"), catalogs=catalogs)  # fmt: skip
 
 
 GCS = "storages: {{default: s, definitions: [{{name: s, type: gcs{fields}}}]}}\n"
@@ -671,7 +669,7 @@ def test_a_gcs_storage_requires_a_bucket(tmp_path: Path) -> None:
     assert err.value.code == "config_missing_key"
 
 
-def test_gcs_is_accepted_for_parquet_and_refused_for_delta_and_iceberg(tmp_path: Path) -> None:  # fmt: skip
+def test_gcs_is_accepted_for_parquet_and_iceberg_and_refused_for_delta(tmp_path: Path) -> None:  # fmt: skip
     gcs = GCS.format(fields=", bucket: b")
     sink = "{accepted: {format: parquet, path: out, storage: s}}"
     check(tmp_path, f"{{{COLS}}}", sink=sink, catalogs=gcs)
@@ -679,7 +677,4 @@ def test_gcs_is_accepted_for_parquet_and_refused_for_delta_and_iceberg(tmp_path:
         check(tmp_path, f"{{{COLS}}}", sink=sink.replace("parquet", "delta"), catalogs=gcs)  # fmt: skip
     assert str(err.value) == "entity.name=orders sink.accepted.format=delta is not supported on gcs storage yet"  # fmt: skip
     catalogs = gcs + "catalogs: {default: c, definitions: [{name: c, type: rest, uri: u}]}\n"  # fmt: skip
-    with pytest.raises(FloeConfigError) as err:
-        check(tmp_path, f"{{{COLS}}}", sink=sink.replace("parquet", "iceberg").replace("}}", ", iceberg: {}}}"), catalogs=catalogs)  # fmt: skip
-    assert str(err.value) == "entity.name=orders sink.accepted.iceberg is not supported on gcs storage yet"  # fmt: skip
-    assert err.value.code == "config_not_supported"
+    check(tmp_path, f"{{{COLS}}}", sink=sink.replace("parquet", "iceberg").replace("}}", ", iceberg: {}}}"), catalogs=catalogs)  # fmt: skip

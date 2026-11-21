@@ -16,11 +16,12 @@ from pyiceberg.table.metadata import TableMetadataV2, new_table_metadata
 from pyiceberg.table.sorting import UNSORTED_SORT_ORDER
 from pyiceberg.types import LongType, NestedField, StringType, TimestampType
 
-from floe.config.storage import CatalogDefinition
+from floe.config.storage import CatalogDefinition, StorageDefinition
 from floe.errors import FloeConfigError, FloeRunError
 from floe.iceberg.catalog import (
     _credential_props,  # pyright: ignore[reportPrivateUsage] -- Rust tests its private `expand_env_refs` the same way
     _duckdb_setup,  # pyright: ignore[reportPrivateUsage] -- the statements are checked without a catalog
+    _open_catalog,  # pyright: ignore[reportPrivateUsage] -- the FileIO props are checked without a catalog
     additive_columns,
     build_partition_spec,
     check_partition_spec_matches,
@@ -230,6 +231,63 @@ def test_duckdb_rejects_a_secret_only_credential() -> None:
 def test_duckdb_without_s3_storage_creates_no_s3_secret() -> None:
     statements = _duckdb_setup(rest_catalog("id:secret"), None)
     assert not any("TYPE s3" in s for s in statements)
+
+
+def storage(kind: str, endpoint: str | None = None) -> StorageDefinition:
+    return StorageDefinition(name="lake", type=kind, bucket="b", region=None, account="acct", container="c", prefix=None, endpoint=endpoint, path_style_access=None)  # fmt: skip
+
+
+def test_duckdb_setup_adls_secret() -> None:
+    statements = _duckdb_setup(rest_catalog("id:secret"), storage("adls"))
+    assert (
+        "CREATE SECRET (TYPE azure, PROVIDER 'credential_chain', ACCOUNT_NAME 'acct')"
+        in statements
+    )
+    assert not any("TYPE s3" in s for s in statements)
+
+
+def test_duckdb_refuses_gcs_storage() -> None:
+    with pytest.raises(FloeConfigError) as e:
+        _duckdb_setup(rest_catalog("id:secret"), storage("gcs"))
+    assert (
+        str(e.value)
+        == "iceberg merges and compaction are not supported on gcs storage lake (DuckDB's GCS secret takes HMAC keys only, no ADC)"
+    )
+    assert e.value.code == "config_not_supported"
+
+
+def fileio_props(
+    monkeypatch: pytest.MonkeyPatch, kind: str, endpoint: str | None = None
+) -> dict[str, str]:
+    seen: dict[str, str] = {}
+
+    def fake_load_catalog(_name: str, **props: str) -> object:
+        seen.update(props)
+        return object()
+
+    monkeypatch.setattr("floe.iceberg.catalog.load_catalog", fake_load_catalog)
+    _open_catalog(rest_catalog("id:secret"), storage(kind, endpoint))
+    return seen
+
+
+def test_adls_fileio_props_take_credentials_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AZURE_STORAGE_ACCOUNT_KEY", "key")
+    monkeypatch.delenv("AZURE_STORAGE_SAS_TOKEN", raising=False)
+    props = fileio_props(monkeypatch, "adls")
+    assert props["adls.account-name"] == "acct"
+    assert props["adls.account-key"] == "key"
+    assert "adls.sas-token" not in props
+    assert not any(k.startswith("s3.") for k in props)
+
+
+def test_gcs_fileio_props_use_the_endpoint_for_a_fake_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    props = fileio_props(monkeypatch, "gcs", "http://127.0.0.1:4443")
+    assert props["gcs.service.host"] == "http://127.0.0.1:4443"
+    assert "gcs.service.host" not in fileio_props(monkeypatch, "gcs")
 
 
 def test_open_duckdb_sets_the_adr_limits_and_cleans_the_spill_dir(

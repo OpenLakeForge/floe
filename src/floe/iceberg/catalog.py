@@ -151,6 +151,15 @@ def open_catalog(
         return _CATALOGS[key]
 
 
+_ADLS_ENV = {
+    "adls.account-key": "AZURE_STORAGE_ACCOUNT_KEY",
+    "adls.sas-token": "AZURE_STORAGE_SAS_TOKEN",
+    "adls.tenant-id": "AZURE_TENANT_ID",
+    "adls.client-id": "AZURE_CLIENT_ID",
+    "adls.client-secret": "AZURE_CLIENT_SECRET",
+}
+
+
 def _open_catalog(
     definition: CatalogDefinition, storage: StorageDefinition | None
 ) -> Catalog:
@@ -172,7 +181,15 @@ def _open_catalog(
         props["oauth2-server-uri"] = definition.oauth2_server_uri
     if definition.scope is not None:
         props["scope"] = definition.scope
-    if storage is not None:
+    if storage is not None and storage.type == "adls":
+        props["adls.account-name"] = storage.account or ""
+        for prop, env in _ADLS_ENV.items():  # credentials never come from config
+            if value := os.environ.get(env):
+                props[prop] = value
+    elif storage is not None and storage.type == "gcs":
+        if storage.endpoint is not None:  # fake-gcs-server; otherwise ADC
+            props["gcs.service.host"] = storage.endpoint
+    elif storage is not None:
         if storage.endpoint is not None:
             props["s3.endpoint"] = storage.endpoint
         if storage.region is not None:
@@ -223,6 +240,15 @@ def _duckdb_setup(
             }
             if definition.scope is not None:
                 auth["OAUTH2_SCOPE"] = definition.scope
+    if storage is not None and storage.type == "gcs":
+        raise FloeConfigError(
+            f"iceberg merges and compaction are not supported on gcs storage {storage.name} "
+            "(DuckDB's GCS secret takes HMAC keys only, no ADC)",
+            code="config_not_supported",
+        )
+    if storage is not None and storage.type == "adls":
+        azure = {"PROVIDER": "credential_chain", "ACCOUNT_NAME": storage.account or ""}
+        statements.append(f"CREATE SECRET (TYPE azure, {_sql_options(azure)})")
     if storage is not None and storage.type == "s3":
         s3 = {"PROVIDER": "credential_chain"}
         if storage.region is not None:
