@@ -101,15 +101,12 @@ Notes:
 | Feature | S3 | ADLS | GCS |
 |---|---|---|---|
 | Sources, Parquet and CSV sinks, reports, archive, incremental state | ✅ | ✅ | ✅ |
-| Iceberg `overwrite` and `append` | ✅ | ❌ (#1344) | ✅ |
+| Iceberg `overwrite` and `append` | ✅ | ✅ | ✅ |
 | Iceberg merges and compaction | ✅ | ❌ | ❌ (DuckDB's GCS secret takes HMAC keys only) |
 | Delta `overwrite` and `append` (path-based, no catalog) | ✅ | ❌ | ❌ |
-| `floe maintain` (orphan listing) | ✅ | ✅ (Iceberg on ADLS: #1344) | ✅ |
-| `floe manifest generate` and `replay` | ✅ | refused | refused |
+| `floe maintain` (orphan listing) | ✅ | ✅ | ✅ |
+| `floe manifest generate` and `replay` | ✅ | ✅ | ✅ |
 | Manifest and profile read from a URI | ✅ | ❌ | ❌ |
-
-`floe manifest generate`/`replay` refuse a config that defines any ADLS or
-GCS storage, even an unused one.
 
 ## Fault scenarios (Iceberg and S3)
 
