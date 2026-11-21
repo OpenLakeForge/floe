@@ -27,6 +27,9 @@ _WIDER: dict[pl.DataType, pl.DataType] = {pl.UInt8(): pl.Int32(), pl.UInt16(): p
 def check_supported(entity: EntityConfig) -> None:
     """Refuse, before anything is claimed, what the writer would otherwise skip silently."""
     who = f"entity.name={entity.name}"
+    # a path write would leave the table invisible to Unity; registering it is #1314
+    if entity.sink.accepted.delta is not None:
+        raise FloeRunError(f"{who} sink.accepted.delta (Unity Catalog) is not supported yet: the table would be written without being registered", code="run_not_supported")  # fmt: skip
     if entity.sink.write_mode not in ("overwrite", "append"):
         raise FloeRunError(f"{who} sink.write_mode={entity.sink.write_mode} is not supported with sink.accepted.format=delta yet", code="run_not_supported")  # fmt: skip
     # an aborted file leaves a smaller batch committed than the hash the retry guard stamps names

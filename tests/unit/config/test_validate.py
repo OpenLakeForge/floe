@@ -282,10 +282,6 @@ def test_empty_iceberg_catalog_is_not_defaulted(tmp_path: Path) -> None:
             "sink.write_mode=merge_scd2 is not supported by sink.accepted.format=delta",
         ),
         (
-            "{accepted: {format: delta, path: out, delta: {table: t}}}",
-            "sink.accepted.delta is not supported yet",
-        ),
-        (
             "{accepted: {format: duckdb, duckdb: {connection: 'md:x'}}}",
             "sink.accepted.format=duckdb is not supported in 0.8",
         ),
@@ -338,6 +334,86 @@ def test_sink_errors(tmp_path: Path, sink: str, message: str) -> None:
 def test_delta_accepted(tmp_path: Path) -> None:
     sink = "{accepted: {format: delta, path: out, partition_by: [id]}}"
     check(tmp_path, f"{{{COLS}}}", sink=sink)
+
+
+UNITY = (
+    "storages: {default: s, definitions: [{name: s, type: s3, bucket: b, region: r}, {name: loc, type: local}, "
+    "{name: a, type: adls, account: x, container: c}, {name: g, type: gcs, bucket: b}]}\n"
+    "catalogs: {default: u, definitions: [{name: u, type: unity, host: h, catalog: c, schema: s, token: t}, "
+    "{name: r, type: rest, uri: x}]}"
+)
+
+
+def unity_sink(delta: str = "{catalog: u, schema: s, table: t}", fmt: str = "delta", storage: str = "s") -> str:  # fmt: skip
+    return f"{{accepted: {{format: {fmt}, path: out, storage: {storage}, delta: {delta}}}}}"
+
+
+def test_delta_unity_accepted(tmp_path: Path) -> None:
+    check(tmp_path, f"{{{COLS}}}", sink=unity_sink("{schema: s, table: t}"), catalogs=UNITY)  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("sink", "message", "code"),
+    [
+        (
+            unity_sink("{catalog: u, table: t}"),
+            "sink.accepted.delta.schema is required",
+            "config_missing_key",
+        ),
+        (
+            unity_sink("{catalog: u, schema: s}"),
+            "sink.accepted.delta.table is required",
+            "config_missing_key",
+        ),
+        (
+            unity_sink("{catalog: nope, schema: s, table: t}"),
+            "sink.accepted.delta.catalog references unknown catalog nope",
+            "config_unknown_reference",
+        ),
+        (
+            unity_sink("{catalog: r, schema: s, table: t}"),
+            "sink.accepted.delta.catalog=r must be a unity catalog (got rest)",
+            "config_conflict",
+        ),
+        (
+            unity_sink(storage="loc"),
+            "sink.accepted.delta requires s3 storage (got local)",
+            "config_not_supported",
+        ),
+        (
+            unity_sink(storage="a"),
+            "sink.accepted.format=delta is not supported on adls storage yet",
+            "config_not_supported",
+        ),
+        (
+            unity_sink(storage="g"),
+            "sink.accepted.format=delta is not supported on gcs storage yet",
+            "config_not_supported",
+        ),
+        (
+            unity_sink(fmt="parquet"),
+            "sink.accepted.delta is only supported for sink.accepted.format=delta",
+            "config_conflict",
+        ),
+        (
+            "{accepted: {format: iceberg, path: out, iceberg: {catalog: u, namespace: n, table: t}}}",
+            "sink.accepted.iceberg.catalog=u is a unity catalog, which only sink.accepted.format=delta supports",
+            "config_conflict",
+        ),
+    ],
+)
+def test_delta_unity_errors(tmp_path: Path, sink: str, message: str, code: str) -> None:  # fmt: skip
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", sink=sink, catalogs=UNITY)
+    assert str(err.value) == f"entity.name=orders {message}"
+    assert err.value.code == code
+
+
+def test_delta_unity_needs_a_catalog_or_a_default(tmp_path: Path) -> None:
+    catalogs = UNITY.replace("default: u, ", "")
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", sink=unity_sink("{schema: s, table: t}"), catalogs=catalogs)  # fmt: skip
+    assert str(err.value) == "entity.name=orders sink.accepted.delta.catalog is required when no catalogs.default is set"  # fmt: skip
 
 
 def test_delta_rejects_add_columns(tmp_path: Path) -> None:

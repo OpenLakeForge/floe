@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from floe.config.yaml import (
     get_string,
@@ -39,10 +39,10 @@ class StoragesConfig(_Model):
 
 
 class CatalogDefinition(_Model):
-    """An Iceberg REST or AWS Glue catalog; Unity is rejected (D1)."""
+    """An Iceberg REST or AWS Glue catalog, or a Unity Catalog for external Delta tables."""
 
     name: str
-    type: Literal["rest", "glue"] = "rest"
+    type: Literal["rest", "glue", "unity"] = "rest"
     # REST only
     uri: str = ""
     credential: SecretStr | None = None
@@ -55,15 +55,18 @@ class CatalogDefinition(_Model):
     region: str | None = None
     database: str | None = None
     create_database_if_missing: bool = True
+    # Unity only; `token` is an env reference like the REST `credential`, expanded when the table is registered
+    host: str | None = None
+    catalog: str | None = None
+    # `schema` shadows a BaseModel attribute, so the field is `schema_` and the key stays `schema`.
+    schema_: str | None = Field(default=None, alias="schema")
+    token: SecretStr | None = None
+    create_schema_if_missing: bool = True
 
 
 class CatalogsConfig(_Model):
     default: str | None
     definitions: list[CatalogDefinition]
-
-
-class _Unsupported(FloeConfigError):
-    """A D1 rejection: raised as is, without the `definitions[i]:` prefix."""
 
 
 def _items(value: object, context: str) -> tuple[Hash, list[object]]:
@@ -102,7 +105,6 @@ _CATALOG_KEYS = (
     "database",
     "create_database_if_missing",
     "allow_takeover",
-    # Unity keys stay allowed, so a typo reports the key first
     "host",
     "catalog",
     "schema",
@@ -134,8 +136,17 @@ def _catalog(value: object, ctx: str) -> CatalogDefinition:
     name = get_string(hash, "name", ctx)
     catalog_type = get_string(hash, "type", ctx)
     if catalog_type == "unity":
-        raise _Unsupported(
-            f"{ctx} name={name} type={catalog_type} is not supported in 0.8"
+        return CatalogDefinition(
+            name=name,
+            type="unity",
+            host=get_string(hash, "host", ctx),
+            catalog=get_string(hash, "catalog", ctx),
+            schema=get_string(hash, "schema", ctx),  # pyright: ignore[reportCallIssue] -- the field is `schema_`, set by its alias
+            token=SecretStr(get_string(hash, "token", ctx)),
+            create_schema_if_missing=opt_bool(hash, "create_schema_if_missing", ctx)
+            is not False,
+            warehouse_storage=None,
+            warehouse_prefix=None,
         )
     if catalog_type == "glue":
         return CatalogDefinition(
@@ -173,8 +184,6 @@ def parse_storages(value: object, context: str = "storages") -> StoragesConfig:
     for index, item in enumerate(items):
         try:
             definitions.append(_storage(item, f"{context}.definitions"))
-        except _Unsupported:
-            raise
         except FloeConfigError as e:
             raise FloeConfigError(
                 f"{context}.definitions[{index}]: {e}", code=e.code
@@ -190,8 +199,6 @@ def parse_catalogs(value: object, context: str = "catalogs") -> CatalogsConfig:
     for index, item in enumerate(items):
         try:
             definitions.append(_catalog(item, f"{context}.definitions"))
-        except _Unsupported:
-            raise
         except FloeConfigError as e:
             raise FloeConfigError(
                 f"{context}.definitions[{index}]: {e}", code=e.code

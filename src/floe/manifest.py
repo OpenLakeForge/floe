@@ -154,6 +154,9 @@ def _pii_key(entity: EntityConfig, column: PiiColumn) -> str | None:
 
 
 def _sink(ctx: _Context, target: SinkTarget) -> Json:
+    # the manifest does not carry the `delta` block yet; dropping it would write a path-based table
+    if target.delta is not None:
+        raise FloeConfigError("sink.accepted.delta (Unity Catalog) is not supported in a manifest yet", code="config_not_supported")  # fmt: skip
     return _put(
         _Target(ctx, target).json(target.format),
         options=_sorted(target.options),
@@ -360,6 +363,10 @@ def _blocks(root: RootConfig) -> Json:
             }
         )
     if root.catalogs:
+        if any(
+            c.type == "unity" for c in root.catalogs.definitions
+        ):  # it would read back as a rest catalog
+            raise FloeConfigError("a unity catalog is not supported in a manifest yet", code="config_not_supported")  # fmt: skip
         blocks["catalogs"] = _sorted(
             {
                 "default": root.catalogs.default,

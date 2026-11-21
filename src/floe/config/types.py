@@ -130,6 +130,15 @@ def catalog_ident(value: str) -> str:
     return out.strip("_") or "default"
 
 
+class DeltaSinkOptions(_Model):
+    """The Unity Catalog binding of a Delta sink; the keys are checked in validation."""
+
+    catalog: str | None
+    # `schema` shadows a BaseModel attribute, so the field is `schema_` and the key stays `schema`.
+    schema_: str | None = Field(alias="schema")
+    table: str | None
+
+
 NO_ICEBERG = IcebergSinkOptions(catalog=None, namespace=None, table=None, location=None)  # fmt: skip
 
 
@@ -146,7 +155,7 @@ class SinkTarget(_Model):
     options: SinkOptions | None
     merge: MergeOptions | None
     iceberg: IcebergSinkOptions | None
-    delta: object = None  # raw: Delta is dropped (D1), validation rejects it
+    delta: DeltaSinkOptions | None = None
     duckdb: object = None
     partition_by: list[str] | None
     partition_spec: list[IcebergPartitionField] | None

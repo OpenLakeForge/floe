@@ -152,27 +152,31 @@ def test_parse_storages_uses_the_given_context() -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("definition", "message"),
-    [
-        # d1_catalog_unity
-        (
-            {
-                "name": "u",
-                "type": "unity",
-                "host": "h",
-                "catalog": "c",
-                "schema": "s",
-                "token": "t",
-            },
-            "catalogs.definitions name=u type=unity is not supported in 0.8",
-        ),
-    ],
-)
-def test_d1_catalogs_are_rejected(definition: object, message: str) -> None:
+def test_parse_catalogs_reads_a_unity_catalog() -> None:
+    [unity] = parse_catalogs(
+        {
+            "definitions": [
+                {
+                    "name": "u",
+                    "type": "unity",
+                    "host": "https://h",
+                    "catalog": "c",
+                    "schema": "s",
+                    "token": "${T}",
+                }
+            ]
+        }
+    ).definitions
+    assert (unity.type, unity.host, unity.catalog, unity.schema_) == ("unity", "https://h", "c", "s")  # fmt: skip
+    assert unity.token is not None and unity.token.get_secret_value() == "${T}"
+    assert unity.create_schema_if_missing is True
+
+
+def test_parse_catalogs_unity_requires_host_catalog_schema_and_token() -> None:
     with pytest.raises(FloeConfigError) as err:
-        parse_catalogs({"definitions": [definition]})
-    assert str(err.value) == message
+        parse_catalogs({"definitions": [{"name": "u", "type": "unity", "host": "h", "catalog": "c", "schema": "s"}]})  # fmt: skip
+    assert str(err.value) == "catalogs.definitions[0]: missing required field catalogs.definitions.token"  # fmt: skip
+    assert err.value.code == "config_missing_key"
 
 
 def test_parse_catalogs_reads_a_glue_catalog_as_rust_0_7() -> None:

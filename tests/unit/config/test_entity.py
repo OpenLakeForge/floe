@@ -376,9 +376,16 @@ def test_sink_target_blocks_and_defaults() -> None:
     assert sink.rejected is None
     assert parse_entity(entity()).sink.write_mode == "overwrite"
     raw = parse_entity(
-        entity(sink={"accepted": {**_ACCEPTED, "delta": {"table": "t"}}})
+        entity(
+            sink={
+                "accepted": {
+                    **_ACCEPTED,
+                    "delta": {"catalog": "u", "schema": "s", "table": "t"},
+                }
+            }
+        )
     ).sink.accepted
-    assert raw.delta == {"table": "t"}
+    assert raw.delta is not None and raw.delta.table == "t"
 
 
 _ACCEPTED = {"format": "parquet", "path": "p"}

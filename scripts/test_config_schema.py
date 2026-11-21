@@ -98,21 +98,21 @@ class ConfigSchemaTest(unittest.TestCase):
             types.SinkConfig: "sink", types.SinkTarget: "sink_accepted_fragment",
             types.SinkOptions: "sink_accepted_fragment", types.MergeOptions: "merge",
             types.MergeScd2Options: "merge_scd2", types.IcebergPartitionField: "partition_field",
-            types.IcebergSinkOptions: "iceberg", storage.StoragesConfig: "storages",
+            types.IcebergSinkOptions: "iceberg", types.DeltaSinkOptions: "delta", storage.StoragesConfig: "storages",
             storage.StorageDefinition: "storage_definition", storage.CatalogsConfig: "catalogs",
             storage.CatalogDefinition: "catalog_definition", project.ReportConfig: "report",
             types.ArchiveTarget: "archive_target", types.PolicyConfig: "policy_fragment",
             types.SchemaConfig: "schema", types.NormalizeColumnsConfig: "normalize_columns",
             types.SchemaEvolutionConfig: "schema_evolution", types.SchemaMismatchConfig: "schema_mismatch",
             types.ColumnConfig: "column",
-        }  # `delta` and `duckdb` stay raw in the model (D1) and have no binding.
+        }  # `duckdb` stays raw in the model (D1) and has no binding.
         internal = {project.RootConfig: {"config_files", "entity_workers"}, project.DomainConfig: {"resolved_incoming_dir"}, types.EntityConfig: {"id"}, types.SinkTarget: {"write_mode"}}
         aliases = {types.SourceConfig: {"source_ref": "ref"}, types.ColumnConfig: {"column_type": "type"}}
         wire_extras = {
             project.RootConfig: {"sources", "include", "filesystems"},
             types.SourceConfig: {"filesystem"}, types.SinkTarget: {"filesystem"},
-            # `type` picks the catalog kind before the model; the rest are the Glue and Unity keys D1 rejects.
-            storage.CatalogDefinition: {"type", "region", "database", "create_database_if_missing", "allow_takeover", "host", "catalog", "schema", "token", "create_schema_if_missing"},
+            # `type` picks the catalog kind before the model; `allow_takeover` is accepted and ignored (D42).
+            storage.CatalogDefinition: {"type", "allow_takeover"},
         }
         for model, definition in bindings.items():
             with self.subTest(model=model.__name__):

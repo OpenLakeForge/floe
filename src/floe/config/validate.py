@@ -394,9 +394,11 @@ def _check_iceberg(
             f"sink.{kind}.iceberg.catalog references unknown catalog {name}",
             code="config_unknown_reference",
         )
+    if definition.type == "unity":
+        raise _fail(entity, f"sink.{kind}.iceberg.catalog={name} is a unity catalog, which only sink.accepted.format=delta supports", code="config_conflict")  # fmt: skip
     if definition.type == "glue" and "{domain}" in (definition.database or "") and not (iceberg.namespace or entity.domain):  # fmt: skip
         raise _fail(entity, f"sink.{kind}.iceberg.namespace or domain is required for catalog {name} database containing {{domain}}", code="config_missing_key")  # fmt: skip
-    # Unity is rejected at parse (D1); the registry checked `warehouse_storage`.
+    # the registry checked `warehouse_storage`
     if kind == "accepted" and definition.type == "glue" and entity.sink.write_mode.startswith("merge"):  # fmt: skip
         # ponytail: merges run through DuckDB, attached to REST catalogs only; attach Glue when a merge needs it
         raise _fail(entity, f"sink.write_mode={entity.sink.write_mode} requires a rest catalog (glue supports overwrite and append)", code="config_not_supported")  # fmt: skip
@@ -422,6 +424,30 @@ def _check_iceberg(
             raise _fail(entity, "sink.rejected.iceberg must not write to the accepted table", code="config_conflict")  # fmt: skip
 
 
+def _check_delta(entity: EntityConfig, config: RootConfig, storage: str) -> None:
+    """The Unity binding of `sink.accepted.delta`; registering the table is #1314."""
+    accepted = entity.sink.accepted
+    delta = accepted.delta
+    if delta is None:
+        return
+    if accepted.format != "delta":
+        raise _fail(entity, "sink.accepted.delta is only supported for sink.accepted.format=delta", code="config_conflict")  # fmt: skip
+    name = delta.catalog or (config.catalogs and config.catalogs.default)
+    if name is None:
+        raise _fail(entity, "sink.accepted.delta.catalog is required when no catalogs.default is set", code="config_missing_key")  # fmt: skip
+    for key, value in (("schema", delta.schema_), ("table", delta.table)):
+        if value is None:
+            raise _fail(entity, f"sink.accepted.delta.{key} is required", code="config_missing_key")  # fmt: skip
+    definitions = config.catalogs.definitions if config.catalogs else []
+    definition = next((c for c in definitions if c.name == name), None)
+    if definition is None:
+        raise _fail(entity, f"sink.accepted.delta.catalog references unknown catalog {name}", code="config_unknown_reference")  # fmt: skip
+    if definition.type != "unity":
+        raise _fail(entity, f"sink.accepted.delta.catalog={name} must be a unity catalog (got {definition.type})", code="config_conflict")  # fmt: skip
+    if _storage_type(config, storage) != "s3":  # adls and gcs were refused above
+        raise _fail(entity, f"sink.accepted.delta requires s3 storage (got {_storage_type(config, storage)})", code="config_not_supported")  # fmt: skip
+
+
 def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
     sink, accepted = entity.sink, entity.sink.accepted
     if accepted.format == "duckdb":  # D1 (#619): reported first
@@ -431,8 +457,6 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
             code="config_not_supported",
         )
     if accepted.format == "delta":
-        if accepted.delta is not None:  # the Unity catalog block opens in #1266
-            raise _fail(entity, "sink.accepted.delta is not supported yet", code="config_not_supported")  # fmt: skip
         require("delta", "deltalake", f"entity.name={entity.name} sink.accepted.format=delta")  # fmt: skip
     if accepted.format not in SINK_FORMATS:
         raise _fail(entity, f"sink.accepted.format={accepted.format} is unsupported", code="config_invalid_value")  # fmt: skip
@@ -482,6 +506,7 @@ def _check_sink(entity: EntityConfig, config: RootConfig) -> None:
         "gcs",
     ):
         raise _fail(entity, f"sink.accepted.format=delta is not supported on {_storage_type(config, accepted_storage)} storage yet", code="config_not_supported")  # fmt: skip
+    _check_delta(entity, config, accepted_storage)
     _check_partitioning(entity)
     _check_write_mode(entity)
     archive = sink.archive
