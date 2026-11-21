@@ -203,7 +203,7 @@ def test_s3_no_match_message() -> None:
 def test_s3_requires_a_client() -> None:
     with pytest.raises(FloeRunError) as err:
         resolve_inputs(Path("."), "s3://b/k", "csv", "orders", "s3_raw", None)
-    assert str(err.value) == "s3 storage client missing"
+    assert str(err.value) == "cloud storage client missing"
 
 
 def test_unsupported_scheme_and_format() -> None:

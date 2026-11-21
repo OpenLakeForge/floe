@@ -1,4 +1,3 @@
 {
-  "ok": false,
-  "error": "storages.definitions name=a type=adls is not supported in 0.8"
+  "ok": true
 }

@@ -323,7 +323,7 @@ def test_maintain_refuses_adls_and_gcs_storages(kind: str, tmp_path: Path) -> No
 
     (tmp_path / "config.yml").write_text(CONFIG)
     root = parse_config(tmp_path / "config.yml", {})
-    lake = StorageDefinition(name="cold", type=kind, bucket=None, region=None, account=None, container=None, prefix=None, endpoint=None, path_style_access=None)  # fmt: skip
+    lake = StorageDefinition(name="cold", type=kind, bucket=None, region=None, account="a", container="c", prefix=None, endpoint=None, path_style_access=None)  # fmt: skip
     root = root.model_copy(update={"storages": StoragesConfig(default="local", definitions=[*(root.storages.definitions if root.storages else []), lake])})  # fmt: skip
     with pytest.raises(FloeConfigError) as e:
         maintain(tmp_path / "config.yml", root, [], 7, 10, 3, True, False, False)

@@ -624,3 +624,38 @@ def test_a_too_new_version_has_the_version_code(tmp_path: Path) -> None:
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, f"{{{COLS}}}", version="99.0")
     assert err.value.code == "config_version"
+
+
+ADLS = "storages: {{default: s, definitions: [{{name: s, type: adls{fields}}}]}}\n"
+
+
+@pytest.mark.parametrize(
+    ("fields", "message"),
+    [
+        (
+            ", container: c",
+            "storages.definitions name=s requires account for type adls",
+        ),
+        (
+            ", account: a",
+            "storages.definitions name=s requires container for type adls",
+        ),
+    ],
+)
+def test_an_adls_storage_requires_account_and_container(tmp_path: Path, fields: str, message: str) -> None:  # fmt: skip
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", catalogs=ADLS.format(fields=fields))
+    assert str(err.value) == message and err.value.code == "config_missing_key"
+
+
+def test_adls_is_accepted_for_parquet_and_refused_for_delta_and_iceberg(tmp_path: Path) -> None:  # fmt: skip
+    adls = ADLS.format(fields=", account: a, container: c")
+    sink = "{accepted: {format: parquet, path: out, storage: s}}"
+    check(tmp_path, f"{{{COLS}}}", sink=sink, catalogs=adls)
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", sink=sink.replace("parquet", "delta"), catalogs=adls)  # fmt: skip
+    assert str(err.value) == "entity.name=orders sink.accepted.format=delta is not supported on adls storage yet"  # fmt: skip
+    catalogs = adls + "catalogs: {default: c, definitions: [{name: c, type: rest, uri: u}]}\n"  # fmt: skip
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", sink=sink.replace("parquet", "iceberg").replace("}}", ", iceberg: {}}}"), catalogs=catalogs)  # fmt: skip
+    assert str(err.value) == "entity.name=orders sink.accepted.iceberg.catalog requires sink.accepted storage type s3 or gcs (got adls)"  # fmt: skip

@@ -1,4 +1,4 @@
-"""Accepted Parquet and rejected CSV writers; `base` is a `local://` or `s3://` URI."""
+"""Accepted Parquet and rejected CSV writers; `base` is a `local://`, `s3://` or `abfss://` URI."""
 
 import io
 import math
@@ -49,7 +49,7 @@ class AcceptedWrite:
 
 def part_uris(client: StorageClient, base: str, ext: str) -> list[str]:
     """The `part-*.<ext>` files directly under `base`, sorted."""
-    key = split_uri(base)[1] if base.startswith("s3://") else None
+    key = split_uri(base)[1] if base.startswith(("s3://", "abfss://")) else None
     prefix = (
         base.removeprefix("local://") if key is None else key and f"{key}/"
     )  # a bucket root lists every key

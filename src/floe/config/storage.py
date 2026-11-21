@@ -125,7 +125,7 @@ def _storage(value: object, ctx: str) -> StorageDefinition:
         endpoint=opt_string(hash, "endpoint", ctx),
         path_style_access=opt_bool(hash, "path_style_access", ctx),
     )
-    if definition.type in ("adls", "gcs"):
+    if definition.type == "gcs":
         raise _Unsupported(
             f"{ctx} name={definition.name} type={definition.type} is not supported in 0.8"
         )

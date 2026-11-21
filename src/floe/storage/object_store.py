@@ -151,7 +151,12 @@ def azure_store(definition: StorageDefinition) -> ObjectStoreClient:
     account, container = definition.account, definition.container
     endpoint = (definition.endpoint or f"https://{account}.blob.core.windows.net").rstrip("/")  # fmt: skip
     try:
-        store = AzureStore(container, account_name=account, endpoint=endpoint)
+        store = AzureStore(
+            container,
+            account_name=account,
+            endpoint=endpoint,
+            client_options={"allow_http": endpoint.startswith("http://")},
+        )
     except (oe.BaseError, ValueError) as e:
         raise _fail(f"azure store for {account}/{container}", e) from e
     return ObjectStoreClient(store, f"abfss://{container}@{account}.dfs.core.windows.net", endpoint, "e_tag")  # fmt: skip
