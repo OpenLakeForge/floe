@@ -131,3 +131,34 @@ def test_1100_threads_share_one_client(built: list[S3Client]) -> None:
     for t in threads:
         t.join()
     assert len(built) == 1
+
+
+def gcs(prefix: str | None = None, endpoint: str | None = None) -> StorageDefinition:
+    return StorageDefinition(
+        name="g", type="gcs", bucket="b", region=None, account=None,
+        container=None, prefix=prefix, endpoint=endpoint, path_style_access=None,
+    )  # fmt: skip
+
+
+def test_resolve_gcs_path() -> None:
+    config = StoragesConfig(default="g", definitions=[gcs("/p/")])
+    assert resolve_path(config, Path("/c"), None, "in/*.csv", "f")[0] == "gs://b/p/in/*.csv"  # fmt: skip
+    assert resolve_path(config, Path("/c"), None, "gs://b/k", "f")[0] == "gs://b/k"
+    assert resolve_path(config, Path("/c"), None, "", "f")[0] == "gs://b/p"
+    for raw, message in (
+        ("gs://x/k", "storage g bucket mismatch: x"),
+        ("gcs://b/k", "f must use a gs:// uri for gcs storage g (got gcs://b/k)"),
+        ("s3://b/k", "f must use a gs:// uri for gcs storage g (got s3://b/k)"),
+    ):
+        with pytest.raises(FloeConfigError) as err:
+            resolve_path(config, Path("/c"), None, raw, "f")
+        assert str(err.value) == message and err.value.code == "config_invalid_value"
+
+
+def test_gcs_clients_are_cached_per_storage() -> None:
+    clear_storage_clients()
+    http = gcs(endpoint="http://127.0.0.1:4443")
+    assert storage_client(gcs()) is storage_client(gcs())
+    assert storage_client(gcs()) is not storage_client(http)
+    assert storage_client(http).endpoint == "http://127.0.0.1:4443"
+    clear_storage_clients()
