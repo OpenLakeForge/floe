@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import NamedTuple
 
-from floe.errors import FloeConfigError
+from floe.errors import FloeConfigError, FloeRunError
 from floe.storage.inputs import InputFile
 from floe.storage.types import StorageClient
 
@@ -211,9 +211,9 @@ def claim_inputs(
             return ClaimOutcome(
                 pending, Loaded(state, version), active, processed, expired
             )
-    raise FloeConfigError(
+    raise FloeRunError(
         f"entity.name={entity} incremental state update conflicted after {CAS_RETRIES} retries",
-        code="config_conflict",
+        code="run_state_conflict",
     )
 
 
@@ -240,9 +240,9 @@ def claim_all(
         if version is not None:
             replaced = {u: c for u, c in loaded.state.claims.items() if u in claims}
             return Loaded(fresh.state, version), replaced
-    raise FloeConfigError(
+    raise FloeRunError(
         f"entity.name={entity} full-refresh state write conflicted after {CAS_RETRIES} retries",
-        code="config_conflict",
+        code="run_state_conflict",
     )
 
 
@@ -265,9 +265,9 @@ def _mutate(
         mutate(loaded.state, ours)
         if _persist(client, uri, loaded) is not None:  # an emptied state is written too
             return
-    raise FloeConfigError(
+    raise FloeRunError(
         f"entity.name={entity} incremental state update conflicted after {CAS_RETRIES} retries",
-        code="config_conflict",
+        code="run_state_conflict",
     )
 
 
@@ -346,8 +346,8 @@ def reset(client: StorageClient, uri: str, entity: str) -> bool:
         pass  # malformed or another entity's: reset it anyway
     empty = dump_state(EntityState(entity, None, {}, {}))
     if client.write_conditional(uri, stored.version, empty) is None:
-        raise FloeConfigError(
+        raise FloeRunError(
             f"entity.name={entity} remote state changed while resetting: {uri}",
-            code="config_conflict",
+            code="run_state_conflict",
         )
     return True

@@ -30,6 +30,7 @@ ErrorCode = Literal[
     "run_not_supported",
     "run_invalid_input",
     "run_invalid_setup",
+    "run_archive_failed",
 ]
 
 

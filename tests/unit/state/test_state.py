@@ -9,7 +9,7 @@ from botocore.response import StreamingBody
 from botocore.stub import Stubber
 
 import floe.state as state_mod
-from floe.errors import FloeConfigError
+from floe.errors import FloeConfigError, FloeRunError
 from floe.state import (
     SCHEMA_V1,
     SCHEMA_V2,
@@ -377,7 +377,7 @@ def test_claim_retries_on_cas_conflict(tmp_path: Path) -> None:
 
 def test_claim_fails_after_retries(tmp_path: Path) -> None:
     uri = str(tmp_path / "state.json")
-    with pytest.raises(FloeConfigError) as e:
+    with pytest.raises(FloeRunError) as e:
         claim_inputs(Flaky(99), uri, "sales", "run-a", [_input()])
     assert (
         str(e.value)
@@ -432,15 +432,24 @@ def test_full_refresh_with_no_inputs_empties_the_state(tmp_path: Path) -> None:
     assert read_state(client, uri, "sales") is None
 
 
+def test_promote_conflict_carries_a_run_state_conflict_code(tmp_path: Path) -> None:
+    uri = str(tmp_path / "state.json")
+    claimed = claim_inputs(LocalClient(), uri, "sales", "run-a", [_input()])
+    assert claimed.claimed is not None
+    with pytest.raises(FloeRunError) as e:
+        promote(Flaky(99), uri, "run-a", claimed.claimed)
+    assert e.value.code == "run_state_conflict"
+
+
 def test_claim_all_fails_after_retries(tmp_path: Path) -> None:
-    with pytest.raises(FloeConfigError, match="full-refresh state write conflicted after 8 retries"):  # fmt: skip
+    with pytest.raises(FloeRunError, match="full-refresh state write conflicted after 8 retries"):  # fmt: skip
         claim_all(Flaky(99), str(tmp_path / "state.json"), "sales", "run-a", [_input()])
 
 
 def test_claim_all_conflict_carries_a_code(tmp_path: Path) -> None:
-    with pytest.raises(FloeConfigError) as e:
+    with pytest.raises(FloeRunError) as e:
         claim_all(Flaky(99), str(tmp_path / "state.json"), "sales", "run-a", [_input()])
-    assert e.value.code == "config_conflict"
+    assert e.value.code == "run_state_conflict"
 
 
 @pytest.mark.parametrize(
@@ -471,7 +480,7 @@ def test_reset_raises_when_state_changes_meanwhile(tmp_path: Path) -> None:
             return None
 
     LocalClient().write_conditional(uri, None, b"{}")
-    with pytest.raises(FloeConfigError) as err:
+    with pytest.raises(FloeRunError) as err:
         reset(Racing(), uri, "sales")
     assert str(err.value) == f"entity.name=sales remote state changed while resetting: {uri}"  # fmt: skip
 
