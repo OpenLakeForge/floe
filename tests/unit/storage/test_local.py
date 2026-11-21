@@ -199,10 +199,11 @@ def test_archive_delete_failure_is_run_error(tmp_path: Path) -> None:
 
     with pytest.raises(
         FloeRunError, match=r"entity\.name=orders archive delete failed for .*boom"
-    ):
+    ) as e:
         archive_input_file(
             Failing(), "r", "orders", lambda rel: str(tmp_path / rel), _input(src)
         )
+    assert e.value.code == "run_archive_failed"
 
 
 def test_read_and_write_failures_are_storage_errors(tmp_path: Path) -> None:
