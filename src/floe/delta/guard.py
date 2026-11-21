@@ -14,6 +14,9 @@ _RETENTION = "delta.setTransactionRetentionDuration"
 _MICROS = {"nanosecond": 1e-3, "microsecond": 1, "millisecond": 1e3, "second": 1e6, "minute": 60e6, "hour": 3600e6, "day": 86400e6, "week": 604800e6}  # fmt: skip
 
 
+_LEGACY = 1  # the constant `txn` version before #1354
+
+
 def _ms(at: datetime) -> int:
     return int(at.timestamp() * 1000)
 
@@ -51,12 +54,15 @@ def committed(
     """Whether the table holds the `txn` of `input_hash`; it is read from the table state, not the history.
 
     With `since`, only a `txn` stamped at or after it counts: an older one is an earlier load of the same batch (#1354).
+    A pre-#1354 `txn` (version 1) still counts, as it did.
 
     None when `since`, the claim's `acquired_at`, is older than the table's transaction retention, or the retention
     is set but unreadable: the `txn` may have been expired, so the answer is unknown.
     """
     found = table.transaction_version(f"floe:{input_hash}")
-    if found is not None and (since is None or found >= _ms(since)):
+    # a `txn` stamped before #1354 has version 1 and no time: it keeps the old meaning (any match), so a run that
+    # committed and died across the upgrade is not appended twice
+    if found is not None and (since is None or found == _LEGACY or found >= _ms(since)):
         return True
     keep = _retention(table)
     return None if since is not None and keep is not None and datetime.now(since.tzinfo) - since > keep else False  # fmt: skip

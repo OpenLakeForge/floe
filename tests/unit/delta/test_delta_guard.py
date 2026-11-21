@@ -315,3 +315,23 @@ def test_a_commit_from_before_the_dead_runs_claim_is_not_its_commit(tmp_path: Pa
     (file,) = run_entity(entity, tmp_path, "0.3", emit=Emitter(None, "retry")).report["files"]  # fmt: skip
     assert file["status"] == "success"
     assert ids(tmp_path) == [1, 1, 2, 2]
+
+
+def test_a_dead_runs_commit_stamped_before_the_fix_is_still_its_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#1354: a run that committed with the old constant `txn` version 1 and died across the upgrade is not appended twice."""
+    entity = project(tmp_path, "incremental_mode: file")
+
+    def legacy(
+        run_id: str, h: str | None, _claimed: int | None = None
+    ) -> CommitProperties:
+        return stamp(run_id, h, 1)  # the constant version every `txn` had before #1354
+
+    monkeypatch.setattr(write_module, "stamp", legacy)
+    die_after_commit(entity, tmp_path, monkeypatch)
+    table = DeltaTable(str(tmp_path / "out" / "accepted"))
+    assert (
+        table.transaction_version(f"floe:{table.history(1)[0]['floe.input_hash']}") == 1
+    )
+    (file,) = run_entity(entity, tmp_path, "0.3", emit=Emitter(None, "retry")).report["files"]  # fmt: skip
+    assert (file["status"], file["skip_reason"]) == ("skipped", "already_committed")
+    assert ids(tmp_path) == [1, 2]
