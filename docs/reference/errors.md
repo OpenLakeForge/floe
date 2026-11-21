@@ -6,8 +6,6 @@ From 1.0 the error codes and the exception classes (`FloeConfigError`, `FloeIoEr
 
 The code shows up as `error_code` in JSON logs, in `run.failure.json`, and as `error_code=<code>` in text logs. The log's own `code` field is separate: it names the kind of log line.
 
-Errors raised before their migration to a typed code have no `error_code`.
-
 | Code | Raised when |
 |---|---|
 | `config_invalid_yaml` | a config file is not valid YAML |
