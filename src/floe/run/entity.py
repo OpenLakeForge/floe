@@ -251,10 +251,19 @@ def _run_entity(
     if inc.full_refresh and entity.sink.write_mode == "merge_scd1":
         entity = entity.model_copy(update={"sink": entity.sink.model_copy(update={"write_mode": "overwrite"})})  # fmt: skip
     sink = entity.sink
-    if sink.accepted.format not in ("parquet", "iceberg"):
+    if sink.accepted.format not in ("parquet", "iceberg", "delta"):
         raise FloeRunError(f"entity.name={entity.name} unsupported sink format: {sink.accepted.format}", code="run_not_supported")  # fmt: skip
     iceberg = sink.accepted.format == "iceberg"
     who = f"entity.name={entity.name}"
+    delta = sink.accepted.format == "delta"
+    if delta:
+        # a manifest run skips validation: name the missing extra before the import fails
+        require("delta", "deltalake", f"{who} sink.accepted.format=delta")
+        from floe.delta.sink import (
+            check_supported,  # lazy: deltalake is the optional delta extra
+        )
+
+        check_supported(entity)
     source_uri, client = resolve_source(entity, config_dir, storages)
     rejected_iceberg = bool(sink.rejected and sink.rejected.format == "iceberg")
     target = rejected_table = None
@@ -439,7 +448,11 @@ def _run_entity(
             del first  # the sink holds the chunk it is on, not the first
             sink_started = time.monotonic()
             plan.sinks["accepted"] = "unknown"
-            if target is None:
+            if delta:
+                from floe.delta.sink import write_delta
+
+                write, table = write_delta(entity, base, accepted, frames, [plan.out_map.get(n, n) for n in names], sink.write_mode)  # fmt: skip
+            elif target is None:
                 write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options, input_hash(entity, pending) if plan.tracker.keys and entity.incremental_mode == "file" else None)  # fmt: skip
             else:
                 from floe.iceberg.sink import write_iceberg

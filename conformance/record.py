@@ -25,6 +25,7 @@ from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+from deltalake import DeltaTable
 
 HERE = Path(__file__).resolve().parent
 FLOE = ["uv", "run", "--project", str(HERE.parent), "floe"]
@@ -49,7 +50,7 @@ RUN_DIR = re.compile(r"run_[0-9T:.\-Z]+")
 # Archived file names embed the run id and a hash of the absolute source URI.
 ARCHIVE_NAME = re.compile(r"__run-.+?__src-[0-9a-f]{16}")
 UUID_PART = re.compile(
-    r"part-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"part-(?:\d{5}-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"  # Delta names a file part-00000-<uuid>-c000.snappy.parquet
 )
 
 Snapshot = dict[str, str | Any]  # str: text file; Any: pyarrow Table
@@ -104,11 +105,17 @@ def snapshot(work: Path) -> Snapshot:
         out[f"reports/{rel}"] = (
             json.dumps(normalize(json.loads(path.read_text()), root), indent=2) + "\n"
         )
-    for d in sorted({p.parent for p in work.glob("out/accepted/**/*.parquet")}):
+    deltas = {p.parent for p in work.glob("out/accepted/**/_delta_log")}
+    for d in sorted({p.parent for p in work.glob("out/accepted/**/*.parquet")} - deltas):  # fmt: skip
         parts = sorted(d.glob("part-*.parquet"))
         out[f"accepted/{d.relative_to(work / 'out/accepted').as_posix()}.parquet"] = (
             pa.concat_tables([pq.read_table(p) for p in parts])
         )
+    for d in sorted(
+        deltas
+    ):  # a Delta overwrite leaves the files it removed behind: read the live ones through the log
+        rows = DeltaTable(str(d)).to_pyarrow_table()
+        out[f"accepted/{d.relative_to(work / 'out/accepted').as_posix()}.parquet"] = rows.sort_by([(n, "ascending") for n in rows.column_names])  # fmt: skip
     for d in sorted(
         {p.parent for p in work.glob("out/rejected/**/rows/part-*.parquet")}
     ):
