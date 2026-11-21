@@ -1,0 +1,2 @@
+order_id,amount,email,__floe_row_index,__floe_errors
+2,oops,b@x.io,1,"[{""rule"":""cast_error"",""column"":""amount"",""message"":""invalid value for target type""}]"

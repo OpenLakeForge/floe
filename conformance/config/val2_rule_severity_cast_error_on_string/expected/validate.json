@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "entity.name=orders schema.columns[name=id].rule_severity.cast_error is not applicable: a string column has no cast check"
+}

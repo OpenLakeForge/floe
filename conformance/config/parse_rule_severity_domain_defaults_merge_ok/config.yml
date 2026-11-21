@@ -1,0 +1,30 @@
+version: '0.3'
+domains:
+- name: sales
+  defaults:
+    sink:
+      accepted:
+        format: parquet
+        path: out/accepted/{{domain.name}}/{{entity.name}}
+      rejected:
+        format: csv
+        path: out/rejected/{{domain.name}}/{{entity.name}}
+    policy:
+      severity: reject
+      rule_severity:
+        unique: warn
+        schema_mismatch: warn
+entities:
+- name: orders
+  domain: sales
+  source:
+    format: csv
+    path: in/orders.csv
+  policy:
+    severity: reject
+    rule_severity:
+      unique: abort
+  schema:
+    columns:
+    - name: id
+      type: int64

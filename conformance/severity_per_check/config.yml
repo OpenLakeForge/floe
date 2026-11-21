@@ -1,0 +1,40 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: orders
+    domain: spike
+    source:
+      format: csv
+      path: "./in"
+      options:
+        header: true
+        separator: ","
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/orders"
+      rejected:
+        format: csv
+        path: "./out/rejected/orders"
+    policy:
+      severity: reject
+      rule_severity:
+        schema_mismatch: warn
+        unique: abort
+    schema:
+      mismatch:
+        missing_columns: reject_file
+      primary_key: [order_id]
+      columns:
+        - name: order_id
+          type: int64
+        - name: amount
+          type: decimal(18,2)
+        - name: email
+          type: string
+          nullable: false
+          rule_severity:
+            not_null: warn
+report:
+  path: "./report"

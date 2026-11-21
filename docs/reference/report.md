@@ -203,7 +203,9 @@ Validation summaries report aggregated counts only (no row-level examples).
 
 Aggregations:
 - `validation.errors`/`warnings` are totals for the file.
-- `validation.rules[]` aggregates violations by rule and column.
+- `validation.rules[]` aggregates violations by rule and column. A rule appears once per resolved severity, so
+  it repeats only when its columns have different `rule_severity` levels. The `policy` block adds `rule_severity`
+  when the entity sets it.
 
 Example rule summary:
 

@@ -943,9 +943,9 @@ def with_rule_severity(monkeypatch: pytest.MonkeyPatch) -> None:
     def patched(path: Any, profile: Any) -> Any:
         root = load(path, profile)
         entity = root.entities[0]
-        column = entity.schema_.columns[0].model_copy(update={"rule_severity": {"not_null": "warn"}})  # fmt: skip
+        column = entity.schema_.columns[0].model_copy(update={"rule_severity": {"not_null": "warn"}, "nullable": False})  # fmt: skip
         schema = entity.schema_.model_copy(update={"columns": [column]})
-        policy = entity.policy.model_copy(update={"rule_severity": {"unique": "abort", "cast_error": "warn"}})  # fmt: skip
+        policy = entity.policy.model_copy(update={"rule_severity": {"unique": "warn", "cast_error": "warn"}})  # fmt: skip
         entity = entity.model_copy(update={"schema_": schema, "policy": policy})
         return root.model_copy(update={"entities": [entity]})
 
@@ -962,12 +962,12 @@ def test_1358_rule_severity_round_trips_and_validates(
     with_rule_severity(monkeypatch)
     manifest = manifest_of(tmp_path, monkeypatch, CONFIG)
     entity = manifest["entities"][0]
-    assert entity["policy_rule_severity"] == {"cast_error": "warn", "unique": "abort"}
+    assert entity["policy_rule_severity"] == {"cast_error": "warn", "unique": "warn"}
     assert entity["schema"]["columns"][0]["rule_severity"] == {"not_null": "warn"}
     schema = Path(__file__).parents[2] / "orchestrators/schemas/floe.manifest.schema.json"  # fmt: skip
     Draft202012Validator(json.loads(schema.read_text())).validate(manifest)  # pyright: ignore[reportUnknownMemberType] -- jsonschema ships no types
     _, [back], _ = load_manifest(tmp_path / "manifest.json")
-    assert back.policy.rule_severity == {"cast_error": "warn", "unique": "abort"}
+    assert back.policy.rule_severity == {"cast_error": "warn", "unique": "warn"}
     assert back.schema_.columns[0].rule_severity == {"not_null": "warn"}
 
 
