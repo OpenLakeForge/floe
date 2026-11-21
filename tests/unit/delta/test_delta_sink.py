@@ -29,6 +29,7 @@ entities:
     sink:
       write_mode: {mode}
       accepted: {{format: delta, path: ./out/accepted{part}}}
+      rejected: {{format: csv, path: ./out/rejected}}
     policy: {{severity: reject}}
     schema:
       {extra}
@@ -51,7 +52,7 @@ def run(tmp_path: Path, rows: str, mode: str = "overwrite", columns: Any = COLUM
 
 
 def table(tmp_path: Path) -> pl.DataFrame:
-    return pl.DataFrame(pa.table(DeltaTable(str(tmp_path / "out" / "accepted")).to_pyarrow_table()))  # fmt: skip
+    return pl.DataFrame(pa.RecordBatchReader.from_stream(DeltaTable(str(tmp_path / "out" / "accepted")).scan()).read_all())  # fmt: skip
 
 
 def test_two_overwrites_leave_only_the_second_batch(tmp_path: Path) -> None:
@@ -117,11 +118,34 @@ def test_a_unity_delta_block_is_refused_until_the_table_is_registered(tmp_path: 
     assert not (tmp_path / "out").exists()
 
 
-def test_append_with_unique_keys_is_refused_before_anything_is_read(tmp_path: Path) -> None:  # fmt: skip
-    with pytest.raises(FloeRunError, match="unique keys on a delta append are not supported yet") as e:  # fmt: skip
-        run(tmp_path, "id,name\n1,a\n", "append", extra="unique_keys: [[id]]")
-    assert e.value.code == "run_not_supported"
-    assert not (tmp_path / "out").exists()
+def _seeded(tmp_path: Path, **kw: Any) -> None:
+    write_deltalake(str(tmp_path / "out" / "accepted"), pa.table({"id": pa.array([1, 2], pa.int64()), "name": ["a", "b"]}), **kw)  # fmt: skip
+
+
+@pytest.mark.parametrize("keys", ["unique_keys: [[id]]", "primary_key: [id]"])
+@pytest.mark.parametrize("config", [{}, {"configuration": {"delta.columnMapping.mode": "name"}}], ids=["plain", "column-mapped"])  # fmt: skip
+def test_append_rejects_a_key_already_in_the_table(tmp_path: Path, keys: str, config: dict[str, Any]) -> None:  # fmt: skip
+    _seeded(tmp_path, **config)
+    report = run(tmp_path, "id,name\n2,dup\n3,c\n", "append", extra=keys)
+    assert (report["results"]["accepted_total"], report["results"]["rejected_total"]) == (1, 1)  # fmt: skip
+    assert sorted(table(tmp_path)["id"].to_list()) == [1, 2, 3]
+
+
+def test_multi_file_table_keys_are_streamed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    for i in range(3):
+        write_deltalake(str(tmp_path / "out" / "accepted"), pa.table({"id": pa.array([i], pa.int64()), "name": ["x"]}), mode="append")  # fmt: skip
+
+    def boom(*_: Any, **__: Any) -> None:
+        raise AssertionError("the whole table was materialised")
+
+    for fn in ("to_pyarrow_table", "to_pyarrow_dataset"):
+        monkeypatch.setattr(DeltaTable, fn, boom)
+    report = run(
+        tmp_path, "id,name\n2,dup\n9,n\n", "append", extra="unique_keys: [[id]]"
+    )
+    assert (report["results"]["accepted_total"], report["results"]["rejected_total"]) == (1, 1)  # fmt: skip
+    monkeypatch.undo()
+    assert sorted(table(tmp_path)["id"].to_list()) == [0, 1, 2, 9]
 
 
 def test_s3_storage_options_follow_the_storage_definition() -> None:

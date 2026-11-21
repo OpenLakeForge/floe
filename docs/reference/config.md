@@ -428,10 +428,11 @@ state file shape, and CAS behavior.
     - source rows must be unique on `schema.primary_key`: duplicates of the key are rejected before the merge, even under `policy.severity: warn`
   - Applies to both accepted and rejected outputs.
 - `accepted` (required)
-  - `format`: `parquet` or `iceberg`.
+  - `format`: `parquet`, `iceberg` or `delta`.
     - `iceberg`: Iceberg table in a REST catalog; `sink.accepted.iceberg` with a catalog is required (0.8). See [Iceberg sink](../sinks/iceberg.md).
-    - `delta` and `duckdb` were dropped in 0.8 (D1) and fail validation; the archived
-      [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust) documents them for 0.7.
+    - `delta`: path-based Delta table on local or S3 storage; `write_mode` `overwrite` or `append`; needs the `delta` extra. `sink.accepted.delta` (Unity) is refused for now. See [Delta sink](../sinks/delta.md).
+    - `duckdb` was dropped in 0.8 (D1) and fails validation; the archived
+      [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust) documents it for 0.7.
 - `path`: output directory for accepted records.
   - Supports `{{var}}` templating (see "Templating & domains").
   - `storage` (optional)
@@ -449,7 +450,7 @@ state file shape, and CAS behavior.
       parts in one pass, Iceberg in one catalog commit. Inputs are archived (when
       `sink.archive` is enabled) only after that write succeeds, so an input is never
       archived unless its rows were written; if the write fails, the inputs stay in the source.
-  - `partition_by` (optional, `sink.accepted.format: delta`): identity partition columns, set when the table is created. An existing table partitioned by other columns fails the run with `run_schema_evolution`. Other formats: `floe validate` rejects it.
+  - `partition_by` (optional, `sink.accepted.format: delta`): identity partition columns, set when the table is created. An existing table partitioned by other columns fails the run with `run_schema_evolution`. Other formats: `floe validate` rejects it. See [Delta sink](../sinks/delta.md).
   - `partition_spec` (optional, `sink.accepted.format: iceberg`)
     - Array of partition spec entries.
     - Each entry supports:
