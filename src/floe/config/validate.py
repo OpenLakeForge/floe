@@ -402,10 +402,7 @@ def _check_iceberg(
         raise _fail(entity, f"sink.write_mode={entity.sink.write_mode} requires a rest catalog (glue supports overwrite and append)", code="config_not_supported")  # fmt: skip
     if definition.warehouse_storage is None:
         type_ = _storage_type(config, storage)
-        if (
-            type_ == "gcs"
-        ):  # ponytail: drop with the Iceberg/DuckDB settings for gcs (#1326)
-            raise _fail(entity, f"sink.{kind}.iceberg is not supported on gcs storage yet", code="config_not_supported")  # fmt: skip
+        # ponytail: adls is refused; PyIceberg's FileIO cannot read abfss://<container>@<account> locations without adlfs (#1326)
         if type_ not in ("s3", "gcs"):
             raise _fail(
                 entity,
@@ -891,10 +888,6 @@ def _check_storages(config: RootConfig) -> None:
                     f"reference s3 storage for glue catalog (got {kind})",
                     code="config_conflict",
                 )
-            if (
-                kind == "gcs"
-            ):  # ponytail: drop with the Iceberg/DuckDB settings for gcs (#1326)
-                raise FloeConfigError(f"catalogs.definitions name={c.name} warehouse_storage on gcs storage is not supported yet", code="config_not_supported")  # fmt: skip
             if kind not in ("s3", "gcs"):
                 raise FloeConfigError(
                     f"catalogs.definitions name={c.name} warehouse_storage must "
