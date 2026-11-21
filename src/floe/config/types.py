@@ -34,6 +34,15 @@ class PolicyConfig(_Model):
     max_rejection_rate: float | None = None
 
 
+def rule_level(
+    entity: "EntityConfig", rule: str, column: str | None = None
+) -> PolicySeverity:
+    """The severity of one check. Every reader goes through here, so a per-check level changes only this function."""
+    return (
+        entity.policy.severity
+    )  # ponytail: one level for every check until a rule_severity map exists (#1250)
+
+
 class NormalizeColumnsConfig(_Model):
     enabled: bool | None
     strategy: str | None
