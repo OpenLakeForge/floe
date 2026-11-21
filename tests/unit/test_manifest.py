@@ -903,3 +903,32 @@ def test_profile_constructor_preserves_positional_orchestration() -> None:
     profile = ProfileConfig("prod", {}, {}, None, None, None, {"strategy": "parallel"})
     assert profile.orchestration == {"strategy": "parallel"}
     assert profile.runners is None
+
+
+def test_manifest_refuses_a_unity_delta_sink_instead_of_dropping_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The manifest does not carry the `delta` block: running it would write a path-based table silently."""
+    config = CONFIG.replace(
+        "report:",
+        "storages: {default: s, definitions: [{name: s, type: s3, bucket: b, region: r}]}\n"
+        "catalogs: {default: u, definitions: [{name: u, type: unity, host: h, catalog: c, schema: s, token: t}]}\n"
+        "report:",
+    ).replace(
+        "sink: {accepted: {format: parquet, path: ./out/a}}",
+        "sink: {accepted: {format: delta, path: out/a, delta: {schema: s, table: a}}}",
+    )
+    assert generate(tmp_path, monkeypatch, "-o", "-", config=config) == 1
+    assert "sink.accepted.delta (Unity Catalog) is not supported in a manifest yet" in capsys.readouterr().err  # fmt: skip
+
+
+def test_manifest_refuses_a_unity_catalog_instead_of_reading_it_back_as_rest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = CONFIG.replace(
+        "report:",
+        "catalogs: {default: u, definitions: [{name: u, type: unity, host: h, catalog: c, schema: s, token: t}]}\n"
+        "report:",
+    )
+    assert generate(tmp_path, monkeypatch, "-o", "-", config=config) == 1
+    assert "Error: a unity catalog is not supported in a manifest yet\n" == capsys.readouterr().err  # fmt: skip

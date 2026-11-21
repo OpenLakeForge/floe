@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from floe.config.types import (
     ArchiveTarget,
     ColumnConfig,
+    DeltaSinkOptions,
     EntityConfig,
     EntityMetadata,
     EntityStateConfig,
@@ -362,6 +363,19 @@ def _strings_only(
     return model(**{key: opt_string(h, key, ctx) for key in model.model_fields})
 
 
+def _delta(parent: dict[object, object], ctx: str) -> DeltaSinkOptions | None:
+    if "delta" not in parent:
+        return None
+    ctx = f"{ctx}.delta"
+    h = yaml_hash(parent["delta"], ctx)
+    validate_known_keys(h, ctx, ("catalog", "schema", "table"))
+    return DeltaSinkOptions(
+        catalog=opt_string(h, "catalog", ctx),
+        schema=opt_string(h, "schema", ctx),  # pyright: ignore[reportCallIssue] -- the field is `schema_`, set by its alias
+        table=opt_string(h, "table", ctx),
+    )
+
+
 def _merge(value: object, ctx: str) -> MergeOptions:
     h = yaml_hash(value, ctx)
     validate_known_keys(h, ctx, tuple(MergeOptions.model_fields))
@@ -424,7 +438,7 @@ def _sink_target(
         options=options,
         merge=merge,
         iceberg=iceberg,
-        delta=h.get("delta"),  # D1: dropped, left raw for validation (#633)
+        delta=_delta(h, ctx),
         duckdb=h.get("duckdb"),
         partition_by=partition_by,
         partition_spec=spec,
