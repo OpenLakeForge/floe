@@ -1,6 +1,6 @@
 # Parquet sink
 
-Floe can write accepted output as Parquet files on local or S3 storage.
+Floe can write accepted output as Parquet files on local, S3, ADLS or GCS storage.
 
 Example:
 ```yaml

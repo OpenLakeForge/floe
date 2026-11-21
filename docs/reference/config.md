@@ -91,6 +91,17 @@ entities:
 - `storages` (optional)
   - Defines named storage clients for `source.storage` and `sink.*.storage`.
   - If omitted, `local` is assumed.
+  - Types: `local`, `s3`, `adls` and `gcs`. The `adls` and `gcs` types need the `adls` or `gcs`
+    extra (`pip install 'floe-python[adls]'`); credentials come from the environment.
+    - `s3`: `bucket` and `region` (required), `prefix`, `endpoint`, `path_style_access`. See [S3](../storages/s3.md).
+    - `adls`: `account` and `container` (required), `prefix`, `endpoint` (an Azurite-style service).
+      URIs are `abfss://<container>@<account>.dfs.core.windows.net/...`. See [ADLS](../storages/adls.md).
+    - `gcs`: `bucket` (required), `prefix`, `endpoint` (a fake-gcs-server-style service).
+      URIs are `gs://<bucket>/...`. See [GCS](../storages/gcs.md).
+  - `floe maintain` and `floe manifest generate`/`replay` refuse a config that defines any `adls` or
+    `gcs` storage, even an unused one.
+  - Iceberg sinks and `warehouse_storage` accept `s3` and `gcs` storage, not `adls`. Delta is
+    refused on `adls` and `gcs`.
 - `catalogs` (optional)
   - Defines named Iceberg REST catalogs (Polaris, Nessie, Snowflake Open Catalog, etc.).
     An Iceberg accepted sink requires one (D26).
@@ -106,7 +117,7 @@ entities:
       - `warehouse` (optional): warehouse/prefix hint forwarded to the REST catalog
       - `oauth2_server_uri` (optional): override OAuth2 server URL for client-credentials flow
       - `scope` (optional): OAuth2 scope
-      - `warehouse_storage` (optional): storage name for table location resolution; must be an S3 storage
+      - `warehouse_storage` (optional): storage name for table location resolution; must be an S3 or GCS storage
       - `warehouse_prefix` (optional): prefix for deterministic table locations
     - Glue definitions (`type: glue`) take `name`, `region` (required), `database` (required:
       the Glue database that holds the tables; `{domain}` expands per entity to its
@@ -244,9 +255,9 @@ otherwise (and in all `0.1`/`0.2` configs) its identity is the bare `name`.
 - Entity-local state settings used by incremental ingestion.
 - `state.path` (optional)
   - Overrides the file or object used to store entity state.
-  - Supports local paths and S3 URIs (`s3://`).
+  - Supports local paths and URIs on the source storage (`s3://`, `abfss://`, `gs://`).
   - Relative paths always resolve as local filesystem paths, regardless of the source
-    storage context. Only explicit `s3://` URIs use remote storage. A relative override with a cloud source will produce local state and will
+    storage context. Only explicit URIs use remote storage. A relative override with a cloud source will produce local state and will
     not benefit from remote claim coordination.
   - If omitted and `incremental_mode: file` is used, Floe derives the path under the
     source root as `.floe/state/<entity>/state.json`.

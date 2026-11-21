@@ -1,9 +1,10 @@
 # Support matrix
 
 This matrix reflects **current behavior** of Floe 0.10 (not aspirational). Floe 0.10 supports
-local and S3 storage. S3 inputs are downloaded to a temp directory and read locally; Parquet
-parts, rejected CSV and reports are built in memory, then uploaded; Iceberg tables are
-written through PyIceberg (and DuckDB for merges) directly to S3.
+local, S3, ADLS and GCS storage. Cloud inputs are downloaded to a temp directory and read locally;
+Parquet parts, rejected CSV and reports are built in memory, then uploaded; Iceberg tables are
+written through PyIceberg (and DuckDB for merges) directly to S3 or GCS. ADLS and GCS need the
+`adls` or `gcs` extra; see [ADLS](../storages/adls.md) and [GCS](../storages/gcs.md).
 
 ## Airflow
 
@@ -24,7 +25,6 @@ These 0.7 features are rejected by `floe validate` with a "not supported in 0.8"
 | Delta Lake `merge_*` modes and Unity Catalog (#1266); Delta `overwrite` and `append` are supported | Iceberg |
 | DuckDB / MotherDuck accepted sink | Iceberg (merges run through DuckDB) |
 | Catalog-less Iceberg tables (filesystem catalog) | Iceberg REST catalog |
-| ADLS and GCS storage | S3 or an S3-compatible store |
 
 The 0.7 implementation is archived at
 [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
@@ -87,10 +87,28 @@ Notes:
 
 ## Cloud storage behavior
 
-- Storage paths resolve to canonical URIs: `s3://<bucket>/<prefix>/<path>`.
-- Prefix listing is stable and lexicographically sorted.
+- Storage paths resolve to canonical URIs: `s3://<bucket>/<prefix>/<path>`,
+  `abfss://<container>@<account>.dfs.core.windows.net/<prefix>/<path>` and
+  `gs://<bucket>/<prefix>/<path>`.
+- Prefix listing is stable and lexicographically sorted, and a literal prefix matches by string
+  prefix on all three.
 - S3-compatible stores (MinIO, SeaweedFS, …) work through `AWS_ENDPOINT_URL_S3` /
   `AWS_ENDPOINT_URL`; see [storages/s3.md](../storages/s3.md).
+- ADLS and GCS (the `adls` and `gcs` extras) cover sources, accepted Parquet, rejected output,
+  reports, archive and incremental state; credentials come from the environment, and `endpoint`
+  points at Azurite or fake-gcs-server. See [ADLS](../storages/adls.md) and [GCS](../storages/gcs.md).
+
+| Feature | S3 | ADLS | GCS |
+|---|---|---|---|
+| Sources, Parquet and CSV sinks, reports, archive, incremental state | ✅ | ✅ | ✅ |
+| Iceberg `overwrite` and `append` | ✅ | ❌ (#1344) | ✅ |
+| Iceberg merges and compaction | ✅ | ❌ | ❌ (DuckDB's GCS secret takes HMAC keys only) |
+| Delta | ✅ | ❌ | ❌ |
+| `floe maintain`, `floe manifest generate` and `replay` | ✅ | refused | refused |
+| Manifest and profile read from a URI | ✅ | ❌ | ❌ |
+
+`floe maintain` and `floe manifest generate`/`replay` refuse a config that defines any ADLS or
+GCS storage, even an unused one.
 
 ## Fault scenarios (Iceberg and S3)
 

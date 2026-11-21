@@ -26,7 +26,7 @@ New to Floe? Read the [Introduction](get-started/introduction.md), run the
 | Run Floe from Dagster or Airflow | [Manifests](guides/manifest.md) |
 | Call Floe from Python or a notebook | [Python API](guides/python-api.md) |
 | Send lineage to Marquez or another OpenLineage backend | [OpenLineage](guides/lineage.md) |
-| Write to Iceberg, Parquet or S3 | [Iceberg sink](sinks/iceberg.md), [Parquet sink](sinks/parquet.md), [S3 storage](storages/s3.md) |
+| Write to Iceberg, Parquet or cloud storage | [Iceberg sink](sinks/iceberg.md), [Parquet sink](sinks/parquet.md), [S3](storages/s3.md), [ADLS](storages/adls.md) and [GCS](storages/gcs.md) storage |
 | Look up a field, a flag or a report key | [Config](reference/config.md), [CLI](reference/cli.md), [Run report](reference/report.md), [Logging](reference/logging.md) |
 | Check what formats, storages and catalogs are supported | [Support matrix](reference/support-matrix.md) |
 
