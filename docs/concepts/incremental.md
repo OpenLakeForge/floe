@@ -179,9 +179,28 @@ mode a run lists only the new files, so the output holds just the latest batch: 
 `append` or a merge mode. Either way the claims are settled
 before the next entity starts, which runs as usual (D36).
 
-If a file URI is already in `files` but its size or mtime changed, Floe emits an
-`incremental_file_changed` warning and still skips it. The URI is the identity;
-Floe does not automatically reprocess changed files.
+If a file URI is already in `files` but its size or mtime changed, Floe reports it as
+`skipped` with `skip_reason: already_ingested_changed` and a warning, and still skips it. The URI is the identity;
+Floe does not automatically reprocess changed files. To ingest the new version, see
+[Re-ingest A Changed File](#re-ingest-a-changed-file).
+
+### Re-ingest A Changed File
+
+```bash
+floe state forget -c config.yml --entity orders --file s3://raw/incoming/orders/orders_001.csv --yes
+```
+
+`--file` is repeatable and must be the exact URI `floe state inspect` prints. The named files
+leave `files`, so the next run ingests them as new; the rest of the state is untouched. Floe
+prints each forgotten file's recorded size, mtime and processed_at. It refuses, and writes
+nothing, when a URI is not tracked, is under a live claim, or (with `source.partitioning`) is
+before the listing window, where `--full-refresh` is the tool.
+
+Floe does not delete the rows the old version wrote:
+
+- `append`: the old rows stay, so the file is duplicated, or its rows are rejected by the unique key, unless you removed them first.
+- `merge_scd1` / `merge_scd2`: the re-sent rows become current, even over values that newer files wrote since. To replay in order, forget the corrected file and the newer ones in one command.
+- `overwrite`: the output is the batch the run lists.
 
 ## Retries Of An Append
 

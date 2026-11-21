@@ -74,7 +74,8 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
         resolve_unique_keys(
             entity.schema_.unique_keys,
             entity.schema_.primary_key,
-        )
+        ),
+        "reject",
     )
     out = tmp / "out"
     files: list[dict[str, Any]] = []
@@ -109,9 +110,9 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
             n for n, c in zip(names, columns, strict=True)
             if c.nullable is False or n in (entity.schema_.primary_key or [])
         ]  # fmt: skip
-        checks = [not_null_check(typed, n) for n in required]
+        checks = [not_null_check(typed, n, "reject") for n in required]
         checks += [
-            RowCheck("cast_error", n, CAST_ERROR_MESSAGE, masks[f"_e_cast_{n}"])
+            RowCheck("cast_error", n, CAST_ERROR_MESSAGE, masks[f"_e_cast_{n}"], "reject")
             for n, c in zip(names, columns, strict=True)
             if c.column_type != "string"
         ]  # fmt: skip

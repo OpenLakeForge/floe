@@ -8,7 +8,7 @@ from floe.checks.mismatch import MismatchOutcome
 from floe.checks.normalize import resolve_strategy, source_names
 from floe.checks.rows import RowCheck
 from floe.checks.unique import UniqueResult
-from floe.config.types import EntityConfig, SchemaEvolutionConfig, WriteMode
+from floe.config.types import EntityConfig, SchemaEvolutionConfig, WriteMode, rule_level
 from floe.storage.inputs import ResolvedInputs
 from floe.write.outputs import AcceptedWrite
 
@@ -41,8 +41,10 @@ def summarize_rules(
     rules: list[dict[str, Any]] = []
     for rule in _RULES:
         counts: dict[str, int] = {}
+        level = rule_level(entity, rule)
         for c in checks:
             if c.rule == rule or (rule == "schema_error" and c.rule not in _RULES):
+                level = c.severity
                 counts[c.column] = counts.get(c.column, 0) + int(c.mask.sum())
         cols: list[dict[str, Any]] = []
         for name, n in sorted(counts.items()):
@@ -56,7 +58,7 @@ def summarize_rules(
         if cols:
             total = sum(c["violations"] for c in cols)
             rules.append(
-                {"rule": rule, "severity": entity.policy.severity, "violations": total, "columns": cols}
+                {"rule": rule, "severity": level, "violations": total, "columns": cols}
             )  # fmt: skip
     return rules
 
@@ -78,7 +80,7 @@ def file_report(
     precheck = mismatch.aborted or mismatch.rejected
     rules = [] if precheck else summarize_rules(checks, entity)
     violations = sum(r["violations"] for r in rules)
-    severity = entity.policy.severity
+    severity = rule_level(entity, "row_check")
     if precheck:
         status = "aborted" if mismatch.aborted else "rejected"
         accepted, rejected = 0, row_count
@@ -252,5 +254,7 @@ def build_report(
         },
     }  # fmt: skip
     if unique:
-        report["unique_constraints"] = [_unique_report(severity, r) for r in unique]
+        report["unique_constraints"] = [
+            _unique_report(rule_level(entity, "unique"), r) for r in unique
+        ]
     return report | {"results": totals, "files": files}
