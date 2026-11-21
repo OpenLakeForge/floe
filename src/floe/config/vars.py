@@ -31,12 +31,19 @@ def replace_placeholders(
         rest = rest[start + 2 :]
         end = rest.find("}}")
         if end == -1:
-            raise FloeConfigError(f"{prefix}{field} missing closing '}}'")
+            raise FloeConfigError(
+                f"{prefix}{field} missing closing '}}'", code="config_invalid_value"
+            )
         key = rest[:end].strip()
         if not key:
-            raise FloeConfigError(f"{prefix}{field} empty placeholder")
+            raise FloeConfigError(
+                f"{prefix}{field} empty placeholder", code="config_invalid_value"
+            )
         if key not in variables:
-            raise FloeConfigError(f"{prefix}{field} references unknown variable {key}")
+            raise FloeConfigError(
+                f"{prefix}{field} references unknown variable {key}",
+                code="config_unknown_reference",
+            )
         result.append(variables[key])
         rest = rest[end + 2 :]
     return "".join(result) + rest
@@ -53,7 +60,9 @@ def build_env_vars(
         path = resolve_local_path(config_dir, env_file)
         docs = load_yaml(path)
         if not docs:
-            raise FloeConfigError(f"env file {path} is empty")
+            raise FloeConfigError(
+                f"env file {path} is empty", code="config_invalid_value"
+            )
         merged |= string_map(docs[0], "env.file")
     return merged | dict(env_vars)
 
@@ -89,14 +98,19 @@ def resolve_vars(
         if depth > 32:
             raise FloeConfigError(
                 f"variable expansion exceeded maximum depth (32); "
-                f'check for deeply nested or circular references near "${{{key}}}"'
+                f'check for deeply nested or circular references near "${{{key}}}"',
+                code="config_invalid_value",
             )
         if key in in_progress:
             chain = " -> ".join([*in_progress, key])
-            raise FloeConfigError(f"circular variable reference detected: {chain}")
+            raise FloeConfigError(
+                f"circular variable reference detected: {chain}",
+                code="config_invalid_value",
+            )
         if key not in raw:
             raise FloeConfigError(
-                f'variable "${{{key}}}" is referenced but not defined'
+                f'variable "${{{key}}}" is referenced but not defined',
+                code="config_unknown_reference",
             )
         in_progress.append(key)
         resolved[key] = expand_value(key, depth + 1)
@@ -113,11 +127,15 @@ def resolve_vars(
             if end == -1:
                 quoted = repr(value)
                 raise FloeConfigError(
-                    f'variable "{owner}": unclosed placeholder in value {quoted}'
+                    f'variable "{owner}": unclosed placeholder in value {quoted}',
+                    code="config_invalid_value",
                 )
             ref = rest[:end].strip()
             if not ref:
-                raise FloeConfigError(f'variable "{owner}": empty placeholder ${{}}')
+                raise FloeConfigError(
+                    f'variable "{owner}": empty placeholder ${{}}',
+                    code="config_invalid_value",
+                )
             result.append(expand_key(ref, depth))
             rest = rest[end + 1 :]
         return "".join(result) + rest

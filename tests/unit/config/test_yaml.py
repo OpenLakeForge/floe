@@ -225,3 +225,29 @@ def test_nul_in_a_path_is_an_io_error() -> None:
     with pytest.raises(FloeIoError) as err:
         load_yaml(Path("a\0b"))
     assert str(err.value) == "file name contained an unexpected NUL byte"
+
+
+@pytest.mark.parametrize(
+    ("content", "code"),
+    [
+        ("a: [1\n", "config_invalid_yaml"),
+        ("a: 1\na: 2\n", "config_duplicate"),
+        ("", "config_invalid_yaml"),
+    ],
+)
+def test_yaml_errors_carry_a_code(tmp_path: Path, content: str, code: str) -> None:
+    with pytest.raises(FloeError) as err:
+        load_single_doc(write(tmp_path, content))
+    assert err.value.code == code
+
+
+def test_a_missing_file_is_an_io_read_error(tmp_path: Path) -> None:
+    with pytest.raises(FloeIoError) as err:
+        load_yaml(tmp_path / "missing.yml")
+    assert err.value.code == "io_read_error"
+
+
+def test_a_wrong_type_has_the_invalid_value_code() -> None:
+    with pytest.raises(FloeConfigError) as err:
+        yaml_string(1, "ctx")
+    assert err.value.code == "config_invalid_value"
