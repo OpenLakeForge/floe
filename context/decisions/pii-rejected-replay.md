@@ -22,8 +22,8 @@ Current behaviour that matters:
 - The archive runs after the sink commit (`run/entity.py:504-511`), so the archived URI is not known when rejected
   rows are written. It is reported once per file as `files[].output.archived_path` (`report/entity.py:72,113`).
 - `__floe_row_index` is the record index plus the chunk offset (`checks/rows.py:126`, `run/file.py:376`).
-  `__floe_run_id` and `__floe_source_uri` are added to Parquet and Iceberg rejects only (`file.py:299`). A CSV rejected
-  part maps to its file through `files[].output.rejected_path` (one keyed part per file per run).
+  `__floe_run_id` and `__floe_source_uri` were added to Parquet and Iceberg rejects only (`file.py:299`); #1384 adds
+  them to CSV rejects too, so all three formats carry the four envelope columns.
 - There is no per-file content fingerprint in the report. `InputFile.source_size` / `source_mtime`
   (`src/floe/storage/inputs.py:35-40`) reach only the state and `input_hash`.
 

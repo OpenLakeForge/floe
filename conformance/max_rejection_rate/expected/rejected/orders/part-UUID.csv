@@ -1,3 +1,3 @@
-id,name,qty,__floe_row_index,__floe_errors
-2,,20,1,"[{""rule"":""not_null"",""column"":""name"",""message"":""required value missing""}]"
-3,c,x,2,"[{""rule"":""cast_error"",""column"":""qty"",""message"":""invalid value for target type""}]"
+id,name,qty,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+2,,20,1,"[{""rule"":""not_null"",""column"":""name"",""message"":""required value missing""}]",<run_id>,local://<ROOT>/in/orders.csv
+3,c,x,2,"[{""rule"":""cast_error"",""column"":""qty"",""message"":""invalid value for target type""}]",<run_id>,local://<ROOT>/in/orders.csv

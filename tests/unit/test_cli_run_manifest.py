@@ -57,7 +57,7 @@ def outputs(work: Path) -> dict[str, Any]:
     for p in sorted(work.glob("out/**/*.parquet")):
         out[p.parent.relative_to(work).as_posix()] = pl.read_parquet(p).to_dicts()
     for p in sorted(work.glob("out/**/*.csv")):
-        out[re.sub(r"part-[0-9a-f-]{36}", "part", p.relative_to(work).as_posix())] = p.read_text()  # fmt: skip
+        out[re.sub(r"part-[0-9a-f-]{36}", "part", p.relative_to(work).as_posix())] = p.read_text().replace(str(work), "<ROOT>")  # fmt: skip
     return out
 
 

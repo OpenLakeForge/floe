@@ -1,4 +1,4 @@
-id,qty,email,__floe_row_index,__floe_errors
-2,abc,b@x.io,1,"""cast_error:qty invalid value for target type"""
-,3,c@x.io,2,"""not_null:id required value missing"""
-4,x,,3,"""not_null:email required value missing; cast_error:qty invalid value for target type"""
+id,qty,email,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+2,abc,b@x.io,1,"""cast_error:qty invalid value for target type""",<run_id>,local://<ROOT>/in/orders.csv
+,3,c@x.io,2,"""not_null:id required value missing""",<run_id>,local://<ROOT>/in/orders.csv
+4,x,,3,"""not_null:email required value missing; cast_error:qty invalid value for target type""",<run_id>,local://<ROOT>/in/orders.csv

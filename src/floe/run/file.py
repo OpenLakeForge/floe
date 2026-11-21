@@ -449,7 +449,7 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
                     frames, client, written, "append", key
                 )  # always append, whatever the write_mode (#1254)
             else:
-                written = write_rejected(output(plan, pl.concat(rejected)), client, target, "append", key)  # fmt: skip
+                written = write_rejected(output(plan, pl.concat(rejected)).with_columns(source_columns(plan, uri)), client, target, "append", key)  # fmt: skip
         rejected_path = written.removeprefix("local://")
     elif aborted:
         rejected_path = _copy_raw(plan, path, "abort", file.source_name)
