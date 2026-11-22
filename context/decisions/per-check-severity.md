@@ -5,6 +5,9 @@
 Accepted (design for #1250, approved by the maintainer on the decision comment of #1250, refs checked against `main`
 at `6526c789`). Docs only: the code lands in the sub-issues below.
 
+Amended for #1253 (approved on the decision comment of #1253): `min_rows_per_file` is reserved and the `min_rows`
+defaulting is pinned. The amended lines are marked "Amended (#1253)".
+
 ## Context
 
 One `policy.severity` drives every check of an entity: `PolicySeverity` (`src/floe/config/types.py:10`),
@@ -53,6 +56,9 @@ schema:
 - `policy.rule_severity`: takes the column rules (as entity-wide defaults) plus the entity-scoped rules `unique` and
   `schema_mismatch`. #1253 adds `min_rows` (`warn|abort` only). Because it is a map, domain defaults merge into it key
   by key (`src/floe/config/yaml.py:248-259`), with no new merge rule.
+- Amended (#1253): `policy.rule_severity` also takes the entity-scoped rule `min_rows_per_file`
+  (`warn|reject|abort`). Reject rejects the whole file and copies it to `sink.rejected`; abort is the existing
+  per-file abort path; warn keeps the rows and counts one warning. It counts toward `max_level`.
 - #1252 predicates: each `schema.checks[]` entry takes a scalar `severity`, which falls back to `policy.severity`.
   Predicate names are user-chosen, so they are not keys of `policy.rule_severity`.
 - `policy.rule_severity.schema_mismatch` sets the level used when `reject_file` is requested. Entity-level only.
@@ -67,6 +73,11 @@ schema:
 ### Defaulting rule
 
 `level(rule, column) = column.rule_severity[rule] ?? policy.rule_severity[rule] ?? policy.severity`.
+
+Amended (#1253): for `min_rows`, a level that would resolve to `reject` through the `?? policy.severity` fallback
+maps to `abort`, matching an exceeded `max_rejection_rate`. An explicit `policy.rule_severity.min_rows: reject` stays
+`config_invalid_value`. A `min_rows` abort is post-hoc, like `max_rejection_rate`: the accepted rows are already
+committed, the entity is `aborted` and the exit code is 2. `min_rows` does not count toward `max_level`.
 
 These stay on `policy.severity` with no override: an unreadable file (`src/floe/run/file.py:129`), `csv_read_error`
 and other reader rules (`file.py:372`). They are not contract checks. A config with no `rule_severity` gives

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from dagster import AssetKey, AssetSelection, DagsterInstance, materialize
 
+from floe_dagster.asset_checks import FLOE_CHECK_NAMES
 from floe_dagster.assets import build_floe_asset_defs
 from floe_dagster.definitions import build_definitions_from_manifest_paths
 from floe_dagster.runner import LocalRunner
@@ -288,7 +289,7 @@ def test_a_checks_only_selection_still_runs_the_entity(tmp_path: Path) -> None:
     assert result.success
     assert _entities_arg(jobs_api) == "orders"
     assert _materialized(result) == set()
-    assert len(result.get_asset_check_evaluations()) == 5
+    assert len(result.get_asset_check_evaluations()) == len(FLOE_CHECK_NAMES)
 
 
 def test_a_later_entity_aborting_does_not_fail_the_checks_of_an_earlier_one(tmp_path: Path) -> None:
@@ -400,7 +401,7 @@ def test_domain_scope_yields_an_entity_before_the_next_entity_finished_is_read(t
     assert seen["returns"] is not None
     for name in NAMES:
         assert len(_materializations(result, f"sales/{name}")) == 1
-    assert len(result.get_asset_check_evaluations()) == 5 * len(NAMES)
+    assert len(result.get_asset_check_evaluations()) == len(FLOE_CHECK_NAMES) * len(NAMES)
     meta = _materializations(result, "sales/orders")[0].materialization.metadata
     assert meta["floe/timings/list_ms"].value == 3
     assert meta["rows"].value == 10

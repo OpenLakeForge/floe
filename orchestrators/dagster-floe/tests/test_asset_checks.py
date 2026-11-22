@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from dagster import AssetCheckSeverity, materialize
 
 from floe_dagster.asset_checks import FLOE_CHECK_NAMES, build_asset_check_results
@@ -98,6 +99,8 @@ def test_build_asset_check_results_maps_rule_schema_and_file_statuses() -> None:
     assert by_name["floe_unique"].passed is True
     assert by_name["floe_schema_mismatch"].passed is False
     assert by_name["floe_file_status"].passed is False
+    new_checks = ("floe_out_of_range", "floe_not_allowed", "floe_pattern_mismatch", "floe_length", "floe_min_rows_per_file", "floe_min_rows", "floe_row_predicates")  # fmt: skip
+    assert all(by_name[name].passed for name in new_checks)
 
     cast_meta = by_name["floe_cast_error"].metadata or {}
     assert _meta_value(cast_meta["entity"]) == "customers"
@@ -339,3 +342,93 @@ def test_empty_file_report_keeps_the_rejection_threshold_on_the_file_status_chec
     )
     check = next(c for c in checks if c.check_name == "floe_file_status")
     assert _meta_value((check.metadata or {})["floe/max_rejection_rate"]) == 0.25
+
+
+def _checks_for(rules: list[dict[str, Any]], policy: dict[str, Any] | None = None) -> dict[str, Any]:
+    report: dict[str, Any] = {"files": [{"status": "success", "validation": {"rules": rules}}]}
+    if policy is not None:
+        report["policy"] = policy
+    checks = build_asset_check_results(
+        asset_key=["sales", "orders"],
+        entity_name="orders",
+        finished=FloeRunFinished(run_id="run-6", status="success", exit_code=0, summary_uri=None),
+        entity_report=report,
+    )
+    return {check.check_name: check for check in checks}
+
+
+def test_out_of_range_rule_fails_its_own_check() -> None:
+    rule = {"rule": "out_of_range", "severity": "reject", "violations": 3, "columns": [{"column": "amount", "violations": 3}]}  # fmt: skip
+    check = _checks_for([rule])["floe_out_of_range"]
+    assert check.passed is False
+    assert check.severity == AssetCheckSeverity.ERROR
+    assert _meta_value((check.metadata or {})["violations_total"]) == 3
+
+
+@pytest.mark.parametrize(
+    ("rule_name", "check_name", "severity", "expected"),
+    [
+        ("not_allowed", "floe_not_allowed", "warn", AssetCheckSeverity.WARN),
+        ("pattern_mismatch", "floe_pattern_mismatch", "abort", AssetCheckSeverity.ERROR),
+        ("length", "floe_length", "reject", AssetCheckSeverity.ERROR),
+        ("min_rows_per_file", "floe_min_rows_per_file", "reject", AssetCheckSeverity.ERROR),
+    ],
+)
+def test_new_rules_fail_their_matching_check(
+    rule_name: str, check_name: str, severity: str, expected: AssetCheckSeverity
+) -> None:
+    by_name = _checks_for([{"rule": rule_name, "severity": severity, "violations": 1, "columns": []}])
+    assert by_name[check_name].passed is False
+    assert by_name[check_name].severity == expected
+    assert by_name["floe_row_predicates"].passed is True
+
+
+def test_unknown_rule_names_count_as_row_predicates_only() -> None:
+    rules = [
+        {
+            "rule": "end_after_start",
+            "severity": "reject",
+            "violations": 2,
+            "columns": [{"column": "end_date", "violations": 2}],
+        },
+        {
+            "rule": "discount_within_amount",
+            "severity": "warn",
+            "violations": 1,
+            "columns": [{"column": "discount", "violations": 1}],
+        },
+        {"rule": "schema_error", "severity": "reject", "violations": 5, "columns": []},
+    ]
+    by_name = _checks_for(rules)
+    check = by_name["floe_row_predicates"]
+    meta = {k: _meta_value(v) for k, v in (check.metadata or {}).items()}
+    assert check.passed is False
+    assert check.severity == AssetCheckSeverity.ERROR
+    assert meta["violations_total"] == 3
+    assert meta["predicate_violations"] == {"end_after_start": 2, "discount_within_amount": 1}
+    assert all(c.passed for name, c in by_name.items() if name != "floe_row_predicates")
+
+
+@pytest.mark.parametrize(
+    ("policy", "passed", "severity", "evaluated"),
+    [
+        ({"severity": "reject", "min_rows": 10, "min_rows_violated": True}, False, AssetCheckSeverity.ERROR, True),
+        (
+            {"severity": "reject", "min_rows": 10, "min_rows_violated": True, "rule_severity": {"min_rows": "warn"}},
+            False,
+            AssetCheckSeverity.WARN,
+            True,
+        ),
+        ({"severity": "warn", "min_rows": 10, "min_rows_violated": True}, False, AssetCheckSeverity.WARN, True),
+        ({"severity": "reject", "min_rows": 10, "min_rows_violated": False}, True, AssetCheckSeverity.ERROR, True),
+        ({"severity": "reject", "min_rows": 10, "min_rows_violated": None}, True, AssetCheckSeverity.ERROR, False),
+        ({"severity": "reject"}, True, AssetCheckSeverity.ERROR, False),
+    ],
+)
+def test_min_rows_check_reads_the_policy_block(
+    policy: dict[str, Any], passed: bool, severity: AssetCheckSeverity, evaluated: bool
+) -> None:
+    check = _checks_for([], policy)["floe_min_rows"]
+    assert check.passed is passed
+    assert check.severity == severity
+    assert _meta_value((check.metadata or {})["min_rows_evaluated"]) is evaluated
