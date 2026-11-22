@@ -209,7 +209,9 @@ entity and its input files (URI, size, mtime). Before reading any file, a run ch
 
 - `file` mode: when the run takes over a dead run's expired claims, it looks for the
   fingerprint of its pending files in the table's snapshots since that claim. On a match,
-  the files are reported `skipped` with `skip_reason: already_committed` and promoted.
+  the files are reported `skipped` with `skip_reason: already_committed` and promoted. A file
+  replaced since that claim (same URI, new size or mtime) is read again: its old rows stay in
+  the table, so without a unique key they are kept next to the new ones.
 - Other modes (`archive`, `none`, `row`): the same check against the whole input set, over
   the whole retained history, so a rerun of exactly the same files is skipped too. Only exactly
   the same set matches: if new files arrived since the run that died, its rows are appended

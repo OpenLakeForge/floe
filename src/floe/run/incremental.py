@@ -189,8 +189,8 @@ class Incremental:
         """#545 retry guard (append): the reports of the pending inputs a dead run already committed, before any is read.
 
         `file` mode re-derives each dead run's batch from its expired claims (by `run_id`, with their size and mtime),
-        so a retry that also holds new inputs still matches; it looks back to that run's claim. Other modes match the
-        whole set.
+        so a retry that also holds new inputs still matches; it looks back to that run's claim. Of that batch it skips
+        only the inputs whose size and mtime are still the claim's. Other modes match the whole set.
         """
         e = self.entity
         if table is None or not pending or self.full_refresh:
@@ -229,7 +229,9 @@ class Incremental:
                 )  # fmt: skip
             if found:
                 committed |= claims.keys() & ours
-        return self._settle([f for f in pending if f.source_uri in committed], emit)
+        # #1427: a file replaced since the dead run's claim is read again, as `skip_published` does
+        done = [f for f in pending if f.source_uri in committed and ((c := self.expired[f.source_uri]).size, c.mtime) == (f.source_size, f.source_mtime)]  # fmt: skip
+        return self._settle(done, emit)
 
     def skip_published(self, pending: list[InputFile], parts: list[str], emit: Emitter) -> list[dict[str, Any]]:  # fmt: skip
         """#1425 retry guard (Parquet append, unique keys, `file` mode): the reports of the pending inputs whose marker

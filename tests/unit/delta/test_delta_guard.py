@@ -84,6 +84,17 @@ def test_a_retry_after_a_commit_that_was_not_promoted_adds_no_rows(tmp_path: Pat
     assert DeltaTable(str(tmp_path / "out" / "accepted")).version() == 0
 
 
+def test_a_retry_replays_an_input_replaced_after_the_dead_runs_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#1427: the dead batch is still found by the claims' size and mtime, but only its unchanged input is skipped."""
+    entity = project(tmp_path, "incremental_mode: file")
+    (tmp_path / "in" / "more.csv").write_text("id,name\n4,d\n")
+    die_after_commit(entity, tmp_path, monkeypatch)
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n3,c\n")  # same URI, new size
+    files = run_entity(entity, tmp_path, "0.3", emit=Emitter(None, "retry")).report["files"]  # fmt: skip
+    assert {Path(f["input_file"]).name: f.get("skip_reason") for f in files} == {"more.csv": "already_committed", "orders.csv": None}  # fmt: skip
+    assert ids(tmp_path) == [1, 2, 3, 4]  # the old rows were committed; the new ones are appended  # fmt: skip
+
+
 def test_a_transaction_older_than_its_retention_is_unknown(tmp_path: Path) -> None:
     path = str(tmp_path / "t")
     write_deltalake(path, pa.table({"a": [1]}), configuration={"delta.setTransactionRetentionDuration": "interval 1 days"}, commit_properties=stamp("r", "h"))  # fmt: skip
