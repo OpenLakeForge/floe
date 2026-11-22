@@ -1,0 +1,8 @@
+order_id,amount,order_date,status,country,note,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+0,10.50,2024-03-01,paid,DE,ok,1,"[{""rule"":""out_of_range"",""column"":""order_id"",""message"":""value out of range (min=1)""}]",<run_id>,local://<ROOT>/in/orders.csv
+2,1000.00,2024-03-01,paid,DE,ok,2,"[{""rule"":""out_of_range"",""column"":""amount"",""message"":""value out of range (min=0, max=999.99)""}]",<run_id>,local://<ROOT>/in/orders.csv
+3,5.00,2023-12-31,paid,DE,ok,3,"[{""rule"":""out_of_range"",""column"":""order_date"",""message"":""value out of range (min=2024-01-01)""}]",<run_id>,local://<ROOT>/in/orders.csv
+5,5.00,2024-03-01,paid,fr,ok,5,"[{""rule"":""pattern_mismatch"",""column"":""country"",""message"":""value does not match pattern""}]",<run_id>,local://<ROOT>/in/orders.csv
+6,5.00,2024-03-01,paid,USA,ok,6,"[{""rule"":""pattern_mismatch"",""column"":""country"",""message"":""value does not match pattern""},{""rule"":""length"",""column"":""country"",""message"":""length out of range (min_length=2, max_length=2)""}]",<run_id>,local://<ROOT>/in/orders.csv
+7,5.00,2024-03-01,shipped,US,toolong,7,"[{""rule"":""length"",""column"":""note"",""message"":""length out of range (max_length=5)""}]",<run_id>,local://<ROOT>/in/orders.csv
+9,oops,2024-03-01,new,FR,ok,9,"[{""rule"":""cast_error"",""column"":""amount"",""message"":""invalid value for target type""}]",<run_id>,local://<ROOT>/in/orders.csv

@@ -2,7 +2,7 @@
 
 import string
 from collections.abc import Callable
-from typing import TypeVar, get_args
+from typing import TypeVar, cast, get_args
 
 from pydantic import BaseModel
 
@@ -149,7 +149,8 @@ def _rule_severity(
 
 # ponytail: `unique` is one rule for every `unique_keys` entry and the primary key; severity per key
 # is not expressible. Upgrade path: an object form of `unique_keys` entries (`{columns, severity}`), additive.
-_COLUMN_RULES = ("not_null", "cast_error")
+_COLUMN_RULES = ("not_null", "cast_error", "out_of_range", "not_allowed", "pattern_mismatch", "length")  # fmt: skip
+_VALUE_KEYS = ("min", "max", "allowed_values", "pattern", "min_length", "max_length")
 
 
 def _policy(value: object) -> PolicyConfig:
@@ -243,13 +244,40 @@ def _column(value: object) -> ColumnConfig:
             f"{ctx}.unique {NOT_SUPPORTED}; use schema.unique_keys",
             code="config_not_supported",
         )
-    validate_known_keys(h, ctx, ("name", "source", "type", "nullable", "rule_severity"))
+    validate_known_keys(h, ctx, ("name", "source", "type", "nullable", "rule_severity", *_VALUE_KEYS))  # fmt: skip
     return ColumnConfig(
         name=get_string(h, "name", ctx),
         source=opt_string(h, "source", ctx),
         column_type=get_string(h, "type", ctx),
         nullable=opt_bool(h, "nullable", ctx),
         rule_severity=_rule_severity(h, ctx, _COLUMN_RULES),
+        min=_bound(h, "min", ctx),
+        max=_bound(h, "max", ctx),
+        allowed_values=_allowed_values(h, ctx),
+        pattern=opt_string(h, "pattern", ctx),
+        min_length=opt_u64(h, "min_length", ctx),
+        max_length=opt_u64(h, "max_length", ctx),
+    )
+
+
+def _bound(h: dict[object, object], key: str, ctx: str) -> int | float | str | None:
+    value = h.get(key)
+    if value is None or (isinstance(value, int | float | str) and not isinstance(value, bool)):  # fmt: skip
+        return value
+    raise FloeConfigError(f"expected number or string at {ctx}.{key}", code="config_invalid_value")  # fmt: skip
+
+
+def _allowed_values(h: dict[object, object], ctx: str) -> list[int] | list[str] | None:
+    value = h.get("allowed_values")
+    if value is None:
+        return None
+    items = cast("list[object]", value) if isinstance(value, list) else []
+    kinds = {type(v) for v in items}
+    if kinds == {str} or kinds == {int}:
+        return cast("list[int] | list[str]", items)
+    raise FloeConfigError(
+        f"expected non-empty array of all strings or all integers at {ctx}.allowed_values",
+        code="config_invalid_value",
     )
 
 

@@ -33,6 +33,45 @@ For the full execution order (file-level vs row-level vs entity-level), see
   - In `cast_mode: coerce`, cast errors are ignored (values become null and may
     still fail `not_null` if the column is required).
 
+### Value checks: out_of_range, not_allowed, pattern_mismatch, length
+
+Optional keys on a column, each checked on the typed value:
+
+| Keys | Rule | Column types | A row fails when |
+|---|---|---|---|
+| `min`, `max` | `out_of_range` | int, float, decimal, date, datetime | the value is below `min` or above `max` (both inclusive); NaN always fails |
+| `allowed_values` | `not_allowed` | int, string | the value is not in the list |
+| `pattern` | `pattern_mismatch` | string | the value does not match the whole pattern |
+| `min_length`, `max_length` | `length` | string | the number of characters (Unicode code points) is outside the bounds |
+
+```yaml
+columns:
+  - name: amount
+    type: decimal(18,2)
+    min: 0
+    max: "99999999.99"          # quote exact decimals
+  - name: order_date
+    type: date
+    min: "2000-01-01"
+  - name: country
+    type: string
+    allowed_values: [FR, DE, US]
+    pattern: "[A-Z]{2}"         # full match: Floe adds the anchors
+    min_length: 2
+    max_length: 2
+```
+
+- Bounds and `allowed_values` are converted like a value of the column: a bound accepts exactly what
+  a CSV value of that column does (ISO date, ISO datetime normalised to UTC, exact decimal).
+- A null passes every value check (`nullable` decides nulls), and a value that failed its cast is not
+  reported again.
+- `pattern` uses the Rust `regex` syntax that Polars runs, never Python `re`.
+- Error order on a row: `not_null`, `cast_error`, `out_of_range`, `not_allowed`, `pattern_mismatch`,
+  `length`, `unique`. Messages carry the config values only, never the row's value.
+- `floe validate` refuses a key on a column type it does not apply to and `min` above `max`
+  (`config_conflict`), and a bound or allowed value that does not convert, a NaN or infinite bound,
+  and a pattern that does not compile (`config_invalid_value`).
+
 ## Supported column types
 
 Type names are case-insensitive and normalized by removing `-` and `_`.
@@ -71,7 +110,8 @@ message are emitted in reports.
 ### Severity per check
 
 `policy.severity` is the default. A rule can override it, on one column
-(`schema.columns[].rule_severity`: `not_null`, `cast_error`) or for the whole
+(`schema.columns[].rule_severity`: `not_null`, `cast_error`, `out_of_range`,
+`not_allowed`, `pattern_mismatch`, `length`) or for the whole
 entity (`policy.rule_severity`: the column rules as defaults, plus `unique` and
 `schema_mismatch`). The level of a check is the column's entry, else the
 entity's, else `policy.severity`.

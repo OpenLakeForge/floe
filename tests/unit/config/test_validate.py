@@ -764,3 +764,132 @@ def test_rule_severity_scope(tmp_path: Path) -> None:
         check(tmp_path, bad)
     assert err.value.code == "config_conflict"
     assert str(err.value) == "entity.name=orders schema.columns[name=id].rule_severity.cast_error is not applicable: a string column has no cast check"  # fmt: skip
+
+
+def _column_error(tmp_path: Path, column: str) -> FloeConfigError:
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{columns: [{column}]}}")
+    return err.value
+
+
+def test_value_checks_accepted(tmp_path: Path) -> None:
+    check(
+        tmp_path,
+        "{columns: [{name: a, type: 'decimal(18,2)', min: 0, max: '99999999.99', rule_severity: {out_of_range: warn}},"
+        " {name: d, type: date, min: 2000-01-01}, {name: t, type: datetime, max: '2030-01-01T00:00:00+02:00'},"
+        " {name: f, type: float64, min: -1.5, max: 1e3}, {name: q, type: int64, min: 1, max: 1, allowed_values: [1, 2]},"
+        " {name: c, type: string, allowed_values: [FR, DE], pattern: '[A-Z]{2}', min_length: 2, max_length: 2,"
+        " rule_severity: {not_allowed: warn, pattern_mismatch: warn, length: warn}}]}",
+    )
+
+
+@pytest.mark.parametrize(
+    ("column", "code", "message"),
+    [
+        (
+            "{name: qty, type: int64, pattern: x}",
+            "config_conflict",
+            "schema.columns[name=qty].pattern is not applicable: column type int64 is not string",
+        ),
+        (
+            "{name: qty, type: int64, max_length: 2}",
+            "config_conflict",
+            "schema.columns[name=qty].max_length is not applicable: column type int64 is not string",
+        ),
+        (
+            "{name: x, type: date, allowed_values: [a]}",
+            "config_conflict",
+            "schema.columns[name=x].allowed_values is not applicable: column type date is not int or string",
+        ),
+        (
+            "{name: x, type: boolean, min: 0}",
+            "config_conflict",
+            "schema.columns[name=x].min is not applicable: column type boolean is not int, float, decimal, date or datetime",
+        ),
+        (
+            "{name: x, type: string, max: a}",
+            "config_conflict",
+            "schema.columns[name=x].max is not applicable: column type string is not int, float, decimal, date or datetime",
+        ),
+        (
+            "{name: x, type: date, min: 2024-13-01}",
+            "config_invalid_value",
+            "schema.columns[name=x].min=2024-13-01 is not a valid date value",
+        ),
+        (
+            "{name: x, type: int64, max: 1.5}",
+            "config_invalid_value",
+            "schema.columns[name=x].max=1.5 is not a valid int64 value",
+        ),
+        (
+            "{name: x, type: 'decimal(4,2)', max: '1.234'}",
+            "config_invalid_value",
+            "schema.columns[name=x].max=1.234 is not a valid decimal(4,2) value",
+        ),
+        (
+            "{name: x, type: float64, min: .nan}",
+            "config_invalid_value",
+            "schema.columns[name=x].min=nan is not a valid float64 value",
+        ),
+        (
+            "{name: x, type: float64, max: .inf}",
+            "config_invalid_value",
+            "schema.columns[name=x].max=inf is not a valid float64 value",
+        ),
+        (
+            "{name: x, type: int64, min: 10, max: 5}",
+            "config_conflict",
+            "schema.columns[name=x].min=10 is greater than max=5",
+        ),
+        (
+            "{name: x, type: date, min: '2024-02-01', max: 2024-1-31}",
+            "config_conflict",
+            "schema.columns[name=x].min=2024-02-01 is greater than max=2024-1-31",
+        ),
+        (
+            "{name: x, type: string, min_length: 3, max_length: 2}",
+            "config_conflict",
+            "schema.columns[name=x].min_length=3 is greater than max_length=2",
+        ),
+        (
+            "{name: x, type: int64, allowed_values: ['1', a]}",
+            "config_invalid_value",
+            "schema.columns[name=x].allowed_values[1]=a is not a valid int64 value",
+        ),
+        (
+            "{name: x, type: int8, allowed_values: [1, 300]}",
+            "config_invalid_value",
+            "schema.columns[name=x].allowed_values[1]=300 is not a valid int8 value",
+        ),
+        (
+            "{name: x, type: int64, rule_severity: {out_of_range: warn}}",
+            "config_conflict",
+            "schema.columns[name=x].rule_severity.out_of_range is not applicable: the column has no min or max",
+        ),
+        (
+            "{name: x, type: string, rule_severity: {not_allowed: warn}}",
+            "config_conflict",
+            "schema.columns[name=x].rule_severity.not_allowed is not applicable: the column has no allowed_values",
+        ),
+        (
+            "{name: x, type: string, rule_severity: {pattern_mismatch: warn}}",
+            "config_conflict",
+            "schema.columns[name=x].rule_severity.pattern_mismatch is not applicable: the column has no pattern",
+        ),
+        (
+            "{name: x, type: string, rule_severity: {length: warn}}",
+            "config_conflict",
+            "schema.columns[name=x].rule_severity.length is not applicable: the column has no min_length or max_length",
+        ),
+    ],
+)
+def test_value_check_errors(tmp_path: Path, column: str, code: str, message: str) -> None:  # fmt: skip
+    err = _column_error(tmp_path, column)
+    assert (err.code, str(err)) == (code, f"entity.name=orders {message}")
+
+
+def test_invalid_pattern_shows_the_polars_error(tmp_path: Path) -> None:
+    err = _column_error(tmp_path, "{name: x, type: string, pattern: '('}")
+    assert err.code == "config_invalid_value"
+    assert str(err).startswith("entity.name=orders schema.columns[name=x].pattern is invalid: ")  # fmt: skip
+    assert "regex" in str(err)
