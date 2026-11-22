@@ -592,8 +592,8 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - `reject`: reject rows with violations (first unique kept, duplicates rejected).
   - `abort`: abort the entire file on first violation.
 - `rule_severity` (optional): a map from a rule to `warn`, `reject` or `abort`, overriding `severity` for that rule
-  on every column. Keys: `not_null`, `cast_error`, `unique`, `schema_mismatch`, `min_rows_per_file`, and
-  `min_rows` (`warn` or `abort` only, see below). A column's own `rule_severity`
+  on every column. Keys: `not_null`, `cast_error`, `out_of_range`, `not_allowed`, `pattern_mismatch`, `length`,
+  `unique`, `schema_mismatch`, `min_rows_per_file`, and `min_rows` (`warn` or `abort` only, see below). A column's own `rule_severity`
   wins over this map, and this map wins over `severity`. In a domain's `defaults.policy` it merges with the entity's
   map key by key. `reject` or `abort` here requires `sink.rejected`, and `abort` is refused with `pii`.
   See [Checks](../concepts/checks.md#severity-per-check).
@@ -660,9 +660,22 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - `type` (required): logical type. Accepted values are case-insensitive and
     normalized by removing `-` and `_`.
   - `nullable` (optional): default `true`.
-  - `rule_severity` (optional): a map from `not_null` or `cast_error` to `warn`, `reject` or `abort`, for this
-    column only. `not_null` needs a required column (`nullable: false` or in `schema.primary_key`) and `cast_error`
-    a non-`string` column; otherwise validation fails with `config_conflict`.
+  - `min`, `max` (optional): inclusive bounds on an int, float, decimal, date or datetime column (rule
+    `out_of_range`). A YAML number or string, converted like a CSV value of the column: quote exact decimals
+    (`"99999999.99"`), and a datetime bound is normalised to UTC like the column's values. NaN or infinite bounds
+    and `min` above `max` are refused.
+  - `allowed_values` (optional): a non-empty list of all strings or all integers, on an int or string column (rule
+    `not_allowed`). Each value must convert to the column type.
+  - `pattern` (optional): a regular expression the whole value of a string column must match (rule
+    `pattern_mismatch`); Floe adds the anchors. Rust `regex` syntax, as run by Polars.
+  - `min_length`, `max_length` (optional): non-negative bounds on the number of characters of a string column (rule
+    `length`), counted in Unicode code points.
+  - A key on a column type it does not apply to fails validation with `config_conflict`. See
+    [Checks](../concepts/checks.md#value-checks-out_of_range-not_allowed-pattern_mismatch-length).
+  - `rule_severity` (optional): a map from `not_null`, `cast_error`, `out_of_range`, `not_allowed`,
+    `pattern_mismatch` or `length` to `warn`, `reject` or `abort`, for this column only. `not_null` needs a required
+    column (`nullable: false` or in `schema.primary_key`), `cast_error` a non-`string` column, and each value rule
+    the keys that enable it; otherwise validation fails with `config_conflict`.
 
 ## Supported column types
 

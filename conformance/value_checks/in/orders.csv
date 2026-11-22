@@ -1,0 +1,11 @@
+order_id,amount,order_date,status,country,note
+1,10.50,2024-03-01,new,FR,ok
+0,10.50,2024-03-01,paid,DE,ok
+2,1000.00,2024-03-01,paid,DE,ok
+3,5.00,2023-12-31,paid,DE,ok
+4,5.00,2024-03-01,lost,US,ok
+5,5.00,2024-03-01,paid,fr,ok
+6,5.00,2024-03-01,paid,USA,ok
+7,5.00,2024-03-01,shipped,US,toolong
+8,,,,,
+9,oops,2024-03-01,new,FR,ok

@@ -794,6 +794,30 @@ $defs:
             - warn
             - reject
             - abort
+          out_of_range:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          not_allowed:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          pattern_mismatch:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          length:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
           unique:
             type: string
             enum:

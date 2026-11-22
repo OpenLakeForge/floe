@@ -1,0 +1,48 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: orders
+    domain: spike
+    source:
+      format: csv
+      path: "./in"
+      options:
+        header: true
+        separator: ","
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/orders"
+      rejected:
+        format: csv
+        path: "./out/rejected/orders"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: order_id
+          type: int64
+          min: 1
+        - name: amount
+          type: decimal(18,2)
+          min: 0
+          max: "999.99"
+        - name: order_date
+          type: date
+          min: "2024-01-01"
+        - name: status
+          type: string
+          allowed_values: [new, paid, shipped]
+          rule_severity:
+            not_allowed: warn
+        - name: country
+          type: string
+          pattern: "[A-Z]{2}"
+          min_length: 2
+          max_length: 2
+        - name: note
+          type: string
+          max_length: 5
+report:
+  path: "./report"
