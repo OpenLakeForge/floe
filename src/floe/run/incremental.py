@@ -28,6 +28,7 @@ from floe.storage.local import LocalClient
 from floe.storage.paths import normalize_local_path
 from floe.storage.resolve import resolve_path, storage_client
 from floe.storage.types import StorageClient
+from floe.write.outputs import keyed_part
 
 if TYPE_CHECKING:
     from deltalake import DeltaTable
@@ -139,6 +140,14 @@ def _emit_skipped(emit: Emitter, entity: str, reports: list[dict[str, Any]]) -> 
              skip_reason=r["skip_reason"], rows=0, accepted=0, rejected=0, elapsed_ms=0)  # fmt: skip
 
 
+def marker(entity: EntityConfig, file: InputFile, acquired_at: str) -> str:
+    """#1425: the name of the first accepted part of `file` under a claim taken at `acquired_at`, its commit marker.
+
+    A takeover keeps the claim's `acquired_at`, so a retry derives the dead run's name; a fresh claim gives a new one.
+    """
+    return keyed_part(f"{input_hash(entity, [file])}:{acquired_at}", 0, "parquet")
+
+
 class Incremental:
     """Claims the entity's inputs, renews the claims while it runs, then promotes or releases them."""
 
@@ -220,16 +229,34 @@ class Incremental:
                 )  # fmt: skip
             if found:
                 committed |= claims.keys() & ours
-        # promote now, so a later failure of the other inputs can't release them
-        if committed and self.claimed:
-            promote(self.client, self.uri, self.run_id, self.claimed, only=committed, advance=self.advance)  # fmt: skip
-        return self._skipped([f for f in pending if f.source_uri in committed], emit)
+        return self._settle([f for f in pending if f.source_uri in committed], emit)
+
+    def skip_published(self, pending: list[InputFile], parts: list[str], emit: Emitter) -> list[dict[str, Any]]:  # fmt: skip
+        """#1425 retry guard (Parquet append, unique keys, `file` mode): the reports of the pending inputs whose marker
+        part a dead run published, before any is read; `parts` is the accepted output's listing.
+
+        A file's marker is published after its other parts (#1423), so a listed one means the whole file is there.
+        """
+        names = {u.rpartition("/")[2] for u in parts}
+        done = [f for f in pending if (c := self.expired.get(f.source_uri)) and (c.size, c.mtime) == (f.source_size, f.source_mtime) and marker(self.entity, f, c.acquired_at) in names]  # fmt: skip
+        return self._settle(done, emit)
+
+    def markers(self, pending: list[InputFile]) -> list[str]:
+        """The marker part name of each pending input, from this run's claim on it (#1425)."""
+        claims = self.claimed.state.claims if self.claimed else {}
+        return [marker(self.entity, f, claims[f.source_uri].acquired_at) for f in pending]  # fmt: skip
 
     def claimed_ms(self, pending: list[InputFile]) -> int | None:
         """The oldest claim of `pending` in epoch ms, the version of a Delta commit's `txn` (#1354); None without claims."""
         claims = self.claimed.state.claims if self.claimed else {}
         at = [datetime.fromisoformat(c.acquired_at) for f in pending if (c := claims.get(f.source_uri))]  # fmt: skip
         return int(min(at).timestamp() * 1000) if at else None
+
+    def _settle(self, done: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:
+        # promote now, so a later failure of the other inputs can't release them
+        if done and self.claimed:
+            promote(self.client, self.uri, self.run_id, self.claimed, only={f.source_uri for f in done}, advance=self.advance)  # fmt: skip
+        return self._skipped(done, emit)
 
     def _skipped(self, files: list[InputFile], emit: Emitter) -> list[dict[str, Any]]:
         reports = [skipped_report(f.source_uri, "already_committed") for f in files]

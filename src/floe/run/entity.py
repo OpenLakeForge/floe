@@ -72,7 +72,6 @@ from floe.storage.resolve import resolve_path, storage_client
 from floe.storage.types import Downloader, StorageClient
 from floe.write.outputs import (
     AcceptedWrite,
-    keyed_part,
     part_uris,
     write_accepted,
 )
@@ -144,11 +143,11 @@ def _archive(plan: Plan, file: InputFile) -> str | None:
     return uri.removeprefix("local://")
 
 
-def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batch: str, delta: Any = False) -> pl.LazyFrame | None:  # fmt: skip
+def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, parts: list[str] | None, delta: Any = False) -> pl.LazyFrame | None:  # fmt: skip
     """Append mode: the key columns of the target's existing data, written once to local disk (#1057).
 
     Each chunk then joins its keys against this cache, so the target is read once per entity and
-    memory follows the chunk, not the history.
+    memory follows the chunk, not the history. `parts`: the Parquet parts the retry guard listed, else they are listed here.
     """
     cache = temp / "unique-keys"
     cache.mkdir()
@@ -165,10 +164,8 @@ def _key_cache(plan: Plan, client: StorageClient, base: str, temp: Path, batch: 
         cache_table_keys(plan.table, plan.tracker.keys, plan.out_map, cache / "table.parquet")  # fmt: skip
     else:
         columns = sorted({plan.out_map.get(n, n) for k in plan.tracker.keys for n in k})  # the sink holds output names  # fmt: skip
-        parts = part_uris(client, base.rstrip("/"), "parquet")
-        # #1198: in file mode a dead run's parts are named by its input hash, which its retry reuses and replaces, so they seed nothing
-        dead = {keyed_part(batch, i, "parquet") for i in range(len(parts))}
-        for i, uri in enumerate(u for u in parts if u.rpartition("/")[2] not in dead):
+        parts = part_uris(client, base.rstrip("/"), "parquet") if parts is None else parts  # fmt: skip
+        for i, uri in enumerate(parts):
             part = uri.removeprefix("local://")
             try:  # only the key columns are read
                 body = client.read(uri)
@@ -383,7 +380,10 @@ def _run_entity(
         from floe.delta.sink import existing_table as delta_table
 
         guarded = delta_table(entity, base, accepted)
-    if done := inc.skip_committed(guarded, pending, emit):
+    keyed_parquet = target is None and not delta and sink.write_mode == "append" and plan.tracker.keys and entity.incremental_mode == "file"  # fmt: skip
+    # #1425: listed once, for the guard and the unique-key seed
+    published = part_uris(accepted_client, base.rstrip("/"), "parquet") if keyed_parquet and pending and inc.expired and not inc.full_refresh else None  # fmt: skip
+    if done := inc.skip_committed(guarded, pending, emit) if published is None else inc.skip_published(pending, published, emit):  # fmt: skip
         files += done
         skip = {r["input_file"] for r in done}
         # `archive` mode: the archive is the marker
@@ -407,7 +407,6 @@ def _run_entity(
         cast_column(n, c.column_type)[0] for n, c in zip(names, columns, strict=True)
     )
     # #1424: ends each input file's accepted frames, so a unique-key file-mode Parquet append part holds one file's rows
-    keyed_parquet = target is None and not delta and sink.write_mode == "append" and plan.tracker.keys and entity.incremental_mode == "file"  # fmt: skip
     file_end = output(plan, empty) if keyed_parquet else None
 
     def accepted_frames() -> Generator[pl.DataFrame]:
@@ -420,7 +419,7 @@ def _run_entity(
                 closing(localized_inputs(queue, downloader, Path(temp_dir))) as inputs,
             ):
                 if pending and sink.write_mode == "append" and plan.tracker.keys and (target is None or plan.table is not None):  # fmt: skip
-                    plan.history = _key_cache(plan, accepted_client, base, Path(temp_dir), input_hash(entity, pending), guarded if delta else False)  # fmt: skip
+                    plan.history = _key_cache(plan, accepted_client, base, Path(temp_dir), published, guarded if delta else False)  # fmt: skip
                 for f in queue:
                     emit("file_started", entity=entity.name, input=f.source_uri)
                     timer = time.monotonic()
@@ -482,7 +481,7 @@ def _run_entity(
                         f for f in pending if f.source_uri not in queued
                     ]
             elif target is None:
-                write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options, input_hash(entity, pending) if plan.tracker.keys and entity.incremental_mode == "file" else None, file_end)  # fmt: skip
+                write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options, file_end, iter(inc.markers(pending)) if keyed_parquet else None)  # fmt: skip
             else:
                 from floe.iceberg.sink import write_iceberg
 

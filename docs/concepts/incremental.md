@@ -219,11 +219,15 @@ Snapshot expiry must keep at least 7 days and 10 snapshots. If the snapshots sin
 run's claim were expired, Floe can't tell whether that run committed: the run fails and
 asks for `floe state reset`.
 
-A Parquet `append` has no snapshots to check. In `file` mode with a unique key, a retry of
-the same pending files replaces the dead run's parts (#1198). If new files arrived before the
-retry, the dead run's parts stay in place and count as existing keys, so the retry rejects
-those rows as duplicates: they appear in the rejected output, never twice in the accepted
-output (known limitation, #1203). Retry before new files land to avoid it.
+A Parquet `append` has no snapshots to check. In `file` mode with a unique key, each input
+file's first accepted part is named from the file and its claim, and is published after the
+file's other parts. A retry that takes over a dead run's claim skips a file whose first part
+is in the output, with the same size and mtime, as `skipped` with
+`skip_reason: already_committed`, and reads the others. Nothing is deleted or overwritten,
+and every part in the output counts as existing keys. One window remains: if the run dies
+while publishing a file that wrote more than one part, the retry reads that file again and
+rejects the rows already published as duplicates. They appear in the rejected output, never
+twice in the accepted output.
 
 ## CAS And Concurrent Runs
 
