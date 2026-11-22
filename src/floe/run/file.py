@@ -430,6 +430,16 @@ def run_file(plan: Plan, file: InputFile, path: Path, spill: Path) -> tuple[dict
         return failed(err, mismatch)
 
     merged = [RowCheck(r, c, m, pl.concat(s), v) for (r, c, m, v), s in masks.items()]
+    least = entity.policy.min_rows_per_file
+    if least is not None and rows < least:
+        level = rule_level(entity, "min_rows_per_file")
+        merged.append(RowCheck("min_rows_per_file", "", "", pl.Series([True]), level))
+        aborted = aborted or level == "abort"
+        if level == "reject" and not aborted:
+            plan.tracker.restore(keys)  # rejected whole: no keys stay behind
+            plan.to_archive.append(file)
+            raw = _copy_raw(plan, path, "reject", file.source_name)
+            return file_report(entity, uri, rows, bad_total, merged, mismatch, raw), []
     rejected_path = errors_path = None
     if bad_total and not aborted and plan.rejected_table is not None:
         plan.rejected_spills += [

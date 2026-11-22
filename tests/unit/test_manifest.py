@@ -1060,3 +1060,36 @@ def test_1358_invalid_level_is_refused_on_read_back(
     with pytest.raises(FloeConfigError) as e:
         load_manifest(tmp_path / "bad.json")
     assert e.value.code == "config_invalid_value"
+
+
+def test_1410_min_rows_per_file_round_trips_and_validates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from jsonschema import Draft202012Validator
+
+    from floe.manifest_run import load_manifest
+
+    config = CONFIG.replace("policy: {severity: warn}", "policy: {severity: warn, min_rows_per_file: 2}")  # fmt: skip
+    manifest = manifest_of(tmp_path, monkeypatch, config)
+    assert manifest["entities"][0]["policy_min_rows_per_file"] == 2
+    schema = Path(__file__).parents[2] / "orchestrators/schemas/floe.manifest.schema.json"  # fmt: skip
+    Draft202012Validator(json.loads(schema.read_text())).validate(manifest)  # pyright: ignore[reportUnknownMemberType] -- jsonschema ships no types
+    _, [back], _ = load_manifest(tmp_path / "manifest.json")
+    assert back.policy.min_rows_per_file == 2
+    assert "policy_min_rows_per_file" not in manifest_of(tmp_path, monkeypatch, CONFIG)["entities"][0]  # fmt: skip
+
+
+@pytest.mark.parametrize("bad", [0, "many"])
+def test_1410_invalid_min_rows_per_file_is_refused_on_read_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad: object
+) -> None:
+    from floe.errors import FloeConfigError
+    from floe.manifest_run import load_manifest
+
+    config = CONFIG.replace("policy: {severity: warn}", "policy: {severity: warn, min_rows_per_file: 2}")  # fmt: skip
+    manifest = manifest_of(tmp_path, monkeypatch, config)
+    manifest["entities"][0]["policy_min_rows_per_file"] = bad
+    (tmp_path / "bad.json").write_text(json.dumps(manifest))
+    with pytest.raises(FloeConfigError) as e:
+        load_manifest(tmp_path / "bad.json")
+    assert e.value.code == "config_invalid_value"

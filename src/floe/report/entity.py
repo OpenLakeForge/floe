@@ -14,7 +14,7 @@ from floe.storage.inputs import ResolvedInputs
 from floe.write.outputs import AcceptedWrite
 
 MAX_RESOLVED_INPUTS = 50
-_RULES = ("not_null", "cast_error", "unique", "schema_error")
+_RULES = ("not_null", "cast_error", "unique", "min_rows_per_file", "schema_error")
 # `serde_json::Map` is a BTreeMap, so the echoed options and metadata come out key-sorted.
 _OPTION_KEYS = ("header", "separator", "encoding", "null_values", "recursive", "glob",
                 "json_mode", "row_tag", "namespace", "value_tag")  # fmt: skip
@@ -47,15 +47,14 @@ def summarize_rules(
                 counts[c.column] = counts.get(c.column, 0) + int(c.mask.sum())
         cols: list[dict[str, Any]] = []
         for name, n in sorted(counts.items()):
-            if n:
+            if n and rule != "min_rows_per_file":  # a file-level rule: no column
                 col: dict[str, Any] = {"column": name, "violations": n}
                 if rule == "cast_error" and name in types:
                     col["target_type"] = types[name]
                 if name in sources:
                     col["source"] = sources[name]
                 cols.append(col)
-        if cols:
-            total = sum(c["violations"] for c in cols)
+        if total := sum(counts.values()):
             rules.append(
                 {"rule": rule, "severity": level, "violations": total, "columns": cols}
             )  # fmt: skip
@@ -86,6 +85,8 @@ def file_report(
         accepted, rejected = 0, row_count
     elif any(r["severity"] == "abort" for r in rules):
         status, accepted, rejected = "aborted", 0, row_count
+    elif any(r["rule"] == "min_rows_per_file" and r["severity"] == "reject" for r in rules):  # fmt: skip
+        status, accepted, rejected = "rejected", 0, row_count
     else:  # merge-key duplicates forced out under warn leave the file a success
         status, accepted = (
             "rejected" if rejected_count else "success",

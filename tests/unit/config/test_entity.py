@@ -503,6 +503,10 @@ def test_rule_severity_parses_on_policy_and_column() -> None:
             "unknown field policy.rule_severity.min_rows",
         ),
         (
+            {"schema": _col(rule_severity={"min_rows_per_file": "warn"})},
+            "schema.columns[0]: unknown field schema.columns.rule_severity.min_rows_per_file",
+        ),
+        (
             {"schema": _col(rule_severity={"not_null": "Warn"})},
             "schema.columns[0]: schema.columns.rule_severity.not_null=Warn is unsupported (allowed: warn, reject, abort)",
         ),
@@ -517,4 +521,33 @@ def test_rule_severity_parses_on_policy_and_column() -> None:
     ],
 )
 def test_rule_severity_errors(overrides: dict[str, object], expected: str) -> None:
+    assert message(entity(**overrides)) == expected
+
+
+def test_min_rows_per_file_parses_with_its_rule_severity() -> None:
+    parsed = parse_entity(
+        entity(
+            policy={
+                "severity": "warn",
+                "min_rows_per_file": 1,
+                "rule_severity": {"min_rows_per_file": "reject"},
+            }
+        )
+    )
+    assert parsed.policy.min_rows_per_file == 1
+    assert rule_level(parsed, "min_rows_per_file") == "reject"
+    assert parse_entity(entity()).policy.min_rows_per_file is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (0, "expected number greater than 0 at policy.min_rows_per_file"),
+        (-1, "expected positive integer at policy.min_rows_per_file"),
+        (1.5, "expected integer at policy.min_rows_per_file"),
+        ("1", "expected integer at policy.min_rows_per_file"),
+    ],
+)
+def test_min_rows_per_file_errors(value: object, expected: str) -> None:
+    overrides = {"policy": {"severity": "warn", "min_rows_per_file": value}}
     assert message(entity(**overrides)) == expected
