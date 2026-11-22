@@ -2,8 +2,10 @@
 
 import re
 
+import polars as pl
+
 from floe import __version__
-from floe.checks.cast import decimal_type
+from floe.checks.cast import cast_column, decimal_type
 from floe.checks.normalize import (
     normalize_name,
     output_column_mapping,
@@ -11,6 +13,7 @@ from floe.checks.normalize import (
     resolve_strategy,
     source_names,
 )
+from floe.checks.values import literal
 from floe.config.project import (
     LineageConfig,
     RootConfig,
@@ -19,6 +22,7 @@ from floe.config.project import (
 )
 from floe.config.types import (
     NO_ICEBERG,
+    ColumnConfig,
     EntityConfig,
     WriteMode,
     catalog_ident,
@@ -61,6 +65,7 @@ SCD2_DEFAULTS = {
     "valid_from_column": "__floe_valid_from",
     "valid_to_column": "__floe_valid_to",
 }
+_VALUE_KEYS = {"min", "max", "allowed_values", "pattern", "min_length", "max_length"}
 # Same normalisation as `checks/cast.py`, so every accepted type casts.
 _TYPE_NAMES = {
     *("string", "str", "text", "boolean", "bool", "datetime", "timestamp", "date"),
@@ -103,6 +108,10 @@ def _check_column_rules(entity: EntityConfig) -> None:
         for rule, bad, why in (
             ("cast_error", _canonical(column.column_type) in ("string", "str", "text"), "a string column has no cast check"),
             ("not_null", not required, "the column is not required (set nullable=false or add it to schema.primary_key)"),
+            ("out_of_range", column.min is None and column.max is None, "the column has no min or max"),
+            ("not_allowed", column.allowed_values is None, "the column has no allowed_values"),
+            ("pattern_mismatch", column.pattern is None, "the column has no pattern"),
+            ("length", column.min_length is None and column.max_length is None, "the column has no min_length or max_length"),
         ):  # fmt: skip
             if rule in rules and bad:
                 raise _fail(
@@ -110,6 +119,38 @@ def _check_column_rules(entity: EntityConfig) -> None:
                     f"schema.columns[name={column.name}].rule_severity.{rule} is not applicable: {why}",
                     code="config_conflict",
                 )
+        _check_value_checks(entity, column)
+
+
+def _check_value_checks(entity: EntityConfig, c: ColumnConfig) -> None:
+    where = f"schema.columns[name={c.name}]"
+    keys = {k: v for k, v in c.model_dump(include=_VALUE_KEYS).items() if v is not None}  # fmt: skip
+    if not keys:
+        return
+    dtype = pl.DataFrame(schema={"v": pl.String}).select(cast_column("v", c.column_type)[0]).schema["v"]  # fmt: skip
+    for names, applies, kinds in (
+        (("min", "max"), dtype.is_numeric() or dtype.is_temporal(), "int, float, decimal, date or datetime"),
+        (("allowed_values",), dtype.is_integer() or dtype == pl.String, "int or string"),
+        (("pattern", "min_length", "max_length"), dtype == pl.String, "string"),
+    ):  # fmt: skip
+        for key in names:
+            if key in keys and not applies:
+                raise _fail(entity, f"{where}.{key} is not applicable: column type {c.column_type} is not {kinds}", code="config_conflict")  # fmt: skip
+    values = [(f"allowed_values[{i}]", v) for i, v in enumerate(c.allowed_values or [])]
+    typed = {k: pl.lit(keys[k]) for k in ("min_length", "max_length") if k in keys}
+    for key, value in [*((k, keys[k]) for k in ("min", "max") if k in keys), *values]:
+        try:
+            typed[key] = pl.lit(literal(c.column_type, value), dtype)
+        except FloeConfigError as err:
+            raise _fail(entity, f"{where}.{key}={err}", code="config_invalid_value") from err  # fmt: skip
+    for lo, hi in (("min", "max"), ("min_length", "max_length")):
+        if lo in typed and hi in typed and pl.select(typed[lo] > typed[hi]).item():
+            raise _fail(entity, f"{where}.{lo}={keys[lo]} is greater than {hi}={keys[hi]}", code="config_conflict")  # fmt: skip
+    if c.pattern is not None:
+        try:
+            pl.select(pl.lit("", pl.String).str.contains(rf"\A(?:{c.pattern})\z"))
+        except pl.exceptions.ComputeError as err:
+            raise _fail(entity, f"{where}.pattern is invalid: {err}", code="config_invalid_value") from err  # fmt: skip
 
 
 def _check_primary_key(entity: EntityConfig) -> None:

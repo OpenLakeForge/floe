@@ -1062,7 +1062,15 @@ def test_1358_invalid_level_is_refused_on_read_back(
     assert e.value.code == "config_invalid_value"
 
 
-VALUE_KEYS = {"min": 0, "max": "99.5", "allowed_values": ["a", "b"], "pattern": "[a-z]", "min_length": 1, "max_length": 2}  # fmt: skip
+VALUE_KEYS = (
+    {
+        "allowed_values": ["a", "b"],
+        "pattern": "[a-z]",
+        "min_length": 1,
+        "max_length": 2,
+    },
+    {"min": 0, "max": "99.5"},
+)
 
 
 def test_1404_value_checks_round_trip_and_validate(
@@ -1070,27 +1078,18 @@ def test_1404_value_checks_round_trip_and_validate(
 ) -> None:
     from jsonschema import Draft202012Validator
 
-    import floe._cli as cli
     from floe.manifest_run import load_manifest
 
-    load = cli._load  # pyright: ignore[reportPrivateUsage] -- the loader `build_manifest` goes through
-
-    def patched(path: Any, profile: Any) -> Any:
-        """Config parsing of the value keys is #1405: set them on the loaded models."""
-        root = load(path, profile)
-        entity = root.entities[0]
-        column = entity.schema_.columns[0].model_copy(update=VALUE_KEYS)
-        schema = entity.schema_.model_copy(update={"columns": [column]})
-        return root.model_copy(update={"entities": [entity.model_copy(update={"schema_": schema})]})  # fmt: skip
-
-    monkeypatch.setattr(cli, "_load", patched)
-    manifest = manifest_of(tmp_path, monkeypatch, CONFIG)
-    column = manifest["entities"][0]["schema"]["columns"][0]
-    assert {k: column[k] for k in VALUE_KEYS} == VALUE_KEYS
+    columns = "- {name: email, type: string, allowed_values: [a, b], pattern: '[a-z]', min_length: 1, max_length: 2}\n        - {name: score, type: float64, min: 0, max: '99.5'}"  # fmt: skip
+    config = CONFIG.replace("- {name: email, type: string}", columns)
+    manifest = manifest_of(tmp_path, monkeypatch, config)
+    written = manifest["entities"][0]["schema"]["columns"]
+    _, [back], _ = load_manifest(tmp_path / "manifest.json")
+    for i, keys in enumerate(VALUE_KEYS):
+        assert {k: written[i][k] for k in keys} == keys
+        assert {k: getattr(back.schema_.columns[i], k) for k in keys} == keys
     schema = Path(__file__).parents[2] / "orchestrators/schemas/floe.manifest.schema.json"  # fmt: skip
     Draft202012Validator(json.loads(schema.read_text())).validate(manifest)  # pyright: ignore[reportUnknownMemberType] -- jsonschema ships no types
-    _, [back], _ = load_manifest(tmp_path / "manifest.json")
-    assert {k: getattr(back.schema_.columns[0], k) for k in VALUE_KEYS} == VALUE_KEYS
 
 
 def test_1404_manifest_without_value_checks_carries_none_of_the_keys(

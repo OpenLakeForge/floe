@@ -1077,6 +1077,30 @@ $defs:
             - warn
             - reject
             - abort
+          out_of_range:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          not_allowed:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          pattern_mismatch:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          length:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
           unique:
             type: string
             enum:
@@ -1205,6 +1229,46 @@ $defs:
         type:
         - boolean
         - 'null'
+      min:
+        description: Inclusive lower bound, converted like a value of the column; quote exact decimals.
+        type:
+        - integer
+        - number
+        - string
+        - 'null'
+      max:
+        description: Inclusive upper bound, converted like a value of the column; quote exact decimals.
+        type:
+        - integer
+        - number
+        - string
+        - 'null'
+      allowed_values:
+        anyOf:
+        - type: array
+          minItems: 1
+          items:
+            type: string
+        - type: array
+          minItems: 1
+          items:
+            type: integer
+        - type: 'null'
+      pattern:
+        description: Full-match regular expression (Rust regex syntax); Floe adds the anchors.
+        type:
+        - string
+        - 'null'
+      min_length:
+        type:
+        - integer
+        - 'null'
+        minimum: 0
+      max_length:
+        type:
+        - integer
+        - 'null'
+        minimum: 0
       rule_severity:
         type: object
         additionalProperties: false
@@ -1216,6 +1280,30 @@ $defs:
             - reject
             - abort
           cast_error:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          out_of_range:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          not_allowed:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          pattern_mismatch:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          length:
             type: string
             enum:
             - warn
