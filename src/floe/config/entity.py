@@ -156,7 +156,9 @@ _VALUE_KEYS = ("min", "max", "allowed_values", "pattern", "min_length", "max_len
 def _policy(value: object) -> PolicyConfig:
     h = yaml_hash(value, "policy")
     validate_known_keys(
-        h, "policy", ("severity", "max_rejection_rate", "rule_severity")
+        h,
+        "policy",
+        ("severity", "max_rejection_rate", "min_rows_per_file", "rule_severity"),
     )
     severity = get_string(h, "severity", "policy")
     picked = _pick(severity, get_args(PolicySeverity))
@@ -171,8 +173,21 @@ def _policy(value: object) -> PolicyConfig:
             f"policy.max_rejection_rate requires policy.severity=reject (got {picked})",
             code="config_conflict",
         )
-    rules = _rule_severity(h, "policy", (*_COLUMN_RULES, "unique", "schema_mismatch"))
-    return PolicyConfig(severity=picked, max_rejection_rate=rate, rule_severity=rules)
+    min_rows = opt_u64(h, "min_rows_per_file", "policy")
+    if min_rows == 0:
+        raise FloeConfigError(
+            "expected number greater than 0 at policy.min_rows_per_file",
+            code="config_invalid_value",
+        )
+    rules = _rule_severity(
+        h, "policy", (*_COLUMN_RULES, "unique", "schema_mismatch", "min_rows_per_file")
+    )
+    return PolicyConfig(
+        severity=picked,
+        max_rejection_rate=rate,
+        min_rows_per_file=min_rows,
+        rule_severity=rules,
+    )
 
 
 def _normalize_columns(value: object) -> NormalizeColumnsConfig:

@@ -32,6 +32,7 @@ class EntityStateConfig(_Model):
 class PolicyConfig(_Model):
     severity: PolicySeverity
     max_rejection_rate: float | None = None
+    min_rows_per_file: int | None = Field(default=None, ge=1)
     rule_severity: dict[str, PolicySeverity] | None = None
 
 
