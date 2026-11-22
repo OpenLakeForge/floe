@@ -194,6 +194,7 @@ def _entity(m: Json, named_local: bool) -> EntityConfig:
                     m.get("policy_severity"), ("reject", "abort"), "warn"
                 ),
                 "max_rejection_rate": m.get("policy_max_rejection_rate"),
+                "min_rows_per_file": m.get("policy_min_rows_per_file"),
                 # strict, never `_lenient`: a bad level fails EntityConfig validation
                 "rule_severity": m.get("policy_rule_severity"),
             },
