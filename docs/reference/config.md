@@ -592,8 +592,8 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - `reject`: reject rows with violations (first unique kept, duplicates rejected).
   - `abort`: abort the entire file on first violation.
 - `rule_severity` (optional): a map from a rule to `warn`, `reject` or `abort`, overriding `severity` for that rule
-  on every column. Keys: `not_null`, `cast_error`, `unique`, `schema_mismatch`, and `min_rows` (`warn` or `abort`
-  only, see below). A column's own `rule_severity`
+  on every column. Keys: `not_null`, `cast_error`, `unique`, `schema_mismatch`, `min_rows_per_file`, and
+  `min_rows` (`warn` or `abort` only, see below). A column's own `rule_severity`
   wins over this map, and this map wins over `severity`. In a domain's `defaults.policy` it merges with the entity's
   map key by key. `reject` or `abort` here requires `sink.rejected`, and `abort` is refused with `pii`.
   See [Checks](../concepts/checks.md#severity-per-check).
@@ -606,6 +606,13 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
     `rule_severity.min_rows`, else `severity`, where `reject` counts as `abort`. A run whose files are all `skipped`
     (an `incremental_mode: file` run with no new files) is not checked. `min_rows` never requires `sink.rejected`
     and is allowed with `pii`. `0` fails with `config_invalid_value`.
+- `min_rows_per_file` (optional)
+  - An integer `>= 1`: the fewest rows each input file must have (`1` means no empty file). A file with fewer rows
+    is settled whole by `rule_severity.min_rows_per_file` (else `severity`): `reject` copies the raw file to
+    `sink.rejected` and accepts none of its rows; `abort` aborts the file and the entity, as any abort does; `warn`
+    keeps the rows and counts one warning. The file reports one `validation.rules[]` entry `min_rows_per_file` with
+    empty `columns`. `0` fails with `config_invalid_value`. A file the reader cannot read (such as a zero-byte CSV
+    with no header) stays an unreadable file on `severity`.
 
 ### `schema` (required)
 

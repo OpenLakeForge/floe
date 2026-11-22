@@ -234,6 +234,7 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
                 {},
                 policy_max_rejection_rate=entity.policy.max_rejection_rate,
                 policy_min_rows=entity.policy.min_rows,
+                policy_min_rows_per_file=entity.policy.min_rows_per_file,
                 policy_rule_severity=_sorted(entity.policy.rule_severity),
             ),
             "policy_severity": entity.policy.severity,
@@ -247,6 +248,12 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
                             source=c.source,
                             nullable=c.nullable,
                             rule_severity=_sorted(c.rule_severity),
+                            min=c.min,
+                            max=c.max,
+                            allowed_values=c.allowed_values,
+                            pattern=c.pattern,
+                            min_length=c.min_length,
+                            max_length=c.max_length,
                         )
                         for c in schema.columns
                     ],

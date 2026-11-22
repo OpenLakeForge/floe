@@ -1060,3 +1060,74 @@ def test_1358_invalid_level_is_refused_on_read_back(
     with pytest.raises(FloeConfigError) as e:
         load_manifest(tmp_path / "bad.json")
     assert e.value.code == "config_invalid_value"
+
+
+def test_1410_min_rows_per_file_round_trips_and_validates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from jsonschema import Draft202012Validator
+
+    from floe.manifest_run import load_manifest
+
+    config = CONFIG.replace("policy: {severity: warn}", "policy: {severity: warn, min_rows_per_file: 2}")  # fmt: skip
+    manifest = manifest_of(tmp_path, monkeypatch, config)
+    assert manifest["entities"][0]["policy_min_rows_per_file"] == 2
+    schema = Path(__file__).parents[2] / "orchestrators/schemas/floe.manifest.schema.json"  # fmt: skip
+    Draft202012Validator(json.loads(schema.read_text())).validate(manifest)  # pyright: ignore[reportUnknownMemberType] -- jsonschema ships no types
+    _, [back], _ = load_manifest(tmp_path / "manifest.json")
+    assert back.policy.min_rows_per_file == 2
+    assert "policy_min_rows_per_file" not in manifest_of(tmp_path, monkeypatch, CONFIG)["entities"][0]  # fmt: skip
+
+
+@pytest.mark.parametrize("bad", [0, "many"])
+def test_1410_invalid_min_rows_per_file_is_refused_on_read_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad: object
+) -> None:
+    from floe.errors import FloeConfigError
+    from floe.manifest_run import load_manifest
+
+    config = CONFIG.replace("policy: {severity: warn}", "policy: {severity: warn, min_rows_per_file: 2}")  # fmt: skip
+    manifest = manifest_of(tmp_path, monkeypatch, config)
+    manifest["entities"][0]["policy_min_rows_per_file"] = bad
+    (tmp_path / "bad.json").write_text(json.dumps(manifest))
+    with pytest.raises(FloeConfigError) as e:
+        load_manifest(tmp_path / "bad.json")
+    assert e.value.code == "config_invalid_value"
+
+
+VALUE_KEYS = {"min": 0, "max": "99.5", "allowed_values": ["a", "b"], "pattern": "[a-z]", "min_length": 1, "max_length": 2}  # fmt: skip
+
+
+def test_1404_value_checks_round_trip_and_validate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from jsonschema import Draft202012Validator
+
+    import floe._cli as cli
+    from floe.manifest_run import load_manifest
+
+    load = cli._load  # pyright: ignore[reportPrivateUsage] -- the loader `build_manifest` goes through
+
+    def patched(path: Any, profile: Any) -> Any:
+        """Config parsing of the value keys is #1405: set them on the loaded models."""
+        root = load(path, profile)
+        entity = root.entities[0]
+        column = entity.schema_.columns[0].model_copy(update=VALUE_KEYS)
+        schema = entity.schema_.model_copy(update={"columns": [column]})
+        return root.model_copy(update={"entities": [entity.model_copy(update={"schema_": schema})]})  # fmt: skip
+
+    monkeypatch.setattr(cli, "_load", patched)
+    manifest = manifest_of(tmp_path, monkeypatch, CONFIG)
+    column = manifest["entities"][0]["schema"]["columns"][0]
+    assert {k: column[k] for k in VALUE_KEYS} == VALUE_KEYS
+    schema = Path(__file__).parents[2] / "orchestrators/schemas/floe.manifest.schema.json"  # fmt: skip
+    Draft202012Validator(json.loads(schema.read_text())).validate(manifest)  # pyright: ignore[reportUnknownMemberType] -- jsonschema ships no types
+    _, [back], _ = load_manifest(tmp_path / "manifest.json")
+    assert {k: getattr(back.schema_.columns[0], k) for k in VALUE_KEYS} == VALUE_KEYS
+
+
+def test_1404_manifest_without_value_checks_carries_none_of_the_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    column = manifest_of(tmp_path, monkeypatch, CONFIG)["entities"][0]["schema"]["columns"][0]  # fmt: skip
+    assert column.keys() == {"name", "column_type"}

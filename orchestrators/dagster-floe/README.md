@@ -154,6 +154,10 @@ Every accepted-output asset automatically gets quality checks registered in Dags
 | `not_null` | Null values found in non-nullable columns |
 | `unique` | Duplicate values found in uniqueness-constrained columns |
 | `schema_mismatch` | Incoming file schema is incompatible with the declared schema |
+| `out_of_range`, `not_allowed`, `pattern_mismatch`, `length` | Values broke the column's `min`/`max`, `allowed_values`, `pattern` or length checks |
+| `min_rows_per_file` | A file had fewer rows than `policy.min_rows_per_file` |
+| `row_predicates` | Rows broke a `schema.checks` predicate; `predicate_violations` in the metadata counts each predicate |
+| `min_rows` | The run read fewer rows than `policy.min_rows` (`min_rows_evaluated: false` when the run did not evaluate it) |
 
 Checks appear in the Dagster UI under each asset, linked to the run that produced them. A `WARN`-severity violation marks the check as a warning; `REJECT` or `ABORT` marks it as a failure.
 

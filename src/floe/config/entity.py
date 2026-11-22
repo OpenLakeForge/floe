@@ -155,7 +155,15 @@ _COLUMN_RULES = ("not_null", "cast_error")
 def _policy(value: object) -> PolicyConfig:
     h = yaml_hash(value, "policy")
     validate_known_keys(
-        h, "policy", ("severity", "max_rejection_rate", "min_rows", "rule_severity")
+        h,
+        "policy",
+        (
+            "severity",
+            "max_rejection_rate",
+            "min_rows",
+            "min_rows_per_file",
+            "rule_severity",
+        ),
     )
     severity = get_string(h, "severity", "policy")
     picked = _pick(severity, get_args(PolicySeverity))
@@ -171,19 +179,28 @@ def _policy(value: object) -> PolicyConfig:
             code="config_conflict",
         )
     min_rows = opt_u64(h, "min_rows", "policy")
-    if min_rows == 0:
-        raise FloeConfigError(
-            "expected number greater than 0 at policy.min_rows",
-            code="config_invalid_value",
-        )
-    rules = _rule_severity(h, "policy", (*_COLUMN_RULES, "unique", "schema_mismatch", "min_rows"))  # fmt: skip
+    min_rows_per_file = opt_u64(h, "min_rows_per_file", "policy")
+    for key, threshold in (
+        ("min_rows", min_rows),
+        ("min_rows_per_file", min_rows_per_file),
+    ):
+        if threshold == 0:
+            raise FloeConfigError(
+                f"expected number greater than 0 at policy.{key}",
+                code="config_invalid_value",
+            )
+    rules = _rule_severity(h, "policy", (*_COLUMN_RULES, "unique", "schema_mismatch", "min_rows", "min_rows_per_file"))  # fmt: skip
     if rules and rules.get("min_rows") == "reject":
         raise FloeConfigError(
             "policy.rule_severity.min_rows=reject is unsupported (allowed: warn, abort)",
             code="config_invalid_value",
         )
     return PolicyConfig(
-        severity=picked, max_rejection_rate=rate, min_rows=min_rows, rule_severity=rules
+        severity=picked,
+        max_rejection_rate=rate,
+        min_rows=min_rows,
+        min_rows_per_file=min_rows_per_file,
+        rule_severity=rules,
     )
 
 

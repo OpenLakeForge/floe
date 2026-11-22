@@ -1,0 +1,1 @@
+Marker: record.py and check.py generate manifest.json from config.yml, then run `floe run --manifest manifest.json` (#662).

@@ -110,7 +110,8 @@ def _sink(t: Json, write_mode: str, named_local: bool) -> Json:
 
 
 def _schema(s: Json) -> Json:
-    keys = ("source", "nullable", "rule_severity")
+    keys = ("source", "nullable", "rule_severity", "min", "max", "allowed_values",
+            "pattern", "min_length", "max_length")  # fmt: skip
     for c in s["columns"]:
         for key in ("width", "trim"):
             if c.get(key) is not None:
@@ -194,6 +195,7 @@ def _entity(m: Json, named_local: bool) -> EntityConfig:
                 ),
                 "max_rejection_rate": m.get("policy_max_rejection_rate"),
                 "min_rows": m.get("policy_min_rows"),
+                "min_rows_per_file": m.get("policy_min_rows_per_file"),
                 # strict, never `_lenient`: a bad level fails EntityConfig validation
                 "rule_severity": m.get("policy_rule_severity"),
             },

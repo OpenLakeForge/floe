@@ -209,6 +209,7 @@ Aggregations:
 - `validation.rules[]` aggregates violations by rule and column. A rule appears once per resolved severity, so
   it repeats only when its columns have different `rule_severity` levels. The `policy` block adds `rule_severity`
   when the entity sets it.
+- `min_rows_per_file` is a file-level rule: its entry has `"violations": 1` and an empty `columns` list.
 
 Example rule summary:
 

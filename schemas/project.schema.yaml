@@ -1062,7 +1062,14 @@ $defs:
         minimum: 0
         maximum: 1
       min_rows:
-        type: integer
+        type:
+        - integer
+        - 'null'
+        minimum: 1
+      min_rows_per_file:
+        type:
+        - integer
+        - 'null'
         minimum: 1
       rule_severity:
         type: object
@@ -1096,6 +1103,12 @@ $defs:
             type: string
             enum:
             - warn
+            - abort
+          min_rows_per_file:
+            type: string
+            enum:
+            - warn
+            - reject
             - abort
     if:
       required:
