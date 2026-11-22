@@ -21,6 +21,7 @@ from floe.checks.mismatch import (
 from floe.checks.normalize import (
     normalize_columns,
 )
+from floe.checks.predicates import predicate_checks
 from floe.checks.rows import (
     ERRORS,
     ROW_INDEX,
@@ -303,7 +304,8 @@ def _typed(
     if plan.history is not None:
         seed_from_history(plan.tracker, plan.history, typed, plan.out_map)
     values = value_checks(typed, config, entity)
-    return typed, df, [*required, *cast_checks, *values, *plan.tracker.check(typed)]
+    predicates = predicate_checks(typed, entity, {c.name: n for n, c in config.items()})
+    return typed, df, [*required, *cast_checks, *values, *predicates, *plan.tracker.check(typed)]  # fmt: skip
 
 
 def source_columns(plan: Plan, uri: str) -> list[pl.Expr]:
