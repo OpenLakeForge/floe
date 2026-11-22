@@ -596,6 +596,54 @@ def test_schema_checks_errors(check: object, expected: str) -> None:
     assert message(entity(schema=_checks(check))) == expected
 
 
+def test_value_check_keys_parse() -> None:
+    column = {"name": "id", "type": "string", "min": 0, "max": "9.5", "allowed_values": ["a", "b"]}  # fmt: skip
+    column |= {"pattern": "[a-z]+", "min_length": 1, "max_length": 2}
+    parsed = parse_entity(entity(schema={"columns": [column]})).schema_.columns[0]
+    assert (parsed.min, parsed.max, parsed.allowed_values) == (0, "9.5", ["a", "b"])
+    assert (parsed.pattern, parsed.min_length, parsed.max_length) == ("[a-z]+", 1, 2)
+    ints = parse_entity(entity(schema=_col(allowed_values=[1, 2], min=1.5)))
+    assert (ints.schema_.columns[0].allowed_values, ints.schema_.columns[0].min) == ([1, 2], 1.5)  # fmt: skip
+
+
+def test_value_check_rules_are_rule_severity_keys() -> None:
+    rules = dict.fromkeys(("out_of_range", "not_allowed", "pattern_mismatch", "length"), "warn")  # fmt: skip
+    parsed = parse_entity(
+        entity(
+            policy={"severity": "reject", "rule_severity": rules},
+            schema=_col(rule_severity=rules),
+        )
+    )
+    assert (
+        parsed.policy.rule_severity == parsed.schema_.columns[0].rule_severity == rules
+    )
+
+
+_NOT_VALUES = "expected non-empty array of all strings or all integers at schema.columns.allowed_values"  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("extra", "expected"),
+    [
+        ({"min": True}, "expected number or string at schema.columns.min"),
+        ({"max": [1]}, "expected number or string at schema.columns.max"),
+        ({"allowed_values": []}, _NOT_VALUES),
+        ({"allowed_values": ["a", 1]}, _NOT_VALUES),
+        ({"allowed_values": [1.5]}, _NOT_VALUES),
+        ({"allowed_values": [True]}, _NOT_VALUES),
+        ({"allowed_values": "a"}, _NOT_VALUES),
+        ({"pattern": 1}, "expected string at schema.columns.pattern"),
+        ({"min_length": "1"}, "expected integer at schema.columns.min_length"),
+        ({"max_length": -1}, "expected positive integer at schema.columns.max_length"),
+    ],
+)
+def test_value_check_shape_errors(extra: dict[str, object], expected: str) -> None:
+    with pytest.raises(FloeConfigError) as err:
+        parse_entity(entity(schema=_col(**extra)))
+    assert err.value.code == "config_invalid_value"
+    assert str(err.value) == f"schema.columns[0]: {expected}"
+
+
 def test_min_rows_per_file_parses_with_its_rule_severity() -> None:
     parsed = parse_entity(
         entity(
