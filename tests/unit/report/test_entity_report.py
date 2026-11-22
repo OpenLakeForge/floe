@@ -292,3 +292,10 @@ def test_1406_a_predicate_is_reported_under_its_own_name_before_schema_error() -
             "columns": [{"column": "id", "violations": 2}],
         }
     ]
+
+
+def test_1407_every_reported_rule_is_a_builtin_rule() -> None:
+    from floe.config.types import BUILTIN_RULES
+    from floe.report.entity import _RULES  # pyright: ignore[reportPrivateUsage]  # the report's own rule list is the subject
+
+    assert set(_RULES) <= set(BUILTIN_RULES)

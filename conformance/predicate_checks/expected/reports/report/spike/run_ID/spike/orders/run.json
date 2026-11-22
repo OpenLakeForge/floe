@@ -1,0 +1,137 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "spike.orders"
+  },
+  "source": {
+    "format": "csv",
+    "path": "local://<ROOT>/in",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ","
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "directory",
+      "file_count": 1,
+      "files": [
+        "local://<ROOT>/in/orders.csv"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/orders"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/orders"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject"
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/orders",
+    "table_root_uri": "local://<ROOT>/out/accepted/orders",
+    "write_mode": "overwrite",
+    "accepted_rows": 4,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 2317,
+    "avg_file_size_mb": 0.0022096633911132812,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 6,
+    "accepted_total": 4,
+    "rejected_total": 2,
+    "warnings_total": 1,
+    "errors_total": 2
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/orders.csv",
+      "status": "rejected",
+      "row_count": 6,
+      "accepted_count": 4,
+      "rejected_count": 2,
+      "mismatch": {
+        "declared_columns_count": 6,
+        "input_columns_count": 6,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/orders",
+        "rejected_path": "<ROOT>/out/rejected/orders/part-<uuid>.csv",
+        "errors_path": "<ROOT>/out/rejected/orders/orders_reject_errors.json",
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 2,
+        "warnings": 1,
+        "rules": [
+          {
+            "rule": "end_after_start",
+            "severity": "reject",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "end_date",
+                "violations": 1
+              }
+            ]
+          },
+          {
+            "rule": "no_cancelled_with_amount",
+            "severity": "reject",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "amount",
+                "violations": 1
+              }
+            ]
+          },
+          {
+            "rule": "discount_within_amount",
+            "severity": "warn",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "discount",
+                "violations": 1
+              }
+            ]
+          }
+        ]
+      },
+      "input_size": 287,
+      "input_mtime": "<volatile>"
+    }
+  ],
+  "timings_ms": "<volatile>"
+}

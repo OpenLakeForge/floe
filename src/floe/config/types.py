@@ -39,6 +39,11 @@ class PolicyConfig(_Model):
 
 
 _LEVELS: tuple[PolicySeverity, ...] = ("warn", "reject", "abort")
+# #1252: every built-in rule name, which a `schema.checks` name may not take; a new built-in rule appends here
+BUILTIN_RULES = (
+    "not_null", "cast_error", "out_of_range", "not_allowed", "pattern_mismatch", "length", "unique",
+    "schema_mismatch", "schema_error", "csv_read_error", "unreadable_file", "min_rows", "min_rows_per_file",
+)  # fmt: skip
 
 
 def rule_level(

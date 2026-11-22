@@ -1,0 +1,56 @@
+version: "0.3"
+domains:
+  - name: spike
+entities:
+  - name: orders
+    domain: spike
+    source:
+      format: csv
+      path: "./in"
+      options:
+        header: true
+        separator: ","
+    sink:
+      accepted:
+        format: parquet
+        path: "./out/accepted/orders"
+      rejected:
+        format: csv
+        path: "./out/rejected/orders"
+    policy:
+      severity: reject
+    schema:
+      columns:
+        - name: order_id
+          type: int64
+        - name: start_date
+          type: date
+        - name: end_date
+          type: date
+        - name: amount
+          type: decimal(18,2)
+        - name: discount
+          type: decimal(18,2)
+        - name: status
+          type: string
+      checks:
+        - name: amount_not_negative
+          left: amount
+          op: ge
+          value: 0
+        - name: end_after_start
+          left: end_date
+          op: ge
+          right: start_date
+        - name: no_cancelled_with_amount
+          when: {left: status, op: eq, value: cancelled}
+          left: amount
+          op: eq
+          value: 0
+        - name: discount_within_amount
+          left: discount
+          op: le
+          right: amount
+          severity: warn
+report:
+  path: "./report"

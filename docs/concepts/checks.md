@@ -72,6 +72,47 @@ columns:
   (`config_conflict`), and a bound or allowed value that does not convert, a NaN or infinite bound,
   and a pattern that does not compile (`config_invalid_value`).
 
+### Row predicates (`schema.checks`)
+
+- **Trigger**: an entry of `schema.checks`, which compares a column with another column (`right`) or a
+  literal (`value`), optionally only on the rows where a `when` condition holds.
+- **Logic**: a row fails when the comparison is false on its typed values.
+- **Notes**:
+  - A comparison or `when` that involves a null passes the row, as in SQL `CHECK`; use `is_null` or
+    `not_null` to test for missing values. A row whose `when` is false passes.
+  - The row error has `rule` = the check `name`, `column` = `left`, and a message rendered from the config
+    (`end_date >= start_date`, `amount == 0 when status == cancelled`). In `validation.rules[]` each predicate
+    is listed under its own name, after the column value rules.
+  - `severity` sets the level of one predicate; without it the predicate uses `policy.severity`.
+  - No `and`/`or`, nesting or arithmetic: one comparison and at most one `when` per check. Field rules are in
+    the [config reference](../reference/config.md#schema-required).
+
+```yaml
+policy:
+  severity: reject
+schema:
+  columns: [...]
+  checks:
+    - name: end_after_start
+      left: end_date
+      op: ge                     # eq ne lt le gt ge, is_null not_null
+      right: start_date          # a column
+    - name: discount_within_amount
+      left: discount
+      op: le
+      right: amount
+      severity: warn             # keep the row, count a warning
+    - name: vat_needs_country
+      when: {left: vat_id, op: not_null}
+      left: country
+      op: not_null
+    - name: no_cancelled_with_amount
+      when: {left: status, op: eq, value: cancelled}   # a literal
+      left: amount
+      op: eq
+      value: 0
+```
+
 ## Supported column types
 
 Type names are case-insensitive and normalized by removing `-` and `_`.

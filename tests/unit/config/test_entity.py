@@ -544,6 +544,78 @@ def test_rule_severity_errors(overrides: dict[str, object], expected: str) -> No
     assert message(entity(**overrides)) == expected
 
 
+_PREDICATE = {"name": "end_after_start", "left": "amt", "op": "ge", "right": "id"}
+
+
+def _checks(*checks: object) -> dict[str, object]:
+    return {"columns": [{"name": "id", "type": "string"}], "checks": list(checks)}
+
+
+def test_schema_checks_parse() -> None:
+    when = {"left": "id", "op": "eq", "value": "cancelled"}
+    parsed = parse_entity(entity(schema=_checks(_PREDICATE, {"name": "zero_when_cancelled", "left": "amt", "op": "eq", "value": 0, "when": when, "severity": "warn"})))  # fmt: skip
+    first, second = parsed.schema_.checks or []
+    assert (first.name, first.left, first.op, first.right, first.value, first.when, first.severity) == ("end_after_start", "amt", "ge", "id", None, None, None)  # fmt: skip
+    assert (second.value, second.severity) == (0, "warn")
+    assert second.when is not None
+    assert (second.when.left, second.when.op, second.when.value) == ("id", "eq", "cancelled")  # fmt: skip
+    assert parse_entity(entity()).schema_.checks is None
+
+
+@pytest.mark.parametrize(
+    ("check", "expected"),
+    [
+        (
+            {"left": "amt", "op": "not_null"},
+            "missing required field schema.checks[0].name",
+        ),
+        (
+            {**_PREDICATE, "op": ">="},
+            "schema.checks[name=end_after_start].op=>= is unsupported (allowed: eq, ne, lt, le, gt, ge, is_null, not_null)",
+        ),
+        (
+            {**_PREDICATE, "when": {"left": "id", "op": "=="}},
+            "schema.checks[name=end_after_start].when.op=== is unsupported (allowed: eq, ne, lt, le, gt, ge, is_null, not_null)",
+        ),
+        (
+            {**_PREDICATE, "severity": "fail"},
+            "schema.checks[name=end_after_start].severity=fail is unsupported (allowed: warn, reject, abort)",
+        ),
+        (
+            {**_PREDICATE, "when": {"left": "id", "op": "not_null", "when": {}}},
+            "unknown field schema.checks[0].when.when",
+        ),
+        (
+            {**_PREDICATE, "when": {"left": "id", "op": "not_null", "name": "x"}},
+            "unknown field schema.checks[0].when.name",
+        ),
+        (
+            {
+                **_PREDICATE,
+                "when": {"left": "id", "op": "not_null", "severity": "warn"},
+            },
+            "unknown field schema.checks[0].when.severity",
+        ),
+        ({**_PREDICATE, "and": []}, "unknown field schema.checks[0].and"),
+        (
+            {**_PREDICATE, "value": [1]},
+            "expected number or string at schema.checks[0].value",
+        ),
+        (
+            {**_PREDICATE, "value": True},
+            "expected number or string at schema.checks[0].value",
+        ),
+        (
+            {"name": "x", "op": "not_null"},
+            "missing required field schema.checks[0].left",
+        ),
+        ("x", "expected map at schema.checks[0]"),
+    ],
+)
+def test_schema_checks_errors(check: object, expected: str) -> None:
+    assert message(entity(schema=_checks(check))) == expected
+
+
 @pytest.mark.parametrize(
     ("policy", "level"),
     [

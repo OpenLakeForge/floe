@@ -22,6 +22,9 @@ from floe.config.types import (
     PiiConfig,
     PolicyConfig,
     PolicySeverity,
+    PredicateCheck,
+    PredicateCondition,
+    PredicateOp,
     SchemaConfig,
     SchemaEvolutionConfig,
     SchemaEvolutionIncompatibleAction,
@@ -296,6 +299,49 @@ def _allowed_values(h: dict[object, object], ctx: str) -> list[int] | list[str] 
     )
 
 
+_CONDITION_KEYS = ("left", "op", "right", "value")
+
+
+def _condition(h: dict[object, object], ctx: str, where: str) -> PredicateCondition:
+    """`left, op, right | value`: shape errors name the index (`ctx`), value errors the check name (`where`)."""
+    op = get_string(h, "op", ctx)
+    picked = _pick(op, get_args(PredicateOp))
+    if picked is None:
+        raise FloeConfigError(
+            f"{where}.op={op} is unsupported (allowed: {', '.join(get_args(PredicateOp))})",
+            code="config_invalid_value",
+        )
+    value = h.get("value")
+    if isinstance(value, bool) or not isinstance(value, (int, float, str, type(None))):
+        raise FloeConfigError(
+            f"expected number or string at {ctx}.value", code="config_invalid_value"
+        )
+    left, right = get_string(h, "left", ctx), opt_string(h, "right", ctx)
+    return PredicateCondition(left=left, op=picked, right=right, value=value)
+
+
+def _check(value: object, index: int) -> PredicateCheck:
+    # not `_each`: its `schema.checks[0]: ` prefix would repeat the context the messages already name
+    ctx = f"schema.checks[{index}]"
+    h = yaml_hash(value, ctx)
+    validate_known_keys(h, ctx, ("name", *_CONDITION_KEYS, "when", "severity"))
+    name = get_string(h, "name", ctx)
+    where = f"schema.checks[name={name}]"
+    condition, when = _condition(h, ctx, where).model_dump(), None
+    if h.get("when") is not None:
+        w = yaml_hash(h["when"], f"{ctx}.when")
+        validate_known_keys(w, f"{ctx}.when", _CONDITION_KEYS)
+        when = _condition(w, f"{ctx}.when", f"{where}.when")
+    severity = opt_string(h, "severity", ctx)
+    level = None if severity is None else _pick(severity, get_args(PolicySeverity))
+    if severity is not None and level is None:
+        raise FloeConfigError(
+            f"{where}.severity={severity} is unsupported (allowed: warn, reject, abort)",
+            code="config_invalid_value",
+        )
+    return PredicateCheck(name=name, when=when, severity=level, **condition)
+
+
 def _schema(value: object) -> SchemaConfig:
     h = yaml_hash(value, "schema")
     validate_known_keys(
@@ -308,6 +354,7 @@ def _schema(value: object) -> SchemaConfig:
             "primary_key",
             "unique_keys",
             "columns",
+            "checks",
         ),
     )
     normalize = (
@@ -320,6 +367,7 @@ def _schema(value: object) -> SchemaConfig:
     primary_key = opt_vec_string(h, "primary_key", "schema")
     unique_keys = opt_vec_vec_string(h, "unique_keys", "schema")
     columns = _each(get_array(h, "columns", "schema"), "schema.columns", _column)
+    checks = None if h.get("checks") is None else get_array(h, "checks", "schema")
     return SchemaConfig(
         normalize_columns=normalize,
         mismatch=mismatch,
@@ -327,6 +375,7 @@ def _schema(value: object) -> SchemaConfig:
         primary_key=primary_key,
         unique_keys=unique_keys,
         columns=columns,
+        checks=None if checks is None else [_check(v, i) for i, v in enumerate(checks)],
     )
 
 
