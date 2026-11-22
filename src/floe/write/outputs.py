@@ -65,8 +65,9 @@ def keyed_part(key: str, index: int, ext: str) -> str:
 
 
 @contextmanager
-def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str | None = None) -> Generator[Callable[[bytes], str]]:  # fmt: skip
-    """Yield `put(body) -> name`. Every part is staged as `_staging-<id>-<name>` (invisible to `part_uris`).
+def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str | None = None) -> Generator[Callable[[bytes, str | None], str]]:  # fmt: skip
+    """Yield `put(body, name) -> name`; a None `name` is chosen below. Every part is staged as `_staging-<id>-<name>`
+    (invisible to `part_uris`).
 
     Only when all were written are they copied over `<name>`, last to first so a visible first part means every
     part is visible (#1423), and the staged copies deleted (#1054).
@@ -80,8 +81,8 @@ def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str
     stage = f"_staging-{uuid.uuid4()}-"
     names: list[str] = []
 
-    def put(body: bytes) -> str:
-        name = f"part-{len(names):05}.{ext}" if overwrite else keyed_part(key, len(names), ext) if key else f"part-{uuid.uuid4()}.{ext}"  # fmt: skip
+    def put(body: bytes, name: str | None) -> str:
+        name = name or (f"part-{len(names):05}.{ext}" if overwrite else keyed_part(key, len(names), ext) if key else f"part-{uuid.uuid4()}.{ext}")  # fmt: skip
         names.append(name)  # before the write: a partial file needs cleanup too
         client.write(f"{base}/{stage}{name}", body)
         return name
@@ -104,8 +105,9 @@ def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str
 
 def _part_frames(
     frames: Iterable[pl.DataFrame], max_size: int, file_end: pl.DataFrame | None = None
-) -> Iterator[pl.DataFrame]:
-    """`frames` regrouped into parts of about `max_size` bytes in memory; at most one part and a frame are pooled.
+) -> Iterator[tuple[pl.DataFrame, bool]]:
+    """`frames` regrouped into parts of about `max_size` bytes in memory, each with whether it is its input file's
+    first; at most one part and a frame are pooled.
 
     `file_end` (an empty frame, matched by identity) ends an input file: the pool is flushed there, so no part spans
     two files, and a file that left no part gets `file_end` itself as its one empty part (#1424).
@@ -116,7 +118,7 @@ def _part_frames(
     for df in frames:
         if df is file_end:
             if pool or fresh:
-                yield pl.concat(pool) if pool else df
+                yield (pl.concat(pool) if pool else df), fresh
             pool, size, height, fresh = [], 0, 0, True
             continue
         pool.append(df)
@@ -126,13 +128,15 @@ def _part_frames(
         if height >= rows:
             whole = pl.concat(pool)
             full = height - height % rows
-            yield from (whole.slice(i, rows) for i in range(0, full, rows))
+            yield from (
+                (whole.slice(i, rows), fresh and not i) for i in range(0, full, rows)
+            )
             fresh = fresh and not full
             rest = whole.slice(full)
             pool = [rest] if rest.height else []
             size, height = rest.estimated_size(), rest.height
     if pool:  # also the one empty part of a run that accepted no row
-        yield pl.concat(pool)
+        yield pl.concat(pool), fresh
 
 
 def write_accepted(
@@ -141,13 +145,13 @@ def write_accepted(
     base: str,
     mode: WriteMode = "overwrite",
     options: SinkOptions | None = None,
-    key: str | None = None,
     file_end: pl.DataFrame | None = None,
+    markers: Iterator[str] | None = None,
 ) -> AcceptedWrite:
     """Write `frames` (at least one) as `part-*.parquet` files under `base`, each holding about `max_size_per_file`.
 
-    With a `key` (the run's input hash) an append part is named from it, so a retry replaces the dead run's parts (#1198).
     With a `file_end`, each input file's frames end with it and no part spans two files (#1424).
+    `markers` name the first part of each input file in turn (#1425).
     """
     base = base.rstrip("/")
     max_size = (options and options.max_size_per_file) or DEFAULT_MAX_SIZE_PER_FILE
@@ -158,12 +162,14 @@ def write_accepted(
         kwargs["row_group_size"] = options.row_group_size
     files: list[str] = []
     sizes: list[int] = []
-    with _os_errors(), _parts(client, base, mode, "parquet", key) as put:
-        for chunk in _part_frames(frames, max_size, file_end):
+    with _os_errors(), _parts(client, base, mode, "parquet") as put:
+        for chunk, first in _part_frames(frames, max_size, file_end):
             # ponytail: a part is held in memory (≤ max_size_per_file) before the put; stream multipart uploads if that is too much
             body = io.BytesIO()
             chunk.write_parquet(body, **kwargs)  # pyright: ignore[reportArgumentType]  # ponytail: kwargs loses the compression Literal; validated by the config
-            files.append(put(body.getvalue()))
+            files.append(
+                put(body.getvalue(), next(markers) if first and markers else None)
+            )
             sizes.append(body.tell())
     total = sum(sizes)
     return AcceptedWrite(
@@ -187,7 +193,7 @@ def write_rejected(df: pl.DataFrame, client: StorageClient, base: str, mode: Wri
             client.write(f"{base}/{name}", df.write_csv().encode())
         else:
             with _parts(client, base, mode, "csv") as put:
-                name = put(df.write_csv().encode())
+                name = put(df.write_csv().encode(), None)
     return f"{base}/{name}"
 
 
@@ -199,8 +205,8 @@ def write_rejected_parquet(frames: Iterable[pl.DataFrame], client: StorageClient
     base = base.rstrip("/")
     names: list[str] = []
     with _os_errors(), _parts(client, base, mode, "parquet", key) as put:
-        for chunk in _part_frames(frames, DEFAULT_MAX_SIZE_PER_FILE):
+        for chunk, _ in _part_frames(frames, DEFAULT_MAX_SIZE_PER_FILE):
             body = io.BytesIO()
             chunk.write_parquet(body)
-            names.append(put(body.getvalue()))
+            names.append(put(body.getvalue(), None))
     return [f"{base}/{n}" for n in names[:MAX_REPORTED_PARTS]]

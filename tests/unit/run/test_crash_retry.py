@@ -34,6 +34,8 @@ from floe.run import entity as entity_module
 from floe.run import incremental as incremental_module
 from floe.run import run as run_project
 from floe.run.incremental import Incremental
+from floe.state import forget
+from floe.storage.local import LocalClient
 
 run_module = sys.modules["floe.run"]  # `floe.run` is the public function
 
@@ -315,6 +317,261 @@ def test_parquet_append_with_a_primary_key_does_not_reject_the_dead_runs_rows_on
         arm(dying, "parquet", "after_commit")
         p.crash("dead")
     p.expire_claims()
+    report = p.run("retry")
+    assert [f.get("skip_reason") for f in report["files"] if f["input_file"].endswith("new.csv")] == ["already_committed"]  # fmt: skip
+    assert p.accepted(lake) == [1, 2, 100]
+    assert p.rejected() == ["x"]
+
+
+# #1203: a unique-key Parquet append retry skips the inputs whose marker part the dead run published, and replays the rest
+
+
+def configure(
+    p: Pipeline, severity: str = "reject", max_size: int | None = None
+) -> None:
+    """`primary_key: [id]`, with `severity` and an optional `max_size_per_file`."""
+    text = PARQUET.format(mode="append").replace("    schema:\n", "    schema:\n      primary_key: [id]\n")  # fmt: skip
+    text = text.replace("{severity: reject}", f"{{severity: {severity}}}")
+    if max_size:
+        text = text.replace("path: ./out/accepted}", f"path: ./out/accepted, options: {{max_size_per_file: {max_size}}}}}")  # fmt: skip
+    (p.dir / "config.yml").write_text(text)
+
+
+def keyed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, severity: str = "reject", max_size: int | None = None) -> Pipeline:  # fmt: skip
+    """A unique-key Parquet append that already took `OLD`; from here on no accepted part is deleted or published twice."""
+    copy, delete, published = LocalClient.copy, LocalClient.delete, set[str]()
+
+    def copy_once(self: LocalClient, src: str, dst: str) -> None:
+        if "/out/accepted/part-" in dst:
+            assert dst not in published, f"{dst} published twice"
+            published.add(dst)
+        copy(self, src, dst)
+
+    def keep_parts(self: LocalClient, uri: str) -> None:
+        assert "/out/accepted/part-" not in uri, f"{uri} deleted"
+        delete(self, uri)
+
+    monkeypatch.setattr(LocalClient, "copy", copy_once)
+    monkeypatch.setattr(LocalClient, "delete", keep_parts)
+    p = Pipeline(tmp_path, "parquet", "append")
+    configure(p, severity, max_size)
+    (tmp_path / "in/old.csv").write_text(OLD)
+    p.run("seed")
+    return p
+
+
+def dies_after_commit(
+    p: Pipeline, monkeypatch: pytest.MonkeyPatch, run_id: str = "dead"
+) -> None:
+    with monkeypatch.context() as dying:
+        arm(dying, "parquet", "after_commit")
+        p.crash(run_id)
+    p.expire_claims()
+
+
+def rejected_by_file(p: Pipeline) -> dict[str, list[str]]:
+    """The rejected row ids per input file; the raw copy of an aborted file has no source column and is left out."""
+    out: dict[str, list[str]] = {}
+    for path in (p.dir / "out/rejected").glob("*.csv"):
+        df = pl.read_csv(path, infer_schema=False)
+        if "__floe_source_uri" in df.columns:
+            for uri, i in zip(df["__floe_source_uri"], df["id"], strict=True):
+                out.setdefault(Path(uri).name, []).append(i)
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def reasons(report: dict[str, Any]) -> dict[str, str | None]:
+    return {Path(f["input_file"]).name: f.get("skip_reason") for f in report["files"]}
+
+
+def parts(p: Pipeline) -> set[str]:
+    return {f.name for f in (p.dir / "out/accepted").glob("part-*.parquet")}
+
+
+def test_parquet_append_with_a_primary_key_skips_the_dead_runs_file_when_the_retry_holds_a_new_input(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed(tmp_path, monkeypatch)
+    (tmp_path / "in/new.csv").write_text(NEW)
+    dies_after_commit(p, monkeypatch)
+    (tmp_path / "in/zextra.csv").write_text(SUPERSET)
+    report = p.run("retry")
+    assert p.accepted(lake) == [1, 2, 7, 100]
+    assert rejected_by_file(p) == {"new.csv": ["x"], "zextra.csv": ["y"]}
+    assert reasons(report) == {"old.csv": "already_ingested", "new.csv": "already_committed", "zextra.csv": None}  # fmt: skip
+
+
+def test_parquet_append_with_a_primary_key_keeps_the_parts_of_a_removed_input(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed(tmp_path, monkeypatch)
+    (tmp_path / "in/new.csv").write_text(NEW)
+    dies_after_commit(p, monkeypatch)
+    (tmp_path / "in/new.csv").unlink()
+    (tmp_path / "in/zextra.csv").write_text("id,name\n1,dup\n7,q\n")
     p.run("retry")
-    assert p.accepted(lake) == [1, 2, 100]  # no duplicate: the unique check holds
-    assert p.rejected() == ["x"]  # but the retry also rejected 1 and 2
+    assert p.accepted(lake) == [
+        1,
+        2,
+        7,
+        100,
+    ]  # the removed file's parts stay, and seed the unique check
+    assert rejected_by_file(p) == {"new.csv": ["x"], "zextra.csv": ["1"]}
+
+
+def test_parquet_append_with_a_primary_key_replays_a_replaced_input_against_its_old_parts(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed(tmp_path, monkeypatch)
+    (tmp_path / "in/new.csv").write_text(NEW)
+    dies_after_commit(p, monkeypatch)
+    (tmp_path / "in/new.csv").write_text("id,name\n2,b2\n3,c\n")  # same URI, new size
+    report = p.run("retry")
+    assert (
+        reasons(report)["new.csv"] is None
+    )  # read again: the marker names the old content
+    assert p.accepted(lake) == [
+        1,
+        2,
+        3,
+        100,
+    ]  # the old parts stay and seed: 2 is a duplicate
+    assert rejected_by_file(p) == {"new.csv": ["2", "x"]}
+
+
+def crash_mid_publish(p: Pipeline, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The dead run dies after publishing one of its two single-part files: `z.csv`, written last and published first (#1423)."""
+    copy, copies = LocalClient.copy, list[str]()
+
+    def second_copy_dies(self: LocalClient, src: str, dst: str) -> None:
+        copies.append(dst)
+        if len(copies) > 1:
+            raise Crash
+        copy(self, src, dst)
+
+    with monkeypatch.context() as dying:
+        for cleanup in ("release", "finish"):
+            dying.setattr(Incremental, cleanup, dead(getattr(Incremental, cleanup)))
+        dying.setattr(LocalClient, "copy", second_copy_dies)
+        p.crash("dead")
+    p.expire_claims()
+
+
+@pytest.mark.parametrize(
+    "bad", ["a_bad.csv", "p_bad.csv"]
+)  # aborts before, or after, the retry reads `new.csv`
+def test_parquet_append_with_a_primary_key_survives_a_retry_that_aborts(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch, bad: str) -> None:  # fmt: skip
+    p = keyed(tmp_path, monkeypatch, "abort")
+    (tmp_path / "in/new.csv").write_text("id,name\n1,a\n2,b\n")
+    (tmp_path / "in/z.csv").write_text("id,name\n7,q\n")
+    crash_mid_publish(p, monkeypatch)
+    assert p.accepted(lake) == [7, 100]
+    (tmp_path / f"in/{bad}").write_text("id,name\nq,bad\n")
+    report = p.run("aborts")
+    assert reasons(report)["z.csv"] == "already_committed"
+    assert p.accepted(lake) == ([7, 100] if bad == "a_bad.csv" else [1, 2, 7, 100])
+    (tmp_path / f"in/{bad}").write_text("id,name\n8,r\n")
+    p.run(
+        "fixed"
+    )  # `new.csv` kept its claim's name: `release` restored the dead run's claim
+    assert p.accepted(lake) == [1, 2, 7, 8, 100]
+    assert rejected_by_file(p) == {}
+    state = p.state()
+    assert (sorted(Path(u).name for u in state["files"]), state["claims"]) == (sorted([bad, "new.csv", "old.csv", "z.csv"]), {})  # fmt: skip
+
+
+def test_parquet_append_with_a_primary_key_replays_the_file_the_dead_run_aborted_on(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed(tmp_path, monkeypatch, "abort")
+    (tmp_path / "in/a.csv").write_text("id,name\n1,a\n2,b\n")
+    (tmp_path / "in/y.csv").write_text("id,name\n3,c\nq,bad\n")
+    dies_after_commit(
+        p, monkeypatch
+    )  # the dead run committed `a.csv` and aborted on `y.csv`
+    assert p.accepted(lake) == [1, 2, 100]
+    report = p.run("again")
+    assert reasons(report) == {"old.csv": "already_ingested", "a.csv": "already_committed", "y.csv": None}  # fmt: skip
+    assert p.accepted(lake) == [
+        1,
+        2,
+        100,
+    ]  # `y.csv` has no marker: read again, it aborts again
+    (tmp_path / "in/y.csv").write_text("id,name\n3,c\n4,d\n")
+    p.run("fixed")
+    assert p.accepted(lake) == [1, 2, 3, 4, 100]
+    assert rejected_by_file(p) == {}
+
+
+def test_parquet_append_with_a_primary_key_skips_a_multi_part_file_when_an_earlier_input_repeats_its_keys(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed(tmp_path, monkeypatch, max_size=1)  # one row per part
+    (tmp_path / "in/new.csv").write_text(NEW)
+    before = parts(p)
+    dies_after_commit(p, monkeypatch)
+    assert len(parts(p) - before) == 2
+    (tmp_path / "in/a_w.csv").write_text(
+        "id,name\n1,w\n2,w\n"
+    )  # read ahead of `new.csv`
+    report = p.run("retry")
+    assert reasons(report)["new.csv"] == "already_committed"
+    assert p.accepted(lake) == [1, 2, 100]
+    assert rejected_by_file(p) == {"a_w.csv": ["1", "2"], "new.csv": ["x"]}
+
+
+def test_parquet_append_with_a_primary_key_skips_a_fully_rejected_file(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed(tmp_path, monkeypatch)
+    (tmp_path / "in/bad.csv").write_text("id,name\nx,bad\ny,bad2\n")
+    before = parts(p)
+    dies_after_commit(p, monkeypatch)
+    (marker,) = parts(p) - before
+    assert (
+        pl.read_parquet(tmp_path / "out/accepted" / marker).height == 0
+    )  # the file's empty marker part
+    (tmp_path / "in/zextra.csv").write_text("id,name\n7,q\n")
+    report = p.run("retry")
+    assert reasons(report)["bad.csv"] == "already_committed"
+    assert p.accepted(lake) == [7, 100]
+    assert rejected_by_file(p) == {"bad.csv": ["x", "y"]}
+
+
+def test_parquet_append_with_a_primary_key_skips_by_marker_after_max_size_per_file_changes(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed(tmp_path, monkeypatch, max_size=1)
+    (tmp_path / "in/new.csv").write_text(NEW)
+    dies_after_commit(p, monkeypatch)
+    configure(p)
+    (tmp_path / "in/zextra.csv").write_text(SUPERSET)
+    report = p.run("retry")
+    assert reasons(report)["new.csv"] == "already_committed"
+    assert p.accepted(lake) == [1, 2, 7, 100]
+    assert rejected_by_file(p) == {"new.csv": ["x"], "zextra.csv": ["y"]}
+
+
+def test_parquet_append_with_a_primary_key_converges_after_the_retry_dies_too(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed(tmp_path, monkeypatch)
+    (tmp_path / "in/new.csv").write_text(NEW)
+    dies_after_commit(p, monkeypatch)
+    (tmp_path / "in/zextra.csv").write_text(SUPERSET)
+    dies_after_commit(p, monkeypatch, "retry")
+    report = p.run("again")
+    assert reasons(report) == {"old.csv": "already_ingested", "new.csv": "already_ingested", "zextra.csv": "already_committed"}  # fmt: skip
+    assert p.accepted(lake) == [1, 2, 7, 100]
+    assert rejected_by_file(p) == {"new.csv": ["x"], "zextra.csv": ["y"]}
+    state = p.state()
+    assert ({Path(u).name for u in state["files"]}, state["claims"]) == ({"old.csv", "new.csv", "zextra.csv"}, {})  # fmt: skip
+
+
+def test_parquet_append_with_a_primary_key_reads_a_forgotten_file_again(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    p = keyed(tmp_path, monkeypatch)
+    (tmp_path / "in/new.csv").write_text(NEW)
+    p.run("first")
+    (state_file,) = (tmp_path / "in").rglob("state.json")
+    (uri,) = [u for u in p.state()["files"] if u.endswith("new.csv")]
+    forget(LocalClient(), f"local://{state_file}", "orders", [uri])
+    with (
+        monkeypatch.context() as dying
+    ):  # a dead run leaves an expired claim, so the guard looks
+        arm(dying, "parquet", "first_write")
+        p.crash("dead")
+    p.expire_claims()
+    before = parts(p)
+    report = p.run("retry")
+    assert (
+        reasons(report)["new.csv"] is None
+    )  # a fresh claim names a new marker: read, not skipped
+    assert len(parts(p) - before) == 1
+    assert p.accepted(lake) == [1, 2, 100]
+    assert rejected_by_file(p) == {
+        "new.csv": ["1", "2", "x"]
+    }  # a re-ingest checks its keys against the committed rows

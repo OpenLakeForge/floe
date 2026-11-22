@@ -30,7 +30,7 @@ from floe.read.orc import read_orc
 from floe.read.parquet import read_parquet
 from floe.storage.local import LocalClient
 from floe.storage.types import StorageClient
-from floe.write.outputs import keyed_part, write_accepted, write_rejected
+from floe.write.outputs import write_accepted, write_rejected
 
 LOCAL = LocalClient()
 
@@ -320,9 +320,9 @@ def test_a_failed_publish_never_shows_part_zero_without_the_higher_parts(tmp_pat
 
     options = SinkOptions(compression="snappy", row_group_size=10, max_size_per_file=8 * 40)  # fmt: skip
     with pytest.raises(FloeError):
-        write_accepted([pl.DataFrame({"a": list(range(100))})], FailingCopy(), f"local://{tmp_path}", "append", options, "k")  # fmt: skip
-    visible = [(tmp_path / keyed_part("k", i, "parquet")).exists() for i in range(3)]
-    assert not visible[0] or all(visible), visible
+        write_accepted([pl.DataFrame({"a": list(range(100))})], FailingCopy(), f"local://{tmp_path}", "append", options, markers=iter(["part-first.parquet"]))  # fmt: skip
+    visible = sorted(p.name for p in tmp_path.glob("part-*"))
+    assert "part-first.parquet" not in visible or len(visible) == 3, visible
 
 
 def test_append_parts_stay_invisible_until_the_stream_completes(tmp_path: Path) -> None:
