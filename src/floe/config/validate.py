@@ -85,13 +85,14 @@ def _fail(entity: EntityConfig, message: str, *, code: ErrorCode) -> FloeConfigE
 
 
 def _level_source(entity: EntityConfig, levels: tuple[str, ...]) -> str:
-    """What sets a level in `levels`: `policy.severity=<v>`, else the first `rule_severity` entry that does."""
+    """What sets a level in `levels`: `policy.severity=<v>`, else the first `rule_severity` entry or predicate `severity` that does."""
     if entity.policy.severity in levels:
         return f"policy.severity={entity.policy.severity}"
     scopes = [("policy.rule_severity", entity.policy.rule_severity)] + [
         (f"schema.columns[name={c.name}].rule_severity", c.rule_severity)
         for c in entity.schema_.columns
     ]
+    scopes += [(f"schema.checks[name={p.name}]", {"severity": p.severity}) for p in entity.schema_.checks or [] if p.severity]  # fmt: skip
     return next(
         f"{where}.{rule}={level}"
         for where, found in scopes

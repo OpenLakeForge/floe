@@ -272,3 +272,23 @@ def test_1404_a_value_rule_is_reported_under_its_own_name(rule: str) -> None:
             "columns": [{"column": "id", "violations": 2}],
         }
     ]
+
+
+def test_1406_a_predicate_is_reported_under_its_own_name_before_schema_error() -> None:
+    from floe.config.types import PredicateCheck
+    from floe.report.entity import summarize_rules
+
+    entity = _entity()
+    check = PredicateCheck(name="end_after_start", left="id", op="ge", right="id")
+    entity = entity.model_copy(update={"schema_": entity.schema_.model_copy(update={"checks": [check]})})  # fmt: skip
+    mask = pl.Series([True, False, True])
+    checks = [RowCheck("end_after_start", "id", "m", mask, "reject"), RowCheck("other", "id", "m", mask, "reject")]  # fmt: skip
+    assert [r["rule"] for r in summarize_rules(checks, entity)] == ["end_after_start", "schema_error"]  # fmt: skip
+    assert summarize_rules(checks[:1], entity) == [
+        {
+            "rule": "end_after_start",
+            "severity": "reject",
+            "violations": 2,
+            "columns": [{"column": "id", "violations": 2}],
+        }
+    ]
