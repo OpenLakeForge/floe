@@ -31,7 +31,8 @@ class RowCheck:
     """One check over the rows: `mask` is true where the row violates it.
 
     Pass the checks in the error order: not_null (required columns), cast_error (declared
-    non-string columns), then unique.
+    non-string columns), the value checks (out_of_range, not_allowed, pattern_mismatch, length),
+    then unique.
     """
 
     rule: str

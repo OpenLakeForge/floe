@@ -14,7 +14,7 @@ from floe.storage.inputs import ResolvedInputs
 from floe.write.outputs import AcceptedWrite
 
 MAX_RESOLVED_INPUTS = 50
-_RULES = ("not_null", "cast_error", "unique", "schema_error")
+_RULES = ("not_null", "cast_error", "out_of_range", "not_allowed", "pattern_mismatch", "length", "unique", "schema_error")  # fmt: skip
 # `serde_json::Map` is a BTreeMap, so the echoed options and metadata come out key-sorted.
 _OPTION_KEYS = ("header", "separator", "encoding", "null_values", "recursive", "glob",
                 "json_mode", "row_tag", "namespace", "value_tag")  # fmt: skip

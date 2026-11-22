@@ -742,3 +742,38 @@ def test_a_gcs_manifest_location_is_read_through_obstore(tmp_path: Path, monkeyp
     assert floe(monkeypatch, "run", "--manifest", uri, "--run-id", "r1") == 0
     assert store.get("base/runs/d/run_r1/d/orders/run.json").bytes()
     assert not (tmp_path / "gs:").exists()
+
+
+def _with_qty_keys(work: Path, monkeypatch: pytest.MonkeyPatch, **keys: object) -> None:  # fmt: skip
+    """A hand-edited manifest: config parsing of the value keys is #1405."""
+    monkeypatch.chdir(work)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    doc = json.loads(Path("m.json").read_text())
+    doc["entities"][0]["schema"]["columns"][2].update(keys)
+    Path("m.json").write_text(json.dumps(doc))
+
+
+def test_1404_a_manifest_bound_rejects_out_of_range_rows_under_its_own_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = copy_case("severity_warn", tmp_path / "w")
+    _with_qty_keys(work, monkeypatch, max=6, rule_severity={"out_of_range": "reject"})
+    assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 0
+    [report] = work.glob("report/**/orders/run.json")
+    rules = json.loads(report.read_text())["files"][0]["validation"]["rules"]
+    assert {"rule": "out_of_range", "severity": "reject", "violations": 2, "columns": [{"column": "qty", "violations": 2}]} in rules  # fmt: skip
+    [rejected] = work.glob("out/rejected/orders/*.csv")
+    errors = pl.read_csv(rejected)["__floe_errors"].to_list()
+    entry = {"rule": "out_of_range", "column": "qty", "message": "value out of range (max=6)"}  # fmt: skip
+    assert [entry in json.loads(e) for e in errors] == [True, True]
+
+
+def test_1404_a_bad_manifest_bound_fails_before_any_row_is_routed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    work = copy_case("severity_warn", tmp_path / "w")
+    _with_qty_keys(work, monkeypatch, min="5.5")
+    capsys.readouterr()
+    assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 1
+    assert "schema.columns[name=qty].min=5.5 is not a valid int64 value" in capsys.readouterr().err  # fmt: skip
+    assert not list(work.glob("out/**/*.*"))
