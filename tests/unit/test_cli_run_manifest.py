@@ -794,3 +794,55 @@ def test_1404_a_bad_manifest_bound_fails_before_any_row_is_routed(
     assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 1
     assert "schema.columns[name=qty].min=5.5 is not a valid int64 value" in capsys.readouterr().err  # fmt: skip
     assert not list(work.glob("out/**/*.*"))
+
+
+def _with_checks(work: Path, monkeypatch: pytest.MonkeyPatch, *checks: object) -> None:
+    """A hand-edited manifest: config parsing of `schema.checks` is #1407."""
+    monkeypatch.chdir(work)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    doc = json.loads(Path("m.json").read_text())
+    doc["entities"][0]["schema"]["checks"] = list(checks)
+    Path("m.json").write_text(json.dumps(doc))
+
+
+def test_1406_a_manifest_predicate_rejects_rows_under_its_own_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = copy_case("severity_warn", tmp_path / "w")
+    _with_checks(work, monkeypatch, {"name": "qty_small", "left": "qty", "op": "le", "value": 6, "severity": "reject"})  # fmt: skip
+    assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 0
+    [report] = work.glob("report/**/orders/run.json")
+    rules = json.loads(report.read_text())["files"][0]["validation"]["rules"]
+    assert {"rule": "qty_small", "severity": "reject", "violations": 2, "columns": [{"column": "qty", "violations": 2}]} in rules  # fmt: skip
+    [rejected] = work.glob("out/rejected/orders/*.csv")
+    errors = pl.read_csv(rejected)["__floe_errors"].to_list()
+    entry = {"rule": "qty_small", "column": "qty", "message": "qty <= 6"}
+    assert [entry in json.loads(e) for e in errors] == [True, True]
+
+
+@pytest.mark.parametrize(
+    ("check", "message"),
+    [
+        (
+            {"name": "p", "left": "nope", "op": "is_null"},
+            "schema.checks[name=p].left=nope is not a declared column",
+        ),
+        (
+            {"name": "p", "left": "qty", "op": "lt", "value": "x"},
+            "schema.checks[name=p].value=x is not a valid int64 value",
+        ),
+    ],
+)
+def test_1406_a_bad_manifest_predicate_fails_before_any_row_is_routed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    check: dict[str, str],
+    message: str,
+) -> None:
+    work = copy_case("severity_warn", tmp_path / "w")
+    _with_checks(work, monkeypatch, check)
+    capsys.readouterr()
+    assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == 1
+    assert message in capsys.readouterr().err
+    assert not list(work.glob("out/**/*.*"))

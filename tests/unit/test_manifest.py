@@ -1131,3 +1131,57 @@ def test_1404_manifest_without_value_checks_carries_none_of_the_keys(
 ) -> None:
     column = manifest_of(tmp_path, monkeypatch, CONFIG)["entities"][0]["schema"]["columns"][0]  # fmt: skip
     assert column.keys() == {"name", "column_type"}
+
+
+CHECKS = [
+    {"left": "id", "op": "ge", "right": "id", "name": "a", "severity": "warn"},
+    {
+        "left": "id",
+        "op": "eq",
+        "value": 0,
+        "name": "b",
+        "when": {"left": "id", "op": "not_null"},
+    },
+]
+
+
+def test_1406_predicates_round_trip_and_validate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from jsonschema import Draft202012Validator
+
+    import floe._cli as cli
+    from floe.config.types import PredicateCheck
+    from floe.errors import FloeConfigError
+    from floe.manifest_run import load_manifest
+
+    load = cli._load  # pyright: ignore[reportPrivateUsage] -- the loader `build_manifest` goes through
+
+    def patched(path: Any, profile: Any) -> Any:
+        """Config parsing of `schema.checks` is #1407: set it on the loaded models."""
+        root = load(path, profile)
+        entity = root.entities[0]
+        checks = [PredicateCheck.model_validate(c) for c in CHECKS]
+        schema = entity.schema_.model_copy(update={"checks": checks})
+        return root.model_copy(update={"entities": [entity.model_copy(update={"schema_": schema})]})  # fmt: skip
+
+    monkeypatch.setattr(cli, "_load", patched)
+    manifest = manifest_of(tmp_path, monkeypatch, CONFIG)
+    assert manifest["entities"][0]["schema"]["checks"] == CHECKS
+    schema = Path(__file__).parents[2] / "orchestrators/schemas/floe.manifest.schema.json"  # fmt: skip
+    Draft202012Validator(json.loads(schema.read_text())).validate(manifest)  # pyright: ignore[reportUnknownMemberType] -- jsonschema ships no types
+    _, [back], _ = load_manifest(tmp_path / "manifest.json")
+    assert [
+        c.model_dump(exclude_none=True) for c in back.schema_.checks or []
+    ] == CHECKS
+    manifest["entities"][0]["schema"]["checks"][0]["op"] = ">="
+    (tmp_path / "bad.json").write_text(json.dumps(manifest))
+    with pytest.raises(FloeConfigError) as e:
+        load_manifest(tmp_path / "bad.json")
+    assert e.value.code == "config_invalid_value"
+
+
+def test_1406_manifest_without_predicates_carries_no_checks_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert "checks" not in manifest_of(tmp_path, monkeypatch, CONFIG)["entities"][0]["schema"]  # fmt: skip

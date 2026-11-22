@@ -61,6 +61,7 @@ def max_level(entity: "EntityConfig") -> PolicySeverity:
     ]
     for c in entity.schema_.columns:
         levels += (c.rule_severity or {}).values()
+    levels.extend(p.severity for p in entity.schema_.checks or [] if p.severity)
     return max(levels, key=_LEVELS.index)
 
 
@@ -102,6 +103,23 @@ class ColumnConfig(_Model):
     max_length: int | None = None
 
 
+PredicateOp = Literal["eq", "ne", "lt", "le", "gt", "ge", "is_null", "not_null"]
+
+
+class PredicateCondition(_Model):
+    left: str
+    op: PredicateOp
+    right: str | None = None
+    # #1252: the raw literal; `floe.checks.values.literal` converts it with the type of `left`
+    value: int | float | str | None = None
+
+
+class PredicateCheck(PredicateCondition):
+    name: str
+    when: PredicateCondition | None = None
+    severity: PolicySeverity | None = None
+
+
 class SchemaConfig(_Model):
     normalize_columns: NormalizeColumnsConfig | None
     mismatch: SchemaMismatchConfig | None
@@ -109,6 +127,7 @@ class SchemaConfig(_Model):
     primary_key: list[str] | None
     unique_keys: list[list[str]] | None
     columns: list[ColumnConfig]
+    checks: list[PredicateCheck] | None = None
 
 
 class SourceOptions(_Model):
