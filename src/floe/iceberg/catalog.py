@@ -224,6 +224,8 @@ def _open_catalog(
         if storage.endpoint is not None:  # fake-gcs-server; otherwise ADC
             props["gcs.service.host"] = storage.endpoint
     elif storage is not None:
+        # #1431: PyArrow's AWS SDK asks for response checksums, which OVHcloud refuses; S3Client turns them off the same way
+        os.environ.setdefault("AWS_RESPONSE_CHECKSUM_VALIDATION", "when_required")
         if storage.endpoint is not None:
             props["s3.endpoint"] = storage.endpoint
         if storage.region is not None:

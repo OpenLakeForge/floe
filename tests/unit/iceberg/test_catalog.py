@@ -1,5 +1,6 @@
 """Messages come from `iceberg/schema.rs`; no catalog involved."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -366,6 +367,21 @@ def test_gcs_fileio_props_use_the_endpoint_for_a_fake_server(
     assert props["py-io-impl"] == "pyiceberg.io.pyarrow.PyArrowFileIO"
     assert props["gcs.service.host"] == "http://127.0.0.1:4443"
     assert "gcs.service.host" not in fileio_props(monkeypatch, "gcs")
+
+
+def test_1431_s3_fileio_reads_without_response_checksums(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OVHcloud refuses the `x-amz-checksum-mode` header PyArrow's AWS SDK sends on GetObject; the SDK reads this variable per filesystem."""
+    monkeypatch.setenv(
+        "AWS_RESPONSE_CHECKSUM_VALIDATION", ""
+    )  # recorded, so teardown restores it
+    monkeypatch.delenv("AWS_RESPONSE_CHECKSUM_VALIDATION")
+    fileio_props(monkeypatch, "s3", "https://s3.gra.io.cloud.ovh.net")
+    assert os.environ["AWS_RESPONSE_CHECKSUM_VALIDATION"] == "when_required"
+    monkeypatch.setenv("AWS_RESPONSE_CHECKSUM_VALIDATION", "when_supported")
+    fileio_props(monkeypatch, "s3")
+    assert os.environ["AWS_RESPONSE_CHECKSUM_VALIDATION"] == "when_supported"
 
 
 def test_open_duckdb_sets_the_adr_limits_and_cleans_the_spill_dir(
