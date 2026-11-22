@@ -109,9 +109,7 @@ class ConfigSchemaTest(unittest.TestCase):
         }  # `duckdb` stays raw in the model (D1) and has no binding.
         internal = {project.RootConfig: {"config_files", "entity_workers"}, project.DomainConfig: {"resolved_incoming_dir"}, types.EntityConfig: {"id"}, types.SinkTarget: {"write_mode"},
                     # #1251: run-side only until #1405 adds the YAML keys
-                    types.ColumnConfig: {"min", "max", "allowed_values", "pattern", "min_length", "max_length"},
-                    # #1252: run-side only until #1407 adds the YAML key
-                    types.SchemaConfig: {"checks"}}
+                    types.ColumnConfig: {"min", "max", "allowed_values", "pattern", "min_length", "max_length"}}
         aliases = {types.SourceConfig: {"source_ref": "ref"}, types.ColumnConfig: {"column_type": "type"}}
         wire_extras = {
             project.RootConfig: {"sources", "include", "filesystems"},
