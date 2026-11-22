@@ -169,3 +169,15 @@ def test_a_delta_append_is_refused_when_any_rule_aborts(tmp_path: Path) -> None:
     with pytest.raises(FloeRunError) as err:
         check_supported(e)
     assert str(err.value) == "entity.name=orders a rule_severity of abort on a delta append is not supported yet: the retry guard cannot cover it"  # fmt: skip
+
+
+def test_a_delta_append_is_refused_when_a_column_rule_aborts(tmp_path: Path) -> None:
+    """#1426: a column-level abort aborts a file mid-run too; the Delta stamp names every pending file, so it is refused."""
+    e = entity(tmp_path, "id\n", policy={"severity": "warn"}, columns={"email": {"not_null": "abort"}})  # fmt: skip
+    accepted = e.sink.accepted.model_copy(update={"format": "delta"})
+    e = e.model_copy(
+        update={"sink": e.sink.model_copy(update={"write_mode": "append", "accepted": accepted})}
+    )  # fmt: skip
+    with pytest.raises(FloeRunError) as err:
+        check_supported(e)
+    assert str(err.value) == "entity.name=orders a rule_severity of abort on a delta append is not supported yet: the retry guard cannot cover it"  # fmt: skip
