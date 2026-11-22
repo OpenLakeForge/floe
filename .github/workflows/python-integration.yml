@@ -3,7 +3,7 @@ name: Python integration (Polaris)
 # Also nightly: the `glue` tests against moto, the `perf` memory test (#1063) and the 200-entity `scale` suite (#558),
 # whose 10-entity Iceberg subset runs in the `polaris` job below.
 # Runs the `polaris` and `s3` marked tests against the #602 harness (Polaris + SeaweedFS), and the `adls` marked
-# tests against Azurite in the `object-stores` job.
+# tests against Azurite and the `gcs` marked tests against fake-gcs-server in the `object-stores` job.
 # Not a required check yet (#840): the maintainer makes it required once it is stable.
 on:
   pull_request:
@@ -89,12 +89,14 @@ jobs:
           docker logs seaweedfs
           docker logs polaris
 
-  # ADLS on Azurite (#1327); GCS has no emulator obstore can write to yet (#1342). Azurite's account and key are its published dev credentials, not a secret.
+  # ADLS on Azurite (#1327) and GCS on fake-gcs-server behind the test's XML upload shim (#1342).
+  # Azurite's account and key are its published dev credentials, not a secret; the GCS test makes its own throwaway key.
   object-stores:
     runs-on: ubuntu-latest
     env:
       FLOE_AZURITE_ENDPOINT: http://localhost:10000/devstoreaccount1
       AZURE_STORAGE_ACCOUNT_KEY: Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+      FLOE_GCS_EMULATOR: http://localhost:4443
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -109,10 +111,19 @@ jobs:
           az storage container create --name warehouse --connection-string \
             "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=$AZURE_STORAGE_ACCOUNT_KEY;BlobEndpoint=$FLOE_AZURITE_ENDPOINT;"
       - run: uv run pytest -m adls -rs tests/integration
+      - name: Start fake-gcs-server
+        run: |
+          docker run -d --name fake-gcs -p 4443:4443 \
+            fsouza/fake-gcs-server:1.56.1@sha256:797ce226d62f947c009dc40246b30cfb456b8473d8241407f9d6f2c04e4d69ef \
+            -scheme http -port 4443 -public-host localhost:4443 -backend memory
+          timeout 60 sh -c 'until curl -sf localhost:4443/storage/v1/b >/dev/null; do sleep 1; done'
+          curl -sS --fail-with-body -X POST localhost:4443/storage/v1/b -H 'Content-Type: application/json' -d '{"name": "warehouse"}'
+      - run: uv run pytest -m gcs -rs tests/integration
       - name: Container logs
         if: failure()
         run: |
           docker logs azurite
+          docker logs fake-gcs
 
   # Nightly and on demand only: Glue (moto) and the memory regression need no harness.
   glue:
