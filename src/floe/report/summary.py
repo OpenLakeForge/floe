@@ -6,7 +6,7 @@ from typing import Any
 
 from floe import __version__
 from floe.config.project import ProjectMetadata
-from floe.config.types import EntityConfig
+from floe.config.types import EntityConfig, min_rows_level
 from floe.report.entity import serialize
 from floe.storage.types import StorageClient
 
@@ -40,21 +40,27 @@ def run_dir(report_path: str, run_id: str, domain: str | None) -> str:
 
 
 def run_outcome(file_statuses: Sequence[str], warnings: int = 0) -> tuple[str, int]:
-    """The run outcome, upgraded for warnings: (status, exit code)."""
+    """The run outcome, upgraded for warnings (or an entity `success_with_warnings`): (status, exit code)."""
     if "failed" in file_statuses:
         return "failed", 1
     if "aborted" in file_statuses:
         return "aborted", 2
     if "rejected" in file_statuses:
         return "rejected", 0
-    return ("success_with_warnings" if warnings else "success"), 0
+    warned = warnings or "success_with_warnings" in file_statuses
+    return ("success_with_warnings" if warned else "success"), 0
 
 
 def entity_outcome(report: dict[str, Any]) -> tuple[str, int]:
-    """`run_outcome` of one entity report; a rejection rate over `policy.max_rejection_rate` aborts it."""
+    """`run_outcome` of one entity report; a rejection rate over `policy.max_rejection_rate` aborts it, as does a
+    `policy.min_rows` violation at abort (at warn it only warns)."""
     statuses = [f["status"] for f in report["files"]]
-    if report["policy"].get("max_rejection_rate_exceeded"):
+    policy = report["policy"]
+    if policy.get("max_rejection_rate_exceeded"):
         statuses.append("aborted")
+    if policy.get("min_rows_violated"):
+        level = min_rows_level(policy["severity"], policy.get("rule_severity"))
+        statuses.append("aborted" if level == "abort" else "success_with_warnings")
     return run_outcome(statuses, report["results"]["warnings_total"])
 
 

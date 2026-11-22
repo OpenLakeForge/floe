@@ -233,6 +233,7 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
             **_put(
                 {},
                 policy_max_rejection_rate=entity.policy.max_rejection_rate,
+                policy_min_rows=entity.policy.min_rows,
                 policy_rule_severity=_sorted(entity.policy.rule_severity),
             ),
             "policy_severity": entity.policy.severity,

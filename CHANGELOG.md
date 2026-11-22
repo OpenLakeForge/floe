@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- `policy.min_rows` sets the fewest input rows an entity's run must read (#1409): below it the entity ends `aborted` (exit `2`) or, with `policy.rule_severity.min_rows: warn`, `success_with_warnings`. It is checked after the commit, so an abort does not roll back the accepted rows, and not at all when every file of the run is `skipped`. The level is `rule_severity.min_rows` (`warn` or `abort`), else `policy.severity` with `reject` read as `abort`; it never requires `sink.rejected`. The `run.json` `policy` block gains `min_rows` and `min_rows_violated`, and `floe manifest generate` writes `policy_min_rows`, both only when set.
 - Unity Catalog registration sends the `properties` field the create-table API requires (#1401), and the Delta docs list the `EXTERNAL USE SCHEMA` and `EXTERNAL USE LOCATION` privileges and the metastore's external data access setting it also needs.
 - `floe run --manifest`, `-p` and `floe manifest generate -o` accept `gs://` and `abfss://<container>@<account>.dfs.core.windows.net/` URIs, as they did `s3://` (#1389): manifests and profiles are read from, and generated manifests written to, GCS and ADLS in one put. A bare URI has no storage definition, so credentials and endpoint come from obstore's environment (`GOOGLE_*`, `AZURE_STORAGE_*`; `AZURE_STORAGE_ENDPOINT` and `AZURE_ALLOW_HTTP` for an emulator); Floe adds no variable. `az://`, `abfs://` and `gcs://` stay refused.
 

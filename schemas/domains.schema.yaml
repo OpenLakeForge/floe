@@ -768,6 +768,9 @@ $defs:
         - 'null'
         minimum: 0
         maximum: 1
+      min_rows:
+        type: integer
+        minimum: 1
       rule_severity:
         type: object
         additionalProperties: false
@@ -795,6 +798,11 @@ $defs:
             enum:
             - warn
             - reject
+            - abort
+          min_rows:
+            type: string
+            enum:
+            - warn
             - abort
     if:
       required:

@@ -176,6 +176,8 @@ lists every entity, and the run status and exit code stay `aborted` / `2`. A tec
 
 An entity whose rejection rate exceeds `policy.max_rejection_rate` ends `aborted` the same way, after its accepted rows are committed. When the threshold is set, the `policy` block of its `run.json` also carries `max_rejection_rate`, `rejection_rate` (`rejected_total / rows_total`, `0.0` with no rows) and `max_rejection_rate_exceeded`; without a threshold these keys are absent.
 
+`policy.min_rows` is checked the same way, after the commit, against `results.rows_total`. When it is set the `policy` block carries `min_rows` and `min_rows_violated`: `true` below the threshold, `false` at or above it, `null` when every file of the run is `skipped` (nothing to check). A violation at `abort` ends the entity `aborted` (exit `2`); at `warn` it ends `success_with_warnings`, and so does the run, while `results.warnings_total` is unchanged. Without `min_rows` these keys are absent.
+
 ### Run failure (`run.failure.json`)
 
 When listing the inputs, an entity or the final summary write raises (a bad credential, a missing bucket), the run stops and Floe writes `<run_dir>/run.failure.json` next to where the summary would

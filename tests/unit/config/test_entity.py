@@ -5,7 +5,7 @@ import copy
 import pytest
 
 from floe.config.entity import parse_entity
-from floe.config.types import rule_level
+from floe.config.types import max_level, min_rows_level, rule_level
 from floe.errors import FloeConfigError
 from floe.pii import PiiColumn
 
@@ -499,8 +499,28 @@ def test_rule_severity_parses_on_policy_and_column() -> None:
             "schema.columns[0]: unknown field schema.columns.rule_severity.unique",
         ),
         (
-            {"policy": {"severity": "warn", "rule_severity": {"min_rows": "warn"}}},
-            "unknown field policy.rule_severity.min_rows",
+            {"policy": {"severity": "warn", "rule_severity": {"max_rows": "warn"}}},
+            "unknown field policy.rule_severity.max_rows",
+        ),
+        (
+            {"schema": _col(rule_severity={"min_rows": "warn"})},
+            "schema.columns[0]: unknown field schema.columns.rule_severity.min_rows",
+        ),
+        (
+            {"policy": {"severity": "warn", "rule_severity": {"min_rows": "reject"}}},
+            "policy.rule_severity.min_rows=reject is unsupported (allowed: warn, abort)",
+        ),
+        (
+            {"policy": {"severity": "warn", "min_rows": 0}},
+            "expected number greater than 0 at policy.min_rows",
+        ),
+        (
+            {"policy": {"severity": "warn", "min_rows": -1}},
+            "expected positive integer at policy.min_rows",
+        ),
+        (
+            {"policy": {"severity": "warn", "min_rows": 1.5}},
+            "expected integer at policy.min_rows",
         ),
         (
             {"schema": _col(rule_severity={"not_null": "Warn"})},
@@ -518,3 +538,32 @@ def test_rule_severity_parses_on_policy_and_column() -> None:
 )
 def test_rule_severity_errors(overrides: dict[str, object], expected: str) -> None:
     assert message(entity(**overrides)) == expected
+
+
+@pytest.mark.parametrize(
+    ("policy", "level"),
+    [
+        ({"severity": "warn"}, "warn"),
+        ({"severity": "reject"}, "abort"),
+        ({"severity": "abort"}, "abort"),
+        ({"severity": "reject", "rule_severity": {"min_rows": "warn"}}, "warn"),
+        ({"severity": "warn", "rule_severity": {"min_rows": "abort"}}, "abort"),
+    ],
+)
+def test_min_rows_parses_and_resolves_its_level(
+    policy: dict[str, object], level: str
+) -> None:
+    parsed = parse_entity(entity(policy={**policy, "min_rows": 5})).policy
+    assert parsed.min_rows == 5
+    assert min_rows_level(parsed.severity, parsed.rule_severity) == level
+
+
+def test_min_rows_level_maps_a_manifest_reject_to_abort() -> None:
+    assert min_rows_level("warn", {"min_rows": "reject"}) == "abort"
+
+
+def test_max_level_ignores_min_rows() -> None:
+    policy = {"severity": "warn", "min_rows": 5, "rule_severity": {"min_rows": "abort"}}
+    assert max_level(parse_entity(entity(policy=policy))) == "warn"
+    policy["rule_severity"] = {"min_rows": "abort", "unique": "reject"}
+    assert max_level(parse_entity(entity(policy=policy))) == "reject"

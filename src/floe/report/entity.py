@@ -143,6 +143,15 @@ def _rate_report(limit: float | None, totals: dict[str, int]) -> dict[str, Any]:
     return {"max_rejection_rate": limit, "rejection_rate": rate, "max_rejection_rate_exceeded": rate > limit}  # fmt: skip
 
 
+def _min_rows_report(
+    limit: int | None, files: list[dict[str, Any]], rows: int
+) -> dict[str, Any]:
+    if limit is None:
+        return {}
+    evaluated = any(f["status"] != "skipped" for f in files)
+    return {"min_rows": limit, "min_rows_violated": rows < limit if evaluated else None}
+
+
 def build_report(
     entity: EntityConfig,
     version: str,
@@ -221,7 +230,8 @@ def build_report(
         "sink": sink_echo,
         "policy": {"severity": severity}
         | ({"rule_severity": dict(sorted(levels.items()))} if (levels := entity.policy.rule_severity) else {})
-        | _rate_report(entity.policy.max_rejection_rate, totals),
+        | _rate_report(entity.policy.max_rejection_rate, totals)
+        | _min_rows_report(entity.policy.min_rows, files, totals["rows_total"]),
         "accepted_output": {
             "path": accepted_uri,
             "table_root_uri": table_root_uri or accepted_uri,
