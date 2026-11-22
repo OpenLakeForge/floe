@@ -403,6 +403,12 @@ def _run_entity(
     # #1090: a merge keeps a key's latest version, so the newest file is checked first; the first row of a file still wins.
     # Not under abort: a duplicate aborts there anyway, and newer files committed ahead of a pending older one would let it merge stale rows later
     latest_first = merging and max_level(entity) != "abort"
+    empty = pl.DataFrame(schema=dict.fromkeys(names, pl.String)).select(
+        cast_column(n, c.column_type)[0] for n, c in zip(names, columns, strict=True)
+    )
+    # #1424: ends each input file's accepted frames, so a unique-key file-mode Parquet append part holds one file's rows
+    keyed_parquet = target is None and not delta and sink.write_mode == "append" and plan.tracker.keys and entity.incremental_mode == "file"  # fmt: skip
+    file_end = output(plan, empty) if keyed_parquet else None
 
     def accepted_frames() -> Generator[pl.DataFrame]:
         """Files are read as the sink pulls (#1056); `files` and `complete` are final once it is exhausted."""
@@ -433,6 +439,8 @@ def _run_entity(
                     yield from kept
                     if report["status"] == "aborted":
                         break
+                    if file_end is not None:
+                        yield file_end
                     complete.append(f)
                 # before the accepted commit; append-only, a retry appends again
                 if plan.rejected_spills:
@@ -454,10 +462,6 @@ def _run_entity(
     try:
         first = next(stream, None)  # nothing is written when every input was skipped
         if pending and (first is not None or sink.write_mode == "overwrite"):
-            empty = pl.DataFrame(schema=dict.fromkeys(names, pl.String)).select(
-                cast_column(n, c.column_type)[0]
-                for n, c in zip(names, columns, strict=True)
-            )
             frames = chain(
                 [output(plan, empty) if first is None else first],
                 _pulled(stream, plan.spent),
@@ -478,7 +482,7 @@ def _run_entity(
                         f for f in pending if f.source_uri not in queued
                     ]
             elif target is None:
-                write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options, input_hash(entity, pending) if plan.tracker.keys and entity.incremental_mode == "file" else None)  # fmt: skip
+                write = write_accepted(frames, accepted_client, base, sink.write_mode, sink.accepted.options, input_hash(entity, pending) if plan.tracker.keys and entity.incremental_mode == "file" else None, file_end)  # fmt: skip
             else:
                 from floe.iceberg.sink import write_iceberg
 

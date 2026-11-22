@@ -159,7 +159,7 @@ def partial_flush(monkeypatch: pytest.MonkeyPatch, iceberg: bool) -> None:
     else:
         parts = outputs_module._part_frames
 
-        def first_part_only(frames: Any, _: int) -> Any:
+        def first_part_only(frames: Any, *_: Any) -> Any:
             yield next(parts(frames, 1))
             raise Crash
 
