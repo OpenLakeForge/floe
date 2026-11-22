@@ -335,6 +335,15 @@ def test_append_ignores_staged_leftovers_of_a_killed_run(tmp_path: Path) -> None
     assert [p.name for p in tmp_path.glob("_staging-*")] == ["_staging-dead-part-1.parquet"]  # fmt: skip
 
 
+def test_file_end_splits_the_parts_per_input_file(tmp_path: Path) -> None:
+    """#1424: a file still splits at `max_size_per_file`; one that filled its parts exactly gets no extra part, one with no frame gets `file_end`."""
+    options = SinkOptions(compression="snappy", row_group_size=10, max_size_per_file=8 * 40)  # fmt: skip
+    end = pl.DataFrame(schema={"a": pl.Int64})
+    frames = [pl.DataFrame({"a": list(range(80))}), end, pl.DataFrame({"a": list(range(80, 110))}), end, end]  # fmt: skip
+    result = write_accepted(frames, LOCAL, f"local://{tmp_path}", "append", options, file_end=end)  # fmt: skip
+    assert [pl.read_parquet(tmp_path / n).height for n in result.part_files] == [40, 40, 30, 0]  # fmt: skip
+
+
 def test_avro_and_orc_read(tmp_path: Path) -> None:
     columns = [("id", "string"), ("qty", "int64"), ("price", "number"),
                ("active", "boolean"), ("note", "string")]  # fmt: skip

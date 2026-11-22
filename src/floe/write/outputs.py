@@ -102,12 +102,22 @@ def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str
 
 
 def _part_frames(
-    frames: Iterable[pl.DataFrame], max_size: int
+    frames: Iterable[pl.DataFrame], max_size: int, file_end: pl.DataFrame | None = None
 ) -> Iterator[pl.DataFrame]:
-    """`frames` regrouped into parts of about `max_size` bytes in memory; at most one part and a frame are pooled."""
+    """`frames` regrouped into parts of about `max_size` bytes in memory; at most one part and a frame are pooled.
+
+    `file_end` (an empty frame, matched by identity) ends an input file: the pool is flushed there, so no part spans
+    two files, and a file that left no part gets `file_end` itself as its one empty part (#1424).
+    """
     pool: list[pl.DataFrame] = []
     size = height = 0
+    fresh = True  # no part yielded since the last `file_end`
     for df in frames:
+        if df is file_end:
+            if pool or fresh:
+                yield pl.concat(pool) if pool else df
+            pool, size, height, fresh = [], 0, 0, True
+            continue
         pool.append(df)
         size += df.estimated_size()
         height += df.height
@@ -116,6 +126,7 @@ def _part_frames(
             whole = pl.concat(pool)
             full = height - height % rows
             yield from (whole.slice(i, rows) for i in range(0, full, rows))
+            fresh = fresh and not full
             rest = whole.slice(full)
             pool = [rest] if rest.height else []
             size, height = rest.estimated_size(), rest.height
@@ -130,10 +141,12 @@ def write_accepted(
     mode: WriteMode = "overwrite",
     options: SinkOptions | None = None,
     key: str | None = None,
+    file_end: pl.DataFrame | None = None,
 ) -> AcceptedWrite:
     """Write `frames` (at least one) as `part-*.parquet` files under `base`, each holding about `max_size_per_file`.
 
     With a `key` (the run's input hash) an append part is named from it, so a retry replaces the dead run's parts (#1198).
+    With a `file_end`, each input file's frames end with it and no part spans two files (#1424).
     """
     base = base.rstrip("/")
     max_size = (options and options.max_size_per_file) or DEFAULT_MAX_SIZE_PER_FILE
@@ -145,7 +158,7 @@ def write_accepted(
     files: list[str] = []
     sizes: list[int] = []
     with _os_errors(), _parts(client, base, mode, "parquet", key) as put:
-        for chunk in _part_frames(frames, max_size):
+        for chunk in _part_frames(frames, max_size, file_end):
             # ponytail: a part is held in memory (≤ max_size_per_file) before the put; stream multipart uploads if that is too much
             body = io.BytesIO()
             chunk.write_parquet(body, **kwargs)  # pyright: ignore[reportArgumentType]  # ponytail: kwargs loses the compression Literal; validated by the config
