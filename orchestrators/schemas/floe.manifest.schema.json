@@ -1060,6 +1060,98 @@
                   "object",
                   "null"
                 ]
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "left",
+                    "op"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "left": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "lt",
+                        "le",
+                        "gt",
+                        "ge",
+                        "is_null",
+                        "not_null"
+                      ]
+                    },
+                    "right": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "type": [
+                        "integer",
+                        "number",
+                        "string"
+                      ]
+                    },
+                    "when": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "left",
+                        "op"
+                      ],
+                      "properties": {
+                        "left": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "op": {
+                          "type": "string",
+                          "enum": [
+                            "eq",
+                            "ne",
+                            "lt",
+                            "le",
+                            "gt",
+                            "ge",
+                            "is_null",
+                            "not_null"
+                          ]
+                        },
+                        "right": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "value": {
+                          "type": [
+                            "integer",
+                            "number",
+                            "string"
+                          ]
+                        }
+                      }
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": [
+                        "warn",
+                        "reject",
+                        "abort"
+                      ]
+                    }
+                  }
+                }
               }
             }
           },

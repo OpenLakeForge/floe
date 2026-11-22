@@ -32,7 +32,7 @@ class RowCheck:
 
     Pass the checks in the error order: not_null (required columns), cast_error (declared
     non-string columns), the value checks (out_of_range, not_allowed, pattern_mismatch, length),
-    then unique.
+    the row predicates (`schema.checks`, in declaration order), then unique.
     """
 
     rule: str

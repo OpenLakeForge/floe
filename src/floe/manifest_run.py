@@ -136,6 +136,8 @@ def _schema(s: Json) -> Json:
         ),
         "mismatch": _lenient(SchemaMismatchConfig, s.get("mismatch")),
         "schema_evolution": _lenient(SchemaEvolutionConfig, s.get("schema_evolution")),
+        # strict, never `_lenient`: a malformed check fails EntityConfig validation
+        "checks": s.get("checks"),
     }
 
 

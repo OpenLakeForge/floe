@@ -261,6 +261,9 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
                 normalize_columns=_sorted(schema.normalize_columns),
                 mismatch=_sorted(schema.mismatch),
                 schema_evolution=_sorted(schema.schema_evolution),
+                checks=[p.model_dump(exclude_none=True) for p in schema.checks]
+                if schema.checks
+                else None,
             ),
         },
         pii=pii,

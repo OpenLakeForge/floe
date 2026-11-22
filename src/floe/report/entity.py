@@ -39,11 +39,13 @@ def summarize_rules(
     names = source_names(columns, resolve_strategy(entity.schema_))
     types = {n: c.column_type for n, c in zip(names, columns, strict=True)}
     sources = {n: c.source for n, c in zip(names, columns, strict=True) if c.source}
+    predicates = [p.name for p in entity.schema_.checks or []]
+    known = {*_RULES, *predicates}
     rules: list[dict[str, Any]] = []
-    for rule, level in product(_RULES, ("abort", "reject", "warn")):
+    for rule, level in product((*_RULES[:-1], *predicates, "schema_error"), ("abort", "reject", "warn")):  # fmt: skip
         counts: dict[str, int] = {}
         for c in checks:
-            if c.severity == level and (c.rule == rule or (rule == "schema_error" and c.rule not in _RULES)):  # fmt: skip
+            if c.severity == level and (c.rule == rule or (rule == "schema_error" and c.rule not in known)):  # fmt: skip
                 counts[c.column] = counts.get(c.column, 0) + int(c.mask.sum())
         cols: list[dict[str, Any]] = []
         for name, n in sorted(counts.items()):
