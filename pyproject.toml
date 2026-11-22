@@ -60,6 +60,7 @@ markers = [
     "scale: a generated 200-entity project, slow; nightly only (-m scale), with -m polaris an Iceberg subset",
     "polaris: needs a running Polaris, enabled by FLOE_POLARIS_URI",
     "s3: needs an S3-compatible service (set FLOE_S3_ENDPOINT)",
+    "s3compat: opt-in check of an S3-compatible provider (set FLOE_S3COMPAT_ENDPOINT, FLOE_S3COMPAT_BUCKET)",
     "adls: needs Azurite (set FLOE_AZURITE_ENDPOINT, AZURE_STORAGE_ACCOUNT_KEY)",
     "glue: needs a Glue-compatible service and S3 (set FLOE_GLUE_ENDPOINT, FLOE_S3_ENDPOINT)",
 ]

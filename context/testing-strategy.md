@@ -24,6 +24,15 @@ uv run python conformance/check.py --case NAME   # one golden case
 Integration tests skip unless their service is configured: `-m polaris` needs
 `FLOE_POLARIS_URI`, `-m s3` needs `FLOE_S3_ENDPOINT` (see `.github/workflows/python-integration.yml`).
 
+`-m s3compat` checks a real S3-compatible provider (#1269, #1270) and needs a bucket and credentials:
+
+```bash
+FLOE_S3COMPAT_ENDPOINT=... FLOE_S3COMPAT_BUCKET=... uv run pytest -m s3compat tests/integration/test_s3_compatible.py
+```
+
+Optional `FLOE_S3COMPAT_REGION` and `FLOE_S3COMPAT_PATH_STYLE`; credentials from `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY`. See `docs/storages/s3.md`.
+
 ## Principles
 
 **No storage mocking.** Tests use real temporary directories and real file I/O; the S3 tests
