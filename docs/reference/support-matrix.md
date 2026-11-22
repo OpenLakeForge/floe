@@ -108,6 +108,17 @@ Notes:
 | `floe manifest generate` and `replay` | ✅ | ✅ | ✅ |
 | Manifest and profile read from a URI | ✅ | ❌ | ❌ |
 
+## S3-compatible providers
+
+Per-provider results of `uv run pytest -m s3compat tests/integration/test_s3_compatible.py`, see
+[S3-compatible providers](../storages/s3.md#s3-compatible-providers). Nothing is claimed until a run against a real
+bucket is recorded on the issue (Scaleway #1269, OVHcloud #1270); each cell then gets its result and date.
+
+| Provider | List, read, write, copy, delete, large Parquet download | `If-None-Match: *` refused | Stale `If-Match` put refused | Stale `If-Match` delete refused | Archive copy and source mtime index | `floe run` with `incremental_mode: file` | Iceberg FileIO and DuckDB merges | Path-style | Virtual-hosted |
+|---|---|---|---|---|---|---|---|---|---|
+| Scaleway Object Storage | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified |
+| OVHcloud Object Storage | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified |
+
 ## Fault scenarios (Iceberg and S3)
 
 Tested against local services (Polaris + SeaweedFS in `python-integration.yml`, moto for Glue), nightly
