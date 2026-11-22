@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- A header-only CSV no longer crashes `floe run` with a Polars `SchemaError` when the entity has a `primary_key` or `unique_keys` (#1415); the file runs with 0 rows like an entity without a unique constraint.
 - `policy.min_rows_per_file` (#1410) sets the fewest rows each input file must have (`1`: no empty file). A file with fewer rows is settled by `policy.rule_severity.min_rows_per_file` (`warn`, `reject` or `abort`, else `policy.severity`): `reject` copies the raw file to `sink.rejected` and accepts none of its rows, `abort` aborts the entity (exit `2`), `warn` keeps the rows with one warning. The file reports one `validation.rules[]` entry `min_rows_per_file` with `columns: []`. `floe manifest generate` carries it as `policy_min_rows_per_file`. Configs without it behave as before.
 - `dagster-floe` raises asset checks for the new report rules (#1411): `floe_out_of_range`, `floe_not_allowed`, `floe_pattern_mismatch`, `floe_length` and `floe_min_rows_per_file` from `validation.rules[]`, `floe_row_predicates` for every other rule name except `schema_error` (per-predicate counts in `predicate_violations`), and `floe_min_rows` from the report's `policy.min_rows_violated`. Reports without these rules pass the new checks.
 - Unity Catalog registration sends the `properties` field the create-table API requires (#1401), and the Delta docs list the `EXTERNAL USE SCHEMA` and `EXTERNAL USE LOCATION` privileges and the metastore's external data access setting it also needs.

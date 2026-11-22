@@ -362,3 +362,18 @@ def test_entity_finished_carries_the_report_uri_of_run_finished(
         run(path, root, observer=events.append, workers=workers)
     failed = next(e for e in events if e["event"] == "entity_finished")
     assert failed["status"] == "failed" and "report_uri" not in failed
+
+
+def test_a_header_only_csv_with_a_primary_key_runs_with_zero_rows(
+    tmp_path: Path,
+) -> None:
+    """#1415: an empty unique mask was a Null-dtype Series and crashed the split."""
+    path, _ = setup(tmp_path, ["a"])
+    (tmp_path / "in/a.csv").write_text("id\n")
+    text = path.read_text().replace(
+        "    schema:\n", "    schema:\n      primary_key: [id]\n"
+    )
+    path.write_text(text)
+    out = run(path, parse_config(path, {}))
+    assert out.summary["run"]["status"] == "success"
+    assert rows(tmp_path, "a") == 0
