@@ -1,5 +1,6 @@
 """Config models (entity-level fields)."""
 
+from collections.abc import Mapping
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,6 +33,7 @@ class EntityStateConfig(_Model):
 class PolicyConfig(_Model):
     severity: PolicySeverity
     max_rejection_rate: float | None = None
+    min_rows: int | None = Field(default=None, ge=1)
     min_rows_per_file: int | None = Field(default=None, ge=1)
     rule_severity: dict[str, PolicySeverity] | None = None
 
@@ -51,14 +53,24 @@ def rule_level(
 
 def max_level(entity: "EntityConfig") -> PolicySeverity:
     """The most severe level any check of the entity can resolve to."""
+    # min_rows is judged after the commit: no row is rejected or aborted mid-run for it
+    rules: dict[str, PolicySeverity] = entity.policy.rule_severity or {}
     levels: list[PolicySeverity] = [
         entity.policy.severity,
-        *(entity.policy.rule_severity or {}).values(),
+        *(v for k, v in rules.items() if k != "min_rows"),
     ]
     for c in entity.schema_.columns:
         levels += (c.rule_severity or {}).values()
     levels.extend(p.severity for p in entity.schema_.checks or [] if p.severity)
     return max(levels, key=_LEVELS.index)
+
+
+def min_rows_level(
+    severity: PolicySeverity, rule_severity: Mapping[str, PolicySeverity] | None
+) -> Literal["warn", "abort"]:
+    """`policy.min_rows`' level; a `reject` (the `policy.severity` fallback, or a hand-edited manifest) is `abort`."""
+    level = (rule_severity or {}).get("min_rows", severity)
+    return "warn" if level == "warn" else "abort"
 
 
 class NormalizeColumnsConfig(_Model):

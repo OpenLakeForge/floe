@@ -593,12 +593,19 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - `abort`: abort the entire file on first violation.
 - `rule_severity` (optional): a map from a rule to `warn`, `reject` or `abort`, overriding `severity` for that rule
   on every column. Keys: `not_null`, `cast_error`, `out_of_range`, `not_allowed`, `pattern_mismatch`, `length`,
-  `unique`, `schema_mismatch`, `min_rows_per_file`. A column's own `rule_severity`
+  `unique`, `schema_mismatch`, `min_rows_per_file`, and `min_rows` (`warn` or `abort` only, see below). A column's own `rule_severity`
   wins over this map, and this map wins over `severity`. In a domain's `defaults.policy` it merges with the entity's
   map key by key. `reject` or `abort` here requires `sink.rejected`, and `abort` is refused with `pii`.
   See [Checks](../concepts/checks.md#severity-per-check).
 - `max_rejection_rate` (optional, `severity: reject` only)
   - A number in `[0, 1]`: the largest fraction of input rows (`rejected_total / rows_total`) the entity may reject. Above it the entity ends `aborted` (exit `2`); at the threshold it stays `rejected`. The accepted rows are committed either way. `null` clears a domain default.
+- `min_rows` (optional)
+  - An integer `>= 1`: the fewest input rows (`results.rows_total`, rejected rows included) the run's files must
+    hold. Checked after the commit: below it the entity ends `aborted` (exit `2`) at `abort`, or
+    `success_with_warnings` at `warn`; abort does **not** roll back, the accepted rows stay committed. The level is
+    `rule_severity.min_rows`, else `severity`, where `reject` counts as `abort`. A run whose files are all `skipped`
+    (an `incremental_mode: file` run with no new files) is not checked. `min_rows` never requires `sink.rejected`
+    and is allowed with `pii`. `0` fails with `config_invalid_value`.
 - `min_rows_per_file` (optional)
   - An integer `>= 1`: the fewest rows each input file must have (`1` means no empty file). A file with fewer rows
     is settled whole by `rule_severity.min_rows_per_file` (else `severity`): `reject` copies the raw file to

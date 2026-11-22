@@ -902,6 +902,10 @@
             "minimum": 0,
             "maximum": 1
           },
+          "policy_min_rows": {
+            "type": "integer",
+            "minimum": 1
+          },
           "policy_min_rows_per_file": {
             "type": "integer",
             "minimum": 1

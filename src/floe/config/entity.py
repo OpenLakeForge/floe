@@ -158,7 +158,13 @@ def _policy(value: object) -> PolicyConfig:
     validate_known_keys(
         h,
         "policy",
-        ("severity", "max_rejection_rate", "min_rows_per_file", "rule_severity"),
+        (
+            "severity",
+            "max_rejection_rate",
+            "min_rows",
+            "min_rows_per_file",
+            "rule_severity",
+        ),
     )
     severity = get_string(h, "severity", "policy")
     picked = _pick(severity, get_args(PolicySeverity))
@@ -173,19 +179,28 @@ def _policy(value: object) -> PolicyConfig:
             f"policy.max_rejection_rate requires policy.severity=reject (got {picked})",
             code="config_conflict",
         )
-    min_rows = opt_u64(h, "min_rows_per_file", "policy")
-    if min_rows == 0:
+    min_rows = opt_u64(h, "min_rows", "policy")
+    min_rows_per_file = opt_u64(h, "min_rows_per_file", "policy")
+    for key, threshold in (
+        ("min_rows", min_rows),
+        ("min_rows_per_file", min_rows_per_file),
+    ):
+        if threshold == 0:
+            raise FloeConfigError(
+                f"expected number greater than 0 at policy.{key}",
+                code="config_invalid_value",
+            )
+    rules = _rule_severity(h, "policy", (*_COLUMN_RULES, "unique", "schema_mismatch", "min_rows", "min_rows_per_file"))  # fmt: skip
+    if rules and rules.get("min_rows") == "reject":
         raise FloeConfigError(
-            "expected number greater than 0 at policy.min_rows_per_file",
+            "policy.rule_severity.min_rows=reject is unsupported (allowed: warn, abort)",
             code="config_invalid_value",
         )
-    rules = _rule_severity(
-        h, "policy", (*_COLUMN_RULES, "unique", "schema_mismatch", "min_rows_per_file")
-    )
     return PolicyConfig(
         severity=picked,
         max_rejection_rate=rate,
-        min_rows_per_file=min_rows,
+        min_rows=min_rows,
+        min_rows_per_file=min_rows_per_file,
         rule_severity=rules,
     )
 
