@@ -134,8 +134,11 @@ an environment reference such as `${DATABRICKS_TOKEN}`, expanded when the table 
 Workspace setup you do in Databricks before the first run:
 
 - An **external location** covering the table's `s3://` path (and its storage credential).
-- A token whose principal has `USE CATALOG` and `USE SCHEMA` on the schema, `CREATE TABLE` on it, and
-  `CREATE EXTERNAL TABLE` on the external location.
+- **External data access** enabled on the metastore.
+- A token whose principal has `USE CATALOG` on the catalog; `USE SCHEMA`, `CREATE TABLE` and
+  `EXTERNAL USE SCHEMA` on the schema; and `CREATE EXTERNAL TABLE` and `EXTERNAL USE LOCATION` on the
+  external location. The two `EXTERNAL USE` privileges must be granted explicitly: ownership and
+  `ALL PRIVILEGES` do not include them.
 - With `create_schema_if_missing`, `CREATE SCHEMA` on the catalog as well. The catalog itself must already exist.
 
 ## Memory
