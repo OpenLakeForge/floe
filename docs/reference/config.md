@@ -195,7 +195,7 @@ every inherited value is validated like an inline one:
 | Maps (`sink`, `sink.accepted`, `source.options`, `policy`, ...) | Merged key by key, at every depth |
 | Scalars | The higher layer's value replaces the lower one |
 | Lists (`source.options.null_values`, `schema.unique_keys`, `pii.columns`, ...) | The higher layer's list replaces the lower one; lists are never appended |
-| `schema.columns`, `schema.primary_key` in `defaults` | Dropped; never inherited. Other `schema` keys (`normalize_columns`, `schema_evolution`, `unique_keys`) are |
+| `schema.columns`, `schema.primary_key` in `defaults` | Dropped; never inherited. Other `schema` keys (`normalize_columns`, `schema_evolution`, `unique_keys`, `checks`) are |
 | `source.ref`, `source.resource` | Read from the entity's `source` only and removed before merging; a `ref` in domain `defaults` is an unknown field |
 | `{{resource}}` | Replaced in the merged `source.path` with `source.resource`, or the entity `name` when omitted |
 
@@ -648,6 +648,23 @@ See [PII masking](../guides/pii.md) for full strategy reference and masking patt
   - `rule_severity` (optional): a map from `not_null` or `cast_error` to `warn`, `reject` or `abort`, for this
     column only. `not_null` needs a required column (`nullable: false` or in `schema.primary_key`) and `cast_error`
     a non-`string` column; otherwise validation fails with `config_conflict`.
+- `checks` (optional): row predicates across the columns of a row; see
+  [Row predicates](../concepts/checks.md#row-predicates-schemachecks).
+  - `name` (required): lower snake_case (`[a-z][a-z0-9_]*`), unique in the entity, and not a built-in rule name
+    (`not_null`, `cast_error`, `out_of_range`, `not_allowed`, `pattern_mismatch`, `length`, `unique`,
+    `schema_mismatch`, `schema_error`, `csv_read_error`, `unreadable_file`, `min_rows`, `min_rows_per_file`:
+    `config_conflict`). It is the `rule` of the row error and of `validation.rules[]`.
+  - `left` (required): a column of `schema.columns` (`config_unknown_reference` otherwise).
+  - `op` (required): `eq`, `ne`, `lt`, `le`, `gt`, `ge` (binary) or `is_null`, `not_null` (unary). Symbols such as
+    `>=` are refused.
+  - `right` or `value`: a binary op takes exactly one, a unary op neither (`config_conflict`). `right` is a column
+    of the same kind as `left` (numeric, string, boolean, date or datetime; a date is not compared with a
+    datetime). `value` is a literal that must cast to `left`'s type; a boolean `left` takes no `value`.
+    `lt`, `le`, `gt` and `ge` do not apply to a string or boolean `left`.
+  - `when` (optional): one condition with the keys `left`, `op`, `right`, `value` and the same rules; the check
+    applies only to the rows where it holds.
+  - `severity` (optional): `warn`, `reject` or `abort`; defaults to `policy.severity`. A predicate name is not a
+    `policy.rule_severity` key.
 
 ## Supported column types
 

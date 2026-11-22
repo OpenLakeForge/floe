@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from floe.config.parse import parse_config
+from floe.config.types import BUILTIN_RULES
 from floe.config.validate import validate_entities
 from floe.errors import FloeConfigError
 
@@ -764,3 +765,165 @@ def test_rule_severity_scope(tmp_path: Path) -> None:
         check(tmp_path, bad)
     assert err.value.code == "config_conflict"
     assert str(err.value) == "entity.name=orders schema.columns[name=id].rule_severity.cast_error is not applicable: a string column has no cast check"  # fmt: skip
+
+
+PREDICATE_COLUMNS = (
+    "columns: [{name: start_date, type: date}, {name: end_date, type: date}, {name: created_at, type: datetime},"
+    " {name: amount, type: 'decimal(18,2)'}, {name: discount, type: int32}, {name: status, type: string},"
+    " {name: flag, type: boolean}, {name: other_flag, type: bool}]"
+)
+
+
+def predicates(*checks: str) -> str:
+    return f"{{{PREDICATE_COLUMNS}, checks: [{', '.join(checks)}]}}"
+
+
+def test_schema_checks_accepted(tmp_path: Path) -> None:
+    check(
+        tmp_path,
+        predicates(
+            "{name: end_after_start, left: end_date, op: ge, right: start_date}",
+            "{name: discount_within_amount, left: discount, op: le, right: amount, severity: warn}",
+            "{name: no_cancelled_with_amount, when: {left: status, op: eq, value: cancelled}, left: amount, op: eq, value: 0}",
+            "{name: flags_agree, when: {left: flag, op: not_null}, left: flag, op: ne, right: other_flag}",
+            "{name: recent, left: created_at, op: gt, value: '2024-01-01T00:00:00'}",
+        ),
+    )
+
+
+W = "schema.checks[name=x]"
+
+
+@pytest.mark.parametrize(
+    ("checks", "code", "message"),
+    [
+        (
+            "{name: End Date, left: amount, op: not_null}",
+            "config_invalid_value",
+            "schema.checks[0].name=End Date is invalid (use lower snake_case)",
+        ),
+        (
+            "{name: 1st, left: amount, op: not_null}",
+            "config_invalid_value",
+            "schema.checks[0].name=1st is invalid (use lower snake_case)",
+        ),
+        (
+            "{name: end_after_start, left: amount, op: not_null}, {name: end_after_start, left: amount, op: is_null}",
+            "config_duplicate",
+            "schema.checks: check name end_after_start is duplicated",
+        ),
+        (
+            "{name: unique, left: amount, op: not_null}",
+            "config_conflict",
+            "schema.checks[name=unique].name is reserved for a built-in rule",
+        ),
+        (
+            "{name: x, left: amount, op: ge, right: start_dt}",
+            "config_unknown_reference",
+            f"{W}.right=start_dt is not a column in schema.columns",
+        ),
+        (
+            "{name: x, left: amt, op: not_null}",
+            "config_unknown_reference",
+            f"{W}.left=amt is not a column in schema.columns",
+        ),
+        (
+            "{name: x, left: amount, op: ge}",
+            "config_conflict",
+            f"{W} needs exactly one of right or value for op=ge",
+        ),
+        (
+            "{name: x, left: amount, op: ge, right: discount, value: 1}",
+            "config_conflict",
+            f"{W} needs exactly one of right or value for op=ge",
+        ),
+        (
+            "{name: x, left: amount, op: is_null, value: 1}",
+            "config_conflict",
+            f"{W} takes neither right nor value for op=is_null",
+        ),
+        (
+            "{name: x, left: end_date, op: ge, right: created_at}",
+            "config_conflict",
+            f"{W} compares end_date (date) with created_at (datetime)",
+        ),
+        (
+            "{name: x, left: status, op: eq, right: amount}",
+            "config_conflict",
+            f"{W} compares status (string) with amount (number)",
+        ),
+        (
+            "{name: x, left: flag, op: eq, right: status}",
+            "config_conflict",
+            f"{W} compares flag (boolean) with status (string)",
+        ),
+        (
+            "{name: x, left: status, op: lt, value: b}",
+            "config_conflict",
+            f"{W}.op=lt is not applicable to string column status (allowed: eq, ne, is_null, not_null)",
+        ),
+        (
+            "{name: x, left: flag, op: ge, right: other_flag}",
+            "config_conflict",
+            f"{W}.op=ge is not applicable to boolean column flag (allowed: eq, ne, is_null, not_null)",
+        ),
+        (
+            "{name: x, left: start_date, op: ge, value: 2024-13-01}",
+            "config_invalid_value",
+            f"{W}.value=2024-13-01 is not a valid date value",
+        ),
+        (
+            "{name: x, left: discount, op: ge, value: 1.5}",
+            "config_invalid_value",
+            f"{W}.value=1.5 is not a valid int32 value",
+        ),
+        (
+            "{name: x, left: flag, op: eq, value: 'true'}",
+            "config_invalid_value",
+            f"{W}.value is not supported for boolean column flag (compare with right, or use is_null or not_null)",
+        ),
+        # the same checks inside `when`
+        (
+            "{name: x, left: amount, op: not_null, when: {left: start_dt, op: not_null}}",
+            "config_unknown_reference",
+            f"{W}.when.left=start_dt is not a column in schema.columns",
+        ),
+        (
+            "{name: x, left: amount, op: not_null, when: {left: amount, op: eq, right: status}}",
+            "config_conflict",
+            f"{W}.when compares amount (number) with status (string)",
+        ),
+        (
+            "{name: x, left: amount, op: not_null, when: {left: amount, op: eq}}",
+            "config_conflict",
+            f"{W}.when needs exactly one of right or value for op=eq",
+        ),
+        (
+            "{name: x, left: amount, op: not_null, when: {left: status, op: gt, right: status}}",
+            "config_conflict",
+            f"{W}.when.op=gt is not applicable to string column status (allowed: eq, ne, is_null, not_null)",
+        ),
+        (
+            "{name: x, left: amount, op: not_null, when: {left: start_date, op: eq, value: 2024-13-01}}",
+            "config_invalid_value",
+            f"{W}.when.value=2024-13-01 is not a valid date value",
+        ),
+    ],
+)
+def test_schema_checks_errors(tmp_path: Path, checks: str, code: str, message: str) -> None:  # fmt: skip
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, predicates(checks))
+    assert (err.value.code, str(err.value)) == (code, f"entity.name=orders {message}")
+
+
+@pytest.mark.parametrize("name", BUILTIN_RULES)
+def test_schema_checks_refuse_builtin_names(tmp_path: Path, name: str) -> None:
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, predicates(f"{{name: {name}, left: amount, op: not_null}}"))
+    assert (err.value.code, str(err.value)) == ("config_conflict", f"entity.name=orders schema.checks[name={name}].name is reserved for a built-in rule")  # fmt: skip
+
+
+def test_schema_checks_abort_needs_rejected_sink(tmp_path: Path) -> None:
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, predicates("{name: x, left: amount, op: not_null, severity: abort}"))  # fmt: skip
+    assert (err.value.code, str(err.value)) == ("config_missing_key", "entity.name=orders sink.rejected is required when schema.checks[name=x].severity=abort")  # fmt: skip

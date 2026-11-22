@@ -104,13 +104,12 @@ class ConfigSchemaTest(unittest.TestCase):
             types.ArchiveTarget: "archive_target", types.PolicyConfig: "policy_fragment",
             types.SchemaConfig: "schema", types.NormalizeColumnsConfig: "normalize_columns",
             types.SchemaEvolutionConfig: "schema_evolution", types.SchemaMismatchConfig: "schema_mismatch",
-            types.ColumnConfig: "column",
+            types.ColumnConfig: "column", types.PredicateCheck: "predicate_check",
+            types.PredicateCondition: "predicate_condition",
         }  # `duckdb` stays raw in the model (D1) and has no binding.
         internal = {project.RootConfig: {"config_files", "entity_workers"}, project.DomainConfig: {"resolved_incoming_dir"}, types.EntityConfig: {"id"}, types.SinkTarget: {"write_mode"},
                     # #1251: run-side only until #1405 adds the YAML keys
-                    types.ColumnConfig: {"min", "max", "allowed_values", "pattern", "min_length", "max_length"},
-                    # #1252: run-side only until #1407 adds the YAML key
-                    types.SchemaConfig: {"checks"}}
+                    types.ColumnConfig: {"min", "max", "allowed_values", "pattern", "min_length", "max_length"}}
         aliases = {types.SourceConfig: {"source_ref": "ref"}, types.ColumnConfig: {"column_type": "type"}}
         wire_extras = {
             project.RootConfig: {"sources", "include", "filesystems"},
@@ -1192,6 +1191,45 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"schema_evolution": {"mode": "unknown"}}}})
         self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"schema_evolution": {"on_incompatible": "reject"}}}})
         self.assert_valid(validator_for("entity_file"), {"name": "orders", "schema": {"columns": [], "schema_evolution": {"mode": "add_columns", "on_incompatible": "fail"}}})
+
+    def test_schema_checks(self):  # #1252
+        schemas = {n: yaml.safe_load((ROOT / f"schemas/{n}.schema.yaml").read_text()) for n in ("project", "entity", "domains")}
+        for name in ("entity", "domains"):
+            for definition in ("predicate_check", "predicate_condition", "predicate_operands"):
+                self.assertEqual(schemas["project"]["$defs"][definition], schemas[name]["$defs"][definition], f"{name} {definition}")
+        self.assertEqual(schemas["project"]["$defs"]["predicate_check"]["properties"]["name"]["not"]["enum"], list(types.BUILTIN_RULES))
+        ok = [
+            {"name": "end_after_start", "left": "end", "op": "ge", "right": "start"},
+            {"name": "zero_when_cancelled", "left": "amount", "op": "eq", "value": 0, "severity": "warn",
+             "when": {"left": "status", "op": "eq", "value": "cancelled"}},
+            {"name": "vat_needs_country", "left": "country", "op": "not_null", "right": None, "when": {"left": "vat", "op": "not_null"}},
+        ]
+        bad = [
+            {"left": "a", "op": "not_null"},
+            {"name": "End Date", "left": "a", "op": "not_null"},
+            {"name": "unique", "left": "a", "op": "not_null"},
+            {"name": "x", "left": "a", "op": ">="},
+            {"name": "x", "left": "a", "op": "ge"},
+            {"name": "x", "left": "a", "op": "ge", "right": "b", "value": 1},
+            {"name": "x", "left": "a", "op": "is_null", "value": 1},
+            {"name": "x", "left": "a", "op": "eq", "value": True},
+            {"name": "x", "left": "a", "op": "not_null", "severity": "fail"},
+            {"name": "x", "left": "a", "op": "not_null", "when": {"left": "b", "op": "not_null", "name": "y"}},
+            {"name": "x", "left": "a", "op": "not_null", "when": {"left": "b", "op": "eq"}},
+        ]
+        for check in ok:
+            entity = complete_entity()
+            entity["schema"]["checks"] = [check]
+            self.assert_valid(ROOT_VALIDATOR, {"version": "0.2", "entities": [entity]})
+            self.assert_valid(validator_for("entity_file"), {"name": "orders", "schema": {"columns": [], "checks": [check]}})
+        self.assert_valid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"checks": ok}}})
+        for check in bad:
+            with self.subTest(check=check):
+                entity = complete_entity()
+                entity["schema"]["checks"] = [check]
+                self.assert_invalid(ROOT_VALIDATOR, {"version": "0.2", "entities": [entity]})
+                self.assert_invalid(validator_for("entity_file"), {"name": "orders", "schema": {"columns": [], "checks": [check]}})
+                self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {"schema": {"checks": [check]}}})
 
     def test_ci_covers_fixture_changes(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())

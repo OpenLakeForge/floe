@@ -1138,6 +1138,137 @@ $defs:
         type: array
         items:
           $ref: '#/$defs/column'
+      checks:
+        type:
+        - array
+        - 'null'
+        items:
+          $ref: '#/$defs/predicate_check'
+  predicate_check:
+    type: object
+    additionalProperties: false
+    description: A row predicate. `floe validate` checks the column references and their types.
+    required:
+    - name
+    - left
+    - op
+    allOf:
+    - $ref: '#/$defs/predicate_operands'
+    properties:
+      name:
+        type: string
+        pattern: ^[a-z][a-z0-9_]*$
+        not:
+          enum:
+          - not_null
+          - cast_error
+          - out_of_range
+          - not_allowed
+          - pattern_mismatch
+          - length
+          - unique
+          - schema_mismatch
+          - schema_error
+          - csv_read_error
+          - unreadable_file
+          - min_rows
+          - min_rows_per_file
+      left:
+        type: string
+      op:
+        type: string
+        enum:
+        - eq
+        - ne
+        - lt
+        - le
+        - gt
+        - ge
+        - is_null
+        - not_null
+      right:
+        type:
+        - string
+        - 'null'
+      value:
+        type:
+        - number
+        - string
+        - 'null'
+      when:
+        anyOf:
+        - $ref: '#/$defs/predicate_condition'
+        - type: 'null'
+      severity:
+        type:
+        - string
+        - 'null'
+        enum:
+        - warn
+        - reject
+        - abort
+        - null
+  predicate_condition:
+    type: object
+    additionalProperties: false
+    required:
+    - left
+    - op
+    allOf:
+    - $ref: '#/$defs/predicate_operands'
+    properties:
+      left:
+        type: string
+      op:
+        type: string
+        enum:
+        - eq
+        - ne
+        - lt
+        - le
+        - gt
+        - ge
+        - is_null
+        - not_null
+      right:
+        type:
+        - string
+        - 'null'
+      value:
+        type:
+        - number
+        - string
+        - 'null'
+  predicate_operands:
+    description: A binary op takes exactly one of right (a column) or value (a literal); is_null and not_null take neither.
+    if:
+      required:
+      - op
+      properties:
+        op:
+          enum:
+          - is_null
+          - not_null
+    then:
+      properties:
+        right:
+          type: 'null'
+        value:
+          type: 'null'
+    else:
+      oneOf:
+      - required:
+        - right
+        properties:
+          right:
+            type: string
+      - required:
+        - value
+        properties:
+          value:
+            type:
+            - number
+            - string
   normalize_columns:
     type: object
     additionalProperties: false
@@ -1914,6 +2045,12 @@ $defs:
           items:
             type: string
             pattern: \S
+      checks:
+        type:
+        - array
+        - 'null'
+        items:
+          $ref: '#/$defs/predicate_check'
   source_definitions:
     type: array
     items:

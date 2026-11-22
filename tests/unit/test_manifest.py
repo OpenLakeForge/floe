@@ -1117,23 +1117,12 @@ def test_1406_predicates_round_trip_and_validate(
 ) -> None:
     from jsonschema import Draft202012Validator
 
-    import floe._cli as cli
-    from floe.config.types import PredicateCheck
     from floe.errors import FloeConfigError
     from floe.manifest_run import load_manifest
 
-    load = cli._load  # pyright: ignore[reportPrivateUsage] -- the loader `build_manifest` goes through
-
-    def patched(path: Any, profile: Any) -> Any:
-        """Config parsing of `schema.checks` is #1407: set it on the loaded models."""
-        root = load(path, profile)
-        entity = root.entities[0]
-        checks = [PredicateCheck.model_validate(c) for c in CHECKS]
-        schema = entity.schema_.model_copy(update={"checks": checks})
-        return root.model_copy(update={"entities": [entity.model_copy(update={"schema_": schema})]})  # fmt: skip
-
-    monkeypatch.setattr(cli, "_load", patched)
-    manifest = manifest_of(tmp_path, monkeypatch, CONFIG)
+    columns = "        - {name: email, type: string}\n"
+    config = CONFIG.replace(columns, f"{columns}        - {{name: id, type: int64}}\n      checks: {json.dumps(CHECKS)}\n")  # fmt: skip
+    manifest = manifest_of(tmp_path, monkeypatch, config)
     assert manifest["entities"][0]["schema"]["checks"] == CHECKS
     schema = Path(__file__).parents[2] / "orchestrators/schemas/floe.manifest.schema.json"  # fmt: skip
     Draft202012Validator(json.loads(schema.read_text())).validate(manifest)  # pyright: ignore[reportUnknownMemberType] -- jsonschema ships no types

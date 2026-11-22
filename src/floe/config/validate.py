@@ -11,6 +11,7 @@ from floe.checks.normalize import (
     resolve_strategy,
     source_names,
 )
+from floe.checks.values import literal
 from floe.config.project import (
     LineageConfig,
     RootConfig,
@@ -18,8 +19,10 @@ from floe.config.project import (
     validate_domains,
 )
 from floe.config.types import (
+    BUILTIN_RULES,
     NO_ICEBERG,
     EntityConfig,
+    PredicateCondition,
     WriteMode,
     catalog_ident,
     max_level,
@@ -111,6 +114,56 @@ def _check_column_rules(entity: EntityConfig) -> None:
                     f"schema.columns[name={column.name}].rule_severity.{rule} is not applicable: {why}",
                     code="config_conflict",
                 )
+
+
+_CHECK_NAME = re.compile(r"[a-z][a-z0-9_]*")
+_KINDS = {"string": "string", "str": "string", "text": "string", "boolean": "boolean", "bool": "boolean",
+          "date": "date", "datetime": "datetime", "timestamp": "datetime"}  # fmt: skip
+
+
+def _condition(entity: EntityConfig, c: PredicateCondition, where: str, types: dict[str, str]) -> None:  # fmt: skip
+    for key, column in (("left", c.left), ("right", c.right)):
+        if column is not None and column not in types:
+            raise _fail(entity, f"{where}.{key}={column} is not a column in schema.columns", code="config_unknown_reference")  # fmt: skip
+    unary = c.op in ("is_null", "not_null")
+    if (c.right is not None) + (c.value is not None) != (0 if unary else 1):
+        need = "takes neither right nor value" if unary else "needs exactly one of right or value"  # fmt: skip
+        raise _fail(entity, f"{where} {need} for op={c.op}", code="config_conflict")
+    kind = _KINDS.get(_canonical(types[c.left]), "number")
+    other = None if c.right is None else _KINDS.get(_canonical(types[c.right]), "number")  # fmt: skip
+    if other is not None and other != kind:
+        raise _fail(entity, f"{where} compares {c.left} ({kind}) with {c.right} ({other})", code="config_conflict")  # fmt: skip
+    if c.op in ("lt", "le", "gt", "ge") and kind in ("string", "boolean"):
+        raise _fail(entity, f"{where}.op={c.op} is not applicable to {kind} column {c.left} (allowed: eq, ne, is_null, not_null)", code="config_conflict")  # fmt: skip
+    if c.value is None:
+        return
+    if (
+        kind == "boolean"
+    ):  # there is no boolean literal: the reader refuses a YAML `true`
+        raise _fail(entity, f"{where}.value is not supported for boolean column {c.left} (compare with right, or use is_null or not_null)", code="config_invalid_value")  # fmt: skip
+    try:
+        literal(types[c.left], c.value)
+    except FloeConfigError as err:
+        raise _fail(
+            entity, f"{where}.value={err}", code="config_invalid_value"
+        ) from err
+
+
+def _check_predicates(entity: EntityConfig) -> None:
+    types = {c.name: c.column_type for c in entity.schema_.columns}
+    seen: set[str] = set()
+    for index, p in enumerate(entity.schema_.checks or []):
+        where = f"schema.checks[name={p.name}]"
+        if not _CHECK_NAME.fullmatch(p.name):
+            raise _fail(entity, f"schema.checks[{index}].name={p.name} is invalid (use lower snake_case)", code="config_invalid_value")  # fmt: skip
+        if p.name in BUILTIN_RULES:
+            raise _fail(entity, f"{where}.name is reserved for a built-in rule", code="config_conflict")  # fmt: skip
+        if p.name in seen:
+            raise _fail(entity, f"schema.checks: check name {p.name} is duplicated", code="config_duplicate")  # fmt: skip
+        seen.add(p.name)
+        _condition(entity, p, where, types)
+        if p.when is not None:
+            _condition(entity, p.when, f"{where}.when", types)
 
 
 def _check_primary_key(entity: EntityConfig) -> None:
@@ -636,6 +689,7 @@ def validate_schema(entity: EntityConfig, version: str) -> None:
     _check_primary_key(entity)
     _check_unique_keys(entity)
     _check_column_rules(entity)
+    _check_predicates(entity)
     _check_evolution(entity, version)
 
 
