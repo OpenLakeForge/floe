@@ -158,7 +158,7 @@ class UniqueTracker:
     def _apply(self, c: _Constraint, df: pl.DataFrame) -> RowCheck:
         keys = self._keys(c, df)
         valid = keys.select(pl.all_horizontal(pl.all().is_not_null()))[c.ids[0]]
-        dup = pl.Series([False] * df.height)
+        dup = pl.Series([False] * df.height, dtype=pl.Boolean)
         if (
             valid.any()
         ):  # skips all-null (Null dtype) frames, which cannot join the seen keys

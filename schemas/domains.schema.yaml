@@ -768,6 +768,11 @@ $defs:
         - 'null'
         minimum: 0
         maximum: 1
+      min_rows_per_file:
+        type:
+        - integer
+        - 'null'
+        minimum: 1
       rule_severity:
         type: object
         additionalProperties: false
@@ -791,6 +796,12 @@ $defs:
             - reject
             - abort
           schema_mismatch:
+            type: string
+            enum:
+            - warn
+            - reject
+            - abort
+          min_rows_per_file:
             type: string
             enum:
             - warn
