@@ -102,7 +102,7 @@ def register(
     if status == 404:
         if definition.create_schema_if_missing and _call(definition, token, "GET", f"/schemas/{catalog}.{schema}")[0] == 404:  # fmt: skip
             _call(definition, token, "POST", "/schemas", {"name": schema, "catalog_name": catalog})  # 409: a racing run created it  # fmt: skip
-        body = {"name": name, "catalog_name": catalog, "schema_name": schema, "table_type": "EXTERNAL", "data_source_format": "DELTA", "storage_location": location, "columns": columns(table)}  # fmt: skip
+        body = {"name": name, "catalog_name": catalog, "schema_name": schema, "table_type": "EXTERNAL", "data_source_format": "DELTA", "storage_location": location, "properties": {}, "columns": columns(table)}  # `properties` is required by the API  # fmt: skip
         status, found = _call(definition, token, "POST", "/tables", body)
         if status == 409:  # a racing run registered it first: check what it registered
             status, found = _call(definition, token, "GET", f"/tables/{full}")

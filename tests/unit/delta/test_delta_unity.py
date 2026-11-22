@@ -122,7 +122,7 @@ def test_a_new_table_is_created_with_the_exact_request(
     assert posts[0][1] == {"name": "sales", "catalog_name": "main"}
     assert posts[1][1] == {
         "name": "orders", "catalog_name": "main", "schema_name": "sales",
-        "table_type": "EXTERNAL", "data_source_format": "DELTA", "storage_location": LOCATION,
+        "table_type": "EXTERNAL", "data_source_format": "DELTA", "storage_location": LOCATION, "properties": {},
         "columns": [
             {"name": "id", "type_text": "bigint", "type_name": "LONG", "type_json": '{"name": "id", "type": "long", "nullable": true, "metadata": {}}', "position": 0, "nullable": True},
             {"name": "name", "type_text": "string", "type_name": "STRING", "type_json": '{"name": "name", "type": "string", "nullable": true, "metadata": {}}', "position": 1, "nullable": True},

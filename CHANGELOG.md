@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- Unity Catalog registration sends the `properties` field the create-table API requires (#1401), and the Delta docs list the `EXTERNAL USE SCHEMA` and `EXTERNAL USE LOCATION` privileges and the metastore's external data access setting it also needs.
 - `floe run --manifest`, `-p` and `floe manifest generate -o` accept `gs://` and `abfss://<container>@<account>.dfs.core.windows.net/` URIs, as they did `s3://` (#1389): manifests and profiles are read from, and generated manifests written to, GCS and ADLS in one put. A bare URI has no storage definition, so credentials and endpoint come from obstore's environment (`GOOGLE_*`, `AZURE_STORAGE_*`; `AZURE_STORAGE_ENDPOINT` and `AZURE_ALLOW_HTTP` for an emulator); Floe adds no variable. `az://`, `abfs://` and `gcs://` stay refused.
 
 - `floe maintain` lists Iceberg table locations on `gs://` and `abfss://` storages through obstore (#1390), so orphan file removal works on a GCS table and no longer refuses a config that defines an ADLS or GCS storage; a `gs://` or `abfss://` location without a matching storage fails with `run_invalid_setup`. Iceberg on ADLS stays refused at validate (#1344), and `--compact` on GCS stays unsupported.
