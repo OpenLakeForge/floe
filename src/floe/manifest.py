@@ -247,6 +247,12 @@ def _entity(entity: EntityConfig, ctx: _Context, default_domain: str | None) -> 
                             source=c.source,
                             nullable=c.nullable,
                             rule_severity=_sorted(c.rule_severity),
+                            min=c.min,
+                            max=c.max,
+                            allowed_values=c.allowed_values,
+                            pattern=c.pattern,
+                            min_length=c.min_length,
+                            max_length=c.max_length,
                         )
                         for c in schema.columns
                     ],

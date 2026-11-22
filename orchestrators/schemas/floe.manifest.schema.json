@@ -991,6 +991,41 @@
                           "abort"
                         ]
                       }
+                    },
+                    "min": {
+                      "type": [
+                        "integer",
+                        "number",
+                        "string"
+                      ]
+                    },
+                    "max": {
+                      "type": [
+                        "integer",
+                        "number",
+                        "string"
+                      ]
+                    },
+                    "allowed_values": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": [
+                          "string",
+                          "integer"
+                        ]
+                      }
+                    },
+                    "pattern": {
+                      "type": "string"
+                    },
+                    "min_length": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "max_length": {
+                      "type": "integer",
+                      "minimum": 0
                     }
                   }
                 }

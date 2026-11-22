@@ -34,6 +34,7 @@ from floe.checks.unique import (
     UniqueTracker,
     seed_from_history,
 )
+from floe.checks.values import value_checks
 from floe.config.types import EntityConfig, PolicySeverity, rule_level
 from floe.errors import FloeConfigError, FloeIoError, FloeRunError
 from floe.pii import apply_pii_masking
@@ -301,7 +302,8 @@ def _typed(
     ]
     if plan.history is not None:
         seed_from_history(plan.tracker, plan.history, typed, plan.out_map)
-    return typed, df, [*required, *cast_checks, *plan.tracker.check(typed)]
+    values = value_checks(typed, config, entity)
+    return typed, df, [*required, *cast_checks, *values, *plan.tracker.check(typed)]
 
 
 def source_columns(plan: Plan, uri: str) -> list[pl.Expr]:

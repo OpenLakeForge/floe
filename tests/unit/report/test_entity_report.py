@@ -257,3 +257,18 @@ def test_write_mode_argument_overrides_the_configured_one() -> None:
     assert _build(_entity(), [])[1]["accepted_output"]["write_mode"] == "overwrite"
     report = _build(_entity(), [], write_mode="append")[1]
     assert report["accepted_output"]["write_mode"] == "append"
+
+
+@pytest.mark.parametrize("rule", ["out_of_range", "not_allowed", "pattern_mismatch", "length"])  # fmt: skip
+def test_1404_a_value_rule_is_reported_under_its_own_name(rule: str) -> None:
+    from floe.report.entity import summarize_rules
+
+    check = RowCheck(rule, "id", "m", pl.Series([True, False, True]), "reject")
+    assert summarize_rules([check], _entity()) == [
+        {
+            "rule": rule,
+            "severity": "reject",
+            "violations": 2,
+            "columns": [{"column": "id", "violations": 2}],
+        }
+    ]

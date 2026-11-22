@@ -110,7 +110,8 @@ def _sink(t: Json, write_mode: str, named_local: bool) -> Json:
 
 
 def _schema(s: Json) -> Json:
-    keys = ("source", "nullable", "rule_severity")
+    keys = ("source", "nullable", "rule_severity", "min", "max", "allowed_values",
+            "pattern", "min_length", "max_length")  # fmt: skip
     for c in s["columns"]:
         for key in ("width", "trim"):
             if c.get(key) is not None:
