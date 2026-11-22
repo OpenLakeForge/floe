@@ -323,6 +323,26 @@ def test_parquet_append_with_a_primary_key_does_not_reject_the_dead_runs_rows_on
     assert p.rejected() == ["x"]
 
 
+def test_iceberg_append_replays_an_input_replaced_after_the_dead_runs_commit(tmp_path: Path, lake: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#1427: the dead batch is still found by the claims' size and mtime, but only its unchanged input is skipped."""
+    p = Pipeline(tmp_path, "iceberg", "append")
+    (tmp_path / "in/old.csv").write_text(OLD)
+    p.run("seed")
+    (tmp_path / "in/keep.csv").write_text("id,name\n7,q\n")
+    (tmp_path / "in/new.csv").write_text(NEW)
+    with monkeypatch.context() as dying:
+        arm(dying, "iceberg", "before_promote")
+        p.crash("dead")
+    assert p.accepted(lake) == [1, 2, 7, 100]
+    (tmp_path / "in/new.csv").write_text("id,name\n3,c\n")  # same URI, new size
+    p.expire_claims()
+    report = p.run("retry")
+    assert reasons(report) == {"keep.csv": "already_committed", "new.csv": None, "old.csv": "already_ingested"}  # fmt: skip
+    assert p.accepted(lake) == [1, 2, 3, 7, 100]  # the old rows were committed; the new ones are appended  # fmt: skip
+    state = p.state()
+    assert ({Path(u).name for u in state["files"]}, state["claims"]) == ({"old.csv", "keep.csv", "new.csv"}, {})  # fmt: skip
+
+
 # #1203: a unique-key Parquet append retry skips the inputs whose marker part the dead run published, and replays the rest
 
 
