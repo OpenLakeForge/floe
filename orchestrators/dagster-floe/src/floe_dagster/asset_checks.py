@@ -9,19 +9,27 @@ from dagster import AssetCheckResult, AssetCheckSeverity, AssetCheckSpec, Metada
 
 from .events import FloeRunFinished
 
-FLOE_CHECK_NAMES: tuple[str, ...] = (
-    "floe_cast_error",
-    "floe_not_null",
-    "floe_unique",
-    "floe_schema_mismatch",
-    "floe_file_status",
-)
-
 _RULE_TO_CHECK_NAME: dict[str, str] = {
     "cast_error": "floe_cast_error",
     "not_null": "floe_not_null",
     "unique": "floe_unique",
+    "out_of_range": "floe_out_of_range",
+    "not_allowed": "floe_not_allowed",
+    "pattern_mismatch": "floe_pattern_mismatch",
+    "length": "floe_length",
+    "min_rows_per_file": "floe_min_rows_per_file",
 }
+# Any other `validation.rules[]` name is a user row predicate, except Floe's `schema_error` catch-all.
+_PREDICATES = "row_predicates"
+_CATCH_ALL = "schema_error"
+
+FLOE_CHECK_NAMES: tuple[str, ...] = (
+    *_RULE_TO_CHECK_NAME.values(),
+    "floe_row_predicates",
+    "floe_schema_mismatch",
+    "floe_file_status",
+    "floe_min_rows",
+)
 
 _TERMINAL_RUN_STATUSES = {"failed", "aborted"}
 _FAIL_FILE_STATUSES = {"rejected", "failed", "aborted", "error"}
@@ -84,7 +92,7 @@ def build_asset_check_results(
     file_status_summary = _summarize_file_statuses(report_files)
 
     results: list[AssetCheckResult] = []
-    for rule_name, check_name in _RULE_TO_CHECK_NAME.items():
+    for rule_name, check_name in (*_RULE_TO_CHECK_NAME.items(), (_PREDICATES, "floe_row_predicates")):
         rule_info = rule_summary.get(rule_name) or {}
         results.append(
             _make_rule_check_result(
@@ -96,6 +104,7 @@ def build_asset_check_results(
         )
     results.append(_make_schema_check_result(ctx=ctx, schema_summary=schema_summary))
     results.append(_make_file_status_check_result(ctx=ctx, file_status_summary=file_status_summary))
+    results.append(_make_min_rows_check_result(ctx=ctx))
     return results
 
 
@@ -172,6 +181,8 @@ def _make_rule_check_result(
     top_columns = rule_info.get("top_columns")
     if isinstance(top_columns, list) and top_columns:
         metadata["top_columns"] = top_columns
+    if rule_info.get("predicates"):
+        metadata["predicate_violations"] = rule_info["predicates"]
 
     description = (
         f"Floe {rule_name} violations={total_violations} (reject={reject_violations}, warn={warn_violations})."
@@ -276,30 +287,47 @@ def _make_file_status_check_result(
     )
 
 
+def _make_min_rows_check_result(*, ctx: FloeCheckContext) -> AssetCheckResult:
+    policy = ctx.policy if isinstance(ctx.policy, Mapping) else {}
+    violated = policy.get("min_rows_violated")
+    level = _as_dict(policy.get("rule_severity")).get("min_rows") or policy.get("severity")
+    terminal = ctx.run_status in _TERMINAL_RUN_STATUSES
+
+    metadata = _base_metadata(ctx)
+    metadata["min_rows_evaluated"] = isinstance(violated, bool)
+    if _as_int(policy.get("min_rows")) is not None:
+        metadata["min_rows"] = _as_int(policy.get("min_rows"))
+
+    description = (
+        f"Floe min_rows violated={violated}." if isinstance(violated, bool) else "Floe min_rows not evaluated."
+    )
+    if terminal:
+        description = f"Floe run status is {ctx.run_status}; treating min_rows check as failed."
+
+    return AssetCheckResult(
+        asset_key=list(ctx.asset_key),
+        check_name="floe_min_rows",
+        passed=not (terminal or violated is True),
+        severity=AssetCheckSeverity.WARN
+        if violated is True and not terminal and level == "warn"
+        else AssetCheckSeverity.ERROR,
+        metadata=metadata,
+        description=description,
+    )
+
+
 def _summarize_rules(files: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
     summary: dict[str, dict[str, Any]] = {
-        "cast_error": {
+        name: {
             "violations_total": 0,
             "reject_violations": 0,
             "warn_violations": 0,
             "files_impacted": 0,
             "column_counts": Counter(),
-        },
-        "not_null": {
-            "violations_total": 0,
-            "reject_violations": 0,
-            "warn_violations": 0,
-            "files_impacted": 0,
-            "column_counts": Counter(),
-        },
-        "unique": {
-            "violations_total": 0,
-            "reject_violations": 0,
-            "warn_violations": 0,
-            "files_impacted": 0,
-            "column_counts": Counter(),
-        },
+        }
+        for name in (*_RULE_TO_CHECK_NAME, _PREDICATES)
     }
+    predicates: Counter[str] = Counter()
 
     for file_item in files:
         file_had_rule: set[str] = set()
@@ -307,10 +335,13 @@ def _summarize_rules(files: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, 
         rules = _as_list(validation.get("rules"))
         for rule_item in rules:
             rule_name = _as_str(rule_item.get("rule"))
-            if rule_name not in summary:
+            if not rule_name or rule_name == _CATCH_ALL:
                 continue
-            bucket = summary[rule_name]
             violations = _as_int(rule_item.get("violations")) or 0
+            if rule_name not in _RULE_TO_CHECK_NAME:
+                predicates[rule_name] += violations
+                rule_name = _PREDICATES
+            bucket = summary[rule_name]
             severity = _as_str(rule_item.get("severity"))
             bucket["violations_total"] = (bucket.get("violations_total") or 0) + violations
             if severity in {"reject", "abort"}:
@@ -341,6 +372,7 @@ def _summarize_rules(files: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, 
             ]
         else:
             bucket["top_columns"] = []
+    summary[_PREDICATES]["predicates"] = dict(predicates)
 
     return summary
 
