@@ -68,7 +68,8 @@ def keyed_part(key: str, index: int, ext: str) -> str:
 def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str | None = None) -> Generator[Callable[[bytes], str]]:  # fmt: skip
     """Yield `put(body) -> name`. Every part is staged as `_staging-<id>-<name>` (invisible to `part_uris`).
 
-    Only when all were written are they copied over `<name>` and the staged copies deleted (#1054).
+    Only when all were written are they copied over `<name>`, last to first so a visible first part means every
+    part is visible (#1423), and the staged copies deleted (#1054).
     Overwrite names the parts `part-NNNNN` and deletes the old parts that no new part replaced, so a
     failed write leaves them untouched. Other modes name them `part-<uuid>` and keep the old parts;
     staging keeps a killed run from leaving visible parts for a retry to duplicate (#1056: parts are
@@ -93,7 +94,7 @@ def _parts(client: StorageClient, base: str, mode: WriteMode, ext: str, key: str
                 client.delete(f"{base}/{stage}{name}")
         raise
     old = part_uris(client, base, ext) if overwrite else []
-    for name in names:
+    for name in reversed(names):
         client.copy(f"{base}/{stage}{name}", f"{base}/{name}")
     for uri in set(old) - {f"{base}/{n}" for n in names}:
         client.delete(uri)

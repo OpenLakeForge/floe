@@ -30,7 +30,7 @@ from floe.read.orc import read_orc
 from floe.read.parquet import read_parquet
 from floe.storage.local import LocalClient
 from floe.storage.types import StorageClient
-from floe.write.outputs import write_accepted, write_rejected
+from floe.write.outputs import keyed_part, write_accepted, write_rejected
 
 LOCAL = LocalClient()
 
@@ -304,6 +304,25 @@ def test_append_failing_on_part_two_deletes_the_part_it_wrote(tmp_path: Path) ->
     with pytest.raises(FloeError):
         write_accepted([pl.DataFrame({"a": list(range(10))})], FailingClient(2), f"local://{tmp_path}", "append", options)  # fmt: skip
     assert list(tmp_path.iterdir()) == []
+
+
+def test_a_failed_publish_never_shows_part_zero_without_the_higher_parts(tmp_path: Path) -> None:  # fmt: skip
+    """#1423: parts are published last to first, so a visible part 0 means every part is visible."""
+
+    class FailingCopy(LocalClient):
+        copies = 0
+
+        def copy(self, src_uri: str, dst_uri: str) -> None:
+            self.copies += 1
+            if self.copies == 2:
+                raise OSError(28, "No space left on device")
+            super().copy(src_uri, dst_uri)
+
+    options = SinkOptions(compression="snappy", row_group_size=10, max_size_per_file=8 * 40)  # fmt: skip
+    with pytest.raises(FloeError):
+        write_accepted([pl.DataFrame({"a": list(range(100))})], FailingCopy(), f"local://{tmp_path}", "append", options, "k")  # fmt: skip
+    visible = [(tmp_path / keyed_part("k", i, "parquet")).exists() for i in range(3)]
+    assert not visible[0] or all(visible), visible
 
 
 def test_append_parts_stay_invisible_until_the_stream_completes(tmp_path: Path) -> None:
