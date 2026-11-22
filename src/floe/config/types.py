@@ -80,6 +80,13 @@ class ColumnConfig(_Model):
     column_type: str
     nullable: bool | None
     rule_severity: dict[str, PolicySeverity] | None = None
+    # #1251: the raw YAML literals; `floe.checks.values.literal` converts them per column type
+    min: int | float | str | None = None
+    max: int | float | str | None = None
+    allowed_values: list[int] | list[str] | None = None
+    pattern: str | None = None
+    min_length: int | None = None
+    max_length: int | None = None
 
 
 class SchemaConfig(_Model):
