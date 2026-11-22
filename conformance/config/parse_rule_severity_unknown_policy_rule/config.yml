@@ -14,7 +14,7 @@ entities:
   policy:
     severity: reject
     rule_severity:
-      min_rows: warn
+      max_rows: warn
   schema:
     columns:
     - name: id

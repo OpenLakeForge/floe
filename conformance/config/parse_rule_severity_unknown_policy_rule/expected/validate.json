@@ -1,4 +1,4 @@
 {
   "ok": false,
-  "error": "entities[0] (entity.name=orders): unknown field policy.rule_severity.min_rows"
+  "error": "entities[0] (entity.name=orders): unknown field policy.rule_severity.max_rows"
 }

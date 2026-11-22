@@ -22,6 +22,8 @@ def check(
     catalogs: str = "",
     partitioning: str = "",
     options: str = "{}",
+    policy: str = "{severity: warn}",
+    extra: str = "",
 ) -> None:
     path = tmp_path / "config.yml"
     path.write_text(
@@ -32,9 +34,10 @@ def check(
         - name: orders
           source: {{format: {fmt}, path: in.csv, options: {options}{partitioning}}}
           sink: {sink}
-          policy: {{severity: warn}}
+          policy: {policy}
           schema: {schema}
         """)
+        + extra
     )
     validate_entities(parse_config(path))
 
@@ -927,6 +930,19 @@ def test_schema_checks_abort_needs_rejected_sink(tmp_path: Path) -> None:
     with pytest.raises(FloeConfigError) as err:
         check(tmp_path, predicates("{name: x, left: amount, op: not_null, severity: abort}"))  # fmt: skip
     assert (err.value.code, str(err.value)) == ("config_missing_key", "entity.name=orders sink.rejected is required when schema.checks[name=x].severity=abort")  # fmt: skip
+
+
+def test_a_min_rows_abort_needs_no_rejected_sink_and_passes_the_pii_check(tmp_path: Path) -> None:  # fmt: skip
+    policy = "{severity: warn, min_rows: 5, rule_severity: {min_rows: abort}}"
+    pii = "  pii: {columns: [{name: id, strategy: hash}]}\n"
+    check(tmp_path, f"{{{COLS}}}", policy=policy, extra=pii)
+
+
+def test_min_rows_is_never_named_as_the_level_source(tmp_path: Path) -> None:
+    policy = "{severity: warn, rule_severity: {min_rows: abort, unique: reject}}"
+    with pytest.raises(FloeConfigError) as err:
+        check(tmp_path, f"{{{COLS}}}", policy=policy)
+    assert str(err.value) == "entity.name=orders sink.rejected is required when policy.rule_severity.unique=reject"  # fmt: skip
 
 
 def _column_error(tmp_path: Path, column: str) -> FloeConfigError:

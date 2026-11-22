@@ -657,6 +657,23 @@ def test_a_manifest_run_enforces_max_rejection_rate(
     assert list((work / "out/accepted/orders").glob("*.parquet"))
 
 
+@pytest.mark.parametrize(("level", "code"), [(None, 2), ("reject", 2), ("warn", 0)])
+def test_a_manifest_run_enforces_min_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, level: str | None, code: int
+) -> None:
+    work = copy_case("min_rows", tmp_path / "w")
+    monkeypatch.chdir(work)
+    assert floe(monkeypatch, "manifest", "generate", "-c", "config.yml", "-o", "m.json") == 0  # fmt: skip
+    assert load_manifest("m.json")[1][0].policy.min_rows == 5
+    if (
+        level
+    ):  # a hand-edited manifest skips validation; a reject still resolves to abort
+        m = json.loads((work / "m.json").read_text())
+        m["entities"][0]["policy_rule_severity"] = {"min_rows": level}
+        (work / "m.json").write_text(json.dumps(m))
+    assert floe(monkeypatch, "run", "--manifest", "m.json", "--run-id", "r") == code
+
+
 def test_manifest_errors_carry_codes(tmp_path: Path) -> None:
     from floe.errors import FloeConfigError, FloeIoError
     from floe.manifest_run import load_manifest

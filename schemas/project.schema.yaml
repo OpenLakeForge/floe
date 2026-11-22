@@ -1061,6 +1061,11 @@ $defs:
         - 'null'
         minimum: 0
         maximum: 1
+      min_rows:
+        type:
+        - integer
+        - 'null'
+        minimum: 1
       min_rows_per_file:
         type:
         - integer
@@ -1117,6 +1122,11 @@ $defs:
             enum:
             - warn
             - reject
+            - abort
+          min_rows:
+            type: string
+            enum:
+            - warn
             - abort
           min_rows_per_file:
             type: string

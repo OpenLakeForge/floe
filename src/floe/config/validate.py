@@ -99,7 +99,7 @@ def _level_source(entity: EntityConfig, levels: tuple[str, ...]) -> str:
         f"{where}.{rule}={level}"
         for where, found in scopes
         for rule, level in (found or {}).items()
-        if level in levels
+        if level in levels and rule != "min_rows"
     )
 
 
