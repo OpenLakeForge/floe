@@ -12,6 +12,7 @@ from floe.storage.paths import fnv1a_hex, parse_s3_uri
 from floe.storage.types import ObjectRef, StoredObject
 
 if TYPE_CHECKING:
+    from botocore.awsrequest import AWSPreparedRequest
     from botocore.exceptions import BotoCoreError, ClientError
 else:
     try:
@@ -40,6 +41,12 @@ def _code(err: ClientError) -> str:
 def _is(err: ClientError, codes: tuple[str, ...]) -> bool:
     status = str(err.response.get("ResponseMetadata", {}).get("HTTPStatusCode", ""))
     return _code(err) in codes or status in codes
+
+
+def _no_expect_on_conditional_put(request: "AWSPreparedRequest", **_: object) -> None:
+    """#1432: Scaleway refuses a precondition (412) without `100 Continue`, then reads the next request on the connection as the unsent body."""
+    if "If-Match" in request.headers or "If-None-Match" in request.headers:
+        del request.headers["Expect"]
 
 
 def _iso(ts: datetime | None) -> str | None:
@@ -80,6 +87,9 @@ class S3Client:
                 request_checksum_calculation="when_required",
                 response_checksum_validation="when_required",
             ),
+        )
+        self._client.meta.events.register(
+            "before-send.s3.PutObject", _no_expect_on_conditional_put
         )
         self.endpoint: str = self._client.meta.endpoint_url.rstrip("/")  # pyright: ignore[reportUnknownMemberType]  # identifies the store behind a bucket name
 

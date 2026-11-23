@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from botocore.awsrequest import AWSPreparedRequest
 from botocore.stub import Stubber
 
 from floe.errors import FloeRunError
@@ -91,3 +92,29 @@ def test_939_source_mtime_reads_the_legacy_copy_metadata(monkeypatch: pytest.Mon
         assert client.source_mtime("s3://b/arch/old.csv") is None
         assert client.source_mtime("s3://b/arch/go.csv") == "2026-10-24T10:00:00Z"  # header case kept by botocore  # fmt: skip
         stub.assert_no_pending_responses()
+
+
+class _Sent(Exception):
+    pass
+
+
+def test_1432_conditional_puts_send_no_expect_continue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scaleway answers a refused precondition without `100 Continue`, then reads the next request on the connection as the unsent body."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "k")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "s")
+    client = S3Client("b", "us-east-1")
+    expect: list[object] = []
+
+    def capture(request: AWSPreparedRequest, **_: object) -> None:
+        expect.append(request.headers.get("Expect"))
+        raise _Sent
+
+    client._client.meta.events.register_last("before-send.s3.PutObject", capture)  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType]  # fmt: skip
+    for expected in (None, '"etag"'):
+        with pytest.raises(_Sent):
+            client.write_conditional("s3://b/state.json", expected, b"x")
+    with pytest.raises(_Sent):
+        client.write("s3://b/data.parquet", b"x")
+    assert expect == [None, None, b"100-continue"]
