@@ -35,7 +35,7 @@ order_id,amount
 Create `floe.yml` next to the `in` folder:
 
 ```yaml
-version: "0.10"
+version: "1.0"
 entities:
   - name: orders
     source:

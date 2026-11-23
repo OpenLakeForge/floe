@@ -158,9 +158,10 @@ def test_evolution_old_version(tmp_path: Path) -> None:
 def test_d21_version_follows_floe(tmp_path: Path) -> None:
     check(tmp_path, f"{{{COLS}}}", "0.9")
     check(tmp_path, f"{{{COLS}}}", "0.10")
+    check(tmp_path, f"{{{COLS}}}", "1.0")
     with pytest.raises(FloeConfigError) as err:
-        check(tmp_path, f"{{{COLS}}}", "0.11")
-    assert str(err.value) == "root.version=0.11 is unsupported (newer than Floe 0.10)"
+        check(tmp_path, f"{{{COLS}}}", "1.1")
+    assert str(err.value) == "root.version=1.1 is unsupported (newer than Floe 1.0)"
 
 
 def test_json_column_limit(tmp_path: Path) -> None:

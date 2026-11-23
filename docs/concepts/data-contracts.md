@@ -20,7 +20,7 @@ it gives; the [Config reference](../reference/config.md) lists every field.
 ## Anatomy of a contract
 
 ```yaml
-version: "0.10"                  # the minimum Floe release this config targets
+version: "1.0"                   # the minimum Floe release this config targets
 domains:
   - name: sales                  # optional: groups entities, shares defaults
 entities:

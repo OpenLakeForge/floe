@@ -153,7 +153,7 @@ A manifest is a self-contained JSON document. Here's an annotated excerpt:
 
 ```jsonc
 {
-  "spec_version": "0.10",                // Floe major.minor that generated it (D22)
+  "spec_version": "1.0",                 // Floe major.minor that generated it (D22)
   "manifest_name": "sales.prod",         // optional stable logical name (--manifest-name)
   "manifest_id": "mfv1-a1b2c3d4...",    // FNV-1a hash of config URI + content
   "manifest_revision": "sha256:...",     // SHA-256 of canonical manifest content

@@ -375,7 +375,7 @@ def test_a_legacy_dotted_bare_name_is_kept_whole(
         ({"storages": "nope"}, "Error: manifest storages block is malformed: "),
         (
             {"spec_version": "9.9"},
-            "Error: manifest spec_version=9.9 is unsupported (newer than Floe 0.",
+            "Error: manifest spec_version=9.9 is unsupported (newer than Floe 1.",
         ),
         ({"entities": None}, "Error: manifest parse error: "),
     ],

@@ -97,7 +97,7 @@ error. `{{VAR}}` placeholders are not applied to catalog definitions: to vary th
 define the catalog in each stage's profile ([profile catalogs](../guides/profiles.md#environment-catalog-overrides)
 replace the config's). Glue credentials come from the AWS credential chain, as for S3. Glue supports `overwrite` and `append`: `floe validate` rejects a
 merge write mode, and `floe maintain --compact` needs a REST catalog. `allow_takeover` is
-accepted and ignored: Floe 0.10 writes any Iceberg table in the database (D42).
+accepted and ignored: Floe writes any Iceberg table in the database (D42).
 
 ## REST catalog credentials
 
