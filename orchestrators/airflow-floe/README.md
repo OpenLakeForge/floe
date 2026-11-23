@@ -15,6 +15,7 @@ airflow-floe is a supported Floe connector (Beta), linted and type-checked in CI
 
 | airflow-floe | Floe |
 | --- | --- |
+| 0.5.x | 0.8, 0.9, 0.10 or 1.0 (`pip install floe-python`, or the `ghcr.io/openlakeforge/floe` image) |
 | 0.4.x | 0.8, 0.9 or 0.10 (`pip install floe-python`, or the `ghcr.io/openlakeforge/floe` image) |
 | 0.3.x | 0.8 or 0.9 (`pip install floe-python`, or the `ghcr.io/openlakeforge/floe` image) |
 | 0.2.x | 0.8 (`pip install floe-python`, or the `ghcr.io/openlakeforge/floe` image) |
@@ -25,7 +26,7 @@ airflow-floe is a supported Floe connector (Beta), linted and type-checked in CI
 
 - `INTEGRATION_SPEC.md`: contract between Airflow and Floe CLI
 - `schemas/`: JSON Schemas for XCom payloads and manifest contract
-- `src/airflow_floe/manifest.py`: manifest loader (`spec_version` `"0.8"`, `"0.9"` or `"0.10"`)
+- `src/airflow_floe/manifest.py`: manifest loader (`spec_version` `"0.8"`, `"0.9"`, `"0.10"` or `"1.0"`)
 - `src/airflow_floe/runtime.py`: shared runtime helpers (manifest context, run event parsing, summary loading)
 - `src/airflow_floe/hooks.py`: reusable manifest hook (`FloeManifestHook`)
 - `src/airflow_floe/operators.py`: reusable run hook/operator (`FloeRunHook`, `FloeRunOperator`)
@@ -38,7 +39,7 @@ The connector is driven entirely by environment variables. No code changes are n
 
 | Env var | What it does |
 | --- | --- |
-| `FLOE_MANIFEST` | Primary: path to a Floe 0.8, 0.9 or 0.10 manifest JSON — enables asset registration at parse time |
+| `FLOE_MANIFEST` | Primary: path to a Floe 0.8, 0.9, 0.10 or 1.0 manifest JSON — enables asset registration at parse time |
 | `FLOE_MANIFEST_DIR` | Multi-manifest mode: directory of `*.manifest.json` files; one DAG per file |
 | `FLOE_CONFIG` | Fallback run config used when manifest loading fails — DAG still executes `floe run`, but no assets are registered |
 | `FLOE_CMD` | Override the `floe` binary path (default: `floe` on `$PATH`) |

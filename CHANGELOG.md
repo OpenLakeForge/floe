@@ -45,7 +45,6 @@ All notable changes to Floe are documented in this file.
 - `floe add-entity` no longer writes `unique: false` on each generated column (#1259); the flag was a no-op default.
 - `docs/reference/errors.md` lists the typed error codes (#1260). Text logs print `error_code=<code>` on a failure line when the error carries one. Raise sites adopt the codes in the next PRs of #1260, so no error carries a code yet.
 - A partitioned S3 archive now keeps the source modification time in one `.floe/source_mtime/<run_id>.json` index per run and entity (#1271), instead of the copy's `floe-source-mtime` object metadata; a full refresh reads the indexes first, then the legacy metadata of older archives. Local archives have no index and order by the copy's own mtime. `StorageClient.copy` no longer takes `source_mtime`.
-- `airflow-floe` renders `{manifest_uri}` in a manifest's `execution` args (#1285), so a manifest from `floe manifest generate` runs: the local runner gets the manifest path the DAG was built from, `kubernetes_job` and `databricks_job` need a remote manifest URI. `{run_id}` renders to the DAG run id plus the task id, limited to `[A-Za-z0-9_.-]`. Any other token still unrendered raises a `ValueError` naming it.
 - An emptied incremental state and `floe state reset` now leave an empty `state.json` on storage instead of deleting it (#1271); an empty state reads as no state, and `StorageClient` no longer has `delete_conditional`.
 
 ## v0.10.4
@@ -601,6 +600,14 @@ supported. Floe 0.7 and earlier manifests are rejected.
   `AWS_ENDPOINT_URL`) as the endpoint and, when `AWS_S3_FORCE_PATH_STYLE` is `true`/`1`,
   path-style addressing, matching Floe core (#448). Without these variables behaviour is
   unchanged. Requires the existing `remote` extra.
+
+## airflow-floe v0.5.0
+
+Use it with Floe 1.0; it still loads 0.8, 0.9 and 0.10 manifests.
+
+- **Accepts Floe 1.0 manifests.** `spec_version` `0.8`, `0.9`, `0.10` and `1.0` load.
+- Renders `{manifest_uri}` in a manifest's `execution` args (#1285), so a manifest from `floe manifest generate` runs: the local runner gets the manifest path the DAG was built from, `kubernetes_job` and `databricks_job` need a remote manifest URI. `{run_id}` renders to the DAG run id plus the task id, limited to `[A-Za-z0-9_.-]`. Any other token still unrendered raises a `ValueError` naming it.
+- `FloeRunOperator` fails the task when a `kubernetes_job` or `databricks_job` run fails (#1286). It used to return the remote runner's payload as-is, so a failed, timed-out or canceled job left the task green. It now raises unless `backend_status` is `succeeded` (Kubernetes) or `SUCCESS` (Databricks), the exit code is `0` or absent, and Floe's status is not `failed` or `aborted`.
 
 ## airflow-floe v0.4.0
 
