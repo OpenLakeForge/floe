@@ -217,7 +217,8 @@ def _race(target: str, expected: str | None) -> list[str | None]:
 
 def test_concurrent_conditional_puts_have_one_winner(s3: S3Client, base: str) -> None:
     """The CAS the incremental state relies on: of N writers with the same expectation, exactly one wins."""
-    version = s3.write_conditional(f"{base}/state.json", None, b"0")
+    # a body no writer writes: rewriting the same bytes keeps the ETag, so a second If-Match would match (ABA)
+    version = s3.write_conditional(f"{base}/state.json", None, b"seed")
     assert version
     for target, expected in ((f"{base}/fresh.json", None), (f"{base}/state.json", version)):  # create, then replace  # fmt: skip
         results = _race(target, expected)
