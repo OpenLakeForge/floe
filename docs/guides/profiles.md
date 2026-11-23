@@ -230,8 +230,9 @@ Databricks auth expectations for orchestrator runtimes:
   the orchestrator process starts.
 
 Delta on Databricks: a `sink.accepted.format: delta` entity writes a path-based Delta table on S3
-(see [Delta sink](../sinks/delta.md)), which Databricks can read by its path. Registering the
-table in Unity Catalog comes later (#1313, #1314).
+(see [Delta sink](../sinks/delta.md)), which Databricks can read by its path. With a `type: unity`
+catalog and `sink.accepted.delta`, Floe also registers it in Unity Catalog as an external table
+(see [Unity Catalog](../sinks/delta.md#unity-catalog)).
 
 Per-run env vars and `existing_cluster_id`:
 
