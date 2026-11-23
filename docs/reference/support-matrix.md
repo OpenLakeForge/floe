@@ -110,14 +110,17 @@ Notes:
 
 ## S3-compatible providers
 
-Per-provider results of `uv run pytest -m s3compat tests/integration/test_s3_compatible.py`, see
-[S3-compatible providers](../storages/s3.md#s3-compatible-providers). Nothing is claimed until a run against a real
-bucket is recorded on the issue (Scaleway #1269, OVHcloud #1270); each cell then gets its result and date.
+Per-provider results of `uv run pytest -m s3compat tests/integration/test_s3_compatible.py`, plus manual runs
+against a local Polaris catalog backed by the bucket, see
+[S3-compatible providers](../storages/s3.md#s3-compatible-providers). A cell is claimed only once a run against a
+real bucket is recorded on the issue (Scaleway #1269, OVHcloud #1270), with its date. Results hold for the
+Floe version after v0.10.4; earlier versions need the notes in
+[Provider notes](../storages/s3.md#provider-notes).
 
-| Provider | List, read, write, copy, delete, large Parquet download | `If-None-Match: *` refused | Stale `If-Match` put refused | Stale `If-Match` delete refused | Archive copy and source mtime index | `floe run` with `incremental_mode: file` | Iceberg FileIO and DuckDB merges | Path-style | Virtual-hosted |
-|---|---|---|---|---|---|---|---|---|---|
-| Scaleway Object Storage | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified |
-| OVHcloud Object Storage | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified |
+| Provider | List, read, write, copy, delete, large Parquet download | `If-None-Match: *` refused | Stale `If-Match` put refused | Stale `If-Match` delete refused | Archive copy and source mtime index | `floe run` with `incremental_mode: file` | Iceberg FileIO and DuckDB merges | Path-style | Virtual-hosted | Delta append, manifest on `s3://`, `floe maintain` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Scaleway Object Storage (`fr-par`) | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 |
+| OVHcloud Object Storage (`gra`) | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 |
 
 ## Fault scenarios (Iceberg and S3)
 
