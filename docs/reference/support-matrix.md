@@ -98,7 +98,7 @@ Notes:
   `AWS_ENDPOINT_URL`; see [storages/s3.md](../storages/s3.md).
 - ADLS and GCS (the `adls` and `gcs` extras) cover sources, accepted Parquet, rejected output,
   reports, archive and incremental state; credentials come from the environment, and `endpoint`
-  points at an emulator such as Azurite (fake-gcs-server does not work yet, #1342). See [ADLS](../storages/adls.md) and [GCS](../storages/gcs.md).
+  points at an emulator such as Azurite (CI runs the GCS tests on fake-gcs-server behind a test-only XML upload shim, #1342). See [ADLS](../storages/adls.md) and [GCS](../storages/gcs.md).
 
 | Feature | S3 | ADLS | GCS |
 |---|---|---|---|
