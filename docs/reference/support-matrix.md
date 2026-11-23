@@ -120,7 +120,7 @@ Floe version after v0.10.4; earlier versions need the notes in
 | Provider | List, read, write, copy, delete, large Parquet download | `If-None-Match: *` refused | Stale `If-Match` put refused | Stale `If-Match` delete refused | Archive copy and source mtime index | `floe run` with `incremental_mode: file` | Iceberg FileIO and DuckDB merges | Path-style | Virtual-hosted | Delta append, manifest on `s3://`, `floe maintain` |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Scaleway Object Storage (`fr-par`) | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 |
-| OVHcloud Object Storage | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified | not yet verified |
+| OVHcloud Object Storage (`gra`) | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 | ✅ 2026-11-23 |
 
 ## Fault scenarios (Iceberg and S3)
 
