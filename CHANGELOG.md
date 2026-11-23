@@ -311,6 +311,23 @@ dagster-floe 0.5 or airflow-floe 0.3 with it.
   instead of spilling. It now caps memory at 4GB and spills to a temporary directory (at most
   50GB, removed afterwards). Size pods at 6 GiB or more (see `docs/write_modes.md`).
 
+## dagster-floe v0.7.0
+
+Use it with Floe 1.0; it still loads 0.8, 0.9 and 0.10 manifests.
+
+- **Accepts Floe 1.0 manifests.** `spec_version` `0.8`, `0.9`, `0.10` and `1.0` load; the `floe` extra now installs
+  `floe-python>=1.0,<2`. The cap is the next major, not the next minor: under the 1.x stability policy
+  (`docs/reference/stability.md`) a 1.0 manifest keeps running on every later 1.x Floe. A manifest from a later
+  Floe minor still needs the dagster-floe release that lists its `spec_version`.
+- **The manifest schema follows Floe 1.0.** It accepts the optional `policy_rule_severity` and column `rule_severity`
+  (#1358), the column value checks `min`, `max`, `allowed_values`, `pattern`, `min_length` and `max_length` (#1404),
+  `schema.checks` (#1252), `policy_min_rows_per_file` (#1410) and `policy_min_rows` (#1409). **Breaking:** it drops
+  the column `unique` flag (#1259), so a manifest that still carries it is refused; regenerate it with
+  `floe manifest generate`.
+- Raises asset checks for the new report rules (#1411): `floe_out_of_range`, `floe_not_allowed`, `floe_pattern_mismatch`, `floe_length` and `floe_min_rows_per_file` from `validation.rules[]`, `floe_row_predicates` for every other rule name except `schema_error` (per-predicate counts in `predicate_violations`), and `floe_min_rows` from the report's `policy.min_rows_violated`. Reports without these rules pass the new checks.
+- Loads manifests from `abfss://` URIs (#1391), and resolves a relative `config_uri` against them; `abfss://` was read as a local path and failed with `FileNotFoundError`.
+- Rule asset checks count `severity: abort` violations in `reject_violations` (#1360); they used to land in neither `reject_violations` nor `warn_violations`, so the counts did not add up to `violations_total`.
+
 ## dagster-floe v0.6.1
 
 Use it with Floe 0.10.2 for per-entity streaming and the rejection threshold; older Floe 0.10 images keep today's end-of-run reporting.
@@ -602,6 +619,14 @@ supported. Floe 0.7 and earlier manifests are rejected.
   `AWS_ENDPOINT_URL`) as the endpoint and, when `AWS_S3_FORCE_PATH_STYLE` is `true`/`1`,
   path-style addressing, matching Floe core (#448). Without these variables behaviour is
   unchanged. Requires the existing `remote` extra.
+
+## airflow-floe v0.5.0
+
+Use it with Floe 1.0; it still loads 0.8, 0.9 and 0.10 manifests.
+
+- **Accepts Floe 1.0 manifests.** `spec_version` `0.8`, `0.9`, `0.10` and `1.0` load.
+- Renders `{manifest_uri}` in a manifest's `execution` args (#1285), so a manifest from `floe manifest generate` runs: the local runner gets the manifest path the DAG was built from, `kubernetes_job` and `databricks_job` need a remote manifest URI. `{run_id}` renders to the DAG run id plus the task id, limited to `[A-Za-z0-9_.-]`. Any other token still unrendered raises a `ValueError` naming it.
+- `FloeRunOperator` fails the task when a `kubernetes_job` or `databricks_job` run fails (#1286). It used to return the remote runner's payload as-is, so a failed, timed-out or canceled job left the task green. It now raises unless `backend_status` is `succeeded` (Kubernetes) or `SUCCESS` (Databricks), the exit code is `0` or absent, and Floe's status is not `failed` or `aborted`.
 
 ## airflow-floe v0.4.0
 
