@@ -133,10 +133,10 @@ def reconcile(
             "not created by floe contract import (no `# floe-contract:` header)"
         )
     try:
-        doc = parse_yaml(existing_text)[0]
+        doc = cast("dict[str, Any]", parse_yaml(existing_text)[0])
     except Exception as e:  # noqa: BLE001 -- any parse failure blocks the file, with its message
         return blocked(f"cannot parse the existing file: {e}")
-    old, new = owned(doc if isinstance(doc, dict) else {}), owned(new_entity)  # pyright: ignore[reportUnknownArgumentType]
+    old, new = owned(doc), owned(new_entity)
     if fingerprint(old) != match.group(1):
         return blocked(
             "business-owned keys were edited by hand; change the workbook or revert them:\n"
@@ -151,15 +151,13 @@ def reconcile(
         return PlannedFile(path, existing_text, existing_text, "unchanged")
     try:
         result = _splice(existing_text, old, new)
-        again = parse_yaml(result)[0]
+        again = cast("dict[str, Any]", parse_yaml(result)[0])
     except _Unsplicable as e:
         return blocked(f"owned key {e} is in flow style or has an unexpected shape")
     except Exception as e:  # noqa: BLE001 -- the splice must never raise; a bad one is blocked
         return blocked(f"self-check failed: the spliced file does not parse: {e}")
-    if any(p in again and not again[p] for (p,) in _PARENTS):  # pyright: ignore[reportOperatorIssue, reportIndexIssue, reportUnknownVariableType]
+    if any(p in again and not again[p] for (p,) in _PARENTS):
         return blocked("self-check failed: the splice left an empty parent mapping")
-    if fingerprint(owned(cast("dict[str, Any]", again))) != fingerprint(new) or _rest(
-        again
-    ) != _rest(doc):
+    if fingerprint(owned(again)) != fingerprint(new) or _rest(again) != _rest(doc):
         return blocked("self-check failed: the splice changed more than the owned keys")
     return PlannedFile(path, existing_text, result, "updated")
