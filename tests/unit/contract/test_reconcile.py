@@ -177,3 +177,41 @@ def test_parent_with_an_engineer_child_is_kept() -> None:
     assert plan.status == "updated", plan.reason
     assert plan.new_text is not None
     assert "metadata:\n  tags:\n    - gold  # keep\n" in plan.new_text
+
+
+def test_inserts_at_the_same_offset_keep_children_under_their_parent() -> None:
+    bare = _entity()
+    del bare["metadata"], bare["schema"]["primary_key"]
+    plan = reconcile("orders.yml", _generated(bare), _entity())
+    assert plan.status == "updated", plan.reason
+    assert plan.new_text is not None
+    assert "\nprimary_key" not in plan.new_text  # still indented under schema
+    assert "metadata:" in plan.new_text and "  primary_key:" in plan.new_text
+
+
+def _block_description() -> str:
+    entity = _entity(metadata={"owner": "ops", "description": "line1\nline2"})
+    text = _generated(entity).replace(
+        '  description: "line1\\nline2"\n',
+        "  description: |-\n    line1\n    line2\n# engineer note\n",
+    )
+    assert "# engineer note" in text
+    return text
+
+
+def test_removing_a_block_scalar_keeps_the_comment_after_it() -> None:
+    plan = reconcile(
+        "orders.yml", _block_description(), _entity(metadata={"owner": "ops"})
+    )
+    assert plan.status == "updated", plan.reason
+    assert plan.new_text is not None
+    assert "description" not in plan.new_text
+    assert "  owner: ops\n# engineer note\nsource:" in plan.new_text
+
+
+def test_replacing_a_block_scalar_keeps_the_next_key() -> None:
+    new = _entity(metadata={"owner": "ops", "description": "other"})
+    plan = reconcile("orders.yml", _block_description(), new)
+    assert plan.status == "updated", plan.reason
+    assert plan.new_text is not None
+    assert "  description: other\n# engineer note\nsource:" in plan.new_text

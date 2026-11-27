@@ -25,18 +25,28 @@ class _Unsplicable(Exception):
     pass
 
 
+_Edit = tuple[int, int, str, int]  # start, end, replacement, depth of the key path
+
+
 def _block_map(node: Any) -> bool:
     return (
         isinstance(node, yaml.MappingNode) and not node.flow_style and bool(node.value)
     )
 
 
-def _end(node: Any) -> int:
+def _end(text: str, node: Any) -> int:
     """End of the node's last content, without the comments after it."""
     if isinstance(node, yaml.CollectionNode) and not node.flow_style and node.value:
         last = node.value[-1]
-        return _end(last[1] if isinstance(node, yaml.MappingNode) else last)
-    return node.end_mark.index
+        return _end(text, last[1] if isinstance(node, yaml.MappingNode) else last)
+    end: int = node.end_mark.index
+    if getattr(node, "style", None) in (
+        "|",
+        ">",
+    ):  # a block scalar's mark is past its last newline
+        while end > node.start_mark.index and text[end - 1] == "\n":
+            end -= 1
+    return end
 
 
 def _eol(text: str, i: int) -> int:
@@ -48,9 +58,14 @@ def _pair(key: str, value: Any, col: int) -> str:
     return _render({key: value}).rstrip("\n").replace("\n", "\n" + " " * col)
 
 
-def _drop(text: str, k: Any, v: Any) -> tuple[int, int, str]:
+def _drop(text: str, k: Any, v: Any, depth: int) -> _Edit:
     """The edit that removes a whole `key: value` pair, lines included."""
-    return (text.rfind("\n", 0, k.start_mark.index) + 1, _eol(text, _end(v)), "")
+    return (
+        text.rfind("\n", 0, k.start_mark.index) + 1,
+        _eol(text, _end(text, v)),
+        "",
+        depth,
+    )
 
 
 def _edit(
@@ -59,7 +74,7 @@ def _edit(
     old: Mapping[str, Any],
     new: Mapping[str, Any],
     path: tuple[str, ...],
-    edits: list[tuple[int, int, str]],
+    edits: list[_Edit],
 ) -> None:
     pairs = {k.value: (k, v) for k, v in node.value}
     col = node.value[0][0].start_mark.column
@@ -77,28 +92,33 @@ def _edit(
             if not new.get(key) and {c.value for c, _ in v.value} <= set(
                 old.get(key, {})
             ):
-                edits.append(_drop(text, k, v))  # every child goes: drop the parent too
+                edits.append(
+                    _drop(text, k, v, len(path))
+                )  # every child goes: drop the parent too
                 continue
             _edit(text, v, old.get(key, {}), new.get(key, {}), here, edits)
         elif key in new:
-            edits.append((start, _end(v), _pair(key, new[key], col)))
+            edits.append((start, _end(text, v), _pair(key, new[key], col), len(path)))
         else:  # no longer in the workbook: drop the whole line(s)
-            edits.append(_drop(text, k, v))
+            edits.append(_drop(text, k, v, len(path)))
     if adds:
-        pos = _eol(text, _end(node))
+        pos = _eol(text, _end(text, node))
         lead = "" if text[:pos].endswith("\n") else "\n"
-        edits.append((pos, pos, lead + "".join(adds)))
+        edits.append((pos, pos, lead + "".join(adds), len(path)))
 
 
 def _splice(text: str, old: Mapping[str, Any], new: Mapping[str, Any]) -> str:
     root = cast("Any", yaml.compose(text, Loader=yaml.SafeLoader))  # pyright: ignore[reportUnknownMemberType] -- the stub leaves the node type unknown
     if not _block_map(root):
         raise _Unsplicable("<document>")
-    edits = [(0, text.index("\n") if "\n" in text else len(text), "")]
+    edits: list[_Edit] = [(0, text.index("\n") if "\n" in text else len(text), "", 0)]
     _edit(text, root, old, new, (), edits)
     header = f"# floe-contract: sha256:{fingerprint(new)}"
-    edits[0] = (0, edits[0][1], header)
-    for start, end, repl in sorted(edits, key=lambda e: (e[0], e[1]), reverse=True):
+    edits[0] = (0, edits[0][1], header, 0)
+    # at one offset a parent's new child must land before a new root key: apply the root first
+    for start, end, repl, _ in sorted(
+        edits, key=lambda e: (e[0], e[1], -e[3]), reverse=True
+    ):
         text = text[:start] + repl + text[end:]
     return text
 
