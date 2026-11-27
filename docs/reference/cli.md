@@ -42,11 +42,12 @@
   - `--deterministic`, `--manifest-name`, `--default-domain`, `--manifest-path-mode` and
     `--runtime` are described in [manifest.md](../guides/manifest.md).
 
-- `floe add-entity -c <config> --input <path|file://...> [--format csv|json|parquet] [--name <entity>] [--domain <domain>] [--source <ref> --resource <name>]`
+- `floe add-entity -c <config> --input <path|file://...> [--format csv|json|parquet|xlsx] [--name <entity>] [--domain <domain>] [--source <ref> --resource <name>]`
   - Infer a schema from an input file and add a new entity to the config.
   - If `--domain` matches an included domain and `--output` is omitted, writes `<domain folder>/<name>.yml`; fields supplied by domain defaults are omitted from that file.
   - If `-c` points to a missing file, Floe creates a minimal config and adds the entity.
-  - If `--format` is omitted, Floe infers it from the input file extension (`.csv`, `.json`, `.parquet`).
+  - If `--format` is omitted, Floe infers it from the input file extension (`.csv`, `.json`, `.parquet`, `.xlsx`).
+  - XLSX inference requires `floe-python[xlsx]`. Floe uses the first worksheet, reads its first row as column names, and gives each column type `string`.
   - If `--name` is omitted, Floe infers it from the input filename stem.
   - `--source` and `--resource` write a reference to a declared `sources:` entry; `--input` remains the file used for schema inference.
   - Generates defaults for `sink`, `policy`, and `schema.mismatch`.

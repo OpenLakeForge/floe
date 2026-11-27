@@ -2,6 +2,10 @@
 
 All notable changes to Floe are documented in this file.
 
+## Unreleased
+
+- `floe add-entity` can infer string columns from the first worksheet of a local XLSX file with the `xlsx` extra installed (#1447).
+
 ## v1.0.0
 
 Floe 1.0 starts the [stability policy](docs/reference/stability.md): what it freezes keeps working on every later 1.x release, and breaking changes wait for 2.0. Floe 1.0 accepts configs with `version:` up to `"1.0"` and generates manifests with `spec_version: "1.0"`; use dagster-floe 0.7 or airflow-floe 0.5 with it.

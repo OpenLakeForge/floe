@@ -14,6 +14,7 @@ from typing import Self
 
 import polars as pl
 import pytest
+from test_add_entity_infer import write_first_sheet
 
 from floe._cli import main
 from floe.config.parse import parse_config
@@ -438,6 +439,33 @@ def test_add_entity_infers_format_from_extension_csv_json_and_parquet(
         assert entities(config)[0].source.format == fmt
 
 
+@pytest.mark.parametrize("args", [(), ("--format", "xlsx")])
+def test_add_entity_xlsx_creates_a_valid_config(
+    floe: Run, tmp_path: Path, args: tuple[str, ...]
+) -> None:
+    book = Path(__file__).parents[2] / "conformance/xlsx/in/orders.xlsx"
+    config = tmp_path / "config.yml"
+    assert add(floe, config, book, *args)[0] == 0
+    assert floe("validate", "-c", config)[0] == 0
+    [entity] = entities(config)
+    assert entity.source.format == "xlsx"
+    assert [
+        (col.name, col.column_type, col.nullable) for col in entity.schema_.columns
+    ] == [("ignored", "string", True)]
+
+
+def test_add_entity_empty_xlsx_leaves_the_config_untouched(
+    floe: Run, tmp_path: Path
+) -> None:
+    book, config = tmp_path / "empty.xlsx", tmp_path / "config.yml"
+    write_first_sheet(book, "")
+    config.write_text(BASE_CONFIG)
+    code, _, err = add(floe, config, book)
+    assert code == 1
+    assert "xlsx_read_error" in err
+    assert config.read_text() == BASE_CONFIG
+
+
 def test_add_entity_explicit_name_and_format_override_inferred_values(
     floe: Run, tmp_path: Path
 ) -> None:
@@ -464,7 +492,7 @@ def test_add_entity_unknown_extension_requires_explicit_format(
         1,
         (
             f"Error: could not infer add-entity format from input {input} "
-            "(supported extensions: .csv, .json, .parquet); use --format\n"
+            "(supported extensions: .csv, .json, .parquet, .xlsx); use --format\n"
         ),
     )
 
