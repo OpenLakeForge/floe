@@ -1,3 +1,5 @@
+import importlib
+import sys
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
@@ -122,3 +124,15 @@ def test_reads_the_shipped_template() -> None:
     assert wb.domain.name == "sales"
     assert [t.target_table for t in wb.tables][:2] == ["customers", "orders"]
     assert wb.columns
+
+
+def test_records_import_without_the_xlsx_extra(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setitem(sys.modules, "fastexcel", None)
+    monkeypatch.delitem(sys.modules, "floe.contract.workbook")
+    workbook = importlib.import_module("floe.contract.workbook")
+    errors: list[str] = []
+    assert workbook.build_rows([], [], errors) == ((), (), ())
+    with pytest.raises(FloeConfigError, match=r"floe\[xlsx\]"):
+        workbook.parse_workbook(book(tmp_path))

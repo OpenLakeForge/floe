@@ -6,17 +6,15 @@ Every problem is reported with its cell (`Columns!C248`) and aggregated.
 import re
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import polars as pl
 
 from floe.errors import FloeConfigError, FloeIoError
 from floe.extras import missing
 
-try:
+if TYPE_CHECKING:
     import fastexcel
-except ImportError as e:  # the xlsx extra is not installed
-    raise missing("xlsx", "the business-contract workbook") from e
 
 SEVERITIES = ("warn", "reject", "abort")
 GUIDE_LABELS = ("domain", "template_version", "default_severity")
@@ -248,8 +246,10 @@ def _letters(index: int) -> str:
     return name
 
 
-def _sheet_rows(book: fastexcel.ExcelReader, name: str) -> list[list[str | None]]:
+def _sheet_rows(book: "fastexcel.ExcelReader", name: str) -> list[list[str | None]]:
     # ponytail: calamine hides where the used range starts, so refs assume it starts at A1.
+    import fastexcel  # the optional xlsx extra, checked in parse_workbook
+
     try:
         # the eager=True overload of fastexcel's stubs returns an untyped pyarrow table
         loaded = book.load_sheet(  # pyright: ignore[reportUnknownMemberType]
@@ -329,6 +329,10 @@ def _guide(rows: list[list[str | None]], errors: list[str]) -> Domain:
 
 def parse_workbook(path: Path) -> Workbook:
     """Read `Guide`, `Tables` and `Columns`; any other sheet (a legacy `Rules`) is ignored."""
+    try:
+        import fastexcel  # imported here so the records work without the xlsx extra
+    except ImportError as e:
+        raise missing("xlsx", "the business-contract workbook") from e
     try:
         book = fastexcel.read_excel(path)
     except fastexcel.FastExcelError as err:
