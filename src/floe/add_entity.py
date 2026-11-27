@@ -21,7 +21,7 @@ from floe.config.parse import parse_config
 from floe.config.project import V0_3, config_version, validate_domains
 from floe.config.types import SourceOptions
 from floe.config.validate import validate_entities
-from floe.config.yaml import _FLOAT, load_yaml, parse_yaml  # pyright: ignore[reportPrivateUsage] -- the YAML float grammar the emitter must quote
+from floe.config.yaml import _FLOAT, _plain, load_yaml, parse_yaml  # pyright: ignore[reportPrivateUsage] -- the YAML scalar grammar the emitter must quote
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.glob import MatchOptions, Pattern, PatternError, glob
 
@@ -344,6 +344,7 @@ def _scalar(value: object) -> str:
             not value or value[0] == " " or value[-1] == " " or value[0] in "&*?|-<>=!%@"
             or bool(_SPECIAL.search(value)) or value in _WORDS or value.startswith((".", "0x"))
             or bool(_FLOAT.fullmatch(value)) or value.lstrip("+-").lower() in ("inf", "infinity", "nan")
+            or not isinstance(_plain(value), str)  # the parser would read it back as a non-string
         )  # fmt: skip
         return f'"{value.translate(_ESCAPES)}"' if quote else value
     if isinstance(value, bool):

@@ -18,7 +18,9 @@ if TYPE_CHECKING:
 
 SEVERITIES = ("warn", "reject", "abort")
 GUIDE_LABELS = ("domain", "template_version", "default_severity")
-_SAFE_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_-]*")
+_SAFE_NAME = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9_-]*"
+)  # no leading `_`: `_domain.yml` is the domain file
 _DATE_CELL = re.compile(
     r"(\d{4}-\d{2}-\d{2}) 00:00:00"
 )  # how calamine renders a date cell as text
