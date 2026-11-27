@@ -74,8 +74,8 @@ floe validate -c floe.yml
 ```
 
 ```text
-Config valid: floe.yml
-Version: 0.10
+Config valid: /path/to/quickstart/floe.yml
+Version: 1.0
 Report: report
 Entities: 1
 Entity: orders
@@ -83,9 +83,11 @@ Entity: orders
   Sink accepted: parquet (./out/accepted/orders)
   Sink rejected: csv (./out/rejected/orders)
   Severity: reject
+Next: floe run -c /path/to/quickstart/floe.yml
 ```
 
-`floe validate` reads no data. Run it in CI on every change to a contract.
+Floe prints the absolute path to your config. `floe validate` reads no data.
+Run it in CI on every change to a contract.
 
 ## 5. Run it
 
@@ -93,10 +95,9 @@ Entity: orders
 floe run -c floe.yml
 ```
 
-```text
-==> entity orders (severity=reject, format=csv)
-  REJECTED orders.csv rows=5 accepted=2 rejected=3 …
+The run summarizes the files and rows processed.
 
+```text
 Totals: files=1 rows=5 accepted=2 rejected=3
 Overall: rejected (exit_code=0)
 ```
@@ -113,8 +114,10 @@ python -c "import polars as pl; print(pl.read_parquet('out/accepted/orders'))"
 ```
 
 ```text
+shape: (2, 2)
 ┌──────────┬───────────────┐
 │ order_id ┆ amount        │
+│ ---      ┆ ---           │
 │ str      ┆ decimal[10,2] │
 ╞══════════╪═══════════════╡
 │ 1001     ┆ 19.90         │
@@ -122,18 +125,18 @@ python -c "import polars as pl; print(pl.read_parquet('out/accepted/orders'))"
 └──────────┴───────────────┘
 ```
 
-**Rejected rows** keep their raw values, plus the row's position in the file
-and every rule it broke:
+**Rejected rows** keep their raw values, row position, rule failures, run ID and
+source URI. Read the generated part file to inspect them.
 
 ```bash
-cat out/rejected/orders/part-00000.csv
+cat out/rejected/orders/part-*.csv
 ```
 
 ```text
-order_id,amount,__floe_row_index,__floe_errors
-1002,not_a_number,1,"[{""rule"":""cast_error"",""column"":""amount"",""message"":""invalid value for target type""}]"
-1003,7.50,3,"[{""rule"":""unique"",""column"":""order_id"",""message"":""duplicate value""}]"
-,5.00,4,"[{""rule"":""not_null"",""column"":""order_id"",""message"":""required value missing""}]"
+order_id,amount,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+1002,not_a_number,1,"[{""rule"":""cast_error"",""column"":""amount"",""message"":""invalid value for target type""}]",<run_id>,local:///path/to/quickstart/in/orders.csv
+1003,7.50,3,"[{""rule"":""unique"",""column"":""order_id"",""message"":""duplicate value""}]",<run_id>,local:///path/to/quickstart/in/orders.csv
+,5.00,4,"[{""rule"":""not_null"",""column"":""order_id"",""message"":""required value missing""}]",<run_id>,local:///path/to/quickstart/in/orders.csv
 ```
 
 The first `1003` was accepted; the second is the duplicate.

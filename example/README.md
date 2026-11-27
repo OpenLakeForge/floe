@@ -46,8 +46,8 @@ multi-file project with two domains, included named sources, source references, 
 defaults. The project source reads named resources from `bronze/csv_drop/`, while domain
 defaults route outputs under separate sales and finance paths. Both examples use local CSV
 inputs and write Parquet accepted rows, rejected CSVs, and reports beside their config when
-run. Each input includes one deliberately invalid row, so `floe run` reports a rejected run
-and exits nonzero as expected.
+run. Each input includes one deliberately invalid row, so `floe run` reports
+`rejected` and exits `0` under the configured `reject` policy.
 
 For example, run either from its directory with `floe validate -c config.yml` and
 `floe run -c config.yml`.
@@ -67,8 +67,8 @@ example/
 │   │   ├── customer/         ← Parquet parts
 │   │   └── orders/           ← Parquet parts
 │   └── rejected/
-│       ├── customer/         ← rows that failed schema checks
-│       └── orders/           ← rows that failed (warn mode: written but run still succeeds)
+│       ├── customer/         ← rows and files rejected by the customer contract
+│       └── orders/           ← JSON details for rows with warnings
 │
 ├── report/                ← run reports (gitignored)
 │   └── run_<timestamp>/
@@ -80,7 +80,9 @@ example/
     └── customer.json      ← tracks which CSV files were already ingested
 ```
 
-Rows that pass all checks go to `out/accepted/`. Rows that fail go to `out/rejected/` with two extra columns: `__floe_row_index` (original row number) and `__floe_errors` (JSON array of error messages).
+Rows rejected by schema checks in `customer` include their source row index,
+rule failures, run ID and source URI. Rows with warnings in `orders` stay in
+`out/accepted/orders/`.
 
 ---
 
@@ -94,6 +96,9 @@ version: "0.8"
 report:
   path: "./report"          # run reports land here
 ```
+
+`version` is the minimum Floe version the contract requires. These example
+configs still declare `0.8` and can be validated and run with Floe 1.0.
 
 ### Entity: `customer`
 
@@ -203,7 +208,7 @@ cat out/rejected/customer/part-*.csv
 **See incremental state skip files:**
 ```bash
 floe run -c config.yml      # first run processes all files
-floe run -c config.yml      # second run: "0 files pending" — all already processed
+floe run -c config.yml      # skips unchanged customer files and processes orders again
 ```
 
 **See a missing-column file rejection:**
