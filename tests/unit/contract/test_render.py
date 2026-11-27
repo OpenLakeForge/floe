@@ -206,3 +206,27 @@ def test_fk_comment_cannot_break_the_yaml() -> None:
 @pytest.mark.parametrize("domain", ["2024", "0o10", "true"])
 def test_scaffold_name_round_trips_as_a_string(domain: str) -> None:
     assert _doc(render_domain_scaffold(domain))["name"] == domain
+
+
+def _uint64(**kw: str) -> dict[str, Any]:
+    columns = [
+        _cells("Columns", 2, ColumnRow, target_table="orders", target_column="n",
+               target_type="uint64", **kw),
+    ]  # fmt: skip
+    table = _cells("Tables", 2, TableRow, target_table="orders")
+    errors: list[str] = []
+    tables, rows, _ = build_rows([table], columns, errors)
+    entity = build_entity("sales", tables[0], rows, "warn", errors)
+    assert errors == []
+    text = render_entity(entity, tables[0], rows)
+    return _doc(text)["schema"]["columns"][0]
+
+
+def test_uint64_bound_above_i64_is_not_rounded_to_a_float() -> None:
+    assert _uint64(max="18446744073709551615")["max"] == "18446744073709551615"
+    assert _uint64(max="9223372036854775807")["max"] == 9223372036854775807
+
+
+def test_uint64_allowed_values_above_i64_round_trip() -> None:
+    col = _uint64(allowed_values="1|9223372036854775809")
+    assert col["allowed_values"] == ["1", "9223372036854775809"]

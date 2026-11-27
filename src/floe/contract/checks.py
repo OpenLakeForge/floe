@@ -33,12 +33,20 @@ def _text(value: str | None) -> str | None:
     return value if value is not None and value.strip() else None
 
 
+def _i64(n: int) -> bool:
+    return (
+        -(2**63) <= n < 2**63
+    )  # Floe's YAML parser reads wider integers back as floats
+
+
 def _bound(text: str | None) -> int | str | None:
     text = _text(text)
     if text is None:
         return None
     text = text.strip()
-    return int(text) if re.fullmatch(r"-?(0|[1-9]\d*)", text) else text
+    if re.fullmatch(r"-?(0|[1-9]\d*)", text) and _i64(int(text)):
+        return int(text)
+    return text
 
 
 def _length(c: ColumnRow, key: str, errors: list[str]) -> int | None:
@@ -75,9 +83,10 @@ def _column(c: ColumnRow, severity: str | None, errors: list[str]) -> dict[str, 
             ),
         )
         if "allowed_values" in keys:
-            keys["allowed_values"] = [
-                literal(c.target_type, v) for v in keys["allowed_values"]
-            ]
+            typed = [literal(c.target_type, v) for v in keys["allowed_values"]]
+            # one list is all-int or all-str: keep the text when any int would not survive YAML
+            if all(not isinstance(v, int) or _i64(v) for v in typed):
+                keys["allowed_values"] = typed
     except ValueError as err:  # cast_column on an unknown or malformed target_type
         errors.append(f"{c.refs['target_type']}: target_type {c.target_type}: {err}")
         return {}
