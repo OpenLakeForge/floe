@@ -83,7 +83,11 @@ def _canonical(value: str) -> str:
 
 
 def _fail(entity: EntityConfig, message: str, *, code: ErrorCode) -> FloeConfigError:
-    return FloeConfigError(f"entity.name={entity.name} {message}", code=code)
+    return _fail_named(entity.name, message, code=code)
+
+
+def _fail_named(name: str, message: str, *, code: ErrorCode) -> FloeConfigError:
+    return FloeConfigError(f"entity.name={name} {message}", code=code)
 
 
 def _level_source(entity: EntityConfig, levels: tuple[str, ...]) -> str:
@@ -122,10 +126,10 @@ def _check_column_rules(entity: EntityConfig) -> None:
                     f"schema.columns[name={column.name}].rule_severity.{rule} is not applicable: {why}",
                     code="config_conflict",
                 )
-        _check_value_checks(entity, column)
+        check_value_checks(entity.name, column)
 
 
-def _check_value_checks(entity: EntityConfig, c: ColumnConfig) -> None:
+def check_value_checks(entity_name: str, c: ColumnConfig) -> None:
     where = f"schema.columns[name={c.name}]"
     keys = {k: v for k, v in c.model_dump(include=_VALUE_KEYS).items() if v is not None}  # fmt: skip
     if not keys:
@@ -138,22 +142,22 @@ def _check_value_checks(entity: EntityConfig, c: ColumnConfig) -> None:
     ):  # fmt: skip
         for key in names:
             if key in keys and not applies:
-                raise _fail(entity, f"{where}.{key} is not applicable: column type {c.column_type} is not {kinds}", code="config_conflict")  # fmt: skip
+                raise _fail_named(entity_name, f"{where}.{key} is not applicable: column type {c.column_type} is not {kinds}", code="config_conflict")  # fmt: skip
     values = [(f"allowed_values[{i}]", v) for i, v in enumerate(c.allowed_values or [])]
     typed = {k: pl.lit(keys[k]) for k in ("min_length", "max_length") if k in keys}
     for key, value in [*((k, keys[k]) for k in ("min", "max") if k in keys), *values]:
         try:
             typed[key] = pl.lit(literal(c.column_type, value), dtype)
         except FloeConfigError as err:
-            raise _fail(entity, f"{where}.{key}={err}", code="config_invalid_value") from err  # fmt: skip
+            raise _fail_named(entity_name, f"{where}.{key}={err}", code="config_invalid_value") from err  # fmt: skip
     for lo, hi in (("min", "max"), ("min_length", "max_length")):
         if lo in typed and hi in typed and pl.select(typed[lo] > typed[hi]).item():
-            raise _fail(entity, f"{where}.{lo}={keys[lo]} is greater than {hi}={keys[hi]}", code="config_conflict")  # fmt: skip
+            raise _fail_named(entity_name, f"{where}.{lo}={keys[lo]} is greater than {hi}={keys[hi]}", code="config_conflict")  # fmt: skip
     if c.pattern is not None:
         try:
             pl.select(pl.lit("", pl.String).str.contains(rf"\A(?:{c.pattern})\z"))
         except pl.exceptions.ComputeError as err:
-            raise _fail(entity, f"{where}.pattern is invalid: {err}", code="config_invalid_value") from err  # fmt: skip
+            raise _fail_named(entity_name, f"{where}.pattern is invalid: {err}", code="config_invalid_value") from err  # fmt: skip
 
 
 _CHECK_NAME = re.compile(r"[a-z][a-z0-9_]*")
