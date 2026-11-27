@@ -182,3 +182,15 @@ def test_unencodable_text_writes_nothing(tmp_path: Path) -> None:
     with pytest.raises(FloeIoError):
         publish(str(tmp_path), plan)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_update_works_without_fchmod(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    f = tmp_path / "a.yml"
+    f.write_text("old")
+    f.chmod(0o640)
+    monkeypatch.delattr(os, "fchmod", raising=False)
+    publish(str(tmp_path), [_plan("a.yml", "old", "new", "updated")])
+    assert f.read_text() == "new"
+    assert f.stat().st_mode & 0o777 == 0o640
