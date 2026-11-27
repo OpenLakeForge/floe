@@ -21,6 +21,7 @@ from floe.config.project import RootConfig
 from floe.config.types import EntityConfig
 from floe.config.validate import REMOTE_URIS, validate_config
 from floe.config.vars import extract_config_env_vars, resolve_vars
+from floe.contract.importer import run_import
 from floe.errors import FloeConfigError, FloeError, FloeIoError
 from floe.lineage.observer import run_with_lineage
 from floe.maintain import FLOOR_DAYS, FLOOR_SNAPSHOTS, ORPHAN_DELAY_DAYS, maintain
@@ -329,6 +330,14 @@ def _parser() -> argparse.ArgumentParser:
         add.add_argument(flag)
     add.add_argument("--source", dest="source_ref")
     add.add_argument("--dry-run", action="store_true")
+    contract = commands.add_parser("contract").add_subparsers(dest="contract_command", required=True)  # fmt: skip
+    imp = contract.add_parser("import")
+    imp.add_argument("workbook")
+    imp.add_argument("--output-dir", required=True)
+    imp.add_argument("--domain")
+    imp.add_argument("-c", "--config")
+    for flag in ("--dry-run", "--check", "--accept-breaking"):
+        imp.add_argument(flag, action="store_true")
     state = commands.add_parser("state").add_subparsers(dest="state_command", required=True)  # fmt: skip
     for name in ("inspect", "reset", "forget"):
         command = state.add_parser(name)
@@ -367,6 +376,8 @@ def main() -> int:
             return _manifest(args)
         if args.command == "add-entity":
             return _add_entity(args)
+        if args.command == "contract":
+            return run_import(args.workbook, args.output_dir, args.domain, args.dry_run, args.check, args.accept_breaking, args.config)  # fmt: skip
         if args.command == "state":
             return _state(args)
         if args.command == "maintain":

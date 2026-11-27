@@ -21,6 +21,7 @@ New to Floe? Read the [Introduction](get-started/introduction.md), run the
 | Choose between overwrite, append and SCD merges | [Write modes](concepts/write-modes.md) |
 | Ingest only the files that are new | [Incremental ingestion](concepts/incremental.md) |
 | Organise many entities across files and domains | [Projects](guides/projects.md) |
+| Generate entity files from a business-owned Excel workbook | [Business contract](guides/business-contract.md) |
 | Run the same contracts in dev, uat and prod | [Environment profiles](guides/profiles.md), [Variables](guides/variables.md) |
 | Mask personal data | [PII masking](guides/pii.md) |
 | Run Floe from Dagster or Airflow | [Manifests](guides/manifest.md) |
