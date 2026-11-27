@@ -136,3 +136,17 @@ def test_records_import_without_the_xlsx_extra(
     assert workbook.build_rows([], [], errors) == ((), (), ())
     with pytest.raises(FloeConfigError, match=r"floe\[xlsx\]"):
         workbook.parse_workbook(book(tmp_path))
+
+
+def test_guide_value_equal_to_a_label_is_not_a_label(tmp_path: Path) -> None:
+    guide: Rows = [
+        ["domain", "default_severity"],
+        ["template_version", "1"],
+        ["default_severity", "reject"],
+    ]
+    path = write_book(
+        tmp_path / "b.xlsx",
+        {"Guide": guide, "Tables": tables({"target_table": "t"}), "Columns": columns()},
+    )
+    domain = parse_workbook(path).domain
+    assert (domain.name, domain.default_severity) == ("default_severity", "reject")

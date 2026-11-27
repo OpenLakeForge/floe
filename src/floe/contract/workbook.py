@@ -307,11 +307,15 @@ def _data_rows(
 
 def _guide(rows: list[list[str | None]], errors: list[str]) -> Domain:
     found: dict[str, Cell] = {}
+    # labels live in one column (the first label's); a value like a domain named `default_severity` is not a label
+    label_col = next(
+        (c for row in rows for c, t in enumerate(row) if t in GUIDE_LABELS), 0
+    )
     for n, row in enumerate(rows):
-        for col, text in enumerate(row):
-            if text in GUIDE_LABELS and text not in found:
-                right = row[col + 1] if col + 1 < len(row) else None
-                found[text] = Cell(right, f"Guide!{_letters(col + 1)}{n + 1}")
+        text = row[label_col] if label_col < len(row) else None
+        if text in GUIDE_LABELS and text not in found:
+            right = row[label_col + 1] if label_col + 1 < len(row) else None
+            found[text] = Cell(right, f"Guide!{_letters(label_col + 1)}{n + 1}")
     for label in GUIDE_LABELS:
         if label not in found:
             errors.append(f"Guide: label {label} not found")
