@@ -43,11 +43,8 @@ $defs:
         allOf:
         - $ref: '#/$defs/source_fragment'
         - not:
-            anyOf:
-            - required:
-              - ref
-            - required:
-              - resource
+            required:
+            - resource
       sink:
         $ref: '#/$defs/sink_fragment'
       policy:
@@ -94,9 +91,6 @@ $defs:
   source_fragment:
     type: object
     additionalProperties: false
-    dependentRequired:
-      resource:
-      - ref
     properties:
       ref:
         type: string

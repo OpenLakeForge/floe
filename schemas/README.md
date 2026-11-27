@@ -23,8 +23,7 @@ The project schema supports legacy full configs and config 0.3 project roots.
 An inline entity can inherit from its declared domain. Included entity files
 receive their domain from assembly and supply their own name and schema columns.
 Domain defaults and named sources can be partial, because Floe merges them before
-parsing complete entities. Domain source defaults cannot declare `ref` or
-`resource`: reference resolution happens before domain defaults are merged.
+parsing complete entities. Domain source defaults may declare `ref` but not `resource`.
 
 Schemas check local structure and expressible constraints on complete values.
 Run `floe validate -c config.yml` to resolve includes and validate inherited
