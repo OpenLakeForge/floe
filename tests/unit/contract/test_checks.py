@@ -169,3 +169,18 @@ def test_invalid_rule_reports_column_cell() -> None:
         _, errors = compile_one([{"target_column": "c", **cells}])
         assert len(errors) == 1, cells
         assert errors[0].startswith(ref), errors
+
+
+def test_unsupported_target_type_reports_cell_and_keeps_collecting() -> None:
+    _, errors = compile_one(
+        [
+            {"target_column": "a", "target_type": "varchar", "min": "1"},
+            {"target_column": "b", "target_type": "decimal(39,2)", "max": "1"},
+            {"target_column": "c", "pattern": "("},
+        ]
+    )
+    assert [e.split(":")[0] for e in errors] == [
+        "Columns!D2",
+        "Columns!D3",
+        "Columns!R4",
+    ]

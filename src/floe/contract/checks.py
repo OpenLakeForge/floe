@@ -78,6 +78,9 @@ def _column(c: ColumnRow, severity: str | None, errors: list[str]) -> dict[str, 
             keys["allowed_values"] = [
                 literal(c.target_type, v) for v in keys["allowed_values"]
             ]
+    except ValueError as err:  # cast_column on an unknown or malformed target_type
+        errors.append(f"{c.refs['target_type']}: target_type {c.target_type}: {err}")
+        return {}
     except FloeConfigError as err:
         message = str(err)
         found = re.search(rf"\[name={re.escape(c.target_column)}\]\.(\w+)", message)
