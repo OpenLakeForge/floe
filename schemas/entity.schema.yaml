@@ -202,9 +202,6 @@ $defs:
   source_fragment:
     type: object
     additionalProperties: false
-    dependentRequired:
-      resource:
-      - ref
     properties:
       ref:
         type: string

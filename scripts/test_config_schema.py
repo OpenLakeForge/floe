@@ -1146,11 +1146,15 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assert_valid(ROOT_VALIDATOR, yaml.safe_load(path.read_text()))
 
     def test_source_reference_boundaries(self):
-        for source in ({"ref": "crm"}, {"resource": "orders"}):
-            self.assert_invalid(validator_for("domain_file"), {"name": "sales", "defaults": {"source": source}})
+        domain = validator_for("domain_file")
+        self.assert_valid(domain, {"name": "sales", "defaults": {"source": {"ref": "crm"}}})
+        self.assert_invalid(domain, {"name": "sales", "defaults": {"source": {"resource": "orders"}}})
         entity = {"name": "orders", "schema": {"columns": []}}
-        self.assert_invalid(validator_for("entity_file"), {**entity, "source": {"format": "csv", "path": "in.csv", "resource": "orders"}})
-        self.assert_valid(validator_for("entity_file"), {**entity, "source": {"ref": "crm", "resource": "orders"}})
+        fragment = {"name": "orders", "domain": "sales", "schema": {"columns": [{"name": "id", "type": "string"}]}}
+        for source, check in (({"ref": "crm"}, self.assert_valid), ({"resource": "orders"}, self.assert_invalid)):
+            check(ROOT_VALIDATOR, {"version": "0.3", "domains": [{"name": "sales", "defaults": {"source": source}}], "entities": [fragment]})
+        for source in ({"format": "csv", "path": "in.csv", "resource": "orders"}, {"ref": "crm", "resource": "orders"}):
+            self.assert_valid(validator_for("entity_file"), {**entity, "source": source})
 
     def test_source_partitioning(self):  # D28: Python-only
         partitioning = {"pattern": "year={yyyy}/{MM}/{dd}/{HH}/{batch}", "date_column": "ingest_date", "batch_column": "batch_id"}
