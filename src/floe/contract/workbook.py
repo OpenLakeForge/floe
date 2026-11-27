@@ -10,7 +10,7 @@ from typing import NamedTuple
 from floe.errors import FloeConfigError
 
 SEVERITIES = ("warn", "reject", "abort")
-_SAFE_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
+_SAFE_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_-]*")
 
 
 class Cell(NamedTuple):
@@ -65,17 +65,19 @@ def _flag(cell: Cell, errors: list[str]) -> bool:
 
 
 def _severity(cell: Cell, errors: list[str]) -> str | None:
-    if cell.value is not None and cell.value not in SEVERITIES:
+    value = (cell.value or "").strip() or None
+    if value is not None and value not in SEVERITIES:
         errors.append(
-            f"{cell.ref}: severity must be one of {'|'.join(SEVERITIES)}, got {cell.value}"
+            f"{cell.ref}: severity must be one of {'|'.join(SEVERITIES)}, got {value}"
         )
-    return cell.value
+    return value
 
 
 def _required(cell: Cell, errors: list[str]) -> str:
-    if cell.value is None:
+    if cell.value is None or not cell.value.strip():
         errors.append(f"{cell.ref}: required cell is blank")
-    return cell.value or ""
+        return ""
+    return cell.value
 
 
 def _allowed(cell: Cell, errors: list[str]) -> tuple[str, ...] | None:

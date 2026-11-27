@@ -121,3 +121,17 @@ def test_foreign_key_inside_is_checked_outside_is_a_warning() -> None:
         column(5, "orders", "bad", fk_target_table="orders", fk_target_column="nope"),
     ]
     assert "Columns!J5: orders has no column nope" in errors_of(tables, bad)
+
+
+def test_blank_required_dotted_name_and_padded_severity() -> None:
+    errors: list[str] = []
+    tables, _, _ = build_rows(
+        [table(3, target_table="orders", cast_severity=" reject ")],
+        [column(3, "orders", "id", target_type="  ")],
+        errors,
+    )
+    assert errors == ["Columns!D3: required cell is blank"]
+    assert tables[0].cast_severity == "reject"
+    assert "Tables!A3: target_table sales.orders cannot be a file name" in errors_of(
+        [table(3, target_table="sales.orders")], []
+    )
