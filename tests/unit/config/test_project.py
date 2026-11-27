@@ -195,6 +195,66 @@ def test_source_ref_overlays_the_named_source_and_substitutes_the_resource(
     ]
 
 
+def test_source_ref_from_domain_defaults(tmp_path: Path) -> None:
+    config = load(
+        tmp_path,
+        f"""
+        version: "0.3"
+        {SOURCES}
+        domains:
+        - {{name: sales, defaults: {{source: {{ref: lake}}}}}}
+        entities:
+        - {{name: a, domain: sales, source: {{resource: GESTIXTI}}, {REST}}}
+        - {{name: b, domain: sales, source: {{ref: lake, resource: own}}, {REST}}}
+        """,
+    )
+    assert [(e.source.path, e.source.source_ref) for e in config.entities] == [
+        ("in/GESTIXTI.csv", "lake"),
+        ("in/own.csv", "lake"),
+    ]
+    config = load(
+        tmp_path,
+        f"""
+        version: "0.3"
+        sources: [{{name: lake, format: csv, path: 'in/{{{{resource}}}}.csv'}}, {{name: other, format: csv, path: 'x/{{{{resource}}}}.csv'}}]
+        domains:
+        - {{name: sales, defaults: {{source: {{ref: lake}}}}}}
+        entities:
+        - {{name: a, domain: sales, source: {{ref: other}}, {REST}}}
+        """,
+    )
+    assert config.entities[0].source.path == "x/a.csv"
+
+
+def test_resource_placeholder_without_named_source(tmp_path: Path) -> None:
+    config = load(
+        tmp_path,
+        f"""
+        version: "0.3"
+        domains:
+        - {{name: sales, defaults: {{source: {{format: csv, path: "./landing/{{{{resource}}}}.csv"}}}}}}
+        entities:
+        - {{name: a, domain: sales, source: {{resource: GESTIXTI}}, {REST}}}
+        - {{name: b, domain: sales, {REST}}}
+        """,
+    )
+    assert [(e.source.path, e.source.resource) for e in config.entities] == [
+        ("./landing/GESTIXTI.csv", "GESTIXTI"),
+        ("./landing/b.csv", None),
+    ]
+
+
+def test_source_resource_in_domain_defaults_is_an_error(tmp_path: Path) -> None:
+    text = f"""
+        version: "0.3"
+        domains:
+        - {{name: sales, defaults: {{source: {{format: csv, path: p, resource: X}}}}}}
+        entities:
+        - {{name: a, domain: sales, {REST}}}
+        """
+    assert "source.resource" in error(tmp_path, text)
+
+
 def test_domain_defaults_are_merged_under_the_entity(tmp_path: Path) -> None:
     config = load(
         tmp_path,

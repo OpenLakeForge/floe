@@ -5,6 +5,7 @@ All notable changes to Floe are documented in this file.
 ## Unreleased
 
 - `floe add-entity` can infer string columns from the first worksheet of a local XLSX file with the `xlsx` extra installed (#1447).
+- `source.ref` is allowed in a domain's `defaults.source` (the entity's `ref` wins), and `{{resource}}` in `source.path` resolves with or without a named source (#1470).
 
 ## v1.0.0
 
