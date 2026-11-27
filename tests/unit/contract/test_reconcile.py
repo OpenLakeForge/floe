@@ -215,3 +215,29 @@ def test_replacing_a_block_scalar_keeps_the_next_key() -> None:
     assert plan.status == "updated", plan.reason
     assert plan.new_text is not None
     assert "  description: other\n# engineer note\nsource:" in plan.new_text
+
+
+def test_insert_after_a_keep_chomp_scalar_leaves_its_value_alone() -> None:
+    bare = _entity()
+    del bare["source"]
+    text = _generated(bare).replace(
+        "policy:\n",
+        "source:\n  options:\n    null_values: |+\n      NULL\n\npolicy:\n",
+        1,
+    )
+    plan = reconcile("orders.yml", text, _entity())
+    assert plan.status == "updated", plan.reason
+    assert plan.new_text is not None
+    assert "      NULL\n\n  resource: orders_2024\npolicy:" in plan.new_text
+
+
+def test_dropping_a_parent_keeps_comments_between_its_children() -> None:
+    old = _generated(_entity()).replace(
+        "  owner: ops\n  description: Orders\n",
+        "  owner: ops\n# engineer note\n  description: Orders\n",
+    )
+    plan = reconcile("orders.yml", old, _no_metadata())
+    assert plan.status == "updated", plan.reason
+    assert plan.new_text is not None
+    assert "metadata" not in plan.new_text
+    assert "domain: sales\n# engineer note\nsource:" in plan.new_text

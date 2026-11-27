@@ -34,22 +34,29 @@ def _block_map(node: Any) -> bool:
     )
 
 
-def _end(text: str, node: Any) -> int:
-    """End of the node's last content, without the comments after it."""
+def _end(text: str, node: Any, trim: bool = True) -> int:
+    """End of the node's last content, without the comments after it.
+
+    `trim` leaves the line breaks a block scalar's mark includes out of the span; a `|+`
+    scalar keeps them as content, so an insert after it passes `trim=False`.
+    """
     if isinstance(node, yaml.CollectionNode) and not node.flow_style and node.value:
         last = node.value[-1]
-        return _end(text, last[1] if isinstance(node, yaml.MappingNode) else last)
+        return _end(text, last[1] if isinstance(node, yaml.MappingNode) else last, trim)
     end: int = node.end_mark.index
-    if getattr(node, "style", None) in (
-        "|",
-        ">",
-    ):  # a block scalar's mark is past its last newline
-        while end > node.start_mark.index and text[end - 1] == "\n":
-            end -= 1
+    if getattr(node, "style", None) in ("|", ">"):  # the mark is past the last newline
+        if trim:
+            while end > node.start_mark.index and text[end - 1] == "\n":
+                end -= 1
+        else:  # a `|+` scalar keeps the blank lines after it as content
+            while text.startswith("\n", end):
+                end += 1
     return end
 
 
 def _eol(text: str, i: int) -> int:
+    if i and text[i - 1] == "\n":  # a block scalar's mark already ends its line
+        return i
     j = text.find("\n", i)
     return len(text) if j < 0 else j + 1
 
@@ -92,9 +99,16 @@ def _edit(
             if not new.get(key) and {c.value for c, _ in v.value} <= set(
                 old.get(key, {})
             ):
+                # every child goes: drop the parent line too, but not comments between them
                 edits.append(
-                    _drop(text, k, v, len(path))
-                )  # every child goes: drop the parent too
+                    (
+                        text.rfind("\n", 0, start) + 1,
+                        _eol(text, k.end_mark.index),
+                        "",
+                        len(path),
+                    )
+                )
+                edits.extend(_drop(text, ck, cv, len(path) + 1) for ck, cv in v.value)
                 continue
             _edit(text, v, old.get(key, {}), new.get(key, {}), here, edits)
         elif key in new:
@@ -102,7 +116,7 @@ def _edit(
         else:  # no longer in the workbook: drop the whole line(s)
             edits.append(_drop(text, k, v, len(path)))
     if adds:
-        pos = _eol(text, _end(text, node))
+        pos = _eol(text, _end(text, node, trim=False))
         lead = "" if text[:pos].endswith("\n") else "\n"
         edits.append((pos, pos, lead + "".join(adds), len(path)))
 
