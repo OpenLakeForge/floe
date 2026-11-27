@@ -158,3 +158,13 @@ def test_string_bounds_are_not_compared_lexicographically() -> None:
     old = entity(col("a", "int64", min="9"))
     new = entity(col("a", "int64", min="10"))
     assert kinds(old, new) == [("tightening", "schema.columns[a].min")]
+
+
+def test_column_override_removal_resolves_entity_rule_override() -> None:
+    old = entity(col("a", "int64", rule_severity={"out_of_range": "reject"}))
+    new = entity(col("a", "int64"))
+    for e in (old, new):
+        e["policy"] = {"severity": "reject", "rule_severity": {"out_of_range": "abort"}}
+    assert kinds(old, new) == [
+        ("tightening", "schema.columns[a].rule_severity.out_of_range")
+    ]

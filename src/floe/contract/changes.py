@@ -82,7 +82,7 @@ def _column(
     name: str,
     old: dict[str, object],
     new: dict[str, object],
-    bases: tuple[object, object],
+    policies: tuple[dict[str, object], dict[str, object]],
 ) -> list[Change]:
     p = f"schema.columns[{name}]"
     out: list[Change] = []
@@ -103,9 +103,13 @@ def _column(
     if old.get("pattern") != new.get("pattern"):
         o, n = old.get("pattern"), new.get("pattern")
         out.append(Change(_tighter(n is not None), f"{p}.pattern", f"{o!r} -> {n!r}"))
-    out += _rules(
-        f"{p}.rule_severity", old.get("rule_severity"), new.get("rule_severity"), *bases
-    )
+    ro, rn = _d(old.get("rule_severity")), _d(new.get("rule_severity"))
+    base_o, base_n = (_d(x.get("rule_severity")) for x in policies)
+    for rule in sorted(ro.keys() | rn.keys()):
+        before = ro.get(rule) or base_o.get(rule) or policies[0].get("severity")
+        after = rn.get(rule) or base_n.get(rule) or policies[1].get("severity")
+        if c := _severity(f"{p}.rule_severity.{rule}", ro.get(rule), rn.get(rule), before, after):  # fmt: skip
+            out.append(c)
     return out
 
 
@@ -150,5 +154,5 @@ def classify(old: Entity | None, new: Entity | None) -> list[Change]:
             nullable = cn[name].get("nullable", True) is not False
             out.append(Change("additive" if nullable else "tightening", f"schema.columns[{name}]", "new column"))  # fmt: skip
         else:
-            out += _column(name, co[name], cn[name], bases)
+            out += _column(name, co[name], cn[name], (po, pn))
     return sorted(out, key=lambda c: (c.path, c.kind))
