@@ -105,8 +105,12 @@ def _write(full: str, text: str, create: bool) -> None:
             tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666 if create else 0o600
         )
         with os.fdopen(fd, "wb") as f:
-            if not create:  # os.chmod, not fchmod: absent on Windows before Python 3.13
-                os.chmod(tmp, stat.S_IMODE(os.stat(full).st_mode))
+            if not create:
+                mode = stat.S_IMODE(os.stat(full).st_mode)
+                if hasattr(os, "fchmod"):  # absent on Windows before Python 3.13
+                    os.fchmod(f.fileno(), mode)
+                else:
+                    os.chmod(tmp, mode)
             f.write(text.encode())
         if create:
             os.link(tmp, full)  # fails if the file appeared meanwhile

@@ -140,13 +140,14 @@ def test_update_keeps_file_mode(tmp_path: Path) -> None:
     f = tmp_path / "a.yml"
     f.write_text("old")
     f.chmod(0o640)
+    original_mode = f.stat().st_mode & 0o777
     old_umask = os.umask(0o077)
     try:
         publish(str(tmp_path), [_plan("a.yml", "old", "new", "updated")])
     finally:
         os.umask(old_umask)
     assert f.read_text() == "new"
-    assert f.stat().st_mode & 0o777 == 0o640
+    assert f.stat().st_mode & 0o777 == original_mode
 
 
 def test_staged_update_is_created_private(
@@ -155,6 +156,7 @@ def test_staged_update_is_created_private(
     f = tmp_path / "a.yml"
     f.write_text("old")
     f.chmod(0o600)
+    original_mode = f.stat().st_mode & 0o777
     created: list[tuple[str, int]] = []
     real_open = os.open
 
@@ -170,7 +172,7 @@ def test_staged_update_is_created_private(
     finally:
         os.umask(old_umask)
     assert [m for _, m in created] == [0o600]
-    assert f.stat().st_mode & 0o777 == 0o600
+    assert f.stat().st_mode & 0o777 == original_mode
 
 
 def test_unencodable_text_writes_nothing(tmp_path: Path) -> None:
@@ -190,7 +192,8 @@ def test_update_works_without_fchmod(
     f = tmp_path / "a.yml"
     f.write_text("old")
     f.chmod(0o640)
+    original_mode = f.stat().st_mode & 0o777
     monkeypatch.delattr(os, "fchmod", raising=False)
     publish(str(tmp_path), [_plan("a.yml", "old", "new", "updated")])
     assert f.read_text() == "new"
-    assert f.stat().st_mode & 0o777 == 0o640
+    assert f.stat().st_mode & 0o777 == original_mode
