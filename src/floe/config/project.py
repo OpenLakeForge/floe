@@ -226,22 +226,44 @@ def resolve_source_ref(
 def _merge_entity(
     entity: object, sources: dict[str, Hash], defaults: dict[str, Hash]
 ) -> tuple[object, str | None, str | None]:
-    ref = resource = None
+    domain = _hint(entity, "domain")
+    default: Hash | None = defaults.get(domain) if domain is not None else None
+    default_source = _field(default, "source")
+    if isinstance(default_source, dict) and "ref" in default_source:
+        # a domain `source.ref` applies unless the entity names its own
+        ref_default = cast(Hash, default_source)
+        default = {**cast(Hash, default), "source": {**ref_default}}
+        cast(Hash, default["source"]).pop("ref")
+        own = _field(entity, "source")
+        if own is None or isinstance(own, dict):  # entity is a dict: it has a domain
+            own_source = cast(Hash, own or {})
+            if "ref" not in own_source:
+                entity = {
+                    **cast(Hash, entity),
+                    "source": {"ref": ref_default["ref"], **own_source},
+                }
+    ref: str | None = None
+    resource: str | None = None
     if resolved := resolve_source_ref(entity, sources):
         entity, ref, resource = resolved
-    domain = _hint(entity, "domain")
-    merged = merge_yaml(defaults[domain], entity) if domain in defaults else entity
-    source = _field(merged, "source") if resource is not None else None
-    if isinstance(source, dict):
-        source = cast(Hash, source)
-        if isinstance(source.get("path"), str):
-            # `{{resource}}` is entity-specific; the template pass leaves it alone
-            source["path"] = re.sub(
-                r"\{\{(.*?)\}\}",
-                lambda m: str(resource) if m[1].strip() == "resource" else m[0],
-                cast(str, source["path"]),
-                flags=re.DOTALL,
-            )
+    elif isinstance(source := _field(entity, "source"), dict) and "resource" in source:
+        own_source = dict(cast(Hash, source))
+        resource = yaml_string(own_source.pop("resource"), "source.resource")
+        entity = {**cast(Hash, entity), "source": own_source}
+    merged: object = entity if default is None else merge_yaml(default, entity)
+    merged_source = _field(merged, "source")
+    if isinstance(merged_source, dict) and isinstance(
+        cast(Hash, merged_source).get("path"), str
+    ):
+        merged_source = cast(Hash, merged_source)
+        name = resource if resource is not None else _hint(entity, "name") or ""
+        # `{{resource}}` is entity-specific; the template pass leaves it alone
+        merged_source["path"] = re.sub(
+            r"\{\{(.*?)\}\}",
+            lambda m: name if m[1].strip() == "resource" else m[0],
+            cast(str, merged_source["path"]),
+            flags=re.DOTALL,
+        )
     return merged, ref, resource
 
 

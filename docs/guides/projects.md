@@ -103,7 +103,9 @@ entities:
 The entity supplies its source reference and schema. Domain defaults fill in
 the sink and policy; values on the entity override defaults. Source paths can
 use `{{resource}}`, which resolves from the entity's `source.resource` (or its
-name when omitted). See [Config Reference](../reference/config.md#merge-rules) for the merge rules and
+name when omitted), with or without a named source. A domain can also set
+`defaults.source.ref` (an entity's own `ref` wins) or a plain `source` with a
+`{{resource}}` path, so each entity only names its `source.resource`. See [Config Reference](../reference/config.md#merge-rules) for the merge rules and
 supported fields.
 
 ## Split a larger project into files

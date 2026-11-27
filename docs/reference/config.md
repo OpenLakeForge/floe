@@ -196,8 +196,9 @@ every inherited value is validated like an inline one:
 | Scalars | The higher layer's value replaces the lower one |
 | Lists (`source.options.null_values`, `schema.unique_keys`, `pii.columns`, ...) | The higher layer's list replaces the lower one; lists are never appended |
 | `schema.columns`, `schema.primary_key` in `defaults` | Dropped; never inherited. Other `schema` keys (`normalize_columns`, `schema_evolution`, `unique_keys`, `checks`) are |
-| `source.ref`, `source.resource` | Read from the entity's `source` only and removed before merging; a `ref` in domain `defaults` is an unknown field |
-| `{{resource}}` | Replaced in the merged `source.path` with `source.resource`, or the entity `name` when omitted |
+| `source.ref` | Set on the entity or in domain `defaults.source`; the entity's wins. Removed before merging |
+| `source.resource` | Read from the entity's `source` only and removed before merging; in domain `defaults` it is an unknown field |
+| `{{resource}}` | Replaced in the merged `source.path` with `source.resource`, or the entity `name` when omitted, with or without a named source |
 
 Example: with `sources: [{ name: csv_drop, format: csv, path: "./in/{{resource}}.csv", options: { header: true, separator: "," } }]`,
 an entity `source: { ref: csv_drop, options: { separator: ";" } }` named
