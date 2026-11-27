@@ -44,7 +44,9 @@ def _bound(path: str, key: str, old: object, new: object, lower: bool) -> Change
     if old is None or new is None:
         return Change(_tighter(old is None), path, f"{key} {old!r} -> {new!r}")
     if not all(
-        isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v)
+        isinstance(v, int | float)
+        and not isinstance(v, bool)
+        and (isinstance(v, int) or math.isfinite(v))
         for v in (old, new)
     ):
         return Change("tightening", path, f"{key} {old!r} -> {new!r} (not comparable)")

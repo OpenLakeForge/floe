@@ -184,3 +184,12 @@ def test_non_finite_bound_counts_as_tightening() -> None:
             entity(col("a", "double", max=new)),
         )
         assert kinds(before, after) == [("tightening", "schema.columns[a].max")]
+
+
+def test_huge_integer_bounds_compare_exactly() -> None:
+    big = 10**400  # math.isfinite would raise OverflowError on it
+    old, new = (
+        entity(col("a", "int64", max=big)),
+        entity(col("a", "int64", max=big + 1)),
+    )
+    assert kinds(old, new) == [("loosening", "schema.columns[a].max")]
