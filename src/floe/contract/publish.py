@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import stat
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -53,6 +54,7 @@ def _can_create_parent(parent: str) -> bool:
 def preflight(root: str, plan: Sequence[PlannedFile]) -> list[str]:
     """Return every problem found; writes nothing."""
     problems: list[str] = []
+    dests: dict[str, str] = {}
     for p in plan:
         if p.status == "blocked":
             problems.append(f"{p.path}: blocked: {p.reason}")
@@ -61,6 +63,9 @@ def preflight(root: str, plan: Sequence[PlannedFile]) -> list[str]:
         if full is None:
             problems.append(f"{p.path}: path escapes {root}")
             continue
+        if full in dests:
+            problems.append(f"{p.path}: same destination as {dests[full]}")
+        dests[full] = p.path
         try:
             current = _read(full)
         except (OSError, UnicodeDecodeError) as e:
@@ -73,6 +78,10 @@ def preflight(root: str, plan: Sequence[PlannedFile]) -> list[str]:
                 problems.append(f"{p.path}: no new text to write")
             elif not _can_create_parent(os.path.dirname(full)):
                 problems.append(f"{p.path}: parent directory is not writable")
+    for full, path in dests.items():
+        for d, outer in dests.items():
+            if full.startswith(d + os.sep):
+                problems.append(f"{path}: inside planned file {outer}")
     return problems
 
 
@@ -83,6 +92,8 @@ def _write(full: str, text: str, create: bool) -> None:
         os.makedirs(head, exist_ok=True)
         with open(tmp, "xb") as f:
             f.write(text.encode())
+        if not create:  # keep the replaced file's permissions
+            os.chmod(tmp, stat.S_IMODE(os.stat(full).st_mode))
         if create:
             os.link(tmp, full)  # fails if the file appeared meanwhile
         else:

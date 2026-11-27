@@ -118,3 +118,32 @@ def test_render_status_is_deterministic() -> None:
         "created   b.yml\n"
         "blocked   c.yml: no"
     )
+
+
+def test_conflicting_destinations_write_nothing(tmp_path: Path) -> None:
+    plan = [
+        _plan("entities", None, "A", "created"),
+        _plan("entities/a.yml", None, "B", "created"),
+        _plan("b.yml", None, "C", "created"),
+        _plan("./b.yml", None, "D", "created"),
+    ]
+    assert preflight(str(tmp_path), plan) == [
+        "./b.yml: same destination as b.yml",
+        "entities/a.yml: inside planned file entities",
+    ]
+    with pytest.raises(FloeIoError):
+        publish(str(tmp_path), plan)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_update_keeps_file_mode(tmp_path: Path) -> None:
+    f = tmp_path / "a.yml"
+    f.write_text("old")
+    f.chmod(0o640)
+    old_umask = os.umask(0o077)
+    try:
+        publish(str(tmp_path), [_plan("a.yml", "old", "new", "updated")])
+    finally:
+        os.umask(old_umask)
+    assert f.read_text() == "new"
+    assert f.stat().st_mode & 0o777 == 0o640
