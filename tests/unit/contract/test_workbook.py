@@ -135,3 +135,8 @@ def test_blank_required_dotted_name_and_padded_severity() -> None:
     assert "Tables!A3: target_table sales.orders cannot be a file name" in errors_of(
         [table(3, target_table="sales.orders")], []
     )
+
+
+def test_rejects_target_table_that_collides_with_the_domain_file() -> None:
+    msg = errors_of([table(3, target_table="_domain")], [column(3, "_domain", "id")])
+    assert "Tables!A3" in msg and "_domain" in msg

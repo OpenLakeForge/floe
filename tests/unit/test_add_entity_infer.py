@@ -303,3 +303,27 @@ def test_errors_carry_codes(tmp_path: Path) -> None:
     with pytest.raises(FloeIoError) as io:
         infer_entity(str(tmp_path / "gone.csv"), None, None, None, None, None)
     assert io.value.code == "io_read_error"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "0o10",
+        "+5",
+        "0o7",
+        "0x1F",
+        "1e3",
+        "007",
+        "true",
+        "null",
+        "~",
+        ".inf",
+        "12",
+        "a: b",
+    ],
+)
+def test_render_round_trips_strings_through_floe_yaml(text: str) -> None:
+    from floe.add_entity import _render  # pyright: ignore[reportPrivateUsage] -- the emitter under test
+    from floe.config.yaml import parse_yaml
+
+    assert parse_yaml(_render({"values": [text]})) == [{"values": [text]}]

@@ -10,7 +10,9 @@ from typing import NamedTuple
 from floe.errors import FloeConfigError
 
 SEVERITIES = ("warn", "reject", "abort")
-_SAFE_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_-]*")
+_SAFE_NAME = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9_-]*"
+)  # no leading `_`: `_domain.yml` is the domain file
 
 
 class Cell(NamedTuple):

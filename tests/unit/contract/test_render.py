@@ -1,6 +1,7 @@
 import sys
 from dataclasses import fields
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -19,6 +20,10 @@ from floe.contract.workbook import Cell, ColumnRow, TableRow, build_rows
 
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 SCAFFOLD_TODO = "TODO_"
+
+
+def _doc(text: str) -> dict[str, Any]:
+    return cast("dict[str, Any]", parse_yaml(text)[0])
 
 
 def _cells(sheet: str, row: int, record: type, **values: str) -> dict[str, Cell]:
@@ -66,7 +71,7 @@ def test_render_is_deterministic() -> None:
     assert first.startswith("# floe-contract: sha256:")
     assert "customer_id → customers.customer_id" in first
     assert "one row per order" in first
-    assert [k for k in parse_yaml(first)[0]] == [  # type: ignore[reportGeneralTypeIssues]  # one doc, a mapping
+    assert list(_doc(first)) == [
         "name",
         "domain",
         "metadata",
@@ -75,21 +80,26 @@ def test_render_is_deterministic() -> None:
         "schema",
     ]
     # check keys land on the column they belong to
-    assert {"name": "amount", "type": "int64", "nullable": True, "min": 0}.items() <= parse_yaml(first)[0]["schema"]["columns"][1].items()  # type: ignore[reportIndexIssues]  # fmt: skip
+    assert {
+        "name": "amount",
+        "type": "int64",
+        "nullable": True,
+        "min": 0,
+    }.items() <= _doc(first)["schema"]["columns"][1].items()
 
 
 def test_fingerprint_matches_owned_projection() -> None:
     entity, table, rows = _orders()
     text = render_entity(entity, table, rows)
-    parsed = parse_yaml(text)[0]
+    parsed = _doc(text)
     digest = text.splitlines()[0].removeprefix("# floe-contract: sha256:")
-    assert digest == fingerprint(owned(parsed))  # type: ignore[arg-type]  # a parsed mapping
+    assert digest == fingerprint(owned(parsed))
     # engineer keys are outside the projection
-    parsed["sink"] = {"accepted": {"format": "parquet"}}  # type: ignore[reportIndexIssues]
-    parsed["policy"]["max_rejection_rate"] = 0.1  # type: ignore[reportIndexIssues]
-    assert fingerprint(owned(parsed)) == digest  # type: ignore[arg-type]
-    parsed["schema"]["primary_key"] = ["amount"]  # type: ignore[reportIndexIssues]
-    assert fingerprint(owned(parsed)) != digest  # type: ignore[arg-type]
+    parsed["sink"] = {"accepted": {"format": "parquet"}}
+    parsed["policy"]["max_rejection_rate"] = 0.1
+    assert fingerprint(owned(parsed)) == digest
+    parsed["schema"]["primary_key"] = ["amount"]
+    assert fingerprint(owned(parsed)) != digest
 
 
 def _project(tmp_path: Path, domain_yml: str) -> Path:
@@ -121,7 +131,7 @@ def test_scaffold_fails_closed(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     scaffold = render_domain_scaffold("sales")
-    assert parse_yaml(scaffold)[0]["name"] == "sales"  # type: ignore[reportIndexIssues]
+    assert _doc(scaffold)["name"] == "sales"
     assert "__TODO" not in scaffold
     config = _project(tmp_path, scaffold)
     code, out = _floe(monkeypatch, capsys, "validate", "-c", str(config))
@@ -179,3 +189,20 @@ def test_plan_first_import_only_creates_absent_files(tmp_path: Path) -> None:
     assert [p.path for p in plan] == ["_domain.yml", "orders.yml"]
     assert {p.status for p in plan} == {"created"}
     assert preflight(str(fresh), plan) == []
+
+
+def test_fk_comment_cannot_break_the_yaml() -> None:
+    columns = [
+        _cells("Columns", 2, ColumnRow, target_table="orders", target_column="a\nb: c",
+               target_type="string", fk_target_table="x", fk_target_column="y"),
+    ]  # fmt: skip
+    table = _cells("Tables", 2, TableRow, target_table="orders")
+    errors: list[str] = []
+    tables, rows, _ = build_rows([table], columns, errors)
+    entity = build_entity("sales", tables[0], rows, "warn", errors)
+    assert _doc(render_entity(entity, tables[0], rows))["name"] == "orders"
+
+
+@pytest.mark.parametrize("domain", ["2024", "0o10", "true"])
+def test_scaffold_name_round_trips_as_a_string(domain: str) -> None:
+    assert _doc(render_domain_scaffold(domain))["name"] == domain

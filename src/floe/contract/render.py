@@ -9,7 +9,7 @@ import os
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
-from floe.add_entity import _render  # pyright: ignore[reportPrivateUsage] -- the one deterministic YAML emitter
+from floe.add_entity import _render, _scalar  # pyright: ignore[reportPrivateUsage] -- the one deterministic YAML emitter
 from floe.contract.checks import compile_checks
 from floe.contract.publish import PlannedFile
 from floe.contract.schema import compile_schema
@@ -30,7 +30,7 @@ _OWNED = (
 )
 _SCAFFOLD = """\
 # Engineer-owned. floe contract import created this file once and never changes it.
-name: {domain}
+name: {name}
 defaults:
   source:
     ref: TODO_source              # declare it in sources, or use format + path with {{{{resource}}}}
@@ -108,12 +108,12 @@ def render_entity(
     for c in columns:
         if c.target_table == table.target_table and c.fk_target_table:
             target = f"{c.fk_target_table}.{c.fk_target_column or ''}".rstrip(".")
-            header.append(f"# {c.target_column} → {_line(target)}")
+            header.append(f"# {_line(c.target_column)} → {_line(target)}")
     return "\n".join(header) + "\n" + _render(dict(entity))
 
 
 def render_domain_scaffold(domain: str) -> str:
-    return _SCAFFOLD.format(domain=domain)
+    return _SCAFFOLD.format(name=_scalar(domain))
 
 
 def plan_first_import(

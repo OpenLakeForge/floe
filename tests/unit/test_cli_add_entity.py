@@ -168,19 +168,15 @@ def test_add_entity_sibling_uses_normal_file_permissions(
     assert mode == stat.S_IMODE(control.stat().st_mode)
 
 
-def test_add_entity_validates_the_rendered_sibling_yaml(
-    floe: Run, tmp_path: Path
-) -> None:
-    # `0o123` is written unquoted (as Rust does) and reloads as an integer
+def test_add_entity_quotes_int_lookalike_header(floe: Run, tmp_path: Path) -> None:
+    # `0o123` is a column name, so the emitter must quote it or it reloads as the integer 83
     config, domain_dir = included_sales_project(tmp_path)
     input = tmp_path / "orders.csv"
     input.write_text("0o123\n1\n")
-    code, _, err = add(floe, config, input, "--domain", "sales")
-    assert code == 1
-    assert err.startswith(
-        f"Error: generated entity file {domain_dir / 'orders.yml'} failed validation: "
-    )
-    assert not (domain_dir / "orders.yml").exists()
+    assert add(floe, config, input, "--domain", "sales")[0] == 0
+    assert (domain_dir / "orders.yml").exists()
+    [entity] = entities(config)
+    assert [c.name for c in entity.schema_.columns] == ["0o123"]
 
 
 def test_add_entity_removes_a_staging_file_that_failed_to_write(
