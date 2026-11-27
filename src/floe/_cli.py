@@ -324,7 +324,7 @@ def _parser() -> argparse.ArgumentParser:
     add = commands.add_parser("add-entity")
     add.add_argument("-c", "--config", required=True)
     add.add_argument("--input", required=True)
-    add.add_argument("--format", choices=("csv", "json", "parquet"))
+    add.add_argument("--format", choices=("csv", "json", "parquet", "xlsx"))
     for flag in ("--name", "--domain", "--resource", "--output"):
         add.add_argument(flag)
     add.add_argument("--source", dest="source_ref")

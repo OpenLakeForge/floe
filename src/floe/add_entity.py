@@ -219,6 +219,14 @@ def _columns(fmt: str, path: str) -> tuple[Hash | None, list[Hash], list[str]]:
             ) from e
         nullable = {c.name: df.height == 0 or c.null_count() > 0 for c in df.iter_columns()}  # fmt: skip
         schema, options = df.schema, cast(Hash, {"separator": separator})
+    elif fmt == "xlsx":
+        from floe.read.xlsx import read_xlsx
+
+        df = read_xlsx(Path(path), SourceOptions())
+        schema, options = df.schema, None
+        nullable = {
+            c.name: df.height == 0 or c.null_count() > 0 for c in df.iter_columns()
+        }
     elif fmt == "parquet":
         try:  # a file object: Polars would expand glob characters in a path
             with open(path, "rb") as f:
@@ -246,7 +254,7 @@ def _columns(fmt: str, path: str) -> tuple[Hash | None, list[Hash], list[str]]:
         if nested := sorted({k for row in rows for k, v in row.items() if isinstance(v, (list, dict))}):  # fmt: skip
             notes.append(f"nested JSON values inferred as string for top-level key(s): {', '.join(nested)}")  # fmt: skip
     else:
-        raise FloeConfigError(f"unsupported add-entity format: {fmt} (allowed: csv, json, parquet)", code="config_invalid_value")  # fmt: skip
+        raise FloeConfigError(f"unsupported add-entity format: {fmt} (allowed: csv, json, parquet, xlsx)", code="config_invalid_value")  # fmt: skip
     return (
         options,
         [
@@ -276,10 +284,10 @@ def infer_entity(
     if fmt is None:
         # `.csv` alone has no extension
         fmt = os.path.splitext(path)[1][1:].lower()
-        if fmt not in ("csv", "json", "parquet"):
+        if fmt not in ("csv", "json", "parquet", "xlsx"):
             raise FloeConfigError(
                 f"could not infer add-entity format from input {input} "
-                "(supported extensions: .csv, .json, .parquet); use --format",
+                "(supported extensions: .csv, .json, .parquet, .xlsx); use --format",
                 code="config_invalid_value",
             )
     options, columns, notes = _columns(fmt, path)

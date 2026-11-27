@@ -5,8 +5,10 @@ Expected types were recorded from the Rust 0.7 binary (`floe add-entity --dry-ru
 
 import datetime as dt
 import decimal
+import sys
 from pathlib import Path
 from typing import cast
+from zipfile import ZipFile
 
 import polars as pl
 import pytest
@@ -62,6 +64,64 @@ def test_csv_path_with_glob_characters_is_read_literally(tmp_path: Path) -> None
     (tmp_path / "orders1.csv").write_text("other\nx\n")
     entity, _, _ = infer_entity(str(path), None, None, None, None, None)
     assert columns(entity) == [("id", "number", False)]
+
+
+def write_first_sheet(path: Path, rows: str) -> None:
+    book = Path(__file__).parents[2] / "conformance/xlsx/in/orders.xlsx"
+    worksheet = (
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f"<sheetData>{rows}</sheetData></worksheet>"
+    )
+    with ZipFile(book) as source, ZipFile(path, "w") as dest:
+        for name in source.namelist():
+            dest.writestr(
+                name,
+                worksheet if name == "xl/worksheets/sheet1.xml" else source.read(name),
+            )
+
+
+def test_xlsx_infers_raw_string_columns_from_the_first_sheet(tmp_path: Path) -> None:
+    path = tmp_path / "orders.xlsx"
+    write_first_sheet(
+        path,
+        '<row r="1"><c r="A1" t="inlineStr"><is><t>sku</t></is></c>'
+        '<c r="B1" t="inlineStr"><is><t>quantity</t></is></c></row>'
+        '<row r="2"><c r="A2" t="inlineStr"><is><t>001</t></is></c><c r="B2"><v>12</v></c></row>'
+        '<row r="3"><c r="A3" t="inlineStr"><is><t>002</t></is></c></row>',
+    )
+    entity, fmt, _ = infer_entity(str(path), None, None, None, None, None)
+    assert fmt == "xlsx"
+    assert entity["source"] == {"format": "xlsx", "path": str(path)}
+    assert columns(entity) == [("sku", "string", False), ("quantity", "string", True)]
+
+
+@pytest.mark.parametrize(
+    "invalid", [False, True], ids=["empty-sheet", "invalid-workbook"]
+)
+def test_xlsx_unreadable_workbooks_raise_typed_errors(
+    tmp_path: Path, invalid: bool
+) -> None:
+    path = tmp_path / "orders.xlsx"
+    if invalid:
+        path.write_bytes(b"not an Excel workbook")
+    else:
+        write_first_sheet(path, "")
+    with pytest.raises(FloeIoError) as error:
+        infer_entity(str(path), None, None, None, None, None)
+    assert (error.value.code, error.value.rule) == ("io_read_error", "xlsx_read_error")
+
+
+def test_xlsx_missing_extra_reports_install_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "orders.xlsx"
+    path.touch()
+    monkeypatch.setitem(sys.modules, "fastexcel", None)
+    monkeypatch.delitem(sys.modules, "floe.read.xlsx", raising=False)
+    with pytest.raises(FloeConfigError) as error:
+        infer_entity(str(path), None, None, None, None, None)
+    assert error.value.code == "config_not_supported"
+    assert "pip install 'floe-python[xlsx]'" in str(error.value)
 
 
 def test_parquet_path_with_glob_characters_is_read_literally(tmp_path: Path) -> None:
@@ -191,7 +251,7 @@ def test_file_uri_names_the_entity_and_persists_the_local_path(tmp_path: Path) -
             FloeConfigError,
             (
                 "could not infer add-entity format from input payload.unknown "
-                "(supported extensions: .csv, .json, .parquet); use --format"
+                "(supported extensions: .csv, .json, .parquet, .xlsx); use --format"
             ),
         ),
         (
