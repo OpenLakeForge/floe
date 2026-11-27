@@ -1,40 +1,21 @@
-"""Business-contract workbook: `Tables` and `Columns` parsed into typed rows with Excel provenance.
+"""Business-contract records and their validation, from cells that already carry their Excel ref.
 
-Cells are read as text. Every problem is reported with its cell (`Columns!C248`), aggregated, and
-nothing is returned when there is one.
+Every problem is reported with its cell (`Columns!C248`) and aggregated.
 """
 
 import re
-from dataclasses import dataclass, field, fields
-from pathlib import Path
+from dataclasses import dataclass
 from typing import NamedTuple
 
-import polars as pl
-
-from floe.errors import FloeConfigError, FloeIoError
-from floe.extras import missing
-
-try:
-    import fastexcel
-except ImportError as e:  # the xlsx extra is not installed
-    raise missing("xlsx", "the business-contract workbook") from e
+from floe.errors import FloeConfigError
 
 SEVERITIES = ("warn", "reject", "abort")
-GUIDE_LABELS = ("domain", "template_version", "default_severity")
 _SAFE_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
-_MIDNIGHT = " 00:00:00"  # how calamine renders a date cell as text
 
 
-class _Cell(NamedTuple):
+class Cell(NamedTuple):
     value: str | None
     ref: str
-
-
-@dataclass(frozen=True)
-class Domain:
-    name: str
-    template_version: str
-    default_severity: str | None
 
 
 @dataclass(frozen=True)
@@ -76,92 +57,14 @@ class ColumnRow:
     value_severity: str | None
 
 
-TABLES_HEADERS = tuple(f.name for f in fields(TableRow))[1:]
-COLUMNS_HEADERS = tuple(f.name for f in fields(ColumnRow))[1:]
+def _flag(cell: Cell, errors: list[str]) -> bool:
+    text = (cell.value or "").strip()
+    if text and text.upper() != "X":
+        errors.append(f"{cell.ref}: expected X or blank, got {text}")
+    return text.upper() == "X"
 
 
-@dataclass(frozen=True)
-class Workbook:
-    domain: Domain
-    tables: tuple[TableRow, ...]
-    columns: tuple[ColumnRow, ...]
-    warnings: tuple[str, ...] = field(default=())
-
-
-def _letters(index: int) -> str:
-    name, index = "", index + 1
-    while index:
-        index, rem = divmod(index - 1, 26)
-        name = chr(65 + rem) + name
-    return name
-
-
-def _sheet_rows(book: fastexcel.ExcelReader, name: str) -> list[list[str | None]]:
-    # ponytail: calamine hides where the used range starts, so refs assume it starts at A1.
-    try:
-        # the eager=True overload of fastexcel's stubs returns an untyped pyarrow table
-        loaded = book.load_sheet(  # pyright: ignore[reportUnknownMemberType]
-            name, header_row=None, dtypes="string"
-        )
-        frame: pl.DataFrame = loaded.to_polars()
-    except fastexcel.FastExcelError as err:
-        raise FloeIoError(
-            f"xlsx_read_error: failed to read sheet {name}: {err}",
-            code="io_read_error",
-            rule="xlsx_read_error",
-        ) from err
-    return [[(c.strip() or None) if c else None for c in row] for row in frame.rows()]
-
-
-def _data_rows(
-    sheet: str,
-    rows: list[list[str | None]],
-    expected: tuple[str, ...],
-    errors: list[str],
-) -> list[dict[str, _Cell]]:
-    """Rows below the header row; the group row and anything above the header row is skipped."""
-    head = next((i for i, r in enumerate(rows) if "target_table" in r), None)
-    if head is None:
-        errors.append(
-            f"{sheet}: no header row (expected a row containing target_table)"
-        )
-        return []
-    seen: dict[str, int] = {}
-    for col, name in enumerate(rows[head]):
-        if name in seen:
-            errors.append(
-                f"{sheet}!{_letters(col)}{head + 1}: duplicate header {name} "
-                f"(first at {_letters(seen[name])}{head + 1})"
-            )
-        elif name:
-            seen[name] = col
-    absent = [h for h in expected if h not in seen]
-    if absent:
-        errors.append(f"{sheet}: missing header(s): {', '.join(absent)}")
-    if absent or len(seen) < len([n for n in rows[head] if n]):
-        return []
-    return [
-        {
-            h: _Cell(
-                r[seen[h]] if seen[h] < len(r) else None,
-                f"{sheet}!{_letters(seen[h])}{n + 1}",
-            )
-            for h in expected
-        }
-        for n, r in enumerate(rows[head + 1 :], head + 1)
-        if any(r)
-    ]
-
-
-def _flag(cell: _Cell, errors: list[str]) -> bool:
-    if cell.value is None:
-        return False
-    if cell.value.upper() != "X":
-        errors.append(f"{cell.ref}: expected X or blank, got {cell.value}")
-    return cell.value.upper() == "X"
-
-
-def _severity(cell: _Cell, errors: list[str]) -> str | None:
+def _severity(cell: Cell, errors: list[str]) -> str | None:
     if cell.value is not None and cell.value not in SEVERITIES:
         errors.append(
             f"{cell.ref}: severity must be one of {'|'.join(SEVERITIES)}, got {cell.value}"
@@ -169,19 +72,13 @@ def _severity(cell: _Cell, errors: list[str]) -> str | None:
     return cell.value
 
 
-def _required(cell: _Cell, errors: list[str]) -> str:
+def _required(cell: Cell, errors: list[str]) -> str:
     if cell.value is None:
         errors.append(f"{cell.ref}: required cell is blank")
     return cell.value or ""
 
 
-def _bound(cell: _Cell) -> str | None:
-    if cell.value is not None and cell.value.endswith(_MIDNIGHT):
-        return cell.value.removesuffix(_MIDNIGHT)
-    return cell.value
-
-
-def _allowed(cell: _Cell, errors: list[str]) -> tuple[str, ...] | None:
+def _allowed(cell: Cell, errors: list[str]) -> tuple[str, ...] | None:
     if cell.value is None:
         return None
     items = tuple(i.strip() for i in cell.value.split("|"))
@@ -192,29 +89,7 @@ def _allowed(cell: _Cell, errors: list[str]) -> tuple[str, ...] | None:
     return items
 
 
-def _guide(rows: list[list[str | None]], errors: list[str]) -> Domain:
-    found: dict[str, _Cell] = {}
-    for n, row in enumerate(rows):
-        for col, text in enumerate(row):
-            if text in GUIDE_LABELS and text not in found:
-                right = row[col + 1] if col + 1 < len(row) else None
-                found[text] = _Cell(right, f"Guide!{_letters(col + 1)}{n + 1}")
-    for label in GUIDE_LABELS:
-        if label not in found:
-            errors.append(f"Guide: label {label} not found")
-    blank = _Cell(None, "Guide")
-    return Domain(
-        _required(found.get("domain", blank), errors) if "domain" in found else "",
-        _required(found["template_version"], errors)
-        if "template_version" in found
-        else "",
-        _severity(found["default_severity"], errors)
-        if "default_severity" in found
-        else None,
-    )
-
-
-def _table(row: dict[str, _Cell], errors: list[str]) -> TableRow:
+def _table(row: dict[str, Cell], errors: list[str]) -> TableRow:
     name = _required(row["target_table"], errors)
     if name and not _SAFE_NAME.fullmatch(name):
         errors.append(
@@ -235,7 +110,7 @@ def _table(row: dict[str, _Cell], errors: list[str]) -> TableRow:
     )
 
 
-def _column(row: dict[str, _Cell], errors: list[str]) -> ColumnRow:
+def _column(row: dict[str, Cell], errors: list[str]) -> ColumnRow:
     return ColumnRow(
         {k: c.ref for k, c in row.items()},
         _required(row["target_table"], errors),
@@ -250,8 +125,8 @@ def _column(row: dict[str, _Cell], errors: list[str]) -> ColumnRow:
         row["fk_target_column"].value,
         _flag(row["not_null"], errors),
         _severity(row["not_null_severity"], errors),
-        _bound(row["min"]),
-        _bound(row["max"]),
+        row["min"].value,
+        row["max"].value,
         row["min_length"].value,
         row["max_length"].value,
         _allowed(row["allowed_values"], errors),
@@ -306,43 +181,22 @@ def _cross_check(
                 )
 
 
-def parse_workbook(path: Path) -> Workbook:
-    """Read `Guide`, `Tables` and `Columns`; any other sheet (a legacy `Rules`) is ignored."""
-    try:
-        book = fastexcel.read_excel(path)
-    except fastexcel.FastExcelError as err:
-        raise FloeIoError(
-            f"xlsx_read_error: failed to open xlsx at {path}: {err}",
-            code="io_read_error",
-            rule="xlsx_read_error",
-        ) from err
-    errors: list[str] = []
-    warnings: list[str] = []
-    absent = [s for s in ("Guide", "Tables", "Columns") if s not in book.sheet_names]
-    for s in absent:
-        errors.append(
-            f"{s}: sheet not found (available: {', '.join(book.sheet_names)})"
-        )
-    if absent:
-        raise _invalid(errors)
-    domain = _guide(_sheet_rows(book, "Guide"), errors)
-    table_rows = _data_rows(
-        "Tables", _sheet_rows(book, "Tables"), TABLES_HEADERS, errors
-    )
-    column_rows = _data_rows(
-        "Columns", _sheet_rows(book, "Columns"), COLUMNS_HEADERS, errors
-    )
-    tables = [_table(r, errors) for r in table_rows]
-    columns = [_column(r, errors) for r in column_rows]
-    _cross_check(tables, columns, errors, warnings)
-    if errors:
-        raise _invalid(errors)
-    return Workbook(domain, tuple(tables), tuple(columns), tuple(warnings))
-
-
-def _invalid(errors: list[str]) -> FloeConfigError:
+def invalid(errors: list[str]) -> FloeConfigError:
     return FloeConfigError(
         "invalid business-contract workbook:\n" + "\n".join(errors),
         code="config_invalid_value",
         rule="contract_workbook",
     )
+
+
+def build_rows(
+    table_cells: list[dict[str, Cell]],
+    column_cells: list[dict[str, Cell]],
+    errors: list[str],
+) -> tuple[tuple[TableRow, ...], tuple[ColumnRow, ...], tuple[str, ...]]:
+    """Records in input order, with every row and cross-row problem appended to `errors`."""
+    tables = [_table(r, errors) for r in table_cells]
+    columns = [_column(r, errors) for r in column_cells]
+    warnings: list[str] = []
+    _cross_check(tables, columns, errors, warnings)
+    return tuple(tables), tuple(columns), tuple(warnings)

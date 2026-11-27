@@ -1,171 +1,123 @@
-from collections.abc import Sequence
-from datetime import date
-from pathlib import Path
+from dataclasses import fields
 
 import pytest
-from xlsx_book import Cell, Day, Num, Rows, write_book
 
-from floe.contract.workbook import COLUMNS_HEADERS, TABLES_HEADERS, parse_workbook
+from floe.contract.workbook import Cell, ColumnRow, TableRow, build_rows, invalid
 from floe.errors import FloeConfigError
 
-GUIDE: Rows = [
-    ["Instructions"],
-    ["domain", "sales"],
-    ["template_version", "1"],
-    ["default_severity", "warn"],
-]
+LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
-def _row(headers: tuple[str, ...], **cells: Cell) -> list[Cell]:
-    return [cells.get(h) for h in headers]
-
-
-def tables(*rows: dict[str, Cell]) -> Rows:
-    group: Sequence[Cell] = ["01 / TABLE"] + [None] * 9
-    return [group, list(TABLES_HEADERS)] + [_row(TABLES_HEADERS, **r) for r in rows]
-
-
-def columns(*rows: dict[str, Cell]) -> Rows:
-    group: Sequence[Cell] = ["01 / NAMES & TYPES"] + [None] * 18
-    return [group, list(COLUMNS_HEADERS)] + [_row(COLUMNS_HEADERS, **r) for r in rows]
-
-
-def book(
-    tmp_path: Path,
-    t: Rows | None = None,
-    c: Rows | None = None,
-    **extra: list[list[Cell]],
-) -> Path:
-    sheets = {
-        "Guide": GUIDE,
-        "Tables": t if t is not None else tables({"target_table": "orders"}),
-        "Columns": c if c is not None else columns(),
-        **extra,
+def _cells(sheet: str, row: int, record: type, **values: str) -> dict[str, Cell]:
+    names = [f.name for f in fields(record)][1:]
+    return {
+        n: Cell(values.get(n), f"{sheet}!{LETTERS[i]}{row}")
+        for i, n in enumerate(names)
     }
-    return write_book(tmp_path / "b.xlsx", sheets)
 
 
-def col(table: str, name: str, **kw: Cell) -> dict[str, Cell]:
-    return {"target_table": table, "target_column": name, "target_type": "string", **kw}
+def table(row: int, **kw: str) -> dict[str, Cell]:
+    return _cells("Tables", row, TableRow, **kw)
 
 
-def errors_of(path: Path) -> str:
+def column(row: int, table: str, name: str, **kw: str) -> dict[str, Cell]:
+    kw = {"target_table": table, "target_column": name, "target_type": "string", **kw}
+    return _cells("Columns", row, ColumnRow, **kw)
+
+
+def errors_of(tables: list[dict[str, Cell]], columns: list[dict[str, Cell]]) -> str:
+    errors: list[str] = []
+    build_rows(tables, columns, errors)
     with pytest.raises(FloeConfigError) as e:
-        parse_workbook(path)
+        raise invalid(errors)
     return str(e.value)
 
 
-def test_missing_tables_sheet(tmp_path: Path) -> None:
-    path = write_book(tmp_path / "b.xlsx", {"Guide": GUIDE, "Columns": columns()})
-    assert "Tables: sheet not found" in errors_of(path)
-
-
-def test_rejects_unknown_target_table_with_cell_location(tmp_path: Path) -> None:
-    c = columns(col("orders", "id"), col("ghost", "id"))
-    assert "Columns!A4: unknown target_table ghost" in errors_of(book(tmp_path, c=c))
-
-
-def test_preserves_composite_pk_row_order(tmp_path: Path) -> None:
-    c = columns(
-        col("orders", "b", primary_key="X"),
-        col("orders", "z"),
-        col("orders", "a", primary_key=" x "),
+def test_rejects_unknown_target_table_with_cell_location() -> None:
+    msg = errors_of(
+        [table(3, target_table="orders")],
+        [column(3, "orders", "id"), column(4, "ghost", "id")],
     )
-    wb = parse_workbook(book(tmp_path, c=c))
-    assert [r.target_column for r in wb.columns] == ["b", "z", "a"]
-    assert [r.target_column for r in wb.columns if r.primary_key] == ["b", "a"]
-    assert wb.columns[2].refs["target_column"] == "Columns!C5"
+    assert "Columns!A4: unknown target_table ghost" in msg
 
 
-def test_reads_text_cells_without_numeric_coercion(tmp_path: Path) -> None:
-    c = columns(
-        col("orders", "id", min="007", max=Num("0.1"), min_length=Num("5")),
-        col("orders", "day", min=Day(date(2024, 1, 31)), max="2024-12-31"),
+def test_preserves_composite_pk_row_order() -> None:
+    errors: list[str] = []
+    _, columns, _ = build_rows(
+        [table(3, target_table="orders")],
+        [
+            column(3, "orders", "b", primary_key="X"),
+            column(4, "orders", "z"),
+            column(5, "orders", "a", primary_key=" x "),
+        ],
+        errors,
     )
-    wb = parse_workbook(book(tmp_path, c=c))
-    assert (wb.columns[0].min, wb.columns[0].max, wb.columns[0].min_length) == (
-        "007",
-        "0.1",
-        "5",
+    assert errors == []
+    assert [c.target_column for c in columns] == ["b", "z", "a"]
+    assert [c.target_column for c in columns if c.primary_key] == ["b", "a"]
+    assert columns[2].refs["target_column"] == "Columns!C5"
+
+
+def test_rejects_duplicate_target_column() -> None:
+    msg = errors_of(
+        [table(3, target_table="orders")],
+        [column(3, "orders", "id"), column(4, "orders", "id")],
     )
-    assert (wb.columns[1].min, wb.columns[1].max) == ("2024-01-31", "2024-12-31")
-
-
-def test_rejects_duplicate_target_column(tmp_path: Path) -> None:
-    c = columns(col("orders", "id"), col("orders", "id"))
     assert (
-        "Columns!C4: duplicate target_column id in orders (first at Columns!C3)"
-        in errors_of(book(tmp_path, c=c))
+        "Columns!C4: duplicate target_column id in orders (first at Columns!C3)" in msg
     )
 
 
-def test_parse_without_technical_configuration(tmp_path: Path) -> None:
-    t = tables(
-        {"target_table": "orders", "source_dataset": "orders_export", "owner": "ann"}
+def test_builds_typed_records_and_splits_allowed_values() -> None:
+    errors: list[str] = []
+    tables, columns, warnings = build_rows(
+        [table(3, target_table="orders", source_dataset="orders_export", owner="ann")],
+        [column(3, "orders", "id", not_null="X", allowed_values="a | b|c", min="007")],
+        errors,
     )
-    c = columns(col("orders", "id", not_null="X", allowed_values="a | b|c"))
-    wb = parse_workbook(book(tmp_path, t, c, Rules=[["ignored"]]))
-    assert (wb.domain.name, wb.domain.template_version, wb.domain.default_severity) == (
-        "sales",
-        "1",
-        "warn",
-    )
-    assert wb.tables[0].source_dataset == "orders_export"
-    assert wb.columns[0].allowed_values == ("a", "b", "c")
-    assert wb.columns[0].not_null is True
+    assert (errors, warnings) == ([], ())
+    assert tables[0].source_dataset == "orders_export"
+    assert columns[0].allowed_values == ("a", "b", "c")
+    assert (columns[0].not_null, columns[0].min) == (True, "007")
 
 
-def test_blank_rows_are_ignored_and_sheet_order_does_not_matter(tmp_path: Path) -> None:
-    t = tables({}, {"target_table": "orders"})
-    path = write_book(
-        tmp_path / "b.xlsx", {"Columns": columns(), "Tables": t, "Guide": GUIDE}
+def test_aggregates_cell_errors() -> None:
+    msg = errors_of(
+        [
+            table(3, target_table="a/b"),
+            table(4, target_table="orders", cast_severity="fatal"),
+            table(5, target_table="orders"),
+        ],
+        [
+            {**column(3, "orders", "x"), "target_type": Cell(None, "Columns!D3")},
+            column(4, "orders", "y", primary_key="yes", allowed_values="a||b"),
+            column(5, "orders", "z", fk_target_table="orders"),
+        ],
     )
-    assert [r.target_table for r in parse_workbook(path).tables] == ["orders"]
-
-
-def test_aggregates_cell_errors(tmp_path: Path) -> None:
-    t = tables(
-        {"target_table": "a/b"},
-        {"target_table": "orders", "cast_severity": "fatal"},
-        {"target_table": "orders"},
-    )
-    c = columns(
-        {
-            "target_table": "orders",
-            "primary_key": "yes",
-            "allowed_values": "a||b",
-            "fk_target_table": "orders",
-        },
-    )
-    msg = errors_of(book(tmp_path, t, c))
     for expected in (
         "Tables!A3: target_table a/b cannot be a file name",
         "Tables!J4: severity must be one of warn|reject|abort, got fatal",
         "Tables!A5: duplicate target_table orders (first at Tables!A4)",
-        "Columns!C3: required cell is blank",
         "Columns!D3: required cell is blank",
-        "Columns!F3: expected X or blank, got yes",
-        "Columns!Q3: allowed_values has an empty item",
-        "Columns!J3: fk_target_column is blank",
+        "Columns!F4: expected X or blank, got yes",
+        "Columns!Q4: allowed_values has an empty item",
+        "Columns!J5: fk_target_column is blank",
     ):
         assert expected in msg
 
 
-def test_duplicate_and_missing_headers(tmp_path: Path) -> None:
-    t = [["target_table", "owner", "owner"], ["orders"]]
-    msg = errors_of(book(tmp_path, t))
-    assert "Tables!C1: duplicate header owner (first at B1)" in msg
-    assert "Tables: missing header(s): source_dataset" in msg
-
-
-def test_foreign_key_inside_is_checked_outside_is_a_warning(tmp_path: Path) -> None:
-    c = columns(
-        col("orders", "id"),
-        col("orders", "ext", fk_target_table="elsewhere", fk_target_column="id"),
-        col("orders", "bad", fk_target_table="orders", fk_target_column="nope"),
-    )
-    assert "Columns!J5: orders has no column nope" in errors_of(book(tmp_path, c=c))
-    wb = parse_workbook(book(tmp_path, c=c[:4]))
-    assert wb.warnings == (
+def test_foreign_key_inside_is_checked_outside_is_a_warning() -> None:
+    tables = [table(3, target_table="orders")]
+    ok = [
+        column(3, "orders", "id"),
+        column(4, "orders", "ext", fk_target_table="elsewhere", fk_target_column="id"),
+    ]
+    errors: list[str] = []
+    assert build_rows(tables, ok, errors)[2] == (
         "Columns!I4: foreign key points outside the workbook (elsewhere)",
     )
+    bad = [
+        *ok,
+        column(5, "orders", "bad", fk_target_table="orders", fk_target_column="nope"),
+    ]
+    assert "Columns!J5: orders has no column nope" in errors_of(tables, bad)
