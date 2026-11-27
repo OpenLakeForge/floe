@@ -42,15 +42,14 @@ def _tighter(kind_when_new_is_tighter: bool) -> Kind:
 def _bound(path: str, key: str, old: object, new: object, lower: bool) -> Change | None:
     if old is None or new is None:
         return Change(_tighter(old is None), path, f"{key} {old!r} -> {new!r}")
-    try:
-        a, b = (
-            cast("float", old),
-            cast("float", new),
-        )  # untyped YAML scalars; TypeError handled below
-        tighter = b > a if lower else b < a
-    except TypeError:
+    if not all(
+        isinstance(v, int | float) and not isinstance(v, bool) for v in (old, new)
+    ):
         return Change("tightening", path, f"{key} {old!r} -> {new!r} (not comparable)")
-    return Change(_tighter(tighter), path, f"{key} {old!r} -> {new!r}")
+    a, b = cast("float", old), cast("float", new)
+    return Change(
+        _tighter(b > a if lower else b < a), path, f"{key} {old!r} -> {new!r}"
+    )
 
 
 def _severity(
@@ -96,18 +95,11 @@ def _column(
     for key in (*_LOWER_BOUNDS, *_UPPER_BOUNDS):
         if old.get(key) != new.get(key):
             out.append(cast("Change", _bound(f"{p}.{key}", key, old.get(key), new.get(key), key in _LOWER_BOUNDS)))  # fmt: skip
-    if old.get("allowed_values") != new.get("allowed_values"):
-        o, n = old.get("allowed_values"), new.get("allowed_values")
-        wider = (
-            o is not None
-            and n is not None
-            and set(map(str, _l(o))) < set(map(str, _l(n)))
-        )
-        out.append(
-            Change(
-                _tighter(not (n is None or wider)), f"{p}.allowed_values", f"{o} -> {n}"
-            )
-        )
+    o, n = old.get("allowed_values"), new.get("allowed_values")
+    so, sn = set(map(str, _l(o))), set(map(str, _l(n)))
+    if (o is None) != (n is None) or so != sn:
+        wider = o is not None and n is not None and so < sn
+        out.append(Change(_tighter(not (n is None or wider)), f"{p}.allowed_values", f"{o} -> {n}"))  # fmt: skip
     if old.get("pattern") != new.get("pattern"):
         o, n = old.get("pattern"), new.get("pattern")
         out.append(Change(_tighter(n is not None), f"{p}.pattern", f"{o!r} -> {n!r}"))

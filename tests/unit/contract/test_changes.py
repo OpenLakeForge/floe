@@ -146,3 +146,15 @@ def test_metadata_only() -> None:
     new = entity(col("a"))
     new["metadata"] = {"owner": "y", "description": "d", "other": 2}
     assert kinds(old, new) == [("metadata", "metadata.owner")]
+
+
+def test_allowed_values_reorder_is_not_a_change() -> None:
+    old = entity(col("a", "int64", allowed_values=[1, 2]))
+    new = entity(col("a", "int64", allowed_values=[2, 1, 1]))
+    assert classify(old, new) == []
+
+
+def test_string_bounds_are_not_compared_lexicographically() -> None:
+    old = entity(col("a", "int64", min="9"))
+    new = entity(col("a", "int64", min="10"))
+    assert kinds(old, new) == [("tightening", "schema.columns[a].min")]
