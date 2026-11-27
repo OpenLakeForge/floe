@@ -64,9 +64,11 @@ def test_reads_text_cells_without_numeric_coercion(tmp_path: Path) -> None:
     c = columns(
         col("orders", "id", min="007", max=Num("0.1"), min_length=Num("5")),
         col("orders", "day", min=Day(date(2024, 1, 31)), max="2024-12-31"),
+        col("orders", "num", min="123 00:00:00"),
     )
     wb = parse_workbook(book(tmp_path, c=c))
-    first, second = wb.columns
+    first, second, third = wb.columns
+    assert third.min == "123 00:00:00"
     assert (first.min, first.max, first.min_length) == ("007", "0.1", "5")
     assert (second.min, second.max) == ("2024-01-31", "2024-12-31")
 
@@ -107,16 +109,24 @@ def test_duplicate_and_missing_headers_and_guide(tmp_path: Path) -> None:
         {"Guide": [["domain", "sales"]], "Tables": t, "Columns": columns()},
     )
     msg = errors_of(path)
-    assert "Tables!C1: duplicate header owner (first at B1)" in msg
-    assert "Tables: missing header(s): source_dataset" in msg
-    assert "Guide: label template_version not found" in msg
+    assert msg == (
+        "invalid business-contract workbook:\n"
+        "Guide: label template_version not found\n"
+        "Guide: label default_severity not found\n"
+        "Tables!C1: duplicate header owner (first at B1)\n"
+        "Tables: missing header(s): source_dataset, business_name, description, grain, "
+        "default_severity, unique_severity, not_null_severity, cast_severity"
+    )
 
 
 def test_cell_errors_name_the_excel_cell(tmp_path: Path) -> None:
     c = columns(col("ghost", "id"), col("orders", "n", primary_key="yes"))
     msg = errors_of(book(tmp_path, c=c))
-    assert "Columns!A3: unknown target_table ghost" in msg
-    assert "Columns!F4: expected X or blank, got yes" in msg
+    assert msg == (
+        "invalid business-contract workbook:\n"
+        "Columns!F4: expected X or blank, got yes\n"
+        "Columns!A3: unknown target_table ghost (not in Tables)"
+    )
 
 
 def test_reads_the_shipped_template() -> None:

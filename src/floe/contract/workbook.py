@@ -19,7 +19,9 @@ if TYPE_CHECKING:
 SEVERITIES = ("warn", "reject", "abort")
 GUIDE_LABELS = ("domain", "template_version", "default_severity")
 _SAFE_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_-]*")
-_MIDNIGHT = " 00:00:00"  # how calamine renders a date cell as text
+_DATE_CELL = re.compile(
+    r"(\d{4}-\d{2}-\d{2}) 00:00:00"
+)  # how calamine renders a date cell as text
 
 
 class Cell(NamedTuple):
@@ -97,9 +99,8 @@ def _required(cell: Cell, errors: list[str]) -> str:
 
 
 def _bound(cell: Cell) -> str | None:
-    if cell.value is not None and cell.value.endswith(_MIDNIGHT):
-        return cell.value.removesuffix(_MIDNIGHT)
-    return cell.value
+    match = _DATE_CELL.fullmatch(cell.value or "")
+    return match[1] if match else cell.value
 
 
 def _allowed(cell: Cell, errors: list[str]) -> tuple[str, ...] | None:
