@@ -48,6 +48,11 @@ def _pair(key: str, value: Any, col: int) -> str:
     return _render({key: value}).rstrip("\n").replace("\n", "\n" + " " * col)
 
 
+def _drop(text: str, k: Any, v: Any) -> tuple[int, int, str]:
+    """The edit that removes a whole `key: value` pair, lines included."""
+    return (text.rfind("\n", 0, k.start_mark.index) + 1, _eol(text, _end(v)), "")
+
+
 def _edit(
     text: str,
     node: Any,
@@ -69,11 +74,16 @@ def _edit(
         if (key,) in _PARENTS and not path:
             if not _block_map(v):
                 raise _Unsplicable(".".join(here))
+            if not new.get(key) and {c.value for c, _ in v.value} <= set(
+                old.get(key, {})
+            ):
+                edits.append(_drop(text, k, v))  # every child goes: drop the parent too
+                continue
             _edit(text, v, old.get(key, {}), new.get(key, {}), here, edits)
         elif key in new:
             edits.append((start, _end(v), _pair(key, new[key], col)))
         else:  # no longer in the workbook: drop the whole line(s)
-            edits.append((text.rfind("\n", 0, start) + 1, _eol(text, _end(v)), ""))
+            edits.append(_drop(text, k, v))
     if adds:
         pos = _eol(text, _end(node))
         lead = "" if text[:pos].endswith("\n") else "\n"
@@ -146,6 +156,8 @@ def reconcile(
         return blocked(f"owned key {e} is in flow style or has an unexpected shape")
     except Exception as e:  # noqa: BLE001 -- the splice must never raise; a bad one is blocked
         return blocked(f"self-check failed: the spliced file does not parse: {e}")
+    if any(p in again and not again[p] for (p,) in _PARENTS):  # pyright: ignore[reportOperatorIssue, reportIndexIssue, reportUnknownVariableType]
+        return blocked("self-check failed: the splice left an empty parent mapping")
     if fingerprint(owned(cast("dict[str, Any]", again))) != fingerprint(new) or _rest(
         again
     ) != _rest(doc):

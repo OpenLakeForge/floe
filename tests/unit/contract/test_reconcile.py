@@ -3,6 +3,8 @@ from typing import Any
 import pytest
 
 from floe.add_entity import _render  # pyright: ignore[reportPrivateUsage] -- builds the generated file the importer would write
+from floe.config.entity import parse_entity
+from floe.config.yaml import parse_yaml
 from floe.contract import reconcile as module
 from floe.contract.reconcile import reconcile
 from floe.contract.render import fingerprint, owned
@@ -30,6 +32,10 @@ def _generated(entity: dict[str, Any]) -> str:
     return f"# floe-contract: sha256:{fingerprint(owned(entity))}\n" + _render(entity)
 
 
+_SINK: dict[str, Any] = {
+    "accepted": {"format": "parquet", "path": "/out"},
+    "rejected": {"format": "parquet", "path": "/rej"},
+}
 ENGINEER = [
     "  options:\n    header: true  # keep the header\n",
     "sink:\n  accepted:\n    format: parquet  # engineer\n    path: /out\n",
@@ -138,3 +144,36 @@ def test_flow_style_owned_parent_blocks() -> None:
     plan = reconcile("orders.yml", text, _entity(metadata={"owner": "new"}))
     assert plan.status == "blocked"
     assert "metadata" in plan.reason
+
+
+def _no_metadata() -> dict[str, Any]:
+    entity = _entity()
+    del entity["metadata"]
+    return entity
+
+
+def test_removing_every_child_drops_the_parent() -> None:
+    old = _generated(_entity()).replace(
+        "metadata:\n  owner: ops\n  description: Orders\n",
+        "metadata:\n  owner: ops\n  description: Orders\n",
+    )
+    plan = reconcile("orders.yml", old, _no_metadata())
+    assert plan.status == "updated", plan.reason
+    assert plan.new_text is not None and "metadata" not in plan.new_text
+    entity = parse_yaml(plan.new_text)[0]
+    assert isinstance(entity, dict)
+    parse_entity({**entity, "source": {"format": "csv", "path": "/in"}, "sink": _SINK})  # pyright: ignore[reportUnknownArgumentType]
+    back = reconcile("orders.yml", plan.new_text, _entity())
+    assert back.status == "updated", back.reason
+    assert back.new_text is not None and "owner: ops" in back.new_text
+
+
+def test_parent_with_an_engineer_child_is_kept() -> None:
+    old = _generated(_entity()).replace(
+        "  description: Orders\n",
+        "  description: Orders\n  tags:\n    - gold  # keep\n",
+    )
+    plan = reconcile("orders.yml", old, _no_metadata())
+    assert plan.status == "updated", plan.reason
+    assert plan.new_text is not None
+    assert "metadata:\n  tags:\n    - gold  # keep\n" in plan.new_text
