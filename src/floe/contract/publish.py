@@ -45,6 +45,14 @@ def _read(full: str) -> str | None:
         return None
 
 
+def _encodable(text: str) -> bool:
+    try:
+        text.encode()
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def _can_create_parent(parent: str) -> bool:
     while not os.path.exists(parent):
         parent = os.path.dirname(parent)
@@ -76,6 +84,8 @@ def preflight(root: str, plan: Sequence[PlannedFile]) -> list[str]:
         elif p.status in ("created", "updated"):
             if p.new_text is None:
                 problems.append(f"{p.path}: no new text to write")
+            elif not _encodable(p.new_text):
+                problems.append(f"{p.path}: new text is not valid UTF-8")
             elif not _can_create_parent(os.path.dirname(full)):
                 problems.append(f"{p.path}: parent directory is not writable")
     for full, path in dests.items():

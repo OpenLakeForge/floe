@@ -171,3 +171,14 @@ def test_staged_update_is_created_private(
         os.umask(old_umask)
     assert [m for _, m in created] == [0o600]
     assert f.stat().st_mode & 0o777 == 0o600
+
+
+def test_unencodable_text_writes_nothing(tmp_path: Path) -> None:
+    plan = [
+        _plan("a.yml", None, "A", "created"),
+        _plan("b.yml", None, "\ud800", "created"),
+    ]
+    assert preflight(str(tmp_path), plan) == ["b.yml: new text is not valid UTF-8"]
+    with pytest.raises(FloeIoError):
+        publish(str(tmp_path), plan)
+    assert list(tmp_path.iterdir()) == []
