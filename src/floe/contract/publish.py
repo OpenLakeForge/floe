@@ -90,10 +90,14 @@ def _write(full: str, text: str, create: bool) -> None:
     tmp = os.path.join(head, f".{name}.{secrets.token_hex(6)}.floe-tmp")
     try:
         os.makedirs(head, exist_ok=True)
-        with open(tmp, "xb") as f:
+        # an update starts private, then takes the replaced file's mode before any content
+        fd = os.open(
+            tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666 if create else 0o600
+        )
+        with os.fdopen(fd, "wb") as f:
+            if not create:
+                os.fchmod(fd, stat.S_IMODE(os.stat(full).st_mode))
             f.write(text.encode())
-        if not create:  # keep the replaced file's permissions
-            os.chmod(tmp, stat.S_IMODE(os.stat(full).st_mode))
         if create:
             os.link(tmp, full)  # fails if the file appeared meanwhile
         else:

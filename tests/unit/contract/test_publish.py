@@ -147,3 +147,27 @@ def test_update_keeps_file_mode(tmp_path: Path) -> None:
         os.umask(old_umask)
     assert f.read_text() == "new"
     assert f.stat().st_mode & 0o777 == 0o640
+
+
+def test_staged_update_is_created_private(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    f = tmp_path / "a.yml"
+    f.write_text("old")
+    f.chmod(0o600)
+    created: list[tuple[str, int]] = []
+    real_open = os.open
+
+    def spy_open(path: str, flags: int, mode: int = 0o777) -> int:
+        if path.endswith(".floe-tmp"):
+            created.append((path, mode))
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", spy_open)
+    old_umask = os.umask(0o022)
+    try:
+        publish(str(tmp_path), [_plan("a.yml", "old", "new", "updated")])
+    finally:
+        os.umask(old_umask)
+    assert [m for _, m in created] == [0o600]
+    assert f.stat().st_mode & 0o777 == 0o600
