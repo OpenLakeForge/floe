@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Literal, cast
 
@@ -43,7 +44,8 @@ def _bound(path: str, key: str, old: object, new: object, lower: bool) -> Change
     if old is None or new is None:
         return Change(_tighter(old is None), path, f"{key} {old!r} -> {new!r}")
     if not all(
-        isinstance(v, int | float) and not isinstance(v, bool) for v in (old, new)
+        isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v)
+        for v in (old, new)
     ):
         return Change("tightening", path, f"{key} {old!r} -> {new!r} (not comparable)")
     a, b = cast("float", old), cast("float", new)
@@ -90,6 +92,8 @@ def _column(
         out.append(
             Change("breaking", f"{p}.type", f"{old.get('type')} -> {new.get('type')}")
         )
+    if old.get("source") != new.get("source"):
+        out.append(Change("breaking", f"{p}.source", f"{old.get('source')!r} -> {new.get('source')!r}"))  # fmt: skip
     if old.get("nullable", True) != new.get("nullable", True):
         out.append(Change(_tighter(new.get("nullable", True) is False), f"{p}.nullable", f"{old.get('nullable')} -> {new.get('nullable')}"))  # fmt: skip
     for key in (*_LOWER_BOUNDS, *_UPPER_BOUNDS):

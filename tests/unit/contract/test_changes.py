@@ -168,3 +168,19 @@ def test_column_override_removal_resolves_entity_rule_override() -> None:
     assert kinds(old, new) == [
         ("tightening", "schema.columns[a].rule_severity.out_of_range")
     ]
+
+
+def test_source_column_change_is_breaking() -> None:
+    old = entity(col("amount", "double", source="AMT"))
+    new = entity(col("amount", "double", source="AMOUNT"))
+    assert kinds(old, new) == [("breaking", "schema.columns[amount].source")]
+
+
+def test_non_finite_bound_counts_as_tightening() -> None:
+    nan, inf = float("nan"), float("inf")
+    for old, new in ((1, nan), (nan, 1), (1, inf), (inf, 1)):
+        before, after = (
+            entity(col("a", "double", max=old)),
+            entity(col("a", "double", max=new)),
+        )
+        assert kinds(before, after) == [("tightening", "schema.columns[a].max")]
