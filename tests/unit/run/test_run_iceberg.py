@@ -275,9 +275,9 @@ def test_append_scans_the_table_once_however_many_chunks_the_batch_has(tmp_path:
     scans: list[Table] = []
     scan_iceberg = pl.scan_iceberg
 
-    def counting(table: Table) -> pl.LazyFrame:
+    def counting(table: Table, **kwargs: Any) -> pl.LazyFrame:
         scans.append(table)
-        return scan_iceberg(table)
+        return scan_iceberg(table, **kwargs)
 
     monkeypatch.setattr(pl, "scan_iceberg", counting)
     report = run(tmp_path, "id,name\n5,e\n1,a\n6,f\n7,g\n3,c\n8,h\n", mode="append")  # 3 chunks  # fmt: skip

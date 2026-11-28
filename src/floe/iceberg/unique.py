@@ -27,5 +27,7 @@ def cache_table_keys(
     # `polars_iceberg` plugin, so PyIceberg planning (as before 2.1) is chosen. A user's value wins.
     os.environ.setdefault("POLARS_ICEBERG_PLANNER", "pyiceberg")
     with run_error("iceberg unique seed scan failed"):
-        pl.scan_iceberg(table).select(cs.by_name(sorted(names))).sink_parquet(path)
+        # #1494: the native reader ignores the table's FileIO; Polars translates its `s3.*` etc.
+        lf = pl.scan_iceberg(table, storage_options=dict(table.io.properties))
+        lf.select(cs.by_name(sorted(names))).sink_parquet(path)
     return True
