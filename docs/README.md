@@ -37,3 +37,4 @@ package: nothing on these pages needs OpenLakeForge.
 
 To change Floe itself, start with [CONTRIBUTING.md](../CONTRIBUTING.md) and
 [AGENTS.md](../AGENTS.md).
+
