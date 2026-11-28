@@ -127,7 +127,7 @@ are flagged. [Checks and severity](checks.md) gives the exact rules.
 | --- | --- | --- | --- |
 | `warn` | Kept in the accepted output; errors reported | Accepted | `success_with_warnings`, exit `0` |
 | `reject` | Written to the rejected sink with their errors | Accepted | `rejected`, exit `0` |
-| `abort` | The whole file is rejected, and the entity stops reading | Rows of the files read before it are written; that file and later ones are not | `aborted`, exit `2` |
+| `abort` | The whole file is rejected, and the entity stops reading | Rows of the files read before it are written; that file and later ones are not. If no row was accepted before it, nothing is written and the existing accepted output stays, even under `overwrite` | `aborted`, exit `2` |
 
 `policy.max_rejection_rate` (a fraction in `[0, 1]`, `reject` only) adds a ceiling: when the
 rejected rows exceed that share of the input rows, the entity ends `aborted` (exit `2`)

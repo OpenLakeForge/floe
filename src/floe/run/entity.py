@@ -93,6 +93,12 @@ def _pulled(
         yield frame
 
 
+def _drain(frames: list[pl.DataFrame]) -> Iterator[pl.DataFrame]:
+    """`frames`, each dropped once yielded: the sink holds the chunk it is on, not the first."""
+    while frames:
+        yield frames.pop(0)
+
+
 @dataclass(frozen=True)
 class EntityRun:
     report: dict[str, Any]
@@ -458,14 +464,25 @@ def _run_entity(
     merge: dict[str, Any] | None = None
     added: list[str] = []
     stream = accepted_frames()
+    aborted_empty = False
     try:
-        first = next(stream, None)  # nothing is written when every input was skipped
-        if pending and (first is not None or sink.write_mode == "overwrite"):
+        # up to the first frame with rows; the empty ones before it (a file's end marker, or a file with every row rejected) go on to the sink
+        peeked: list[pl.DataFrame] = []
+        for frame in stream:
+            peeked.append(frame)
+            if frame.height:
+                break
+        # an aborted run that accepted no rows leaves the existing output as it is (#1496)
+        aborted_empty = not (peeked and peeked[-1].height) and any(r["status"] == "aborted" for r in files)  # fmt: skip
+        if pending and (peeked or sink.write_mode == "overwrite") and not aborted_empty:  # fmt: skip
             frames = chain(
-                [output(plan, empty) if first is None else first],
+                _drain(peeked)
+                if peeked
+                else [
+                    output(plan, empty)
+                ],  # nothing is written when every input was skipped
                 _pulled(stream, plan.spent),
             )
-            del first  # the sink holds the chunk it is on, not the first
             sink_started = time.monotonic()
             plan.sinks["accepted"] = "unknown"
             if delta:
@@ -513,7 +530,8 @@ def _run_entity(
     if latest_first:  # the report lists the files in file order
         files[skipped:] = files[skipped:][::-1]
     files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
-    inc.committed = files  # #915: from here on a failure promotes the written files
+    if not aborted_empty:  # nothing was written, so a full refresh's release restores the claims it replaced
+        inc.committed = files  # #915: from here on a failure promotes the written files
     # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source
     meta = {m.source_uri: m for m in inputs.files}
     for r in files:  # #1362: the listed size and mtime, the values `input_hash` uses; null for an entry not listed

@@ -4,6 +4,7 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
+- An aborted run that accepted no rows no longer replaces the existing accepted output with an empty dataset under `write_mode: overwrite`; the previous output stays (#1496).
 - `floe contract import` writes one business-owned entity YAML per table from a domain Excel workbook, plus a fail-closed `_domain.yml` scaffold, and updates only the owned keys on reimport (#1454).
 - `floe add-entity` can infer string columns from the first worksheet of a local XLSX file with the `xlsx` extra installed (#1447).
 - `source.ref` is allowed in a domain's `defaults.source` (the entity's `ref` wins), and `{{resource}}` in `source.path` resolves with or without a named source (#1470).

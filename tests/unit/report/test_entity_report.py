@@ -131,9 +131,15 @@ def run_entity(case: str, entity: EntityConfig, tmp: Path) -> tuple[str, str]:
     # #1362: `run_entity` stamps the listed size and mtime
     for f, path in zip(files, paths, strict=True):
         f["input_size"], f["input_mtime"] = path.stat().st_size, "<volatile>"
-    write = write_accepted(
-        [pl.concat(accepted)], LocalClient(), f"local://{out}/accepted/{entity.name}"
-    )
+    # #1496: an aborted run that accepted no rows writes nothing
+    if any(f["status"] == "aborted" for f in files) and not any(a.height for a in accepted):  # fmt: skip
+        write = AcceptedWrite(0, [], 0, 0.0, 0)
+    else:
+        write = write_accepted(
+            [pl.concat(accepted)],
+            LocalClient(),
+            f"local://{out}/accepted/{entity.name}",
+        )
     rel = Path(entity.source.path).as_posix().removeprefix("./")
     listed = [f["input_file"] for f in files]
     resolved = ResolvedInputs([], listed, "directory" if src_path.is_dir() else "file")

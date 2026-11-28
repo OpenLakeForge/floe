@@ -46,14 +46,11 @@
     "table_root_uri": "local://<ROOT>/out/accepted/orders",
     "write_mode": "overwrite",
     "accepted_rows": 0,
-    "files_written": 1,
-    "parts_written": 1,
-    "part_files": [
-      "part-00000.parquet"
-    ],
+    "files_written": 0,
+    "parts_written": 0,
     "total_bytes_written": 477,
     "avg_file_size_mb": 0.00045490264892578125,
-    "small_files_count": 1
+    "small_files_count": null
   },
   "schema_evolution": {
     "enabled": false,
@@ -96,7 +93,7 @@
         "mismatch_action": "none"
       },
       "output": {
-        "accepted_path": "local://<ROOT>/out/accepted/orders",
+        "accepted_path": null,
         "rejected_path": "<ROOT>/out/rejected/orders/orders.csv",
         "errors_path": "<ROOT>/out/rejected/orders/orders_reject_errors.json",
         "archived_path": null
