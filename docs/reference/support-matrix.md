@@ -61,7 +61,9 @@ local copy (cloud inputs are downloaded first). All nine formats are covered by 
 | Delta | ADLS, GCS | | any | `unsupported` | `config_not_supported` |
 | Parquet, Delta | any | | `merge_scd1`, `merge_scd2` | `unsupported` | `floe validate` rejects them; merges are Iceberg-only |
 
-Rejected outputs follow the accepted sink's storage, not its format:
+Rejected outputs are written to the storage of `sink.rejected.storage`, which is chosen independently of the accepted
+sink's and falls back to `storages.default`, not to the accepted storage. Set it explicitly so quarantine data is not
+left on local disk:
 
 | Rejected sink | Storage | Status | Evidence and qualification |
 |---|---|---|---|
