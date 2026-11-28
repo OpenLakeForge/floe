@@ -1,0 +1,3 @@
+customer_id,email,country_code,full_name,birth_date,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+4,not-an-email,ES,Dan Rossi,1982-01-15,3,"[{""rule"":""pattern_mismatch"",""column"":""EMAIL"",""source"":""EMAIL"",""message"":""value does not match pattern""}]",<run_id>,local://<ROOT>/in/sales/customers_export.csv
+5,erin@example.com,IT,Erin Conti,1899-12-31,4,"[{""rule"":""out_of_range"",""column"":""BIRTH_DT"",""source"":""BIRTH_DT"",""message"":""value out of range (min=1900-01-01)""}]",<run_id>,local://<ROOT>/in/sales/customers_export.csv

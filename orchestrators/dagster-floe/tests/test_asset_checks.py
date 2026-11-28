@@ -432,3 +432,25 @@ def test_min_rows_check_reads_the_policy_block(
     assert check.passed is passed
     assert check.severity == severity
     assert _meta_value((check.metadata or {})["min_rows_evaluated"]) is evaluated
+
+
+def test_business_contract_manifest_checks() -> None:
+    """The imported business contract (`example/business-contract/project`) gets one check per business rule on every entity."""
+    from dagster import AssetKey
+
+    from floe_dagster.runner import LocalRunner
+
+    fixture = Path(__file__).parent / "fixtures" / "business_contract_manifest.json"
+    manifest = json.loads(fixture.read_text(encoding="utf-8"))
+    assets, _, _ = build_floe_asset_defs(manifest_path=str(fixture), runner=LocalRunner())
+    check_keys = {k for a in assets for k in a.check_keys}
+    business_rules = {
+        "floe_cast_error", "floe_not_null", "floe_unique", "floe_out_of_range",
+        "floe_not_allowed", "floe_pattern_mismatch", "floe_length",
+    }  # fmt: skip
+    names = {e["name"] for e in manifest["entities"]}
+    assert names == {"sales.customers", "sales.order_lines", "sales.orders"}
+    for name in names:
+        key = AssetKey(["sales", name.split(".")[1]])
+        checks = {k.name for k in check_keys if k.asset_key == key}
+        assert business_rules <= checks

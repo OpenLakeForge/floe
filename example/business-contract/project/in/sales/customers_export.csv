@@ -1,0 +1,6 @@
+CUST_ID,EMAIL,CTRY,full_name,BIRTH_DT
+1,alice@example.com,FR,Alice Martin,1985-04-12
+2,bob@example.com,DE,Bob Keller,1990-11-02
+3,carol@example.com,US,Carol Diaz,1978-07-30
+4,not-an-email,ES,Dan Rossi,1982-01-15
+5,erin@example.com,IT,Erin Conti,1899-12-31

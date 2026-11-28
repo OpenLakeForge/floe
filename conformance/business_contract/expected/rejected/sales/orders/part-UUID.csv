@@ -1,0 +1,2 @@
+order_id,customer_id,ordered_at,total_amount,status,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+ORD0000004,1,2026-01-08T09:45:00,45.00,UNKNOWN,3,"[{""rule"":""not_allowed"",""column"":""STATUS"",""source"":""STATUS"",""message"":""value not in allowed_values""}]",<run_id>,local://<ROOT>/in/sales/orders_export.csv

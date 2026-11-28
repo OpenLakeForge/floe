@@ -4,9 +4,7 @@
 It describes tables and columns in business terms. It holds no paths, credentials,
 catalogs or partitioning.
 
-> **Status:** this is the template and its specification only. `floe contract import`
-> does not exist yet (tracked in #1449). The mapping below is the contract the importer
-> will implement.
+> **Status:** see [`project/`](project/README.md) for a runnable project imported from this template.
 
 ## Workflow
 
