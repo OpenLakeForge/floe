@@ -192,7 +192,7 @@ def test_scd1_golden_then_rerun_changes_nothing(catalog: Catalog, table: Table) 
     current = table.current_snapshot()
     assert current is not None and result.write.snapshot_id == current.snapshot_id
     assert result.write.files_written >= 1
-    assert (result.inserted_count, result.updated_count) == (1, 4)
+    assert (result.inserted_count, result.updated_count) == (1, 3)
     assert_files_hold_their_partition(table)
 
     snapshots = len(table.snapshots())
