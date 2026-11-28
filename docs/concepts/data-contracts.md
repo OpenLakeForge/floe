@@ -156,7 +156,9 @@ need a `sink.rejected`.
   [Write modes](write-modes.md).
 
 Accepted rows are written once per entity: one pass of Parquet parts, or one Iceberg or Delta commit.
-The write streams while the input is read, and nothing becomes visible before the end of the pass. On Iceberg that commit is
+The write streams while the input is read. On Parquet, readers that select `part-*.parquet` see no accepted part before the
+end of the pass, but a `*.parquet` glob can match `_staging-*` files during it. On Iceberg and Delta nothing becomes visible
+before the commit, which is
 atomic: a run that fails on an error leaves the table as it was. A policy
 `abort` is not an error in that sense: the files read before the aborted one
 are still committed, so the table can change on a run that ends `aborted`.

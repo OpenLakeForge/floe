@@ -221,7 +221,9 @@ is in [Tested combinations](#tested-combinations).
 Notes:
 - `sink.write_mode` applies to the **accepted** sink only (`overwrite`, `append`, `merge_scd1`,
   `merge_scd2`; merges need an Iceberg accepted sink). Rejected CSV, Parquet and Iceberg output always
-  appends, whatever `write_mode` is (#1254): a later run never deletes an earlier run's rejected rows.
+  appends, whatever `write_mode` is (#1254). A run for a different input never deletes an earlier run's
+  rejected rows; reprocessing the same input (a retry, or a full refresh) rewrites that input's rejected CSV or
+  Parquet part, so its earlier rows can be replaced. The Iceberg quarantine appends instead.
   See [Write modes](../concepts/write-modes.md#rejected-output-behavior).
 - An Iceberg accepted sink requires a REST or AWS Glue catalog in `catalogs.definitions` (D26)
   and S3, GCS or ADLS storage for the table data.
@@ -274,7 +276,7 @@ Per-provider results of `uv run pytest -m s3compat tests/integration/test_s3_com
 against a local Polaris catalog backed by the bucket, see
 [S3-compatible providers](../storages/s3.md#s3-compatible-providers). A cell is claimed only once a run against a
 real bucket is recorded on the issue (Scaleway #1269, OVHcloud #1270), with its date. Results hold for the
-Floe v1.0.0 and later; earlier versions need the notes in
+version and date recorded on each issue; earlier versions need the notes in
 [Provider notes](../storages/s3.md#provider-notes).
 
 | Provider | List, read, write, copy, delete, large Parquet download | `If-None-Match: *` refused | Stale `If-Match` put refused | Stale `If-Match` delete refused | Archive copy and source mtime index | `floe run` with `incremental_mode: file` | Iceberg FileIO and DuckDB merges | Path-style | Virtual-hosted | Delta append, manifest on `s3://`, `floe maintain` |

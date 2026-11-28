@@ -91,7 +91,11 @@ write-ahead log or two-phase commit for Parquet output. This has two practical c
 A failure while writing (process crash, out-of-disk, network error on remote storage) can leave an
 incomplete `_staging-<id>-part-*` file. Readers of `part-*.parquet` never see it, and the next write
 ignores it, so it is safe to delete. Floe does not roll anything back: only the final copy and delete
-steps described below can leave visible parts that mix old and new.
+steps described below can leave visible parts that mix old and new. On local storage that copy replaces
+the `part-*` file in place, so a crash during it can also leave one truncated, unreadable part under its final
+name; a re-run replaces it. On local storage that copy replaces
+the `part-*` file in place, so a crash during it can also leave one truncated, unreadable part under its final
+name; a re-run replaces it.
 
 **Overwrite is not atomic**
 
