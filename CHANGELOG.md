@@ -352,6 +352,14 @@ dagster-floe 0.5 or airflow-floe 0.3 with it.
   instead of spilling. It now caps memory at 4GB and spills to a temporary directory (at most
   50GB, removed afterwards). Size pods at 6 GiB or more (see `docs/write_modes.md`).
 
+## dagster-floe v0.8.0
+
+Use it with Floe 1.1; it still loads 0.8, 0.9, 0.10 and 1.0 manifests.
+
+- **Accepts Floe 1.1 manifests.** `spec_version` `0.8`, `0.9`, `0.10`, `1.0` and `1.1` load; the `floe` extra now
+  installs `floe-python>=1.1,<2`. The manifest schema is unchanged from 1.0: a manifest generated from a
+  `floe contract import` project loads like any other.
+
 ## dagster-floe v0.7.0
 
 Use it with Floe 1.0; it still loads 0.8, 0.9 and 0.10 manifests.
@@ -660,6 +668,13 @@ supported. Floe 0.7 and earlier manifests are rejected.
   `AWS_ENDPOINT_URL`) as the endpoint and, when `AWS_S3_FORCE_PATH_STYLE` is `true`/`1`,
   path-style addressing, matching Floe core (#448). Without these variables behaviour is
   unchanged. Requires the existing `remote` extra.
+
+## airflow-floe v0.6.0
+
+Use it with Floe 1.1; it still loads 0.8, 0.9, 0.10 and 1.0 manifests.
+
+- **Accepts Floe 1.1 manifests.** `spec_version` `0.8`, `0.9`, `0.10`, `1.0` and `1.1` load. The manifest schema is
+  unchanged from 1.0: a manifest generated from a `floe contract import` project loads like any other.
 
 ## airflow-floe v0.5.0
 

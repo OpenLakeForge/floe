@@ -143,17 +143,18 @@ class ManifestLoaderTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, r"spec_version 0\.11 is not supported"):
                 load_manifest(target)
 
-    def test_load_manifest_accepts_floe_1_0_and_refuses_1_1(self) -> None:
+    def test_load_manifest_accepts_floe_1_0_and_1_1_and_refuses_1_2(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "manifest.json"
             payload = self._manifest_payload()
-            payload["spec_version"] = "1.0"
-            target.write_text(json.dumps(payload), encoding="utf-8")
-            self.assertEqual(load_manifest(target).spec_version, "1.0")
+            for accepted in ("1.0", "1.1"):
+                payload["spec_version"] = accepted
+                target.write_text(json.dumps(payload), encoding="utf-8")
+                self.assertEqual(load_manifest(target).spec_version, accepted)
 
-            payload["spec_version"] = "1.1"
+            payload["spec_version"] = "1.2"
             target.write_text(json.dumps(payload), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, r"spec_version 1\.1 is not supported"):
+            with self.assertRaisesRegex(ValueError, r"spec_version 1\.2 is not supported"):
                 load_manifest(target)
 
     def test_load_manifest_rejects_unsupported_spec_version(self) -> None:
@@ -166,7 +167,7 @@ class ManifestLoaderTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 ValueError,
-                r"manifest spec_version 0\.7 is not supported \(supported: 0\.8, 0\.9, 0\.10, 1\.0\)",
+                r"manifest spec_version 0\.7 is not supported \(supported: 0\.8, 0\.9, 0\.10, 1\.0, 1\.1\)",
             ):
                 load_manifest(target)
 
