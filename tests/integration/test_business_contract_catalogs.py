@@ -45,7 +45,7 @@ storages:
   default: local
   definitions:
     - {{name: local, type: local}}
-    - {{name: lake, type: s3, bucket: {bucket}, region: us-east-1, endpoint: "{s3}", path_style_access: true, prefix: it/{tag}}}
+    - {{name: lake, type: s3, bucket: {bucket}, region: us-east-1, endpoint: "{s3}", path_style_access: true, prefix: {prefix}}}
 {catalogs}include:
   domains:
     - "domains/*/_domain.yml"
@@ -142,7 +142,9 @@ def workbook(
 class Project:
     """A project directory: the workbook, `config.yml`, the domain folder and the CSV input."""
 
-    def __init__(self, tmp: Path, tag: str, domain: str, catalogs: str = "") -> None:
+    def __init__(
+        self, tmp: Path, tag: str, domain: str, prefix: str, catalogs: str = ""
+    ) -> None:
         self.tmp, self.tag, self.domain = tmp, tag, domain
         self.out = tmp / "domains" / tag
         self.config = tmp / "config.yml"
@@ -150,7 +152,7 @@ class Project:
             ROOT.format(
                 bucket=BUCKET,
                 s3=S3,
-                tag=tag,
+                prefix=prefix,
                 catalogs=catalogs.format(uri=URI) if catalogs else "",
             )
         )
@@ -226,7 +228,9 @@ def tag() -> str:
 @pytest.fixture
 def iceberg(tmp_path: Path, tag: str) -> Iterator[tuple[Project, Catalog]]:
     """The v1 workbook imported and its domain completed, on a real Polaris; drops what the test created."""
-    p = Project(tmp_path, tag, ICEBERG_DOMAIN, CATALOGS)
+    p = Project(
+        tmp_path, tag, ICEBERG_DOMAIN, f"spike/{tag}", CATALOGS
+    )  # the `spike` warehouse allows tables under spike/<namespace>
     assert p.import_book(workbook(tmp_path, tag)) == 0
     p.complete_domain()
     catalog = open_catalog(parse_config(p.config).catalogs.definitions[0], None)  # pyright: ignore[reportOptionalMemberAccess] -- the config declares a catalog
@@ -316,7 +320,7 @@ def test_breaking_reimport_refused_table_untouched(
 @pytest.mark.s3
 @needs_s3
 def test_imported_domain_runs_on_delta(tmp_path: Path, tag: str) -> None:
-    p = Project(tmp_path, tag, DELTA_DOMAIN)
+    p = Project(tmp_path, tag, DELTA_DOMAIN, f"it/{tag}")
     assert p.import_book(workbook(tmp_path, tag)) == 0
     p.complete_domain()
     p.source(BATCH)
