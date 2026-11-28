@@ -458,9 +458,12 @@ def _run_entity(
     merge: dict[str, Any] | None = None
     added: list[str] = []
     stream = accepted_frames()
+    aborted_empty = False
     try:
         first = next(stream, None)  # nothing is written when every input was skipped
-        if pending and (first is not None or sink.write_mode == "overwrite"):
+        # an aborted run that accepted no rows leaves the existing output as it is (#1496)
+        aborted_empty = first is None and any(r["status"] == "aborted" for r in files)
+        if pending and (first is not None or sink.write_mode == "overwrite") and not aborted_empty:  # fmt: skip
             frames = chain(
                 [output(plan, empty) if first is None else first],
                 _pulled(stream, plan.spent),
@@ -513,7 +516,8 @@ def _run_entity(
     if latest_first:  # the report lists the files in file order
         files[skipped:] = files[skipped:][::-1]
     files[skipped:] = sorted(files[skipped:], key=lambda r: r["input_file"] not in plan.prechecked)  # fmt: skip
-    inc.committed = files  # #915: from here on a failure promotes the written files
+    if not aborted_empty:  # nothing was written, so a full refresh's release restores the claims it replaced
+        inc.committed = files  # #915: from here on a failure promotes the written files
     # #914: archive only once the sink committed, so a failed commit leaves the inputs in the source
     meta = {m.source_uri: m for m in inputs.files}
     for r in files:  # #1362: the listed size and mtime, the values `input_hash` uses; null for an entry not listed

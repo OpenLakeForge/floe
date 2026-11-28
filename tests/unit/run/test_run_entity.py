@@ -114,7 +114,7 @@ def test_warn_keeps_every_row_and_writes_an_error_report(tmp_path: Path) -> None
     assert errors.read_text().startswith('[{"row_index":1,"errors":[')
 
 
-def test_abort_copies_the_raw_file_and_writes_the_accepted_schema(
+def test_a_first_aborted_run_copies_the_raw_file_and_writes_no_accepted_output(
     tmp_path: Path,
 ) -> None:
     report, aborted = run(tmp_path, "abort", "id,name\n1,a\nx,b\n")
@@ -123,8 +123,28 @@ def test_abort_copies_the_raw_file_and_writes_the_accepted_schema(
     assert (
         tmp_path / "out" / "rejected" / "orders.csv"
     ).read_text() == "id,name\n1,a\nx,b\n"
-    frame = accepted(tmp_path)
-    assert frame.height == 0 and frame.columns == ["id", "name"]
+    assert not (tmp_path / "out" / "accepted").exists()
+
+
+def test_an_aborted_overwrite_that_accepted_no_rows_keeps_the_previous_output(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(
+        CONFIG.format(severity="abort", mismatch="").replace(
+            "    sink:\n", "    sink:\n      write_mode: overwrite\n"
+        )
+    )
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    (tmp_path / "in" / "orders.csv").write_text("id,name\n1,a\n2,b\n")
+    assert not run_entity(entity, tmp_path, "0.3").aborted
+
+    (tmp_path / "in" / "orders.csv").write_text("id,name\nx,a\n")
+    result = run_entity(entity, tmp_path, "0.3")
+    assert result.aborted
+    assert result.report["files"][0]["status"] == "aborted"
+    assert result.report["accepted_output"]["accepted_rows"] == 0
+    assert accepted(tmp_path).height == 2
 
 
 def test_abort_with_a_cast_error_leaves_not_null_out_of_the_errors(
