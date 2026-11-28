@@ -98,8 +98,10 @@ and on demand. Anything else is untested against a real cloud.
 
 ## Transactional guarantees
 
-Floe guarantees that **one table's write is atomic where the format has a commit, and that a retry
-converges**; it does not make an entity's outputs commit together. There is no multi-entity or
+Floe guarantees that **one table's write is atomic where the format has a commit**. A retry converges only where
+the table below says so: an Iceberg or Delta `append` in `incremental_mode: none` or `archive` retried after new input
+arrived, a keyless Parquet `append` and the rejected Iceberg quarantine can write rows again. Floe does not make an
+entity's outputs commit together. There is no multi-entity or
 multi-table atomicity, and Floe will not add it (single process, no locks: see
 [the decision](https://github.com/OpenLakeForge/floe/blob/main/context/decisions/entity-commit-guarantees.md)).
 
@@ -144,7 +146,8 @@ Consequences you can observe:
 Side effects to plan for:
 
 - An `aborted` exit code does not mean the sink is unchanged. After a file `abort`, the earlier files' rows are
-  committed. After `max_rejection_rate` or `min_rows`, **every** row of the run is committed.
+  committed. After `max_rejection_rate` or `min_rows`, **every** accepted row of the run is committed to the accepted
+  sink, and every rejected row is written to `sink.rejected`.
 - In `incremental_mode: file`, a `max_rejection_rate` or `min_rows` abort promotes the run's files (and `archive`
   mode moves them), so rerunning the same command skips them and exits `0`. Fix the rows, then use `floe state forget`
   (see [reprocess a changed file](https://github.com/OpenLakeForge/floe/blob/main/context/decisions/reprocess-changed-file.md)).
