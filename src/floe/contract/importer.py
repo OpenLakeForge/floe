@@ -36,6 +36,19 @@ def _owned(text: str) -> dict[str, Any]:
     return owned(cast("Mapping[Any, Any]", parse_yaml(text)[0]))
 
 
+def _skip(directory: str, names: list[str]) -> list[str]:
+    """Copy only YAML, and no dot-directory (.git, .venv)."""
+    return [
+        n
+        for n in names
+        if (os.path.isdir(os.path.join(directory, n)) and n.startswith("."))
+        or (
+            not os.path.isdir(os.path.join(directory, n))
+            and not n.endswith((".yml", ".yaml"))
+        )
+    ]
+
+
 def _validate(
     config: str, output_dir: str, plan: list[PlannedFile], domain: str
 ) -> None:
@@ -46,7 +59,7 @@ def _validate(
         raise FloeConfigError(f"--output-dir {output_dir} is outside the project of {config}", code="config_invalid_value")  # fmt: skip
     with tempfile.TemporaryDirectory() as tmp:
         # ponytail: copies YAML only, so it checks config, not data files; upgrade to a full copy if that ever matters
-        shutil.copytree(root, tmp, dirs_exist_ok=True, ignore=lambda d, names: [n for n in names if not n.endswith((".yml", ".yaml")) and not os.path.isdir(os.path.join(d, n))])  # fmt: skip
+        shutil.copytree(root, tmp, dirs_exist_ok=True, ignore=_skip)
         for p in plan:
             if p.new_text is not None and p.status in ("created", "updated"):
                 dest = os.path.join(
@@ -84,13 +97,20 @@ def run_import(
             code="config_invalid_value",
         )
     errors: list[str] = []
+    severity = wb.domain.default_severity
+    if severity is None:  # fail closed: no silent default severity
+        errors += [
+            f"Guide.default_severity is blank and table {t.target_table} sets none: set warn, reject or abort"
+            for t in wb.tables
+            if t.default_severity is None
+        ]
+        if errors:
+            raise invalid(errors)
     texts: dict[str, str] = {}
     entities: dict[str, dict[str, Any]] = {}
     for table in wb.tables:
         cols = [c for c in wb.columns if c.target_table == table.target_table]
-        entity = build_entity(
-            wb.domain.name, table, cols, wb.domain.default_severity or "warn", errors
-        )
+        entity = build_entity(wb.domain.name, table, cols, severity or "", errors)
         entities[table.target_table] = entity
         texts[table.target_table] = render_entity(entity, table, cols)
     if errors:

@@ -213,3 +213,16 @@ def test_config_prints_effective_overrides(floe: Run, tmp_path: Path) -> None:
     code, stdout, _ = imp(floe, workbook(tmp_path, "id", "amount"), out, "-c", config)
     assert code == 0
     assert "override: orders: source.cast_mode" in stdout
+
+
+def test_blank_severities_fail_closed(floe: Run, tmp_path: Path) -> None:
+    guide = [[*r[:1], None] if r[0] == "default_severity" else r for r in GUIDE]
+    book = write_book(
+        tmp_path / "blank.xlsx",
+        {"Guide": guide, "Tables": tables({"target_table": "orders"}), "Columns": columns(col("orders", "id", primary_key="X"))},
+    )  # fmt: skip
+    out = tmp_path / "sales"
+    code, _, err = imp(floe, book, out)
+    assert code == 1
+    assert "Guide.default_severity is blank and table orders sets none" in err
+    assert not out.exists()
