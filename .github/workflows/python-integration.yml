@@ -4,16 +4,12 @@ name: Python integration (Polaris)
 # whose 10-entity Iceberg subset runs in the `polaris` job below.
 # Runs the `polaris` and `s3` marked tests against the #602 harness (Polaris + SeaweedFS), and the `adls` marked
 # tests against Azurite and the `gcs` marked tests against fake-gcs-server in the `object-stores` job.
-# Not a required check yet (#840): the maintainer makes it required once it is stable.
+# Merge gate (#1456): the `integration-gate` job runs on every PR and merge-queue entry and is the one check to mark
+# required. Path selection is inside the workflow (`changes`), so a docs-only PR gets a green gate without service
+# containers and a required check never deadlocks. Selected jobs must pass and must actually run tests.
 on:
   pull_request:
-    paths:
-      - "src/floe/iceberg/**"
-      - "src/floe/delta/**"
-      - "src/floe/storage/**"
-      - "src/floe/run/**"
-      - "tests/integration/**"
-      - ".github/workflows/python-integration.yml"
+  merge_group:
   schedule:
     - cron: "0 4 * * *"
   workflow_dispatch:
@@ -26,7 +22,46 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Pull requests and the merge queue run only what their paths select; nightly and manual runs select everything.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # paths-filter lists the PR's files through the API
+    outputs:
+      polaris: ${{ steps.filter.outcome == 'skipped' || steps.filter.outputs.polaris == 'true' }}
+      object_stores: ${{ steps.filter.outcome == 'skipped' || steps.filter.outputs.object_stores == 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        with:
+          filters: |
+            polaris:
+              - "src/floe/iceberg/**"
+              - "src/floe/delta/**"
+              - "src/floe/storage/**"
+              - "src/floe/run/**"
+              - "src/floe/checks/**"
+              - "tests/integration/**"
+              - "pyproject.toml"
+              - "uv.lock"
+              - ".github/workflows/python-integration.yml"
+              - "scripts/assert_tests_ran.py"
+            object_stores:
+              - "src/floe/iceberg/**"
+              - "src/floe/storage/**"
+              - "src/floe/run/**"
+              - "tests/integration/**"
+              - "pyproject.toml"
+              - "uv.lock"
+              - ".github/workflows/python-integration.yml"
+              - "scripts/assert_tests_ran.py"
+
   polaris:
+    needs: changes
+    if: needs.changes.outputs.polaris == 'true'
     runs-on: ubuntu-latest
     env:
       FLOE_POLARIS_URI: http://localhost:8181/api/catalog
@@ -79,9 +114,10 @@ jobs:
           # As the new principal: checks its credentials and grants.
           TOKEN=$(token spike-client spike-secret)
           api POST /catalog/v1/spike/namespaces '{"namespace": ["spike"]}'
-      - run: uv run pytest -m "polaris or s3" -rs tests/integration
+      - run: uv run pytest -m "polaris or s3" -rs --junitxml=junit.xml tests/integration
+      - run: uv run python scripts/assert_tests_ran.py junit.xml
       - name: Scale subset on Polaris
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: uv run pytest -m "polaris and scale" -rs tests/scale
       - name: Container logs
         if: failure()
@@ -92,6 +128,8 @@ jobs:
   # ADLS on Azurite (#1327) and GCS on fake-gcs-server behind the test's XML upload shim (#1342).
   # Azurite's account and key are its published dev credentials, not a secret; the GCS test makes its own throwaway key.
   object-stores:
+    needs: changes
+    if: needs.changes.outputs.object_stores == 'true'
     runs-on: ubuntu-latest
     env:
       FLOE_AZURITE_ENDPOINT: http://localhost:10000/devstoreaccount1
@@ -110,7 +148,8 @@ jobs:
           timeout 60 sh -c 'until [ "$(curl -s -o /dev/null -w "%{http_code}" localhost:10000/devstoreaccount1)" != 000 ]; do sleep 1; done'
           az storage container create --name warehouse --connection-string \
             "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=$AZURE_STORAGE_ACCOUNT_KEY;BlobEndpoint=$FLOE_AZURITE_ENDPOINT;"
-      - run: uv run pytest -m adls -rs tests/integration
+      - run: uv run pytest -m adls -rs --junitxml=junit-adls.xml tests/integration
+      - run: uv run python scripts/assert_tests_ran.py junit-adls.xml
       - name: Start fake-gcs-server
         run: |
           docker run -d --name fake-gcs -p 4443:4443 \
@@ -118,7 +157,8 @@ jobs:
             -scheme http -port 4443 -public-host localhost:4443 -backend memory
           timeout 60 sh -c 'until curl -sf localhost:4443/storage/v1/b >/dev/null; do sleep 1; done'
           curl -sS --fail-with-body -X POST localhost:4443/storage/v1/b -H 'Content-Type: application/json' -d '{"name": "warehouse"}'
-      - run: uv run pytest -m gcs -rs tests/integration
+      - run: uv run pytest -m gcs -rs --junitxml=junit-gcs.xml tests/integration
+      - run: uv run python scripts/assert_tests_ran.py junit-gcs.xml
       - name: Container logs
         if: failure()
         run: |
@@ -127,7 +167,7 @@ jobs:
 
   # Nightly and on demand only: Glue (moto) and the memory regression need no harness.
   glue:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       FLOE_GLUE_ENDPOINT: http://localhost:5055
@@ -147,7 +187,7 @@ jobs:
         run: cat moto.log
 
   perf:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -156,3 +196,28 @@ jobs:
       - run: uv run pytest -m perf tests/perf
       # the run summary (runtime, startup, peak RSS per step) is in the log: -rP prints it
       - run: uv run pytest -m "scale and not polaris" -rP tests/scale
+
+  # The one required check. Always runs (even when a job above failed or was skipped) and fails unless every job
+  # `changes` selected succeeded; a job that was not selected must have been skipped.
+  integration-gate:
+    needs: [changes, polaris, object-stores]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check selected jobs
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          POLARIS_SELECTED: ${{ needs.changes.outputs.polaris }}
+          POLARIS: ${{ needs.polaris.result }}
+          OBJECT_STORES_SELECTED: ${{ needs.changes.outputs.object_stores }}
+          OBJECT_STORES: ${{ needs.object-stores.result }}
+        run: |
+          fail=0
+          [ "$CHANGES" = success ] || { echo "changes: $CHANGES"; fail=1; }
+          check() { # name selected result
+            want=skipped; [ "$2" = true ] && want=success
+            [ "$3" = "$want" ] || { echo "$1: $3, expected $want"; fail=1; }
+          }
+          check polaris "$POLARIS_SELECTED" "$POLARIS"
+          check object-stores "$OBJECT_STORES_SELECTED" "$OBJECT_STORES"
+          exit $fail
