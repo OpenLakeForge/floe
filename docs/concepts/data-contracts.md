@@ -159,7 +159,8 @@ Accepted rows are written once per entity: one pass of Parquet parts, or one Ice
 The write streams while the input is read. On Parquet, readers that select `part-*.parquet` see no accepted part before the
 end of the pass, but a `*.parquet` glob can match `_staging-*` files during it. On Iceberg and Delta nothing becomes visible
 before the commit, which is
-atomic: a run that fails on an error leaves the table as it was. A policy
+atomic. A run that fails before the commit leaves the table as it was; a failure after the commit, such as an
+input archive error, leaves the committed rows in the table while the run reports an error. A policy
 `abort` is not an error in that sense: the files read before the aborted one
 are still committed, so the table can change on a run that ends `aborted`.
 Parquet has no transactions, so a crash during the write can leave partial
