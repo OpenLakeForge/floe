@@ -1,6 +1,7 @@
 """`floe contract import`: plan, gate and publish a workbook's entity files."""
 
 import os
+import re
 import shutil
 import tempfile
 from collections import defaultdict
@@ -20,12 +21,21 @@ from floe.contract.workbook import invalid, parse_workbook
 from floe.errors import FloeConfigError
 
 _KINDS = ("breaking", "tightening", "loosening", "additive", "metadata")
+# the two errors an untouched scaffold raises; any other message naming TODO_ (an entity called TODO_x) is real
+_SCAFFOLD = re.compile(
+    r"source\.ref=TODO_source is not a declared source|references unknown variable TODO_(accepted|rejected)_path"
+)
 _MARK = "# floe-contract:"
 
 
 def _read(path: str) -> str | None:
     try:
-        return Path(path).read_text(encoding="utf-8") if os.path.exists(path) else None
+        if not os.path.exists(path):
+            return None
+        with open(
+            path, "rb"
+        ) as f:  # byte-exact (CRLF kept), as publish's preflight reads it
+            return f.read().decode("utf-8")
     except (OSError, UnicodeDecodeError) as e:
         raise FloeConfigError(
             f"cannot read {path}: {e}", code="config_invalid_value"
@@ -53,10 +63,16 @@ def _validate(
     config: str, output_dir: str, plan: list[PlannedFile], domain: str
 ) -> None:
     """Validate the project as it would be after the import, in a temporary copy of its YAML."""
-    root = os.path.dirname(os.path.realpath(config))
+    real = os.path.realpath(config)
+    root = os.path.dirname(real)
     out = os.path.realpath(output_dir)
     if os.path.commonpath([root, out]) != root:
         raise FloeConfigError(f"--output-dir {output_dir} is outside the project of {config}", code="config_invalid_value")  # fmt: skip
+    doc = cast("dict[str, Any]", parse_yaml(Path(real).read_text(encoding="utf-8"))[0])
+    include = cast("dict[str, Any]", doc.get("include") or {})
+    patterns = cast("list[Any]", include.get("domains") or [])
+    if any(isinstance(x, str) and os.path.isabs(x) for x in patterns):
+        raise FloeConfigError("-c needs relative include.domains patterns", code="config_invalid_value")  # fmt: skip
     with tempfile.TemporaryDirectory() as tmp:
         # ponytail: copies YAML only, so it checks config, not data files; upgrade to a full copy if that ever matters
         shutil.copytree(root, tmp, dirs_exist_ok=True, ignore=_skip)
@@ -68,10 +84,10 @@ def _validate(
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 Path(dest).write_text(p.new_text, encoding="utf-8")
         try:
-            project = parse_config(Path(tmp) / os.path.basename(config))
+            project = parse_config(Path(tmp) / os.path.basename(real))
             validate_config(project)
         except FloeConfigError as e:
-            if "TODO_" not in str(e):
+            if not _SCAFFOLD.search(str(e)):
                 raise FloeConfigError(f"the project would not validate after the import: {e}", code=e.code) from e  # fmt: skip
             print("Project not yet valid: complete _domain.yml, then run floe validate")
             return

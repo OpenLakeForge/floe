@@ -32,16 +32,18 @@ def floe(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) ->
     return call
 
 
-def workbook(tmp: Path, *column_names: str, key: str = "id") -> Path:
+def workbook(
+    tmp: Path, *column_names: str, key: str = "id", table: str = "orders"
+) -> Path:
     cols = [
-        col("orders", n, **({"primary_key": "X"} if n == key else {}))
+        col(table, n, **({"primary_key": "X"} if n == key else {}))
         for n in column_names
     ]
     return write_book(
         tmp / "sales.xlsx",
         {
             "Guide": GUIDE,
-            "Tables": tables({"target_table": "orders"}),
+            "Tables": tables({"target_table": table}),
             "Columns": columns(*cols),
         },
     )
@@ -226,3 +228,45 @@ def test_blank_severities_fail_closed(floe: Run, tmp_path: Path) -> None:
     assert code == 1
     assert "Guide.default_severity is blank and table orders sets none" in err
     assert not out.exists()
+
+
+def test_config_todo_in_entity_name_is_not_the_scaffold(
+    floe: Run, tmp_path: Path
+) -> None:
+    config = project(tmp_path, DOMAIN)
+    out = tmp_path / "domains/sales"
+    book = workbook(tmp_path, "id", "amount", table="TODO_orders")
+    assert imp(floe, book, out, "-c", config)[0] == 0
+    path = out / "TODO_orders.yml"
+    path.write_text(
+        path.read_text()
+        + "pii:\n  columns:\n    - name: amount\n      strategy: hash\n"
+    )
+    before = path.read_text()
+    book = workbook(tmp_path, "id", "total", table="TODO_orders")
+    code, _, err = imp(floe, book, out, "-c", config, "--accept-breaking")
+    assert code == 1
+    assert "would not validate" in err
+    assert path.read_text() == before
+
+
+def test_crlf_file_reimports_unchanged(floe: Run, tmp_path: Path) -> None:
+    out = tmp_path / "sales"
+    book = workbook(tmp_path, "id")
+    imp(floe, book, out)
+    path = out / "orders.yml"
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    before = path.read_bytes()
+    code, stdout, _ = imp(floe, book, out)
+    assert (code, "1 unchanged" in stdout) == (0, True)
+    assert path.read_bytes() == before
+
+
+def test_config_absolute_include_is_refused(floe: Run, tmp_path: Path) -> None:
+    config = project(tmp_path, DOMAIN)
+    config.write_text(f'version: "0.8"\ninclude:\n  domains:\n    - "{tmp_path}/domains/*/_domain.yml"\n')  # fmt: skip
+    out = tmp_path / "domains/sales"
+    code, _, err = imp(floe, workbook(tmp_path, "id"), out, "-c", config)
+    assert code == 1
+    assert "relative include.domains" in err
+    assert not (out / "orders.yml").exists()
