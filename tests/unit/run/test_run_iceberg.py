@@ -237,6 +237,13 @@ def test_append_adds_rows(tmp_path: Path, catalog: LocalCatalog) -> None:
     assert report["accepted_output"]["table_version"] == 2
 
 
+def test_an_aborted_overwrite_that_accepted_no_rows_keeps_the_table(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
+    run(tmp_path, "id,name\n1,a\n2,b\n", severity="abort")
+    report = run(tmp_path, "id,name\nx,a\n", severity="abort")
+    assert report["files"][0]["status"] == "aborted"
+    assert rows(catalog) == [(1, "a"), (2, "b")]
+
+
 @pytest.mark.parametrize("mode", ["overwrite", "append"])
 def test_a_failed_commit_leaves_the_input_unarchived(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch, mode: str) -> None:  # fmt: skip
     """#914: archiving waits for the Iceberg commit, so a failed commit loses no rows."""
@@ -662,19 +669,18 @@ def test_a_retry_with_a_new_input_skips_only_the_dead_runs_batch(tmp_path: Path,
     assert sorted(Path(u).name for u in json.loads(state.read_text())["files"]) == ["b.csv", "orders.csv"]  # fmt: skip
 
 
-def test_949_a_full_refresh_that_overwrote_then_aborted_does_not_restore_the_dead_claim(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
-    """The refresh's overwrite wiped the dead run's rows: its claim must not come back, or the retry guard finds the
-    dead run's snapshot behind the overwrite and skips the file as committed."""
+def test_949_a_full_refresh_that_aborted_before_writing_leaves_the_dead_runs_commit_in_place(tmp_path: Path, catalog: LocalCatalog, monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    """#1496: the aborted refresh wrote nothing, so the dead run's rows stay and the retry guard still finds its snapshot."""
     go, _ = dead_run(tmp_path, monkeypatch, severity="abort")
     (tmp_path / "in" / "a.csv").write_text(
         "id,name\nx,bad\n"
     )  # aborts before orders.csv is read
     outcome = run_project(tmp_path / "config.yml", parse_config(tmp_path / "config.yml"), full_refresh=True)  # fmt: skip
     assert outcome.summary["run"]["status"] == "aborted"
-    assert rows(catalog) == []
+    assert rows(catalog) == [(1, "a"), (2, "b")]
     (tmp_path / "in" / "a.csv").unlink()
     report = go("retry")
-    assert [(Path(f["input_file"]).name, f["status"]) for f in report["files"]] == [("orders.csv", "success")]  # fmt: skip
+    assert [(Path(f["input_file"]).name, f["status"], f.get("skip_reason")) for f in report["files"]] == [("orders.csv", "skipped", "already_committed")]  # fmt: skip
     assert rows(catalog) == [(1, "a"), (2, "b")]
 
 
@@ -838,7 +844,9 @@ def test_rejected_iceberg_casts_binary_and_nested_source_columns_to_strings(tmp_
 
 def test_rejected_iceberg_table_sits_below_the_path_not_in_it(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
     run_rejected(tmp_path, "id,name,amount\n2,b,abc\n")
-    assert catalog.locations[-1] == "s3://warehouse/floe/tables/orders_rejected/table"
+    assert (
+        "s3://warehouse/floe/tables/orders_rejected/table" in catalog.locations
+    )  # the rejected table is created before the accepted one when no row is accepted
 
 
 def test_the_accepted_target_resolves_its_catalog_through_catalogs_default(tmp_path: Path) -> None:  # fmt: skip
