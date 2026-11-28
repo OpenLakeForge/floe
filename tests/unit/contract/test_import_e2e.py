@@ -259,10 +259,11 @@ def test_single_table_change_preserves_other_tables_and_engineer_keys(
     code, stdout, _ = imp(floe, changed, out, "-c", config, "--accept-breaking")
     assert code == 0
     after = hashes(out)
+    assert after.keys() == before.keys()  # nothing deleted or added
     assert {n for n in after if after[n] != before[n]} == {"orders.yml"}
     diff = difflib.unified_diff(
-        edited.splitlines(),
-        (out / "orders.yml").read_text().splitlines(),
+        edited.splitlines(keepends=True),
+        (out / "orders.yml").read_bytes().decode().splitlines(keepends=True),
         lineterm="",
         n=0,
     )
@@ -347,18 +348,21 @@ FAILURES: dict[str, tuple[dict[str, Any], str]] = {
 @pytest.mark.parametrize("name", FAILURES)
 def test_failure_writes_nothing(floe: Run, tmp_path: Path, name: str) -> None:
     kwargs, message = FAILURES[name]
-    out = tmp_path / "domains/sales"
-    code, _, err = imp(floe, bad(tmp_path, **kwargs), out)
+    broken = bad(tmp_path, **kwargs)
+    root = tmp_path / "proj"
+    root.mkdir()
+    out = root / "domains/sales"
+    code, _, err = imp(floe, broken, out)
     assert code == 1
     assert message in err
-    assert not out.exists()
+    assert tree(root) == {}  # not even the output directory
 
     assert (
         imp(floe, book(tmp_path), out)[0] == 0
     )  # the same failure on a populated directory
-    before = tree(out)
-    code, _, err = imp(floe, bad(tmp_path, **kwargs), out)
-    assert (code, tree(out)) == (1, before)
+    before = tree(root)
+    code, _, err = imp(floe, broken, out)
+    assert (code, tree(root)) == (1, before)
     assert message in err
 
 
