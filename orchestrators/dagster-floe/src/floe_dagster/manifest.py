@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlparse, urlunparse
 from jsonschema import Draft202012Validator
 
 # D22: a manifest's spec_version is the Floe major.minor that generated it.
-SUPPORTED_SPEC_VERSIONS = ("0.8", "0.9", "0.10", "1.0")
+SUPPORTED_SPEC_VERSIONS = ("0.8", "0.9", "0.10", "1.0", "1.1")
 
 
 @dataclass(frozen=True)
