@@ -26,14 +26,16 @@ combination supported: only a row below with `CI-tested` or `real-provider-teste
 | Harness | Where it runs | Stands in for | It is not |
 |---|---|---|---|
 | Local filesystem | `ci.yml`: `pytest` and `conformance/check.py`, every PR | local storage; Iceberg unit tests use a local test catalog | any object store |
-| Polaris 1.8.0 + SeaweedFS 4.48 | `python-integration.yml`, job `polaris`: PRs that touch the Iceberg, Delta, storage or run code, and nightly | an Iceberg REST catalog on an S3-API store; Delta and S3 storage | AWS S3, a cloud-hosted Polaris |
+| Polaris 1.8.0 + SeaweedFS 4.48 | `python-integration.yml`, job `polaris`: PRs and merge-queue entries that touch the Iceberg, Delta, storage, run or checks code, the integration tests or the dependencies, and nightly | an Iceberg REST catalog on an S3-API store; Delta and S3 storage | AWS S3, a cloud-hosted Polaris |
 | Azurite 3.35.0 | job `object-stores` | ADLS Gen2 through the blob endpoint | Azure |
 | fake-gcs-server 1.56.1 behind a test-only XML upload shim (#1342) | job `object-stores` | GCS | GCS: the emulator lacks the XML upload route the shim supplies |
 | moto 5.2.5 | job `glue`, nightly and on demand only | the AWS Glue catalog API | AWS Glue |
 | Unity Catalog stub | `pytest` in `ci.yml` (`tests/unit/delta/test_delta_unity.py`) | the Unity REST calls Floe makes | Databricks (open: #1393) |
 | Real S3-compatible buckets | by hand, never in CI | Scaleway `fr-par`, OVHcloud `gra`, 2026-11-23: [Scaleway record](https://github.com/OpenLakeForge/floe/issues/1269#issuecomment-7095830987), [OVHcloud record](https://github.com/OpenLakeForge/floe/issues/1270#issuecomment-7095831339) | AWS S3, Azure, GCS |
 
-The integration jobs are not a required check yet (#840).
+On pull requests and in the merge queue, the `integration-gate` job of `python-integration.yml` (#1456) runs the
+jobs a change selects and fails if one fails or runs no test. It blocks merging only once a maintainer marks it a
+required check in the branch ruleset.
 
 ## Tested combinations
 
