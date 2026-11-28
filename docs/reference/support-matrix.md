@@ -150,8 +150,8 @@ Side effects to plan for:
   (see [reprocess a changed file](https://github.com/OpenLakeForge/floe/blob/main/context/decisions/reprocess-changed-file.md)).
   After a **file** `abort`, `append` and the merge modes promote the files written before it and release the aborted
   file and those after it; `overwrite` releases every claim of the run ([Incremental](../concepts/incremental.md)).
-- With `overwrite`, a file `abort` that happens on the **first** input file replaces the existing accepted output
-  with an empty dataset. This looks like a bug and is tracked in #1496; until it is settled, do not rely on either behavior.
+- A file `abort` before any row was accepted writes nothing to the accepted sink, so the existing output stays as it
+  was, even under `overwrite` (#1496).
 - A Delta `append` refuses `abort` at run time (`run_not_supported`): an aborted file would leave a smaller batch
   committed than the fingerprint the retry guard stamps.
 - The decision is in the report: `policy.max_rejection_rate_exceeded`, `policy.min_rows_violated` and the file
