@@ -267,6 +267,9 @@ def test_imported_domain_runs_on_iceberg(iceberg: tuple[Project, Catalog]) -> No
     assert catalog.load_table((p.tag, "orders_rejected")).scan().to_arrow().num_rows == 3  # fmt: skip
 
 
+@pytest.mark.xfail(
+    strict=True, reason="#1494: iceberg unique seed scan ignores the S3 endpoint"
+)
 @pytest.mark.polaris
 @needs_polaris
 def test_additive_reimport_evolves_iceberg_table(iceberg: tuple[Project, Catalog]) -> None:  # fmt: skip
