@@ -21,7 +21,8 @@ data out of source systems; Floe decides what is allowed into trusted storage.
   metadata, and reporting in one human-readable YAML contract.
 - Reads common file exports and extracted datasets from local or cloud storage.
 - Applies schema, casting, nullability, and uniqueness checks before write.
-- Writes accepted rows to Parquet or Apache Iceberg (REST catalog), with SCD1 merge on Iceberg.
+- Writes accepted rows to Parquet, Apache Iceberg (REST or Glue catalog) or Delta Lake, with SCD1 and SCD2 merges on Iceberg only.
+  What is tested on which backend: the [support matrix](docs/reference/support-matrix.md).
 - Writes invalid rows separately and emits deterministic JSON run reports.
 - Runs as a CLI, Docker image, Python library, or orchestrated job.
 
@@ -45,12 +46,12 @@ single node. Unique checks against table history semi-join each chunk with Polar
 against a local cache of the table's key columns.
 
 - **Inputs:** CSV · TSV · JSON · Parquet · ORC · Avro · XLSX · XML
-- **Accepted outputs:** Parquet · Apache Iceberg
+- **Accepted outputs:** Parquet · Apache Iceberg · Delta Lake
 - **Storage:** local · S3 (and S3-compatible stores) · ADLS · GCS
 - **Catalogs:** Iceberg REST (Polaris) · AWS Glue
 
-Floe 0.8 dropped the DuckDB and fixed-width formats and the Unity
-catalog (Delta, ADLS and GCS are back). The Rust implementation that supported them
+Floe 0.8 dropped the DuckDB and fixed-width formats; Delta, ADLS, GCS and Unity Catalog registration (Delta only)
+are back. The Rust implementation that supported the dropped ones
 (0.7 and earlier) is archived at
 [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust).
 
@@ -63,9 +64,9 @@ catalog (Delta, ADLS and GCS are back). The Rust implementation that supported t
 | Contracts and full YAML reference | [docs/reference/config.md](docs/reference/config.md) |
 | Pipeline phases and execution details | [docs/concepts/how-it-works.md](docs/concepts/how-it-works.md) |
 | Checks: schema mismatch, cast, `not_null`, `unique` | [docs/concepts/checks.md](docs/concepts/checks.md) |
-| Supported inputs, outputs, storage, and catalogs | [docs/reference/support-matrix.md](docs/reference/support-matrix.md) |
+| Supported inputs, outputs, storage and catalogs, with the evidence behind each; transactional guarantees; when a policy abort can happen | [docs/reference/support-matrix.md](docs/reference/support-matrix.md) |
 | Write modes: `overwrite`, `append`, `merge_scd1`, `merge_scd2` | [docs/concepts/write-modes.md](docs/concepts/write-modes.md) |
-| Parquet and Iceberg sinks | [docs/sinks/parquet.md](docs/sinks/parquet.md), [docs/sinks/iceberg.md](docs/sinks/iceberg.md) |
+| Parquet, Iceberg and Delta sinks | [docs/sinks/parquet.md](docs/sinks/parquet.md), [docs/sinks/iceberg.md](docs/sinks/iceberg.md), [docs/sinks/delta.md](docs/sinks/delta.md) |
 | S3 storage | [docs/storages/s3.md](docs/storages/s3.md) |
 | ADLS and GCS storage | [docs/storages/adls.md](docs/storages/adls.md), [docs/storages/gcs.md](docs/storages/gcs.md) |
 | Incremental file state | [docs/concepts/incremental.md](docs/concepts/incremental.md) |

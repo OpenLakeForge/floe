@@ -1,6 +1,8 @@
 # Write modes
 
-Floe resolves accepted/rejected write behavior from `sink.write_mode`.
+Floe resolves the accepted write behavior from `sink.write_mode`; rejected output always appends (see
+[Rejected output behavior](#rejected-output-behavior)). Which sink and storage each mode is tested on, and what
+is atomic when a run fails or is retried, is in the [support matrix](../reference/support-matrix.md#tested-combinations).
 
 Supported values:
 - `overwrite` (default): existing output parts are replaced before writing new output.
@@ -67,6 +69,6 @@ it ephemeral disk for the spill.
 
 ## Rejected output behavior
 
-Rejected CSV and Parquet output always appends, whatever `sink.write_mode`: a later run never deletes an earlier run's rejected rows, so they stay available to inspect or replay. This matches the append-only Iceberg quarantine. `write_mode` applies to the accepted sink only (merge logic too).
+Rejected CSV and Parquet output always appends, whatever `sink.write_mode`: a run for a different input never deletes an earlier run's rejected rows, so they stay available to inspect or replay. Reprocessing the same input file (a retry, or a full refresh) rewrites that file's rejected CSV or Parquet part, so its earlier rows can be replaced; the Iceberg quarantine appends instead. This matches the append-only Iceberg quarantine. `write_mode` applies to the accepted sink only (merge logic too). The Iceberg quarantine table appends too. What a retry does to each output is in [Transactional guarantees](../reference/support-matrix.md#transactional-guarantees).
 
 A rejected part is named from the entity and its input file (name, size and modification time). A retry of the same input rewrites its own part instead of duplicating it.

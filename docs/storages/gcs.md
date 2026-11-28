@@ -74,8 +74,9 @@ of letting the store name another object.
 `endpoint` points Floe at a GCS-compatible service, for example `http://127.0.0.1:4443`. Plain `http://` is allowed for an endpoint. For Iceberg, Floe passes it to
 PyIceberg as `gcs.service.host`; without `endpoint`, PyIceberg uses Application Default Credentials.
 
-fake-gcs-server does not work with Floe today: its latest release (1.56.1) has no XML-API upload
-route and ignores the generation-precondition header that `obstore` sends (#1342).
+fake-gcs-server 1.56.1 has no XML-API upload route and ignores the generation-precondition header that
+`obstore` sends (#1342), so Floe does not work against it as is. CI runs the `gcs` tests against it behind a
+test-only XML upload shim; that is emulator coverage, not a validation of Google Cloud Storage.
 
 ## Supported behavior
 
@@ -84,7 +85,7 @@ route and ignores the generation-precondition header that `obstore` sends (#1342
 - Outputs: accepted Parquet parts, rejected CSV or Parquet parts, and JSON reports, each built in
   memory then uploaded. Accepted and rejected Iceberg tables with `overwrite` or `append`, through
   an Iceberg catalog whose table data lives on the GCS storage (also as the catalog's
-  `warehouse_storage`).
+  `warehouse_storage`); no emulator run covers Iceberg on GCS, so it is `untested` end to end.
 - Incremental state and `sink.archive`.
 - The state file is coordinated by compare-and-swap on the object's generation, see
   [the decision record](https://github.com/OpenLakeForge/floe/blob/main/context/decisions/incremental-state-cas.md).
@@ -105,6 +106,7 @@ wildcard. Listing is recursive and sorted by key.
 - `floe maintain` lists table locations on `gcs` through the object-store client.
   `floe manifest generate` and `floe manifest replay` support `gcs`: the manifest records the
   `gs://` URIs the run writes, and a replay writes its report there.
-- A manifest (`--manifest`, `manifest generate -o`) and a profile (`-p`) are read and written from
-  local paths or `s3://` only, not `gs://`.
+- A manifest (`--manifest`, `manifest generate -o`) and a profile (`-p`) can be read and written at a
+  `gs://` URI, as at `s3://` and `abfss://` ([profiles](../guides/profiles.md)); CI covers it with an in-memory object store only.
+- What is tested, and against which emulator: [support matrix](../reference/support-matrix.md#tested-combinations).
 - Parquet and ORC inputs use a temp download plus a local read, as on S3.

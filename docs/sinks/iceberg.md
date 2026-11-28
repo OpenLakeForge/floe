@@ -152,7 +152,7 @@ Current scope:
 ## Supported scope (current)
 
 - Accepted sink only (`sink.accepted.format: iceberg`), through a REST or AWS Glue catalog
-- S3 storage
+- S3, GCS or ADLS storage for the table data (S3 with a REST catalog is the tested path; ADLS and GCS are `untested` end to end, see the [support matrix](../reference/support-matrix.md#tested-combinations))
 - `sink.write_mode`: `overwrite`, `append`, `merge_scd1` and `merge_scd2`. See [write modes](../concepts/write-modes.md).
 - Each entity's write is one catalog commit. `overwrite` replaces every existing data file in
   that snapshot; `append` adds files; `merge_scd1` runs a DuckDB `MERGE INTO` (merge-on-read).
@@ -181,6 +181,10 @@ Current scope:
 - `strategy: drop` in `pii` is rejected: the table enforces the full declared schema
 - Every commit rewrites the table metadata, which lists every retained snapshot: an `overwrite` of a table with 100 snapshots took about 230 ms of commit and write time against about 50 ms with 2 on a local catalog. Run `floe maintain` to expire snapshots on tables written often
 - Snapshot expiry and orphan file removal with `floe maintain` (see [CLI usage](../reference/cli.md)); compaction is experimental (`--compact --experimental`)
+
+## Guarantees and evidence
+
+What is atomic, what a retry does and which backends are tested: [support matrix](../reference/support-matrix.md#transactional-guarantees).
 
 ## Integration tests
 
