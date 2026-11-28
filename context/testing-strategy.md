@@ -24,6 +24,16 @@ uv run python conformance/check.py --case NAME   # one golden case
 Integration tests skip unless their service is configured: `-m polaris` needs
 `FLOE_POLARIS_URI`, `-m s3` needs `FLOE_S3_ENDPOINT` (see `.github/workflows/python-integration.yml`).
 
+### Merge gate for the sinks (#1456)
+
+`integration-gate` in `python-integration.yml` is the one check that blocks merging on live-service tests. It runs on
+every PR and merge-queue entry. Its `changes` job picks the jobs from the paths: `src/floe/{iceberg,delta,storage,run,checks}/**`,
+`tests/integration/**`, `pyproject.toml`, `uv.lock` and the workflow itself run Polaris + SeaweedFS; ADLS/GCS (Azurite,
+fake-gcs-server) run when `iceberg`, `storage`, those tests, dependencies or the workflow change. Any other PR
+(docs only, say) passes the gate without starting containers. A selected job that fails, is cancelled or is skipped fails
+the gate, and `scripts/assert_tests_ran.py` fails a job whose tests all skipped. Nightly and manual runs still select
+everything. The check must be marked required in the branch ruleset (a repo-admin step); the YAML cannot enforce it.
+
 `-m s3compat` checks a real S3-compatible provider (#1269, #1270) and needs a bucket and credentials:
 
 ```bash
