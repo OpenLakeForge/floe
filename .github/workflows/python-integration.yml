@@ -25,6 +25,9 @@ jobs:
   # Pull requests and the merge queue run only what their paths select; nightly and manual runs select everything.
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # paths-filter lists the PR's files through the API
     outputs:
       polaris: ${{ steps.filter.outcome == 'skipped' || steps.filter.outputs.polaris == 'true' }}
       object_stores: ${{ steps.filter.outcome == 'skipped' || steps.filter.outputs.object_stores == 'true' }}
