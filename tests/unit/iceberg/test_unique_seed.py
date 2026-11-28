@@ -11,6 +11,7 @@ import uuid
 import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 import pyarrow as pa
@@ -250,6 +251,34 @@ def test_1272_the_seed_scan_warns_nothing_without_the_planner_plugin(
         warnings.simplefilter("error", PerformanceWarning)
         assert cache_table_keys(table, [["id"]], {}, tmp_path / "keys.parquet")
     assert pl.read_parquet(tmp_path / "keys.parquet").height == len(HISTORY)
+
+
+def test_1494_the_seed_scan_passes_the_table_fileio_properties_to_polars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    table = local_table(tmp_path, HISTORY, partitioned=False)
+    monkeypatch.setattr(
+        table,
+        "io",
+        load_file_io(
+            {
+                "s3.endpoint": "http://seaweed:8333",
+                "token": "t",
+                "uri": "http://rest",
+                "type": "rest",
+            }
+        ),
+    )
+    seen: dict[str, object] = {}
+    scan_iceberg = pl.scan_iceberg
+
+    def spy(source: Table, **kwargs: Any) -> pl.LazyFrame:
+        seen.update(kwargs)
+        return scan_iceberg(source, **kwargs)
+
+    monkeypatch.setattr(pl, "scan_iceberg", spy)
+    assert cache_table_keys(table, [["id"]], {}, tmp_path / "keys.parquet")
+    assert seen["storage_options"] == {"s3.endpoint": "http://seaweed:8333"}
 
 
 def test_an_empty_table_seeds_nothing(tmp_path: Path) -> None:
