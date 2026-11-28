@@ -4,11 +4,44 @@ All notable changes to Floe are documented in this file.
 
 ## Unreleased
 
-- An aborted run that accepted no rows no longer replaces the existing accepted output with an empty dataset under `write_mode: overwrite`; the previous output stays (#1496).
-- `floe contract import` writes one business-owned entity YAML per table from a domain Excel workbook, plus a fail-closed `_domain.yml` scaffold, and updates only the owned keys on reimport (#1454).
-- `floe add-entity` can infer string columns from the first worksheet of a local XLSX file with the `xlsx` extra installed (#1447).
-- `source.ref` is allowed in a domain's `defaults.source` (the entity's `ref` wins), and `{{resource}}` in `source.path` resolves with or without a named source (#1470).
-- `floe add-entity` no longer writes headers like `0o123` unquoted: a string that Floe's YAML parser would read as a number is now quoted, so the column keeps its name (#1453).
+## v1.1.0
+
+Floe 1.1 adds the business-contract import. It accepts configs with `version:` up to `"1.1"` and generates manifests
+with `spec_version: "1.1"`; use dagster-floe 0.8 or airflow-floe 0.6 with it. Nothing frozen by the
+[stability policy](docs/reference/stability.md) changes: every 1.0 config and manifest runs unchanged.
+
+### Business-contract import
+
+- `floe contract import` writes one business-owned entity YAML per table from a domain Excel workbook (`Guide`,
+  `Tables` and `Columns` tabs), plus a fail-closed `_domain.yml` scaffold, and updates only the owned keys on
+  reimport (#1454). The scaffold's `TODO_` values make `floe validate` fail until a data engineer completes it; the
+  generated entity files then pass the existing `floe validate` and `floe run` unchanged. A reimport keeps every
+  engineer-added key and comment byte for byte, blocks hand edits to owned keys and unmanaged files, and refuses a
+  breaking change (a removed table or column, a type, source or primary-key change) without `--accept-breaking`.
+  `--dry-run` prints the plan; `--check` exits non-zero when a file would be created or updated; neither writes. A
+  workbook error names its Excel cell, and any workbook, plan or gate error writes nothing. `-c config.yml` validates
+  the project as it would be after the import before writing. Needs the `xlsx` extra. See
+  [Business contracts](docs/guides/business-contract.md) and the example in `example/business-contract/`.
+- `source.ref` is allowed in a domain's `defaults.source` (the entity's `ref` wins), and `{{resource}}` in
+  `source.path` resolves with or without a named source (#1470).
+- `floe add-entity` can infer string columns from the first worksheet of a local XLSX file with the `xlsx` extra
+  installed (#1447).
+
+### Fixes
+
+- An aborted run that accepted no rows no longer replaces the existing accepted output with an empty dataset under
+  `write_mode: overwrite`; the previous output stays (#1496). A first run that aborts before accepting a row now
+  writes no accepted output instead of an empty one.
+- An Iceberg `append` with `primary_key` or `unique_keys` on S3-compatible storage (MinIO, SeaweedFS, OVHcloud, …)
+  no longer fails its second run: the scan of the table's existing keys now uses the storage's `endpoint`, `region`
+  and path-style settings instead of AWS defaults (#1494).
+- `floe add-entity` no longer writes headers like `0o123` unquoted: a string that Floe's YAML parser would read as a
+  number is now quoted, so the column keeps its name (#1453).
+
+### Documentation
+
+- [Support matrix](docs/reference/support-matrix.md) is now the canonical, evidence-backed list of tested backend
+  combinations, with the transactional guarantees of each output and when each policy decides (#1457).
 
 ## v1.0.0
 
