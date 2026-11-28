@@ -258,7 +258,16 @@ def test_1494_the_seed_scan_passes_the_table_fileio_properties_to_polars(
 ) -> None:
     table = local_table(tmp_path, HISTORY, partitioned=False)
     monkeypatch.setattr(
-        table, "io", load_file_io({"s3.endpoint": "http://seaweed:8333"})
+        table,
+        "io",
+        load_file_io(
+            {
+                "s3.endpoint": "http://seaweed:8333",
+                "token": "t",
+                "uri": "http://rest",
+                "type": "rest",
+            }
+        ),
     )
     seen: dict[str, object] = {}
     scan_iceberg = pl.scan_iceberg

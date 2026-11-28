@@ -28,6 +28,8 @@ def cache_table_keys(
     os.environ.setdefault("POLARS_ICEBERG_PLANNER", "pyiceberg")
     with run_error("iceberg unique seed scan failed"):
         # #1494: the native reader ignores the table's FileIO; Polars translates its `s3.*` etc.
-        lf = pl.scan_iceberg(table, storage_options=dict(table.io.properties))
+        # Dotless FileIO keys (token, uri, type) are catalog settings; Polars would pass them on.
+        storage = {k: v for k, v in table.io.properties.items() if "." in k}
+        lf = pl.scan_iceberg(table, storage_options=storage)
         lf.select(cs.by_name(sorted(names))).sink_parquet(path)
     return True
