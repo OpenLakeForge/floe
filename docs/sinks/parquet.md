@@ -29,7 +29,8 @@ Large accepted datasets are split into multiple part files. The split threshold 
 the rows. Accepted rows are written as the input is read, so memory holds about one part plus one
 chunk of input, not the whole entity. Every part is staged as a `_staging-<id>-part-*` file and
 copied to its `part-*` name only once the whole input was read and written, so a write that fails
-(or a killed run) leaves no visible part of that run; orphaned `_staging-*` files are safe to delete.
+(or a killed run) before that final copy leaves no visible part of that run; orphaned `_staging-*` files are safe to delete.
+A crash during the final copy is covered under [Parquet is not transactional](#parquet-is-not-transactional).
 
 ```yaml
 sink:
@@ -92,8 +93,6 @@ A failure while writing (process crash, out-of-disk, network error on remote sto
 incomplete `_staging-<id>-part-*` file. Readers of `part-*.parquet` never see it, and the next write
 ignores it, so it is safe to delete. Floe does not roll anything back: only the final copy and delete
 steps described below can leave visible parts that mix old and new. On local storage that copy replaces
-the `part-*` file in place, so a crash during it can also leave one truncated, unreadable part under its final
-name; a re-run replaces it. On local storage that copy replaces
 the `part-*` file in place, so a crash during it can also leave one truncated, unreadable part under its final
 name; a re-run replaces it.
 
