@@ -93,6 +93,12 @@ def _pulled(
         yield frame
 
 
+def _drain(frames: list[pl.DataFrame]) -> Iterator[pl.DataFrame]:
+    """`frames`, each dropped once yielded: the sink holds the chunk it is on, not the first."""
+    while frames:
+        yield frames.pop(0)
+
+
 @dataclass(frozen=True)
 class EntityRun:
     report: dict[str, Any]
@@ -460,15 +466,23 @@ def _run_entity(
     stream = accepted_frames()
     aborted_empty = False
     try:
-        first = next(stream, None)  # nothing is written when every input was skipped
+        # up to the first frame with rows; the empty ones before it (a file's end marker, or a file with every row rejected) go on to the sink
+        peeked: list[pl.DataFrame] = []
+        for frame in stream:
+            peeked.append(frame)
+            if frame.height:
+                break
         # an aborted run that accepted no rows leaves the existing output as it is (#1496)
-        aborted_empty = first is None and any(r["status"] == "aborted" for r in files)
-        if pending and (first is not None or sink.write_mode == "overwrite") and not aborted_empty:  # fmt: skip
+        aborted_empty = not (peeked and peeked[-1].height) and any(r["status"] == "aborted" for r in files)  # fmt: skip
+        if pending and (peeked or sink.write_mode == "overwrite") and not aborted_empty:  # fmt: skip
             frames = chain(
-                [output(plan, empty) if first is None else first],
+                _drain(peeked)
+                if peeked
+                else [
+                    output(plan, empty)
+                ],  # nothing is written when every input was skipped
                 _pulled(stream, plan.spent),
             )
-            del first  # the sink holds the chunk it is on, not the first
             sink_started = time.monotonic()
             plan.sinks["accepted"] = "unknown"
             if delta:

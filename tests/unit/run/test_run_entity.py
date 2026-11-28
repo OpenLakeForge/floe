@@ -1027,3 +1027,24 @@ def test_max_rejection_rate_at_the_threshold_or_with_no_rows_does_not_abort(
     assert not result.aborted
     assert result.report["policy"]["rejection_rate"] == rate
     assert result.report["policy"]["max_rejection_rate_exceeded"] is exceeded
+
+
+def test_an_abort_after_a_file_with_no_rows_keeps_the_previous_output(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "config.yml").write_text(
+        CONFIG.format(severity="abort", mismatch="").replace(
+            "    sink:\n", "    sink:\n      write_mode: overwrite\n"
+        )
+    )
+    entity = parse_config(tmp_path / "config.yml").entities[0]
+    (tmp_path / "in" / "a.csv").write_text("id,name\n1,a\n2,b\n")
+    assert not run_entity(entity, tmp_path, "0.3").aborted
+
+    # a.csv holds no rows, so it yields an empty accepted frame; b.csv aborts
+    (tmp_path / "in" / "a.csv").write_text("id,name\n")
+    (tmp_path / "in" / "b.csv").write_text("id,name\nx,b\n")
+    result = run_entity(entity, tmp_path, "0.3")
+    assert result.aborted and result.report["files"][-1]["status"] == "aborted"
+    assert accepted(tmp_path).height == 2

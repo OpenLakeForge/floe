@@ -844,7 +844,9 @@ def test_rejected_iceberg_casts_binary_and_nested_source_columns_to_strings(tmp_
 
 def test_rejected_iceberg_table_sits_below_the_path_not_in_it(tmp_path: Path, catalog: LocalCatalog) -> None:  # fmt: skip
     run_rejected(tmp_path, "id,name,amount\n2,b,abc\n")
-    assert catalog.locations[-1] == "s3://warehouse/floe/tables/orders_rejected/table"
+    assert (
+        "s3://warehouse/floe/tables/orders_rejected/table" in catalog.locations
+    )  # the rejected table is created before the accepted one when no row is accepted
 
 
 def test_the_accepted_target_resolves_its_catalog_through_catalogs_default(tmp_path: Path) -> None:  # fmt: skip
