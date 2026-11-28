@@ -46,17 +46,39 @@ def _owned(text: str) -> dict[str, Any]:
     return owned(cast("Mapping[Any, Any]", parse_yaml(text)[0]))
 
 
+_HEAVY = {".git", ".venv", "venv", "node_modules", "__pycache__"}
+
+
 def _skip(directory: str, names: list[str]) -> list[str]:
-    """Copy only YAML, and no dot-directory (.git, .venv)."""
+    """Copy only YAML (and directories), not the known heavy directories."""
     return [
         n
         for n in names
-        if (os.path.isdir(os.path.join(directory, n)) and n.startswith("."))
-        or (
-            not os.path.isdir(os.path.join(directory, n))
-            and not n.endswith((".yml", ".yaml"))
+        if n in _HEAVY
+        or not (
+            os.path.isdir(os.path.join(directory, n)) or n.endswith((".yml", ".yaml"))
         )
     ]
+
+
+def _unstageable(tmp: str) -> str | None:
+    """A staged path whose reads would leave the staged copy: an escaping link, or an absolute `entities`."""
+    base = os.path.realpath(tmp)
+    for here, dirs, files in os.walk(tmp):
+        for n in dirs + files:
+            path = os.path.join(here, n)
+            if (
+                os.path.islink(path)
+                and os.path.commonpath([base, os.path.realpath(path)]) != base
+            ):
+                return os.path.relpath(path, tmp)
+        if "_domain.yml" in files:
+            doc = parse_yaml(Path(here, "_domain.yml").read_text(encoding="utf-8"))[0]
+            if isinstance(doc, dict) and os.path.isabs(
+                str(cast("dict[str, Any]", doc).get("entities") or "")
+            ):
+                return os.path.relpath(os.path.join(here, "_domain.yml"), tmp)
+    return None
 
 
 def _validate(
@@ -67,15 +89,20 @@ def _validate(
     root = os.path.dirname(real)
     out = os.path.realpath(output_dir)
     if os.path.commonpath([root, out]) != root:
-        raise FloeConfigError(f"--output-dir {output_dir} is outside the project of {config}", code="config_invalid_value")  # fmt: skip
+        raise FloeConfigError(
+            f"--output-dir {output_dir} is outside the project of {config}",
+            code="config_invalid_value",
+        )
     doc = cast("dict[str, Any]", parse_yaml(Path(real).read_text(encoding="utf-8"))[0])
     include = cast("dict[str, Any]", doc.get("include") or {})
     patterns = cast("list[Any]", include.get("domains") or [])
     if any(isinstance(x, str) and os.path.isabs(x) for x in patterns):
-        raise FloeConfigError("-c needs relative include.domains patterns", code="config_invalid_value")  # fmt: skip
+        raise FloeConfigError(
+            "-c needs relative include.domains patterns", code="config_invalid_value"
+        )
     with tempfile.TemporaryDirectory() as tmp:
         # ponytail: copies YAML only, so it checks config, not data files; upgrade to a full copy if that ever matters
-        shutil.copytree(root, tmp, dirs_exist_ok=True, ignore=_skip)
+        shutil.copytree(root, tmp, dirs_exist_ok=True, symlinks=True, ignore=_skip)
         for p in plan:
             if p.new_text is not None and p.status in ("created", "updated"):
                 dest = os.path.join(
@@ -83,12 +110,18 @@ def _validate(
                 )
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 Path(dest).write_text(p.new_text, encoding="utf-8")
+        if bad := _unstageable(tmp):
+            raise FloeConfigError(
+                f"-c cannot validate this layout: {bad}", code="config_invalid_value"
+            )
         try:
             project = parse_config(Path(tmp) / os.path.basename(real))
             validate_config(project)
         except FloeConfigError as e:
             if not _SCAFFOLD.search(str(e)):
-                raise FloeConfigError(f"the project would not validate after the import: {e}", code=e.code) from e  # fmt: skip
+                raise FloeConfigError(
+                    f"the project would not validate after the import: {e}", code=e.code
+                ) from e
             print("Project not yet valid: complete _domain.yml, then run floe validate")
             return
     for entity in project.entities:

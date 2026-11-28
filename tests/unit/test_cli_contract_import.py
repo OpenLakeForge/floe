@@ -270,3 +270,39 @@ def test_config_absolute_include_is_refused(floe: Run, tmp_path: Path) -> None:
     assert code == 1
     assert "relative include.domains" in err
     assert not (out / "orders.yml").exists()
+
+
+def test_config_keeps_hidden_env_file_yaml(floe: Run, tmp_path: Path) -> None:
+    config = project(tmp_path, DOMAIN)
+    (tmp_path / ".config").mkdir()
+    (tmp_path / ".config/vars.yml").write_text("X: y\n")
+    config.write_text(config.read_text() + "env:\n  file: .config/vars.yml\n")
+    code, _, err = imp(floe, workbook(tmp_path, "id"), tmp_path / "domains/sales", "-c", config)  # fmt: skip
+    assert (code, err) == (0, "")
+
+
+def test_config_validates_symlinked_domain_dir_against_the_plan(floe: Run, tmp_path: Path) -> None:  # fmt: skip
+    (tmp_path / "shared/sales").mkdir(parents=True)
+    (tmp_path / "domains").mkdir()
+    (tmp_path / "domains/sales").symlink_to("../shared/sales")
+    (tmp_path / "shared/sales/_domain.yml").write_text(DOMAIN)
+    (tmp_path / "config.yml").write_text(
+        'version: "0.8"\ninclude:\n  domains:\n    - "domains/*/_domain.yml"\n'
+    )
+    out = tmp_path / "domains/sales"
+    config = tmp_path / "config.yml"
+    assert imp(floe, workbook(tmp_path, "id", "amount"), out, "-c", config)[0] == 0
+    path = out / "orders.yml"
+    path.write_text(path.read_text() + "pii:\n  columns:\n    - name: amount\n      strategy: hash\n")  # fmt: skip
+    code, _, err = imp(floe, workbook(tmp_path, "id", "total"), out, "-c", config, "--accept-breaking")  # fmt: skip
+    assert code == 1
+    assert "amount" in err
+
+
+def test_config_refuses_absolute_entities_selector(floe: Run, tmp_path: Path) -> None:  # fmt: skip
+    config = project(tmp_path, DOMAIN + f'entities: "{tmp_path}/domains/sales/*.yml"\n')  # fmt: skip
+    out = tmp_path / "domains/sales"
+    code, _, err = imp(floe, workbook(tmp_path, "id"), out, "-c", config)
+    assert code == 1
+    assert "-c cannot validate this layout: domains/sales/_domain.yml" in err
+    assert not (out / "orders.yml").exists()
