@@ -1,0 +1,135 @@
+{
+  "spec_version": "0.3",
+  "entity": {
+    "name": "sales.order_lines",
+    "metadata": {
+      "description": "Products on an order.",
+      "owner": "sales-ops@example.com"
+    }
+  },
+  "source": {
+    "format": "csv",
+    "path": "local://<ROOT>/in/sales/order_lines_export.csv",
+    "options": {
+      "encoding": "UTF8",
+      "header": true,
+      "null_values": [
+        ""
+      ],
+      "recursive": false,
+      "separator": ","
+    },
+    "cast_mode": "strict",
+    "read_plan": "raw_and_typed",
+    "resolved_inputs": {
+      "mode": "file",
+      "file_count": 1,
+      "files": [
+        "local://<ROOT>/in/sales/order_lines_export.csv"
+      ]
+    }
+  },
+  "sink": {
+    "accepted": {
+      "format": "parquet",
+      "path": "local://<ROOT>/out/accepted/sales/order_lines"
+    },
+    "rejected": {
+      "format": "csv",
+      "path": "local://<ROOT>/out/rejected/sales/order_lines"
+    },
+    "archive": {
+      "enabled": false
+    }
+  },
+  "policy": {
+    "severity": "reject",
+    "rule_severity": {
+      "not_null": "warn"
+    }
+  },
+  "accepted_output": {
+    "path": "local://<ROOT>/out/accepted/sales/order_lines",
+    "table_root_uri": "local://<ROOT>/out/accepted/sales/order_lines",
+    "write_mode": "overwrite",
+    "accepted_rows": 3,
+    "files_written": 1,
+    "parts_written": 1,
+    "part_files": [
+      "part-00000.parquet"
+    ],
+    "total_bytes_written": 1587,
+    "avg_file_size_mb": 0.0015134811401367188,
+    "small_files_count": 1
+  },
+  "schema_evolution": {
+    "enabled": false,
+    "mode": "strict",
+    "applied": false,
+    "incompatible_changes_detected": false
+  },
+  "unique_constraints": [
+    {
+      "columns": [
+        "order_id",
+        "line_no"
+      ],
+      "duplicates_count": 0,
+      "affected_rows_count": 0,
+      "action": "none",
+      "status_effect": "none"
+    }
+  ],
+  "results": {
+    "files_total": 1,
+    "files_skipped": 0,
+    "rows_total": 4,
+    "accepted_total": 3,
+    "rejected_total": 1,
+    "warnings_total": 0,
+    "errors_total": 1
+  },
+  "files": [
+    {
+      "input_file": "local://<ROOT>/in/sales/order_lines_export.csv",
+      "status": "rejected",
+      "row_count": 4,
+      "accepted_count": 3,
+      "rejected_count": 1,
+      "mismatch": {
+        "declared_columns_count": 4,
+        "input_columns_count": 4,
+        "missing_columns": [],
+        "extra_columns": [],
+        "mismatch_action": "none"
+      },
+      "output": {
+        "accepted_path": "local://<ROOT>/out/accepted/sales/order_lines",
+        "rejected_path": "<ROOT>/out/rejected/sales/order_lines/part-<uuid>.csv",
+        "errors_path": null,
+        "archived_path": null
+      },
+      "validation": {
+        "errors": 1,
+        "warnings": 0,
+        "rules": [
+          {
+            "rule": "out_of_range",
+            "severity": "reject",
+            "violations": 1,
+            "columns": [
+              {
+                "column": "QTY",
+                "violations": 1,
+                "source": "QTY"
+              }
+            ]
+          }
+        ]
+      },
+      "input_size": 109,
+      "input_mtime": "<volatile>"
+    }
+  ],
+  "timings_ms": "<volatile>"
+}

@@ -1,0 +1,16 @@
+# Engineer-owned. floe contract import created this file once and never changes it.
+name: sales
+defaults:
+  source:
+    format: csv
+    path: "./in/sales/{{resource}}.csv"
+    options:
+      header: true
+      separator: ","
+  sink:
+    accepted:
+      format: parquet
+      path: "./out/accepted/sales/{{entity.name}}"
+    rejected:
+      format: csv
+      path: "./out/rejected/sales/{{entity.name}}"

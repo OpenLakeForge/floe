@@ -1,0 +1,2 @@
+order_id,line_no,sku,quantity,__floe_row_index,__floe_errors,__floe_run_id,__floe_source_uri
+ORD0000003,1,SKU-C,0,3,"[{""rule"":""out_of_range"",""column"":""QTY"",""source"":""QTY"",""message"":""value out of range (min=1, max=10000)""}]",<run_id>,local://<ROOT>/in/sales/order_lines_export.csv

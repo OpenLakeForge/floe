@@ -1,0 +1,461 @@
+{
+  "generated_at_ts_ms": 0,
+  "floe_version": "1.0.0",
+  "spec_version": "1.0",
+  "manifest_id": "mfv1-4b3d8a445f057a77",
+  "manifest_revision": "sha256:6d3a58956e8914eabbd3d89edf56da9aa578f258dc64533fb355c8b5a765089c",
+  "runtime_env": "cli",
+  "config_uri": "./config.yml",
+  "config_checksum": "sha256:a1e1626e4dd973f699b14c9eeb44db3832e5b1828d915bf899a8b76b571c47da",
+  "config_files": [
+    {
+      "path": "config.yml",
+      "sha256": "cff16d37a12b115efb757fc345ec998a3ee85e3dfa74769450c4924dcc5d7846"
+    },
+    {
+      "path": "domains/sales/_domain.yml",
+      "sha256": "bdaea0019bf535647a5f3cd20a449080ea8e0d367887159aaff6831784220d5e"
+    },
+    {
+      "path": "domains/sales/customers.yml",
+      "sha256": "2b79eb23759138864c493e405e541ac3f6b8a31e930e6b92fb1973b650d2d231"
+    },
+    {
+      "path": "domains/sales/order_lines.yml",
+      "sha256": "133b42e791167d0d8620a15b3fd7e754c24e0b3dc9cbd2873df4b142200f2be0"
+    },
+    {
+      "path": "domains/sales/orders.yml",
+      "sha256": "edc83e45239935b0be73d36c1e46badb1e7d3932e224ac72b1d39ad8387db213"
+    }
+  ],
+  "report_base_uri": "./report",
+  "domains": [
+    {
+      "name": "sales"
+    }
+  ],
+  "execution": {
+    "entrypoint": "floe",
+    "base_args": [
+      "run",
+      "--manifest",
+      "{manifest_uri}",
+      "--log-format",
+      "json",
+      "--quiet"
+    ],
+    "per_entity_args": [
+      "--entities",
+      "{entity_name}"
+    ],
+    "log_format": "json",
+    "result_contract": {
+      "run_finished_event": true,
+      "summary_uri_field": "summary_uri",
+      "exit_codes": {
+        "0": "success_or_rejected",
+        "1": "technical_failure",
+        "2": "aborted"
+      }
+    },
+    "defaults": {
+      "env": {},
+      "workdir": null
+    }
+  },
+  "runners": {
+    "default": "local",
+    "definitions": {
+      "local": {
+        "type": "local_process",
+        "command": null,
+        "args": null,
+        "timeout_seconds": null,
+        "ttl_seconds_after_finished": null,
+        "poll_interval_seconds": null,
+        "secrets": null,
+        "image": null,
+        "namespace": null,
+        "service_account": null,
+        "resources": null,
+        "env": null,
+        "workspace_url": null,
+        "existing_cluster_id": null,
+        "config_uri": null,
+        "python_file_uri": null,
+        "job_name": null,
+        "auth": null,
+        "env_parameters": null
+      }
+    }
+  },
+  "entities": [
+    {
+      "name": "sales.customers",
+      "domain": "sales",
+      "group_name": "sales",
+      "asset_key": [
+        "sales",
+        "customers"
+      ],
+      "source_format": "csv",
+      "accepted_sink_uri": "./out/accepted/sales/customers",
+      "rejected_sink_uri": "./out/rejected/sales/customers",
+      "tags": {
+        "owner": "sales-data@example.com"
+      },
+      "description": "People and companies that buy from us.",
+      "source": {
+        "format": "csv",
+        "storage": "local",
+        "uri": "./in/sales/customers_export.csv",
+        "path": "./in/sales/customers_export.csv",
+        "resolved": true,
+        "resource": "customers_export",
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ",",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "./out/accepted/sales/customers",
+          "path": "./out/accepted/sales/customers",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "./out/rejected/sales/customers",
+          "path": "./out/rejected/sales/customers",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "customer_id",
+            "column_type": "int64",
+            "source": "CUST_ID",
+            "nullable": false
+          },
+          {
+            "name": "email",
+            "column_type": "string",
+            "source": "EMAIL",
+            "nullable": false,
+            "rule_severity": {
+              "length": "reject",
+              "not_null": "reject",
+              "pattern_mismatch": "reject"
+            },
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[a-z]{2,}$",
+            "max_length": 120
+          },
+          {
+            "name": "country_code",
+            "column_type": "string",
+            "source": "CTRY",
+            "nullable": false,
+            "rule_severity": {
+              "length": "warn",
+              "not_allowed": "warn"
+            },
+            "allowed_values": [
+              "FR",
+              "DE",
+              "ES",
+              "IT",
+              "US"
+            ],
+            "min_length": 2,
+            "max_length": 2
+          },
+          {
+            "name": "full_name",
+            "column_type": "string",
+            "nullable": true,
+            "max_length": 100
+          },
+          {
+            "name": "birth_date",
+            "column_type": "date",
+            "source": "BIRTH_DT",
+            "nullable": true,
+            "rule_severity": {
+              "out_of_range": "reject"
+            },
+            "min": "1900-01-01"
+          }
+        ],
+        "primary_key": [
+          "customer_id"
+        ],
+        "unique_keys": [
+          [
+            "email"
+          ],
+          [
+            "full_name",
+            "birth_date"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "sales.order_lines",
+      "domain": "sales",
+      "group_name": "sales",
+      "asset_key": [
+        "sales",
+        "order_lines"
+      ],
+      "source_format": "csv",
+      "accepted_sink_uri": "./out/accepted/sales/order_lines",
+      "rejected_sink_uri": "./out/rejected/sales/order_lines",
+      "tags": {
+        "owner": "sales-ops@example.com"
+      },
+      "description": "Products on an order.",
+      "source": {
+        "format": "csv",
+        "storage": "local",
+        "uri": "./in/sales/order_lines_export.csv",
+        "path": "./in/sales/order_lines_export.csv",
+        "resolved": true,
+        "resource": "order_lines_export",
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ",",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "./out/accepted/sales/order_lines",
+          "path": "./out/accepted/sales/order_lines",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "./out/rejected/sales/order_lines",
+          "path": "./out/rejected/sales/order_lines",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_rule_severity": {
+        "not_null": "warn"
+      },
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "order_id",
+            "column_type": "string",
+            "source": "ORDER_NO",
+            "nullable": false
+          },
+          {
+            "name": "line_no",
+            "column_type": "int32",
+            "source": "LINE_NO",
+            "nullable": false,
+            "min": 1
+          },
+          {
+            "name": "sku",
+            "column_type": "string",
+            "source": "SKU",
+            "nullable": false,
+            "max_length": 20
+          },
+          {
+            "name": "quantity",
+            "column_type": "int32",
+            "source": "QTY",
+            "nullable": false,
+            "rule_severity": {
+              "not_null": "reject",
+              "out_of_range": "reject"
+            },
+            "min": 1,
+            "max": 10000
+          }
+        ],
+        "primary_key": [
+          "order_id",
+          "line_no"
+        ],
+        "unique_keys": []
+      }
+    },
+    {
+      "name": "sales.orders",
+      "domain": "sales",
+      "group_name": "sales",
+      "asset_key": [
+        "sales",
+        "orders"
+      ],
+      "source_format": "csv",
+      "accepted_sink_uri": "./out/accepted/sales/orders",
+      "rejected_sink_uri": "./out/rejected/sales/orders",
+      "tags": {
+        "owner": "sales-data@example.com"
+      },
+      "description": "Customer purchase orders.",
+      "source": {
+        "format": "csv",
+        "storage": "local",
+        "uri": "./in/sales/orders_export.csv",
+        "path": "./in/sales/orders_export.csv",
+        "resolved": true,
+        "resource": "orders_export",
+        "cast_mode": "strict",
+        "options": {
+          "data_row": null,
+          "encoding": "UTF8",
+          "glob": null,
+          "header": true,
+          "header_row": 1,
+          "json_mode": null,
+          "namespace": null,
+          "null_values": [
+            ""
+          ],
+          "recursive": false,
+          "row_tag": null,
+          "separator": ",",
+          "sheet": null,
+          "value_tag": null
+        }
+      },
+      "sinks": {
+        "accepted": {
+          "format": "parquet",
+          "storage": "local",
+          "uri": "./out/accepted/sales/orders",
+          "path": "./out/accepted/sales/orders",
+          "resolved": true
+        },
+        "rejected": {
+          "format": "csv",
+          "storage": "local",
+          "uri": "./out/rejected/sales/orders",
+          "path": "./out/rejected/sales/orders",
+          "resolved": true
+        },
+        "archive": null
+      },
+      "runner": null,
+      "policy_rule_severity": {
+        "cast_error": "warn",
+        "unique": "abort"
+      },
+      "policy_severity": "reject",
+      "write_mode": "overwrite",
+      "incremental_mode": "none",
+      "schema": {
+        "columns": [
+          {
+            "name": "order_id",
+            "column_type": "string",
+            "source": "ORDER_NO",
+            "nullable": false,
+            "rule_severity": {
+              "length": "abort",
+              "pattern_mismatch": "abort"
+            },
+            "pattern": "^ORD[0-9]{7}$",
+            "min_length": 10,
+            "max_length": 10
+          },
+          {
+            "name": "customer_id",
+            "column_type": "int64",
+            "source": "CUST_ID",
+            "nullable": false,
+            "rule_severity": {
+              "not_null": "abort"
+            }
+          },
+          {
+            "name": "ordered_at",
+            "column_type": "datetime",
+            "source": "ORDER_TS",
+            "nullable": false
+          },
+          {
+            "name": "total_amount",
+            "column_type": "decimal(19,2)",
+            "source": "TOTAL",
+            "nullable": false,
+            "rule_severity": {
+              "out_of_range": "warn"
+            },
+            "min": 0,
+            "max": 1000000
+          },
+          {
+            "name": "status",
+            "column_type": "string",
+            "source": "STATUS",
+            "nullable": false,
+            "allowed_values": [
+              "NEW",
+              "PAID",
+              "SHIPPED",
+              "CANCELLED"
+            ]
+          }
+        ],
+        "primary_key": [
+          "order_id"
+        ],
+        "unique_keys": []
+      }
+    }
+  ]
+}

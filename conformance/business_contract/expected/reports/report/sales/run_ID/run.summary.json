@@ -1,0 +1,77 @@
+{
+  "spec_version": "0.3",
+  "tool": {
+    "name": "floe",
+    "version": "1.0.0"
+  },
+  "run": {
+    "run_id": "<volatile>",
+    "domain": "sales",
+    "started_at": "<volatile>",
+    "finished_at": "<volatile>",
+    "duration_ms": "<volatile>",
+    "status": "rejected",
+    "exit_code": 0
+  },
+  "config": {
+    "path": "<ROOT>/config.yml",
+    "version": "0.3"
+  },
+  "report": {
+    "path": "<ROOT>/report",
+    "report_file": "<ROOT>/report/sales/run_<id>/run.summary.json"
+  },
+  "results": {
+    "files_total": 3,
+    "files_skipped": 0,
+    "rows_total": 13,
+    "accepted_total": 9,
+    "rejected_total": 4,
+    "warnings_total": 1,
+    "errors_total": 4
+  },
+  "entities": [
+    {
+      "name": "sales.customers",
+      "status": "rejected",
+      "results": {
+        "files_total": 1,
+        "files_skipped": 0,
+        "rows_total": 5,
+        "accepted_total": 3,
+        "rejected_total": 2,
+        "warnings_total": 0,
+        "errors_total": 2
+      },
+      "report_file": "<ROOT>/report/sales/run_<id>/sales/customers/run.json"
+    },
+    {
+      "name": "sales.order_lines",
+      "status": "rejected",
+      "results": {
+        "files_total": 1,
+        "files_skipped": 0,
+        "rows_total": 4,
+        "accepted_total": 3,
+        "rejected_total": 1,
+        "warnings_total": 0,
+        "errors_total": 1
+      },
+      "report_file": "<ROOT>/report/sales/run_<id>/sales/order_lines/run.json"
+    },
+    {
+      "name": "sales.orders",
+      "status": "rejected",
+      "results": {
+        "files_total": 1,
+        "files_skipped": 0,
+        "rows_total": 4,
+        "accepted_total": 3,
+        "rejected_total": 1,
+        "warnings_total": 1,
+        "errors_total": 1
+      },
+      "report_file": "<ROOT>/report/sales/run_<id>/sales/orders/run.json"
+    }
+  ]
+}
