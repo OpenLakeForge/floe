@@ -1,0 +1,12 @@
+# Engineer-owned. floe contract import created this file once and never changes it.
+name: sales
+defaults:
+  source:
+    ref: TODO_source              # declare it in sources, or use format + path with {{resource}}
+  sink:
+    accepted:
+      format: TODO_format
+      path: "{{TODO_accepted_path}}"
+    rejected:
+      format: TODO_format
+      path: "{{TODO_rejected_path}}"
