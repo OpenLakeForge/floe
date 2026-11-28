@@ -103,17 +103,22 @@ def _validate(
     with tempfile.TemporaryDirectory() as tmp:
         # ponytail: copies YAML only, so it checks config, not data files; upgrade to a full copy if that ever matters
         shutil.copytree(root, tmp, dirs_exist_ok=True, symlinks=True, ignore=_skip)
+        refuse = "-c cannot validate this layout: "
+        if bad := _unstageable(
+            tmp
+        ):  # before any write: a copied absolute link would write through
+            raise FloeConfigError(refuse + bad, code="config_invalid_value")
         for p in plan:
             if p.new_text is not None and p.status in ("created", "updated"):
                 dest = os.path.join(
                     tmp, os.path.relpath(os.path.join(out, p.path), root)
                 )
+                if os.path.islink(dest):
+                    raise FloeConfigError(refuse + p.path, code="config_invalid_value")
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 Path(dest).write_text(p.new_text, encoding="utf-8")
-        if bad := _unstageable(tmp):
-            raise FloeConfigError(
-                f"-c cannot validate this layout: {bad}", code="config_invalid_value"
-            )
+        if bad := _unstageable(tmp):  # the planned files too
+            raise FloeConfigError(refuse + bad, code="config_invalid_value")
         try:
             project = parse_config(Path(tmp) / os.path.basename(real))
             validate_config(project)

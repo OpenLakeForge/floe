@@ -306,3 +306,21 @@ def test_config_refuses_absolute_entities_selector(floe: Run, tmp_path: Path) ->
     assert code == 1
     assert "-c cannot validate this layout: domains/sales/_domain.yml" in err
     assert not (out / "orders.yml").exists()
+
+
+@pytest.mark.parametrize("mode", ["--dry-run", "--check"])
+def test_config_never_writes_through_an_absolute_symlink(floe: Run, tmp_path: Path, mode: str) -> None:  # fmt: skip
+    config = project(tmp_path, DOMAIN)
+    out = tmp_path / "domains/sales"
+    imp(floe, workbook(tmp_path, "id"), out)
+    target = (
+        out / "orders.target"
+    )  # inside the output dir, so preflight accepts the link
+    target.write_bytes((out / "orders.yml").read_bytes())
+    (out / "orders.yml").unlink()
+    (out / "orders.yml").symlink_to(target)  # absolute: tmp_path is absolute
+    before = target.read_bytes()
+    code, _, err = imp(floe, workbook(tmp_path, "id", "amount"), out, "-c", config, mode)  # fmt: skip
+    assert code == 1
+    assert "-c cannot validate this layout" in err
+    assert target.read_bytes() == before
