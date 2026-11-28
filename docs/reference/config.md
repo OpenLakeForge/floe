@@ -427,11 +427,11 @@ state file shape, and CAS behavior.
     - requires non-empty `schema.primary_key`
     - optional merge behavior can be configured in `sink.accepted.merge`
     - source rows must be unique on `schema.primary_key`: duplicates of the key are rejected before the merge, even under `policy.severity: warn`
-  - Applies to both accepted and rejected outputs.
+  - Applies to the accepted sink only. Rejected CSV, Parquet and Iceberg output always appends, whatever `write_mode` is.
 - `accepted` (required)
   - `format`: `parquet`, `iceberg` or `delta`.
     - `iceberg`: Iceberg table in a REST catalog; `sink.accepted.iceberg` with a catalog is required (0.8). See [Iceberg sink](../sinks/iceberg.md).
-    - `delta`: path-based Delta table on local or S3 storage; `write_mode` `overwrite` or `append`; needs the `delta` extra. `sink.accepted.delta` (Unity) is refused for now. See [Delta sink](../sinks/delta.md).
+    - `delta`: path-based Delta table on local or S3 storage; `write_mode` `overwrite` or `append`; needs the `delta` extra. `sink.accepted.delta` with a `type: unity` catalog registers the table in Unity Catalog (S3 storage; tested against a stub only). See [Delta sink](../sinks/delta.md).
     - `duckdb` was dropped in 0.8 (D1) and fails validation; the archived
       [OpenLakeForge/floe-rust](https://github.com/OpenLakeForge/floe-rust) documents it for 0.7.
 - `path`: output directory for accepted records.

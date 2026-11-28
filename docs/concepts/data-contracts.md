@@ -131,7 +131,8 @@ are flagged. [Checks and severity](checks.md) gives the exact rules.
 
 `policy.max_rejection_rate` (a fraction in `[0, 1]`, `reject` only) adds a ceiling: when the
 rejected rows exceed that share of the input rows, the entity ends `aborted` (exit `2`)
-instead of `rejected`. The accepted rows are still written. At the threshold, or with no
+instead of `rejected`. The check runs after the commit, so the accepted rows are still written and nothing is rolled back;
+[what a policy leaves behind](../reference/support-matrix.md#when-a-policy-decides-and-what-it-leaves-behind). At the threshold, or with no
 input rows, nothing changes.
 
 `reject` is the usual choice: good rows flow, bad rows wait in quarantine with
@@ -146,16 +147,16 @@ need a `sink.rejected`.
 
 - `accepted` (required): `format: parquet` writes a dataset of
   `part-*.parquet` files; `format: iceberg` writes a table through a REST or
-  AWS Glue catalog declared under `catalogs`. See
-  [Iceberg sink](../sinks/iceberg.md) and [Parquet sink](../sinks/parquet.md).
+  AWS Glue catalog declared under `catalogs`; `format: delta` writes a path-based Delta table. See
+  [Iceberg sink](../sinks/iceberg.md), [Delta sink](../sinks/delta.md) and [Parquet sink](../sinks/parquet.md).
 - `rejected`: `csv` (default), `parquet` or an Iceberg quarantine table.
 - `archive`: where input files are moved once their rows are committed.
 - `write_mode`: `overwrite` (default), `append`, or, on Iceberg, `merge_scd1`
   (upsert by primary key) and `merge_scd2` (keep history). See
   [Write modes](write-modes.md).
 
-Accepted rows are written once per entity, after every input file is read:
-one pass of Parquet parts, or one Iceberg commit. On Iceberg that commit is
+Accepted rows are written once per entity: one pass of Parquet parts, or one Iceberg or Delta commit.
+The write streams while the input is read, and nothing becomes visible before the end of the pass. On Iceberg that commit is
 atomic: a run that fails on an error leaves the table as it was. A policy
 `abort` is not an error in that sense: the files read before the aborted one
 are still committed, so the table can change on a run that ends `aborted`.

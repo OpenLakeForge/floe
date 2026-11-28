@@ -86,12 +86,12 @@ check them again after a Polars upgrade.
 Parquet has no built-in transaction or atomic-commit semantics. Floe does not implement a
 write-ahead log or two-phase commit for Parquet output. This has two practical consequences:
 
-**Incomplete files on write failure**
+**Failures while writing**
 
-If a failure occurs during a Parquet write (process crash, out-of-disk, network error on remote
-storage), the in-progress part file is left on disk in an incomplete or corrupt state. There is no
-rollback — incomplete files must be cleaned up manually before the next run or they will coexist
-with valid output files in the accepted directory.
+A failure while writing (process crash, out-of-disk, network error on remote storage) can leave an
+incomplete `_staging-<id>-part-*` file. Readers of `part-*.parquet` never see it, and the next write
+ignores it, so it is safe to delete. Floe does not roll anything back: only the final copy and delete
+steps described below can leave visible parts that mix old and new.
 
 **Overwrite is not atomic**
 
@@ -103,6 +103,8 @@ storage error during the final copy and delete steps can leave a mix of new and 
 duplicated or missing) and orphaned `_staging-*` files, which are safe to delete. The run report
 and incremental state are not committed in that case, so Floe re-processes the same inputs on
 the next run and a re-run restores a clean directory.
+
+A retry of an `append` without a primary or unique key can duplicate rows (at-least-once); see the [support matrix](../reference/support-matrix.md#transactional-guarantees).
 
 **If you need transactional accepted writes, use the [Iceberg](iceberg.md) sink instead.**
 Each entity's Iceberg write is one atomic catalog commit.

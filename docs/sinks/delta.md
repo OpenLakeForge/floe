@@ -62,7 +62,8 @@ Floe also registers it in Unity Catalog (see [Unity Catalog](#unity-catalog)).
 - The Delta table is never altered by Floe: a table Floe creates keeps delta-rs's minimal
   protocol, and no table property is changed.
 
-See [write modes](../concepts/write-modes.md).
+See [write modes](../concepts/write-modes.md). Which backends are tested, and against what, is in the
+[support matrix](../reference/support-matrix.md#tested-combinations).
 
 ## Retry guard
 

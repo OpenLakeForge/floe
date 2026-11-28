@@ -98,14 +98,16 @@ wildcard. Listing is recursive and sorted by key.
 ## Limitations
 
 - Iceberg on ADLS writes through PyIceberg's fsspec FileIO (`adlfs`, installed with the `adls`
-  extra). Merges and compaction attach DuckDB with an Azure secret; only `overwrite` and `append`
-  are tested against Azurite.
+  extra). Merges and compaction attach DuckDB with an Azure secret. Against Azurite CI tests the FileIO
+  settings, an `abfss://` read and write, and DuckDB reaching the endpoint; no catalog-backed Iceberg run
+  (`overwrite`, `append` or a merge) is tested, so they are `untested` end to end.
 - Delta on ADLS is refused with `config_not_supported`.
 - `floe maintain` lists table locations on `adls` through the object-store client.
   `floe manifest generate` and `floe manifest replay` support `adls`: the manifest records the
   `abfss://` URIs the run writes, and a replay writes its report there.
-- A manifest (`--manifest`, `manifest generate -o`) and a profile (`-p`) are read and written from
-  local paths or `s3://` only, not `abfss://`.
+- A manifest (`--manifest`, `manifest generate -o`) and a profile (`-p`) can be read and written at an
+  `abfss://` URI, as at `s3://` and `gs://` (tested on Azurite, #1389).
+- What is tested, and against which emulator: [support matrix](../reference/support-matrix.md#tested-combinations). Azurite is an emulator, not Azure.
 - Parquet and ORC inputs use a temp download plus a local read, as on S3.
 
 ## Contributors
