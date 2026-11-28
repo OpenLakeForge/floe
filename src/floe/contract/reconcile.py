@@ -17,7 +17,7 @@ from floe.config.yaml import parse_yaml
 from floe.contract.publish import PlannedFile
 from floe.contract.render import _OWNED, fingerprint, owned  # pyright: ignore[reportPrivateUsage] -- the ownership table lives in render
 
-_HEADER = re.compile(r"# floe-contract: sha256:([0-9a-f]{64})")
+_HEADER = re.compile(r"# floe-contract: sha256:([0-9a-f]{64})\r?")
 _PARENTS = {p[:1] for p in _OWNED if len(p) > 1}  # owned children live under these
 
 

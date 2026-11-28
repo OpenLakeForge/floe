@@ -89,6 +89,15 @@
     - The replaced files are reclaimed by orphan removal once the snapshots that reference them are expired.
   - Run it after ingestion, not beside it.
 
+- `floe contract import <workbook.xlsx> --output-dir <dir> [--domain NAME] [--dry-run] [--check] [--accept-breaking] [-c config.yml]`
+  - Offline: turns a business-owned domain workbook into one entity file per table plus a fail-closed `_domain.yml` scaffold (only if absent). Needs the `xlsx` extra and no `config.yml`. The workbook's `Guide` sets the domain; `--domain` only guards that it matches.
+  - Any workbook error fails the command with cell diagnostics before anything is planned. Output: `created / updated / unchanged / blocked` counts, one line per file, then the changes grouped by `breaking`, `tightening`, `loosening`, `additive`, `metadata`.
+  - Reimport rewrites only the business-owned keys and leaves every other byte alone. A file whose owned keys were edited by hand, or that was not generated, is `blocked`. Nothing is ever deleted: an entity file with no row in the workbook is reported as breaking.
+  - Any `blocked` file, unsafe path, or breaking change without `--accept-breaking` fails and writes nothing.
+  - `--dry-run` prints the plan and writes nothing. `--check` writes nothing and exits non-zero when a file would be created or updated.
+  - `-c config.yml` validates the project as it would be after the import (in a temporary copy) before writing, and lists engineer settings that weaken the contract. Failures that only name `TODO_` placeholders are reported as "complete `_domain.yml`, then run `floe validate`"; any other failure blocks. `--output-dir` must be inside the config's directory.
+  - See [Business contract](../guides/business-contract.md).
+
 ### Dry-run behavior
 
 - Dry-run resolves input files/objects using the same planning path as real runs.
