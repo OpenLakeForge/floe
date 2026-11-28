@@ -9,7 +9,7 @@ import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -89,8 +89,7 @@ def test_200_table_domain_import_without_config(
     for name in files:
         text = (first / name).read_bytes()
         assert text == (second / name).read_bytes()  # two runs, identical bytes
-        doc = parse_yaml(text.decode("utf-8"))[0]
-        assert isinstance(doc, dict)
+        doc = cast("dict[str, Any]", parse_yaml(text.decode("utf-8"))[0])
         if name != "_domain.yml":
-            assert len(doc["schema"]["columns"]) == COLUMNS  # pyright: ignore[reportUnknownArgumentType]
+            assert len(doc["schema"]["columns"]) == COLUMNS
     print(f"\nimported {TABLES} tables / {TABLES * COLUMNS} columns in {seconds[0]:.2f} s (second run {seconds[1]:.2f} s)")  # fmt: skip
