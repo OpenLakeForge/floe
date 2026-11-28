@@ -323,7 +323,7 @@ def test_a_late_policy_abort_exits_2_but_leaves_the_committed_rows_and_a_rerun_d
         7,
         9,
     ]  # visible, and the earlier output is gone: no rollback
-    assert sorted(pl.read_csv(f)["id"].cast(pl.String).to_list()[0] for f in (tmp_path / "out/rejected").glob("*.csv")) == ["x"]  # fmt: skip
+    assert sorted(i for f in (tmp_path / "out/rejected").glob("*.csv") for i in pl.read_csv(f)["id"].cast(pl.String)) == ["x", "y"]  # fmt: skip
     code, run, report = floe_run(tmp_path, monkeypatch)  # the same inputs again
     assert (code, run["status"]) == (0, "success")
     assert {f["skip_reason"] for f in report["files"]} == {"already_ingested"}
