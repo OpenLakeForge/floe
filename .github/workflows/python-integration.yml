@@ -52,6 +52,7 @@ jobs:
             object_stores:
               - "src/floe/iceberg/**"
               - "src/floe/storage/**"
+              - "src/floe/run/**"
               - "tests/integration/**"
               - "pyproject.toml"
               - "uv.lock"
