@@ -274,7 +274,7 @@ def test_1494_the_seed_scan_passes_the_table_fileio_properties_to_polars(
 
     def spy(source: Table, **kwargs: Any) -> pl.LazyFrame:
         seen.update(kwargs)
-        return scan_iceberg(source)
+        return scan_iceberg(source, **kwargs)
 
     monkeypatch.setattr(pl, "scan_iceberg", spy)
     assert cache_table_keys(table, [["id"]], {}, tmp_path / "keys.parquet")
