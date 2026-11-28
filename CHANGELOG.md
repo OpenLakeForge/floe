@@ -636,6 +636,13 @@ supported. Floe 0.7 and earlier manifests are rejected.
   path-style addressing, matching Floe core (#448). Without these variables behaviour is
   unchanged. Requires the existing `remote` extra.
 
+## airflow-floe v0.6.0
+
+Use it with Floe 1.1; it still loads 0.8, 0.9, 0.10 and 1.0 manifests.
+
+- **Accepts Floe 1.1 manifests.** `spec_version` `0.8`, `0.9`, `0.10`, `1.0` and `1.1` load. The manifest schema is
+  unchanged from 1.0: a manifest generated from a `floe contract import` project loads like any other.
+
 ## airflow-floe v0.5.0
 
 Use it with Floe 1.0; it still loads 0.8, 0.9 and 0.10 manifests.
